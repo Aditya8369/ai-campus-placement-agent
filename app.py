@@ -813,6 +813,29 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/admin/retention/run", methods=["POST"])
+def api_admin_run_retention():
+    """
+    Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
+    """
+    try:
+        from utils.cleanup import run_full_retention_policy
+        body = request.get_json(silent=True) or {}
+        max_file_age = int(body.get("max_file_age_hours", 24))
+        max_db_age = int(body.get("max_db_age_days", 30))
+        dry_run = bool(body.get("dry_run", False))
+
+        results = run_full_retention_policy(
+            max_file_age_hours=max_file_age,
+            max_db_age_days=max_db_age,
+            dry_run=dry_run
+        )
+        return jsonify({"status": "success", "results": results}), 200
+    except Exception as e:
+        logger.error(f"Error during retention cycle execution: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
