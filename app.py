@@ -556,6 +556,38 @@ def submit_interview_answer(analysis_id: str):
         return jsonify({"error": f"Internal process error evaluating response: {str(e)}"}), 500
 
 
+@app.route("/interview/<analysis_id>/reset", methods=["POST"])
+def reset_interview_session(analysis_id: str):
+    """
+    Resets an active mock interview session back to question index 0 with empty answers,
+    enabling students to retake and practice rounds anew without losing the parent analysis.
+    """
+    try:
+        raw_round = request.args.get("round", "").lower()
+        session_id = f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else analysis_id
+
+        session = get_interview_session(session_id)
+        if not session:
+            return jsonify({"success": False, "error": "Interview session not found"}), 404
+
+        update_interview_session(
+            interview_id=session_id,
+            current_question_index=0,
+            answers_list=[],
+            completed=False,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Interview session reset successfully. You can now retake this round.",
+            "session_id": session_id,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error resetting interview session: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
+
+
 @app.route("/api/interview/<analysis_id>/coding-problem", methods=["GET"])
 @app.route("/api/interview/coding-problem", methods=["GET"])
 def api_interview_coding_problem(analysis_id: str = None):
