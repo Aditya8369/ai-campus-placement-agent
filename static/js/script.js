@@ -1219,6 +1219,25 @@ function initMockInterview() {
     if (techScoreEl && cats.Technical) techScoreEl.innerText = `${cats.Technical.average_score}%`;
     if (behScoreEl && cats.Behavioral) behScoreEl.innerText = `${cats.Behavioral.average_score}%`;
 
+    // Also populate inline completed scorecard if present
+    const scorecardTech = document.getElementById("scorecardTechScore");
+    const scorecardComm = document.getElementById("scorecardCommScore");
+    const scorecardClarity = document.getElementById("scorecardClarityScore");
+    const barTech = document.getElementById("progressBarTech");
+    const barComm = document.getElementById("progressBarComm");
+    const barClarity = document.getElementById("progressBarClarity");
+
+    const tScore = cats.Technical ? Math.round(cats.Technical.average_score) : Math.round(summary.overall_score || 0);
+    const cScore = cats.HR ? Math.round(cats.HR.average_score) : Math.round(summary.overall_score || 0);
+    const clarScore = summary.verbal_metrics ? Math.round(summary.verbal_metrics.average_verbal_clarity || 0) : cScore;
+
+    if (scorecardTech) scorecardTech.innerText = `${tScore}%`;
+    if (barTech) barTech.style.width = `${tScore}%`;
+    if (scorecardComm) scorecardComm.innerText = `${cScore}%`;
+    if (barComm) barComm.style.width = `${cScore}%`;
+    if (scorecardClarity) scorecardClarity.innerText = `${clarScore}%`;
+    if (barClarity) barClarity.style.width = `${clarScore}%`;
+
     // Display Verbal Performance Metrics in Modal if available
     const modalVerbalStatsCard = document.getElementById("modalVerbalStatsCard");
     const modalVerbalClarity = document.getElementById("modalVerbalClarity");
