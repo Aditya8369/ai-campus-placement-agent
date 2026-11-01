@@ -48,7 +48,7 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
-from utils.report_generator import generate_pdf_report
+from utils.report_generator import generate_pdf_report, generate_certificate_pdf
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -695,6 +695,36 @@ def certificate(analysis_id: str):
         analysis=analysis_record,
         analysis_id=analysis_id,
     )
+
+
+@app.route("/certificate/<analysis_id>/download")
+def download_certificate_pdf(analysis_id: str):
+    """
+    Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            flash("Cannot generate certificate. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        cert_filename = f"Placement_Certificate_{analysis_id}.pdf"
+        cert_path = os.path.join(config.REPORT_FOLDER, cert_filename)
+
+        if not os.path.exists(cert_path):
+            generate_certificate_pdf(analysis_record, cert_path)
+
+        company_clean = secure_filename(analysis_record.get("company_name", "General"))
+        return send_file(
+            cert_path,
+            as_attachment=True,
+            download_name=f"Placement_Certificate_{company_clean}.pdf",
+            mimetype="application/pdf",
+        )
+    except Exception as exc:
+        logger.error(f"Error serving certificate PDF for {analysis_id}: {exc}")
+        flash("Failed to generate certificate PDF. Please try printing directly.", "error")
+        return redirect(url_for("certificate", analysis_id=analysis_id))
 
 @app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):

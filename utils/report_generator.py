@@ -352,3 +352,172 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
     except Exception as e:
         logger.error("Error compiling PDF report using ReportLab: %s", str(e))
         raise RuntimeError(f"ReportLab failure: {e}") from e
+
+
+def generate_certificate_pdf(analysis_data: dict, output_path: str) -> str:
+    """
+    Generates a formal, printable PDF Certificate of Placement Readiness using ReportLab.
+    Includes certificate borders, candidate filename, target company name, ATS and Job Match scores,
+    and verification metadata.
+    """
+    try:
+        logger.info("Generating Placement Readiness Certificate PDF at: %s", output_path)
+
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=letter,
+            rightMargin=40,
+            leftMargin=40,
+            topMargin=40,
+            bottomMargin=40,
+        )
+
+        styles = getSampleStyleSheet()
+
+        cert_title_style = ParagraphStyle(
+            "CertTitle",
+            parent=styles["Heading1"],
+            fontSize=24,
+            leading=28,
+            textColor=colors.HexColor("#1a73e8"),
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
+            spaceAfter=6,
+        )
+
+        cert_subtitle_style = ParagraphStyle(
+            "CertSubtitle",
+            parent=styles["Normal"],
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#5f6368"),
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
+            spaceAfter=15,
+        )
+
+        cert_body_style = ParagraphStyle(
+            "CertBody",
+            parent=styles["Normal"],
+            fontSize=12,
+            leading=18,
+            textColor=colors.HexColor("#202124"),
+            alignment=TA_CENTER,
+            fontName="Helvetica",
+            spaceAfter=10,
+        )
+
+        cert_candidate_style = ParagraphStyle(
+            "CertCandidate",
+            parent=styles["Heading2"],
+            fontSize=18,
+            leading=22,
+            textColor=colors.HexColor("#202124"),
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
+            spaceAfter=10,
+        )
+
+        cert_target_style = ParagraphStyle(
+            "CertTarget",
+            parent=styles["Heading2"],
+            fontSize=16,
+            leading=20,
+            textColor=colors.HexColor("#1a73e8"),
+            alignment=TA_CENTER,
+            fontName="Helvetica-Bold",
+            spaceAfter=15,
+        )
+
+        cert_meta_style = ParagraphStyle(
+            "CertMeta",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#5f6368"),
+            alignment=TA_CENTER,
+            fontName="Helvetica",
+        )
+
+        story = []
+        story.append(Spacer(1, 15))
+        story.append(Paragraph("AI CAMPUS PLACEMENT AGENT", cert_subtitle_style))
+        story.append(Paragraph("CERTIFICATE OF PLACEMENT READINESS", cert_title_style))
+        story.append(Paragraph("OFFICIAL ASSESSMENT &amp; EVALUATION VERIFICATION", cert_subtitle_style))
+        story.append(Spacer(1, 15))
+
+        story.append(Paragraph("This official placement readiness certificate is proudly presented for evaluation of:", cert_body_style))
+
+        candidate_name = escape_xml(analysis_data.get("resume_filename", "Candidate Resume"))
+        story.append(Paragraph(f"<b>{candidate_name}</b>", cert_candidate_style))
+
+        story.append(Paragraph(
+            "Having successfully completed comprehensive multi-agent ATS resume parsing, competitive job matching, "
+            "and skill gap benchmarking for the target company:",
+            cert_body_style
+        ))
+
+        company_name = escape_xml(analysis_data.get("company_name", "General Placement Preparation"))
+        story.append(Paragraph(f"<b>{company_name}</b>", cert_target_style))
+        story.append(Spacer(1, 10))
+
+        # Metrics Score Table
+        ats_score = escape_xml(analysis_data.get("results", {}).get("resume_analysis", {}).get("ats_score", 0))
+        match_score = escape_xml(analysis_data.get("results", {}).get("job_match", {}).get("match_percentage", 0))
+
+        score_table_data = [
+            [
+                Paragraph(f"<b>{ats_score} / 100</b>", cert_candidate_style),
+                Paragraph(f"<b>{match_score}%</b>", cert_candidate_style),
+            ],
+            [
+                Paragraph("<b>ATS Resume Score</b>", cert_meta_style),
+                Paragraph("<b>Role Match Score</b>", cert_meta_style),
+            ],
+        ]
+
+        score_table = Table(score_table_data, colWidths=[200, 200])
+        score_table.setStyle(
+            TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f8f9fa")),
+                ("BACKGROUND", (1, 0), (1, -1), colors.HexColor("#f8f9fa")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#dadce0")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#dadce0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ])
+        )
+        story.append(score_table)
+        story.append(Spacer(1, 30))
+
+        # Verification Footer
+        created_at = escape_xml(analysis_data.get("created_at", "N/A"))
+        record_id = escape_xml(str(analysis_data.get("analysis_id", ""))[:16])
+
+        footer_table_data = [
+            [
+                Paragraph(f"<b>Issued On:</b> {created_at}<br/><b>Verification ID:</b> {record_id}", cert_meta_style),
+                Paragraph("<b>Status:</b> Verified Placement Candidate<br/><b>Evaluator:</b> AI Campus Placement Agent", cert_meta_style),
+            ]
+        ]
+        footer_table = Table(footer_table_data, colWidths=[250, 250])
+        footer_table.setStyle(
+            TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LINEABOVE", (0, 0), (-1, -1), 1, colors.HexColor("#dadce0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 12),
+            ])
+        )
+        story.append(footer_table)
+
+        doc.build(story)
+        logger.info("Placement certificate PDF compiled successfully.")
+        return output_path
+
+    except Exception as exc:
+        logger.error("Error generating certificate PDF: %s", str(exc))
+        raise RuntimeError(f"Certificate PDF generation failed: {exc}") from exc
+
