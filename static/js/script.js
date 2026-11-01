@@ -1651,5 +1651,26 @@ function initProgressTracker() {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
+
+  // -------------------------------------------------------------
+  // Share Profile URL Copy Handler
+  // -------------------------------------------------------------
+  const btnCopyShareUrl = document.getElementById("btnCopyShareUrl");
+  const shareProfileUrl = document.getElementById("shareProfileUrl");
+  if (btnCopyShareUrl && shareProfileUrl) {
+    btnCopyShareUrl.addEventListener("click", () => {
+      shareProfileUrl.select();
+      shareProfileUrl.setSelectionRange(0, 99999);
+      navigator.clipboard.writeText(shareProfileUrl.value).then(() => {
+        const originalHtml = btnCopyShareUrl.innerHTML;
+        btnCopyShareUrl.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+        btnCopyShareUrl.classList.replace("btn-outline-primary", "btn-success");
+        setTimeout(() => {
+          btnCopyShareUrl.innerHTML = originalHtml;
+          btnCopyShareUrl.classList.replace("btn-success", "btn-outline-primary");
+        }, 2000);
+      });
+    });
+  }
 }
 
