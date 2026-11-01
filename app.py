@@ -81,6 +81,33 @@ def request_entity_too_large(error):
     flash("Uploaded file exceeds the 16MB size limit. Please upload a smaller PDF.", "error")
     return redirect(url_for("index"))
 
+
+@app.after_request
+def set_security_headers(response):
+    """
+    Applies security headers to every HTTP response:
+    - Content-Security-Policy (CSP) restricting script, style, and connect sources
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: SAMEORIGIN
+    - Referrer-Policy: strict-origin-when-cross-origin
+    - Permissions-Policy: camera=(), microphone=(), geolocation=()
+    """
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://va.vercel-scripts.com",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
+        "img-src 'self' data: https:",
+        "connect-src 'self' https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+        "frame-ancestors 'self'",
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    return response
+
 # Ensure directories exist
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(config.REPORT_FOLDER, exist_ok=True)
