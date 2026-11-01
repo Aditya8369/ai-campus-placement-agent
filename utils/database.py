@@ -334,3 +334,77 @@ def delete_analysis(analysis_id: str) -> bool:
         raise e
     finally:
         conn.close()
+
+
+def create_database_backup(backup_destination_path: str) -> str:
+    """
+    Performs an online, zero-downtime hot backup of the SQLite database using SQLite's
+    built-in backup API. Guarantees ACID transactional consistency without table locks.
+
+    Parameters:
+        backup_destination_path: Absolute or relative file path for the backup .db file.
+
+    Returns:
+        The backup_destination_path string on success.
+    """
+    src_conn = get_db_connection()
+    try:
+        logger.info(f"Initiating online database backup to: {backup_destination_path}")
+        dest_conn = sqlite3.connect(backup_destination_path)
+        with dest_conn:
+            src_conn.backup(dest_conn, pages=20, sleep=0.01)
+        dest_conn.close()
+        logger.info("Online database backup completed successfully.")
+        return backup_destination_path
+    except Exception as exc:
+        logger.error(f"Failed to create database backup: {exc}")
+        raise RuntimeError(f"Database backup failed: {exc}") from exc
+    finally:
+        src_conn.close()
+
+
+def verify_database_integrity() -> Dict[str, Any]:
+    """
+    Runs SQLite integrity PRAGMA checks and structural statistics.
+    Returns a dictionary with status, integrity errors (if any), table row counts,
+    and journal mode details.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA integrity_check")
+        integrity_rows = [row[0] for row in cursor.fetchall()]
+        is_healthy = len(integrity_rows) == 1 and integrity_rows[0].lower() == "ok"
+
+        # Gather table metrics
+        cursor.execute("SELECT COUNT(*) FROM analyses")
+        analyses_count = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM interviews")
+        interviews_count = cursor.fetchone()[0]
+
+        cursor.execute("PRAGMA journal_mode")
+        journal_mode = cursor.fetchone()[0]
+
+        return {
+            "healthy": is_healthy,
+            "status": "ok" if is_healthy else "corrupted",
+            "messages": integrity_rows,
+            "tables": {
+                "analyses_count": analyses_count,
+                "interviews_count": interviews_count,
+            },
+            "journal_mode": journal_mode,
+        }
+    except Exception as exc:
+        logger.error(f"Error executing database integrity verification: {exc}")
+        return {
+            "healthy": False,
+            "status": "error",
+            "messages": [str(exc)],
+            "tables": {},
+            "journal_mode": "unknown",
+        }
+    finally:
+        conn.close()
+

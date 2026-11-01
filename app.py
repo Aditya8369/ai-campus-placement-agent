@@ -1,6 +1,7 @@
 import os
 import uuid
 import json
+import time
 import logging
 from flask import (
     Flask,
@@ -28,7 +29,9 @@ from utils.database import (
     get_interview_session,
     update_interview_session,
     get_student_versions,
-    get_previous_analysis
+    get_previous_analysis,
+    create_database_backup,
+    verify_database_integrity,
 )
 from utils.progress_tracker import (
     calculate_version_delta,
@@ -811,6 +814,44 @@ def api_progress_diff(id_a: str, id_b: str):
     except Exception as e:
         logger.error(f"Error computing diff between {id_a} and {id_b}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/database/integrity", methods=["GET"])
+def api_database_integrity():
+    """
+    Returns database integrity verification status and table statistics.
+    """
+    integrity_data = verify_database_integrity()
+    status_code = 200 if integrity_data.get("healthy") else 500
+    return jsonify({
+        "success": integrity_data.get("healthy", False),
+        "integrity": integrity_data
+    }), status_code
+
+
+@app.route("/api/admin/database/backup", methods=["POST"])
+def api_database_backup():
+    """
+    Triggers an atomic online hot backup of the SQLite database and returns metadata.
+    """
+    try:
+        backup_filename = f"placement_backup_{int(time.time())}.db"
+        backup_path = os.path.join(config.BASE_DIR, backup_filename)
+        create_database_backup(backup_path)
+
+        file_size = os.path.getsize(backup_path) if os.path.exists(backup_path) else 0
+        return jsonify({
+            "success": True,
+            "message": "Online hot backup completed successfully.",
+            "backup_filename": backup_filename,
+            "size_bytes": file_size,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error creating admin database backup: {exc}")
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+        }), 500
 
 
 if __name__ == "__main__":
