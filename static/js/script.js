@@ -485,6 +485,76 @@ function initFormUpload() {
     }, 1000);
   }
 
+  // Multi-Company Matrix Mode Controls
+  const batchModeSwitch = document.getElementById("batchModeSwitch");
+  const singleCompanyContainer = document.getElementById("singleCompanyContainer");
+  const batchCompanyContainer = document.getElementById("batchCompanyContainer");
+  const submitBtnSpan = uploadForm.querySelector("button[type='submit'] span");
+  const submitBtnIcon = uploadForm.querySelector("button[type='submit'] i");
+
+  if (batchModeSwitch) {
+    batchModeSwitch.addEventListener("change", () => {
+      const isBatch = batchModeSwitch.checked;
+      if (isBatch) {
+        if (singleCompanyContainer) singleCompanyContainer.classList.add("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.remove("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Compare Companies & Offer Matrix";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-chart-pie me-2";
+      } else {
+        if (singleCompanyContainer) singleCompanyContainer.classList.remove("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.add("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+      }
+    });
+  }
+
+  // Pill badge toggles
+  const companyPills = document.querySelectorAll(".company-pill-badge");
+  companyPills.forEach((pill) => {
+    const chk = pill.querySelector(".company-pill-check");
+    pill.addEventListener("click", (e) => {
+      if (e.target !== chk) {
+        chk.checked = !chk.checked;
+      }
+      if (chk.checked) {
+        pill.classList.add("active");
+      } else {
+        pill.classList.remove("active");
+      }
+    });
+    if (chk && chk.checked) {
+      pill.classList.add("active");
+    }
+  });
+
+  const btnSelectAllBatch = document.getElementById("btnSelectAllBatch");
+  if (btnSelectAllBatch) {
+    btnSelectAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill, idx) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = (idx < 4);
+          if (chk.checked) pill.classList.add("active");
+          else pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
+  const btnClearAllBatch = document.getElementById("btnClearAllBatch");
+  if (btnClearAllBatch) {
+    btnClearAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = false;
+          pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -495,6 +565,47 @@ function initFormUpload() {
 
     if (!hasFile && !hasText) {
       alert("Please upload a PDF or DOCX resume, or paste your resume text first.");
+      return;
+    }
+
+    // Handle Multi-Company Matrix Mode Submission
+    if (batchModeSwitch && batchModeSwitch.checked) {
+      const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
+      if (selectedChecks.length === 0) {
+        alert("Please select at least one company to compare.");
+        return;
+      }
+
+      resetProgressPanel();
+      if (progressOverlay) progressOverlay.classList.remove("d-none");
+      if (progressTitle) progressTitle.textContent = "Multi-Company Batch Comparison";
+      if (progressSubtitle) progressSubtitle.textContent = "Evaluating candidate profile across selected recruiters in background workers...";
+      if (analysisProgressBar) {
+        analysisProgressBar.style.width = "40%";
+        analysisProgressBar.setAttribute("aria-valuenow", "40");
+      }
+
+      const formData = new FormData(uploadForm);
+      fetch("/api/analysis/batch-compare", {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || "Batch comparison failed.");
+          }
+          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressTitle) progressTitle.textContent = "Comparison Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 500);
+        })
+        .catch((err) => {
+          showPipelineError(err.message || "An unexpected error occurred during batch comparison.");
+        });
       return;
     }
 

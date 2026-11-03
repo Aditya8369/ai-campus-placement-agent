@@ -26,6 +26,9 @@
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-arrow-left me-1"></i> <span class="d-none d-sm-inline">New</span> Analysis
         </a>
+        <a href="/leaderboard?analysis_id={{ analysis_id }}" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Campus Placement Leaderboard">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
         <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-award me-1"></i> Certificate
         </a>
@@ -46,7 +49,20 @@
     <div class="card glass-card p-4 mb-4 border-0">
       <div class="row align-items-center">
         <div class="col-md-8">
-          <span class="text-primary fw-semibold text-uppercase small">Placement Readiness Dashboard</span>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="text-primary fw-semibold text-uppercase small">Placement Readiness Dashboard</span>
+            {% if peer_benchmark %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill fw-bold" title="Candidate Peer Percentile">
+                <i class="fa-solid fa-trophy text-warning me-1"></i> {{ peer_benchmark.percentile_badge }}
+              </span>
+              <span class="badge tier-badge-{{ peer_benchmark.tier_badge_class|default('gold') }}">
+                <i class="fa-solid {{ peer_benchmark.tier_icon|default('fa-medal') }} me-1"></i> {{ peer_benchmark.tier|default('Gold') }} Tier
+              </span>
+              <span class="badge bg-light text-secondary border rounded-pill small">
+                Rank #{{ peer_benchmark.rank }} of {{ peer_benchmark.total_peers }} Peers
+              </span>
+            {% endif %}
+          </div>
           <h2 class="fw-bold mt-1 mb-2">Analysis Report: Target Company - {{ analysis.company_name }}</h2>
           <p class="text-secondary mb-0">
             Uploaded Resume: <b>{{ analysis.resume_filename }}</b> | Evaluated on: {{ analysis.created_at }}
@@ -90,8 +106,8 @@
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
-          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-4 rounded-pill mx-auto">
-            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview Session
+          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill mx-auto">
+            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview
           </a>
         </div>
       </div>
@@ -108,7 +124,7 @@
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
           <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
-          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-4 rounded-pill mx-auto">
+          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill mx-auto">
             <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
           </a>
         </div>
@@ -180,6 +196,36 @@
           </div>
         </div>
       </div>
+
+      {% if peer_benchmark %}
+        <div class="border-top pt-3 mt-3">
+          <div class="row align-items-center g-3">
+            <div class="col-md-8">
+              <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                <span class="small fw-bold text-dark">
+                  <i class="fa-solid fa-users text-primary me-1"></i> Campus Peer Cohort Benchmark ({{ peer_benchmark.department }} • {{ peer_benchmark.grad_year }} Batch):
+                </span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill fw-bold small">
+                  {{ peer_benchmark.percentile_badge }}
+                </span>
+                <span class="badge tier-badge-{{ peer_benchmark.tier_badge_class }}">
+                  {{ peer_benchmark.tier }} Tier
+                </span>
+              </div>
+              <p class="small text-secondary mb-0">
+                You rank <b>#{{ peer_benchmark.rank }}</b> of <b>{{ peer_benchmark.total_peers }}</b> peers.
+                Your ATS Score is <b>{{ peer_benchmark.candidate_ats }}</b> (Cohort Avg: <b>{{ peer_benchmark.cohort_avg_ats }}</b>, {% if peer_benchmark.ats_delta >= 0 %}+{{ peer_benchmark.ats_delta }}{% else %}{{ peer_benchmark.ats_delta }}{% endif %} pts).
+                Job Match is <b>{{ peer_benchmark.candidate_match }}%</b> (Cohort Avg: <b>{{ peer_benchmark.cohort_avg_match }}%</b>).
+              </p>
+            </div>
+            <div class="col-md-4 text-md-end">
+              <a href="/leaderboard?analysis_id={{ analysis_id }}&branch={{ peer_benchmark.department|urlencode }}&year={{ peer_benchmark.grad_year }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                <i class="fa-solid fa-trophy text-warning me-1"></i> View Cohort Leaderboard
+              </a>
+            </div>
+          </div>
+        </div>
+      {% endif %}
     </div>
 
     <!-- Multi-Version Resume Comparison & Longitudinal Progress Tracker -->
@@ -508,9 +554,14 @@
               </h2>
               <div id="collapseStrengths" class="accordion-collapse collapse show" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
-                  <ul class="mb-0">
+                  <ul class="mb-0 list-unstyled">
                     {% for strength in analysis.results.resume_analysis.strengths %}
-                      <li class="mb-2">{{ strength }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="resume-bullet-text small text-dark"><i class="fa-solid fa-check text-success me-1"></i>{{ strength }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ strength|e }}" title="Optimize this bullet with AI">
+                          <i class="fa-solid fa-wand-magic-sparkles me-1 small"></i> Rewrite
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -589,8 +640,11 @@
           <h6 class="fw-bold text-secondary mb-3">Top 5 Resume Changes Required:</h6>
           <ol class="list-group list-group-numbered list-group-flush mb-4">
             {% for change in analysis.results.job_match.top_5_resume_changes %}
-              <li class="list-group-item d-flex justify-content-between align-items-start border-0 bg-transparent px-0 py-2">
-                <span class="ms-2 me-auto small fw-medium">{{ change }}</span>
+              <li class="list-group-item d-flex justify-content-between align-items-center border-0 bg-transparent px-0 py-2 gap-2">
+                <span class="ms-2 me-auto small fw-medium resume-bullet-text">{{ change }}</span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ change|e }}" title="Optimize this bullet with AI">
+                  <i class="fa-solid fa-wand-magic-sparkles small"></i>
+                </button>
               </li>
             {% endfor %}
           </ol>
