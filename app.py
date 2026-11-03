@@ -32,7 +32,10 @@ from utils.database import (
     get_previous_analysis,
     create_database_backup,
     verify_database_integrity,
+    get_batch_comparison,
+    save_batch_comparison,
 )
+from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -273,6 +276,35 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # Multi-company batch comparison request
+        batch_companies = request.form.getlist("batch_companies")
+        if not batch_companies:
+            raw_comp = request.form.get("companies", "")
+            if raw_comp:
+                batch_companies = [c.strip() for c in raw_comp.split(",") if c.strip()]
+
+        if request.form.get("batch_mode") == "true" or (batch_companies and len(batch_companies) > 1):
+            if not batch_companies:
+                batch_companies = [selected_company] if selected_company != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
+            batch_payload = run_batch_company_comparison(
+                resume_text=extracted_resume_text,
+                companies=batch_companies,
+                job_description=job_description,
+                resume_filename=resume_filename,
+                student_id=student_id,
+                coordinator_agent=coordinator_agent,
+                save_to_db=True
+            )
+            redirect_url = url_for("view_batch_compare", batch_id=batch_payload["batch_id"])
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({
+                    "success": True,
+                    "batch_id": batch_payload["batch_id"],
+                    "redirect_url": redirect_url,
+                    "data": batch_payload
+                }), 200
+            return redirect(redirect_url)
+
         # Check for asynchronous execution request
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             task = create_analysis_task(
@@ -312,7 +344,7 @@ def analyze():
             company_name=selected_company,
             job_description=job_description,
             results_dict=analysis_payload,
-            student_id=candidate_student_id
+            student_id=student_id
         )
 
         return redirect(url_for("dashboard", analysis_id=file_uuid))
@@ -431,6 +463,121 @@ def get_analysis_task_status(task_id: str):
         return jsonify({"success": False, "error": f"Analysis task '{task_id}' not found"}), 404
 
     return jsonify({"success": True, **task.to_dict()}), 200
+
+
+@app.route("/api/analysis/batch-compare", methods=["POST"])
+@app.route("/batch-compare", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=60, scope="batch_compare", is_api=True)
+def api_batch_compare():
+    """
+    Dedicated endpoint for multi-company batch placement evaluation.
+    Orchestrates concurrent evaluations, builds offer likelihood probability metrics,
+    and returns comparison rankings and Chart.js radar multi-dataset data.
+    """
+    try:
+        if request.is_json:
+            json_data = request.get_json(silent=True) or {}
+            resume_text = (json_data.get("resume_text") or "").strip()
+            companies = json_data.get("companies") or json_data.get("batch_companies") or []
+            if isinstance(companies, str):
+                companies = [c.strip() for c in companies.split(",") if c.strip()]
+            job_description = (json_data.get("job_description") or "").strip()
+            student_id = (json_data.get("student_id") or "default_student").strip()
+            resume_filename = json_data.get("resume_filename") or "pasted_resume.txt"
+            validation_error = None
+            if not resume_text:
+                validation_error = "Please provide resume text for batch comparison."
+        else:
+            resume_text, resume_filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+            companies = request.form.getlist("batch_companies") or request.form.getlist("companies")
+            if not companies:
+                raw_comp = request.form.get("companies", "")
+                if raw_comp:
+                    companies = [c.strip() for c in raw_comp.split(",") if c.strip()]
+                else:
+                    sel = request.form.get("company", "Google").strip()
+                    companies = [sel] if sel != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
+            job_description = request.form.get("job_description", "").strip()
+            student_id = request.form.get("student_id", "default_student").strip()
+
+        if validation_error:
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": validation_error}), 400
+            flash(validation_error, "error")
+            return redirect(url_for("index"))
+
+        if len(job_description) > 15000:
+            job_description = job_description[:15000]
+
+        batch_result = run_batch_company_comparison(
+            resume_text=resume_text,
+            companies=companies,
+            job_description=job_description,
+            resume_filename=resume_filename,
+            student_id=student_id,
+            coordinator_agent=coordinator_agent,
+            save_to_db=True
+        )
+
+        redirect_url = url_for("view_batch_compare", batch_id=batch_result["batch_id"])
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("async") == "true":
+            return jsonify({
+                "success": True,
+                "batch_id": batch_result["batch_id"],
+                "redirect_url": redirect_url,
+                "data": batch_result
+            }), 200
+
+        return redirect(redirect_url)
+
+    except Exception as exc:
+        logger.error(f"Batch comparison failed: {exc}")
+        friendly_error = format_ai_error_for_user(exc)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": friendly_error}), 500
+        flash(friendly_error, "error")
+        return redirect(url_for("index"))
+
+
+@app.route("/batch-compare/<batch_id>", methods=["GET"])
+def view_batch_compare(batch_id: str):
+    """
+    Renders the Company Comparison Matrix view featuring Chart.js Multi-Dataset
+    Radar charts and hiring probability rankings.
+    """
+    record = get_batch_comparison(batch_id)
+    if not record:
+        flash("Batch comparison record not found.", "error")
+        return redirect(url_for("index"))
+
+    batch_payload = record.get("results", {})
+    return render_template(
+        "batch_compare.html",
+        batch_id=batch_id,
+        batch=batch_payload,
+        comparisons=batch_payload.get("comparisons", []),
+        best_match=batch_payload.get("best_match", {}),
+        quickest_entry=batch_payload.get("quickest_entry", {}),
+        summary_insights=batch_payload.get("summary_insights", {}),
+        radar_data_json=json.dumps(batch_payload.get("radar_data", {}))
+    )
+
+
+@app.route("/api/analysis/batch-compare/<batch_id>", methods=["GET"])
+def api_get_batch_compare(batch_id: str):
+    """
+    Retrieves stored batch comparison results JSON for a given batch_id.
+    """
+    record = get_batch_comparison(batch_id)
+    if not record:
+        return jsonify({"success": False, "error": f"Batch '{batch_id}' not found."}), 404
+    return jsonify({
+        "success": True,
+        "batch_id": batch_id,
+        "data": record.get("results", {})
+    }), 200
+
 
 @app.route("/dashboard/<analysis_id>")
 def dashboard(analysis_id: str) -> str:

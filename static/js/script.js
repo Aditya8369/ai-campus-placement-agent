@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillGapFilter();
   initRoadmapExport();
   initCodingSandbox();
+  initBatchComparison();
 });
 
 function initThemeToggle() {
@@ -484,6 +485,76 @@ function initFormUpload() {
     }, 1000);
   }
 
+  // Multi-Company Matrix Mode Controls
+  const batchModeSwitch = document.getElementById("batchModeSwitch");
+  const singleCompanyContainer = document.getElementById("singleCompanyContainer");
+  const batchCompanyContainer = document.getElementById("batchCompanyContainer");
+  const submitBtnSpan = uploadForm.querySelector("button[type='submit'] span");
+  const submitBtnIcon = uploadForm.querySelector("button[type='submit'] i");
+
+  if (batchModeSwitch) {
+    batchModeSwitch.addEventListener("change", () => {
+      const isBatch = batchModeSwitch.checked;
+      if (isBatch) {
+        if (singleCompanyContainer) singleCompanyContainer.classList.add("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.remove("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Compare Companies & Offer Matrix";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-chart-pie me-2";
+      } else {
+        if (singleCompanyContainer) singleCompanyContainer.classList.remove("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.add("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+      }
+    });
+  }
+
+  // Pill badge toggles
+  const companyPills = document.querySelectorAll(".company-pill-badge");
+  companyPills.forEach((pill) => {
+    const chk = pill.querySelector(".company-pill-check");
+    pill.addEventListener("click", (e) => {
+      if (e.target !== chk) {
+        chk.checked = !chk.checked;
+      }
+      if (chk.checked) {
+        pill.classList.add("active");
+      } else {
+        pill.classList.remove("active");
+      }
+    });
+    if (chk && chk.checked) {
+      pill.classList.add("active");
+    }
+  });
+
+  const btnSelectAllBatch = document.getElementById("btnSelectAllBatch");
+  if (btnSelectAllBatch) {
+    btnSelectAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill, idx) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = (idx < 4);
+          if (chk.checked) pill.classList.add("active");
+          else pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
+  const btnClearAllBatch = document.getElementById("btnClearAllBatch");
+  if (btnClearAllBatch) {
+    btnClearAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = false;
+          pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -494,6 +565,47 @@ function initFormUpload() {
 
     if (!hasFile && !hasText) {
       alert("Please upload a PDF or DOCX resume, or paste your resume text first.");
+      return;
+    }
+
+    // Handle Multi-Company Matrix Mode Submission
+    if (batchModeSwitch && batchModeSwitch.checked) {
+      const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
+      if (selectedChecks.length === 0) {
+        alert("Please select at least one company to compare.");
+        return;
+      }
+
+      resetProgressPanel();
+      if (progressOverlay) progressOverlay.classList.remove("d-none");
+      if (progressTitle) progressTitle.textContent = "Multi-Company Batch Comparison";
+      if (progressSubtitle) progressSubtitle.textContent = "Evaluating candidate profile across selected recruiters in background workers...";
+      if (analysisProgressBar) {
+        analysisProgressBar.style.width = "40%";
+        analysisProgressBar.setAttribute("aria-valuenow", "40");
+      }
+
+      const formData = new FormData(uploadForm);
+      fetch("/api/analysis/batch-compare", {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || "Batch comparison failed.");
+          }
+          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressTitle) progressTitle.textContent = "Comparison Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 500);
+        })
+        .catch((err) => {
+          showPipelineError(err.message || "An unexpected error occurred during batch comparison.");
+        });
       return;
     }
 
@@ -1691,5 +1803,112 @@ function initProgressTracker() {
       });
     });
   }
+}
+
+/**
+ * Multi-Company Batch Comparison & Radar Chart Controller
+ * Renders the Chart.js Multi-Dataset Radar Chart on templates/batch_compare.html
+ * and handles interactive dataset toggle filters.
+ */
+function initBatchComparison() {
+  const radarCanvas = document.getElementById("companyRadarCanvas");
+  if (!radarCanvas) return;
+
+  let radarData = null;
+  try {
+    const rawData = radarCanvas.getAttribute("data-radar");
+    if (rawData) {
+      radarData = JSON.parse(rawData);
+    }
+  } catch (err) {
+    console.error("Failed to parse batch radar data:", err);
+    return;
+  }
+
+  if (!radarData || !radarData.labels || !radarData.datasets) return;
+
+  const isDarkMode = document.documentElement.getAttribute("data-bs-theme") === "dark";
+  const gridColor = isDarkMode ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)";
+  const labelColor = isDarkMode ? "#e8eaed" : "#202124";
+
+  const ctx = radarCanvas.getContext("2d");
+  const radarChart = new Chart(ctx, {
+    type: "radar",
+    data: radarData,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: "top",
+          labels: {
+            boxWidth: 14,
+            color: labelColor,
+            font: {
+              family: "'Outfit', sans-serif",
+              size: 12,
+              weight: "600"
+            }
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              return `${context.dataset.label}: ${context.raw}/100`;
+            }
+          }
+        }
+      },
+      scales: {
+        r: {
+          min: 0,
+          max: 100,
+          ticks: {
+            stepSize: 20,
+            color: labelColor,
+            backdropColor: "transparent",
+            font: {
+              size: 10
+            }
+          },
+          grid: {
+            color: gridColor
+          },
+          angleLines: {
+            color: gridColor
+          },
+          pointLabels: {
+            color: labelColor,
+            font: {
+              family: "'Outfit', sans-serif",
+              size: 11,
+              weight: "600"
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Dataset Toggle Buttons in #radarLegendContainer
+  const toggleButtons = document.querySelectorAll(".radar-toggle-btn");
+  toggleButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const datasetIndex = parseInt(btn.getAttribute("data-dataset-index"), 10);
+      if (isNaN(datasetIndex)) return;
+
+      const isVisible = radarChart.isDatasetVisible(datasetIndex);
+      if (isVisible) {
+        radarChart.hide(datasetIndex);
+        btn.classList.remove("active");
+        btn.style.opacity = "0.4";
+      } else {
+        radarChart.show(datasetIndex);
+        btn.classList.add("active");
+        btn.style.opacity = "1";
+      }
+    });
+  });
 }
 

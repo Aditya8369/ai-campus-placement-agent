@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company Comparison Matrix & Offer Likelihood - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> New Analysis
+        </a>
+        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" onclick="window.print()">
+          <i class="fa-solid fa-print me-1"></i> Print Matrix
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="container py-5 fade-in" id="batchCompareContainer" data-batch-id="{{ batch_id }}">
+
+    <!-- Header Summary Card -->
+    <div class="card glass-card p-4 mb-4 border-0">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-semibold text-uppercase small mb-2">
+            <i class="fa-solid fa-layer-group me-1"></i> Batch Intelligence Matrix
+          </span>
+          <h2 class="fw-bold mt-1 mb-2">Multi-Company Comparison &amp; Offer Likelihood</h2>
+          <p class="text-secondary mb-0">
+            Resume: <b>{{ batch.resume_filename }}</b> | Candidate Profile: <b>{{ batch.student_id }}</b> | Evaluated <b>{{ batch.total_companies }}</b> Top Recruiters
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <div class="d-inline-flex align-items-center p-3 bg-light rounded-4 border">
+            <div class="text-start me-3">
+              <span class="small text-secondary fw-semibold d-block">Top Placement Fit</span>
+              <h5 class="fw-bold text-success mb-0">{{ summary_insights.top_company }}</h5>
+            </div>
+            <span class="badge bg-success text-white rounded-pill px-3 py-2 fs-6">
+              {{ summary_insights.top_probability }}% Likelihood
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 High-Level KPI Summary Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3 col-6">
+        <div class="card glass-card p-3 border-0 h-100 text-center">
+          <small class="text-secondary fw-semibold d-block mb-1">Top Offer Match</small>
+          <h4 class="fw-bold text-success mb-0">
+            {{ best_match.company_name|default('N/A') }}
+          </h4>
+          <span class="small text-muted d-block mt-1">{{ best_match.offer_probability|default(0) }}% offer likelihood</span>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="card glass-card p-3 border-0 h-100 text-center">
+          <small class="text-secondary fw-semibold d-block mb-1">Fastest Offer Pathway</small>
+          <h4 class="fw-bold text-primary mb-0">
+            {{ quickest_entry.company_name|default('N/A') }}
+          </h4>
+          <span class="small text-muted d-block mt-1">~{{ quickest_entry.prep_weeks|default(1) }} weeks prep required</span>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="card glass-card p-3 border-0 h-100 text-center">
+          <small class="text-secondary fw-semibold d-block mb-1">Evaluated Companies</small>
+          <h4 class="fw-bold text-dark mb-0">
+            {{ comparisons|length }}
+            <small class="fs-6 fw-normal text-muted">Recruiters</small>
+          </h4>
+          <span class="small text-muted d-block mt-1">Concurrently evaluated</span>
+        </div>
+      </div>
+
+      <div class="col-md-3 col-6">
+        <div class="card glass-card p-3 border-0 h-100 text-center">
+          <small class="text-secondary fw-semibold d-block mb-1">Top Shared Gap</small>
+          <h4 class="fw-bold text-danger mb-0 text-truncate" title="{{ summary_insights.common_missing_skills[0] if summary_insights.common_missing_skills else 'None' }}">
+            {{ summary_insights.common_missing_skills[0] if summary_insights.common_missing_skills else 'System Design' }}
+          </h4>
+          <span class="small text-muted d-block mt-1">Shared missing skill</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Multi-Dataset Radar Chart Section -->
+    <div class="card glass-card p-4 border-0 mb-4" id="radarSectionCard">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Multi-Dimensional Capability Radar</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-chart-radar text-primary me-2"></i> Comparative Readiness Radar
+          </h4>
+        </div>
+        <div class="small text-muted">
+          <i class="fa-solid fa-circle-info text-primary me-1"></i> Click company pills below to toggle datasets on the radar
+        </div>
+      </div>
+
+      <!-- Interactive Company Dataset Toggles -->
+      <div class="d-flex flex-wrap gap-2 mb-4 p-2 bg-light rounded-pill border align-items-center" id="radarLegendContainer">
+        <span class="small fw-bold text-secondary ms-2 me-1">
+          <i class="fa-solid fa-toggle-on text-primary me-1"></i> Active Datasets:
+        </span>
+        {% for c in comparisons %}
+          <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold radar-toggle-btn active border" data-dataset-index="{{ loop.index0 }}" style="background-color: {{ c.style.background }}; border-color: {{ c.style.border }} !important; color: {{ c.style.border }};">
+            <i class="fa-solid fa-circle me-1" style="color: {{ c.style.border }}; font-size: 0.65rem;"></i> {{ c.company_name }}
+          </button>
+        {% endfor %}
+      </div>
+
+      <!-- Radar Canvas Container -->
+      <div style="position: relative; height: 380px; width: 100%;">
+        <canvas id="companyRadarCanvas" data-radar='{{ radar_data_json|safe }}'></canvas>
+      </div>
+    </div>
+
+    <!-- Company Comparison Matrix & Rankings Table -->
+    <div class="card glass-card p-4 border-0 mb-4" id="rankingSectionCard">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Offer Likelihood Matrix</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-ranking-star text-warning me-2"></i> Company Hiring Probability Rankings
+          </h4>
+        </div>
+        <span class="badge bg-light text-dark border rounded-pill px-3 py-2 small">
+          Sorted by Offer Probability
+        </span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="matrixTable">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 70px;">Rank</th>
+              <th>Company &amp; Hiring Bar</th>
+              <th style="width: 220px;">Offer Probability</th>
+              <th>ATS / Match Status</th>
+              <th>Key Strengths &amp; Gaps</th>
+              <th>Prep Weeks</th>
+              <th class="text-end">Deep Dive</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in comparisons %}
+              <tr class="align-middle">
+                <td>
+                  <span class="badge {% if c.rank == 1 %}bg-warning text-dark{% elif c.rank == 2 %}bg-secondary text-white{% elif c.rank == 3 %}bg-primary text-white{% else %}bg-light text-dark border{% endif %} rounded-pill px-3 py-2 fs-6">
+                    #{{ c.rank }}
+                  </span>
+                </td>
+                <td>
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="fw-bold fs-6 text-dark">{{ c.company_name }}</span>
+                    <span class="badge bg-light text-muted border rounded-pill small">{{ c.tier_label }}</span>
+                  </div>
+                  <small class="text-muted d-block">Recruitment Bar: Target ATS {{ c.target_ats }} | Target Match {{ c.target_match }}%</small>
+                </td>
+                <td>
+                  <div class="d-flex justify-content-between small mb-1">
+                    <span class="fw-bold text-{{ c.tier_badge }}">{{ c.likelihood_tier }}</span>
+                    <span class="fw-bold">{{ c.offer_probability }}%</span>
+                  </div>
+                  <div class="progress rounded-pill" style="height: 8px;">
+                    <div class="progress-bar bg-{{ c.tier_badge }}" role="progressbar" style="width: {{ c.offer_probability }}%" aria-valuenow="{{ c.offer_probability }}" aria-valuemin="0" aria-valuemax="100"></div>
+                  </div>
+                  <small class="text-muted d-block mt-1">{{ c.verdict }}</small>
+                </td>
+                <td>
+                  <div class="small">
+                    <span>ATS: <strong class="text-dark">{{ c.ats_score }}</strong> / {{ c.target_ats }}</span>
+                  </div>
+                  <div class="small text-muted">
+                    <span>Match: <strong class="text-dark">{{ c.match_percentage }}%</strong> / {{ c.target_match }}%</span>
+                  </div>
+                </td>
+                <td>
+                  <div class="mb-1">
+                    <small class="fw-semibold text-success"><i class="fa-solid fa-check me-1"></i>Matched:</small>
+                    <div class="d-flex flex-wrap gap-1 mt-1">
+                      {% for m in c.matched_skills[:3] %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-0 px-2 small">{{ m }}</span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                  {% if c.missing_skills %}
+                    <div>
+                      <small class="fw-semibold text-danger"><i class="fa-solid fa-xmark me-1"></i>Blockers:</small>
+                      <div class="d-flex flex-wrap gap-1 mt-1">
+                        {% for g in c.missing_skills[:3] %}
+                          <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill py-0 px-2 small">{{ g }}</span>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge bg-light text-dark border px-2 py-1 rounded-pill small">
+                    ~{{ c.prep_weeks }} Weeks
+                  </span>
+                </td>
+                <td class="text-end">
+                  <a href="/dashboard/{{ c.analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 text-nowrap">
+                    <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Dashboard
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Head-to-Head Company Deep Dive Cards -->
+    <div class="card glass-card p-4 border-0 mb-4">
+      <h4 class="fw-bold mb-4">
+        <i class="fa-solid fa-building-columns text-primary me-2"></i> Target Company Interview Blueprints
+      </h4>
+      <div class="row g-4">
+        {% for c in comparisons %}
+          <div class="col-lg-6">
+            <div class="p-4 bg-light rounded-4 border h-100 likelihood-rank-card position-relative">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-{{ c.tier_badge }} text-white rounded-pill px-2 py-1 small">#{{ c.rank }}</span>
+                  <h5 class="fw-bold mb-0 text-dark">{{ c.company_name }}</h5>
+                </div>
+                <span class="badge bg-{{ c.tier_badge }}-subtle text-{{ c.tier_badge }} border border-{{ c.tier_badge }}-subtle rounded-pill px-3 py-1">
+                  {{ c.offer_probability }}% Likelihood
+                </span>
+              </div>
+
+              <div class="mb-3 small text-secondary">
+                <span class="d-block mb-1">
+                  <i class="fa-solid fa-compass text-primary me-1"></i> <b>Verdict:</b> {{ c.verdict }} ({{ c.likelihood_tier }})
+                </span>
+                <span class="d-block mb-1">
+                  <i class="fa-solid fa-hourglass-half text-warning me-1"></i> <b>Est. Preparation:</b> {{ c.prep_weeks }} Weeks to Clear Cutoff
+                </span>
+              </div>
+
+              <!-- Dimensional Capability Snapshot -->
+              <div class="mb-3 p-3 bg-white rounded-3 border small">
+                <span class="fw-bold text-dark d-block mb-2">Capability Snapshot:</span>
+                <div class="row g-2 text-muted">
+                  <div class="col-6">Coding &amp; DSA: <strong class="text-dark">{{ c.radar_scores[0] }}/100</strong></div>
+                  <div class="col-6">System Design: <strong class="text-dark">{{ c.radar_scores[1] }}/100</strong></div>
+                  <div class="col-6">Tech Stack: <strong class="text-dark">{{ c.radar_scores[2] }}/100</strong></div>
+                  <div class="col-6">Project Impact: <strong class="text-dark">{{ c.radar_scores[3] }}/100</strong></div>
+                  <div class="col-6">Culture Fit: <strong class="text-dark">{{ c.radar_scores[4] }}/100</strong></div>
+                  <div class="col-6">ATS Score: <strong class="text-dark">{{ c.radar_scores[5] }}/100</strong></div>
+                </div>
+              </div>
+
+              <div class="d-flex gap-2 mt-auto">
+                <a href="/dashboard/{{ c.analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 w-50">
+                  <i class="fa-solid fa-chart-line me-1"></i> View Report
+                </a>
+                <a href="/interview/{{ c.analysis_id }}" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-50">
+                  <i class="fa-solid fa-comments me-1"></i> Mock Interview
+                </a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Offer Probability Methodology & Transparency Card -->
+    <div class="card glass-card p-4 border-0 mb-4">
+      <h5 class="fw-bold mb-3"><i class="fa-solid fa-scale-balanced text-primary me-2"></i> Offer Likelihood Calibration Formula</h5>
+      <p class="text-secondary small mb-3">
+        Our multi-company batch evaluation synthesizes multiple quantitative dimensions into a single calibrated offer probability score:
+      </p>
+      <div class="row g-3 small">
+        <div class="col-md-3">
+          <div class="p-3 bg-light rounded-3 border h-100">
+            <strong class="text-primary d-block mb-1">45% Job Match Fit</strong>
+            <span class="text-secondary">Direct keyword and tech stack alignment against required competencies.</span>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-light rounded-3 border h-100">
+            <strong class="text-primary d-block mb-1">35% ATS Profile Score</strong>
+            <span class="text-secondary">Resume structure, quantified action verbs, formatting readability, and clarity.</span>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-light rounded-3 border h-100">
+            <strong class="text-primary d-block mb-1">20% Skill Coverage Ratio</strong>
+            <span class="text-secondary">Percentage of required technical skills mastered versus missing blockers.</span>
+          </div>
+        </div>
+        <div class="col-md-3">
+          <div class="p-3 bg-light rounded-3 border h-100">
+            <strong class="text-primary d-block mb-1">Rigor Multiplier</strong>
+            <span class="text-secondary">Tier 1 Product firms (Google, Amazon) require higher DSA/System Design thresholds.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-4">
+    <div class="container text-center text-secondary small">
+      © 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Chart.js for Radar Chart -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Custom JS -->
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
+
