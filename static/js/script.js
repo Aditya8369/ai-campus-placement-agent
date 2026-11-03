@@ -11,7 +11,6 @@ document.addEventListener("DOMContentLoaded", () => {
   initCodingSandbox();
   initProgressTracker();
   initCampusJobMatcher();
-  initBulletRewriteSandbox();
 });
 
 function initThemeToggle() {
@@ -1697,36 +1696,33 @@ function initProgressTracker() {
 }
 
 /**
- * Interactive Resume Line-by-Line AI Rewrite Sandbox
- * Manages line selection, API interaction, 3-flavor card rendering,
- * diff inspection, 1-click text replacement, and finalized document export (.docx / .pdf).
+ * Live Curated Campus Job Feed & Automated Role Matcher
+ * Handles dynamic filtering (location, role type, min match, search query),
+ * real-time API polling, refresh triggers, and client-side rendering.
  */
-function initBulletRewriteSandbox() {
-  const modalEl = document.getElementById("bulletRewriteModal");
-  if (!modalEl) return;
+function initCampusJobMatcher() {
+  const container = document.getElementById("campusDrivesSection");
+  if (!container) return;
 
-  const analysisId = modalEl.getAttribute("data-analysis-id") || "";
-  const companyName = modalEl.getAttribute("data-company") || "General";
+  const analysisId = container.getAttribute("data-analysis-id");
+  if (!analysisId) return;
 
-  const quickPickSelect = document.getElementById("quickPickBulletSelect");
-  const inputTextarea = document.getElementById("inputBulletTextarea");
-  const btnRun = document.getElementById("btnRunBulletRewrite");
-  const runIcon = document.getElementById("rewriteBtnIcon");
-  const spinner = document.getElementById("rewriteLoadingSpinner");
-  const resultsContainer = document.getElementById("rewriteResultsContainer");
-  const cardsRow = document.getElementById("rewriteCardsRow");
-  const originalScoreBadge = document.getElementById("originalBulletScoreBadge");
+  const grid = document.getElementById("recommendedJobsGrid");
+  const spinner = document.getElementById("jobsLoadingSpinner");
+  const emptyState = document.getElementById("jobsEmptyState");
+  const countNum = document.getElementById("jobsCountNum");
 
-  const sessionListUl = document.getElementById("sessionListUl");
-  const sessionEmptyNotice = document.getElementById("sessionEmptyNotice");
-  const sessionCount = document.getElementById("sessionOptimizedCount");
-  const btnExportDocx = document.getElementById("btnExportOptimizedDocx");
-  const btnExportPdf = document.getElementById("btnExportOptimizedPdf");
+  const locationFilter = document.getElementById("jobLocationFilter");
+  const roleTypeFilter = document.getElementById("jobRoleTypeFilter");
+  const minMatchFilter = document.getElementById("jobMinMatchFilter");
+  const searchInput = document.getElementById("jobSearchInput");
+  const btnRefresh = document.getElementById("btnRefreshJobFeed");
+  const refreshIcon = document.getElementById("refreshFeedIcon");
+  const btnReset = document.getElementById("btnResetJobFilters");
 
-  let acceptedBullets = [];
-  let currentTargetElement = null; // References the DOM element on the dashboard that triggered the rewrite
+  let searchDebounceTimer = null;
 
-  function escapeHtml(str) {
+  function safeEscapeHtml(str) {
     if (str === null || str === undefined) return "";
     return String(str)
       .replace(/&/g, "&amp;")
@@ -1736,66 +1732,27 @@ function initBulletRewriteSandbox() {
       .replace(/'/g, "&#039;");
   }
 
-  // Quick-pick dropdown populates the textarea
-  if (quickPickSelect) {
-    quickPickSelect.addEventListener("change", () => {
-      if (quickPickSelect.value && inputTextarea) {
-        inputTextarea.value = quickPickSelect.value;
-      }
-    });
-  }
-
-  // Dashboard rewrite trigger buttons (.btn-rewrite-line)
-  document.querySelectorAll(".btn-rewrite-line").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const lineText = btn.getAttribute("data-bullet") || "";
-      const parentLi = btn.closest("li");
-      currentTargetElement = parentLi ? parentLi.querySelector(".resume-bullet-text") : null;
-
-      if (inputTextarea) {
-        inputTextarea.value = lineText;
-      }
-
-      if (window.bootstrap && window.bootstrap.Modal) {
-        const modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl);
-        modalInstance.show();
-      }
-
-      if (lineText.trim()) {
-        runBulletRewrite(lineText.trim());
-      }
-    });
-  });
-
-  // Run rewrite button in modal
-  if (btnRun) {
-    btnRun.addEventListener("click", () => {
-      const text = inputTextarea ? inputTextarea.value.trim() : "";
-      if (!text) {
-        if (inputTextarea) {
-          inputTextarea.focus();
-          inputTextarea.classList.add("is-invalid");
-          setTimeout(() => inputTextarea.classList.remove("is-invalid"), 1500);
-        }
-        return;
-      }
-      runBulletRewrite(text);
-    });
-  }
-
-  function runBulletRewrite(bulletText) {
+  function fetchJobs(forceRefresh = false) {
     if (spinner) spinner.classList.remove("d-none");
-    if (resultsContainer) resultsContainer.classList.add("d-none");
-    if (runIcon) runIcon.classList.add("fa-spin");
+    if (grid) grid.classList.add("opacity-50");
+    if (emptyState) emptyState.classList.add("d-none");
+    if (refreshIcon) refreshIcon.classList.add("fa-spin");
 
-    fetch("/api/resume/rewrite-bullet", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bullet: bulletText,
-        analysis_id: analysisId,
-        company_name: companyName
-      })
+    const loc = locationFilter ? locationFilter.value : "all";
+    const role = roleTypeFilter ? roleTypeFilter.value : "all";
+    const minMatch = minMatchFilter ? minMatchFilter.value : "0";
+    const search = searchInput ? searchInput.value.trim() : "";
+
+    const params = new URLSearchParams({
+      location: loc,
+      role_type: role,
+      min_match: minMatch,
+      search: search,
+      force_refresh: forceRefresh ? "true" : "false"
+    });
+
+    fetch(`/api/jobs/recommendations/${encodeURIComponent(analysisId)}?${params.toString()}`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
     })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
@@ -1803,191 +1760,178 @@ function initBulletRewriteSandbox() {
       })
       .then((data) => {
         if (!data.success) {
-          throw new Error(data.error || "Failed to optimize bullet point");
+          throw new Error(data.error || "Failed to load job recommendations");
         }
-        renderRewriteVariations(data);
+        renderJobs(data.jobs || []);
       })
       .catch((err) => {
-        console.error("Rewrite request failed:", err);
-        alert("Failed to rewrite bullet point. Please try again.");
+        console.error("Job feed fetch failed:", err);
+        // If fetch fails and no cards are present, show empty state
+        if (grid && grid.children.length === 0 && emptyState) {
+          emptyState.classList.remove("d-none");
+        }
       })
       .finally(() => {
         if (spinner) spinner.classList.add("d-none");
-        if (runIcon) runIcon.classList.remove("fa-spin");
+        if (grid) grid.classList.remove("opacity-50");
+        if (refreshIcon) refreshIcon.classList.remove("fa-spin");
       });
   }
 
-  function renderRewriteVariations(data) {
-    if (!cardsRow || !resultsContainer) return;
+  function renderJobs(jobs) {
+    if (!grid) return;
 
-    if (originalScoreBadge) {
-      originalScoreBadge.innerText = `Baseline Score: ${data.original_score || 50}/100`;
+    if (countNum) countNum.innerText = jobs.length;
+
+    if (jobs.length === 0) {
+      grid.innerHTML = "";
+      if (emptyState) emptyState.classList.remove("d-none");
+      return;
     }
 
-    const rewrites = data.rewrites || [];
-    cardsRow.innerHTML = "";
+    if (emptyState) emptyState.classList.add("d-none");
 
-    rewrites.forEach((rw) => {
-      const col = document.createElement("div");
-      col.className = "col-lg-4 col-12";
+    const cardsHtml = jobs.map((job) => {
+      const targetCompanyBadge = job.is_target_company
+        ? `<div class="position-absolute top-0 end-0 mt-3 me-3">
+             <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2 py-1 small">
+               <i class="fa-solid fa-bullseye me-1"></i> Target Company Drive
+             </span>
+           </div>`
+        : "";
 
-      const diffPills = (rw.diff_added || [])
+      const initial = (job.company || "C").charAt(0).toUpperCase();
+      const logoColor = safeEscapeHtml(job.logo_color || "#1a73e8");
+
+      const matchedPills = (job.matched_skills || [])
+        .slice(0, 5)
         .map(
-          (d) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2 small me-1 mb-1">
-                    <i class="fa-solid fa-plus me-1"></i>${escapeHtml(d)}
+          (s) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2" style="font-size: 0.72rem;">
+                    <i class="fa-solid fa-check me-1"></i>${safeEscapeHtml(s)}
                   </span>`
         )
         .join("");
 
-      col.innerHTML = `
-        <div class="card h-100 border rounded-4 p-3 shadow-sm bg-white rewrite-flavor-card">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="badge bg-${rw.badge_class || 'primary'}-subtle text-${rw.badge_class || 'primary'} border border-${rw.badge_class || 'primary'}-subtle rounded-pill px-3 py-1 fw-bold small">
-              <i class="fa-solid ${rw.icon || 'fa-wand-magic-sparkles'} me-1"></i> ${escapeHtml(rw.flavor)}
-            </span>
-            <span class="badge bg-success text-white rounded-pill px-2 py-1 small fw-bold">
-              +${rw.impact_score_boost || 20}% Boost
-            </span>
-          </div>
+      const extraMatchedCount = (job.matched_skills || []).length - 5;
+      const extraMatchedBadge = extraMatchedCount > 0
+        ? `<span class="badge bg-light text-muted border rounded-pill py-1 px-2" style="font-size: 0.72rem;">+${extraMatchedCount} more</span>`
+        : "";
 
-          <div class="small text-muted mb-2">
-            <span class="fw-semibold text-secondary">Target Standard:</span> ${escapeHtml(rw.tag || 'Recruiter-Grade')}
-          </div>
+      const missingPills = (job.missing_skills || []).length > 0
+        ? `<div class="small fw-semibold text-secondary mb-1">
+             <i class="fa-solid fa-circle-plus text-warning me-1"></i> Recommended to Learn:
+           </div>
+           <div class="d-flex flex-wrap gap-1">
+             ${(job.missing_skills || []).slice(0, 3).map((s) => `
+               <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill py-1 px-2 text-dark" style="font-size: 0.72rem;">
+                 +${safeEscapeHtml(s)}
+               </span>
+             `).join("")}
+           </div>`
+        : "";
 
-          <div class="p-3 bg-light rounded-3 border mb-3 flex-grow-1">
-            <p class="mb-0 small text-dark fw-medium line-rewritten-text" style="line-height: 1.6;">
-              ${escapeHtml(rw.rewritten_bullet)}
+      return `
+        <div class="col-lg-6 col-12 job-card-col" data-company="${safeEscapeHtml((job.company || "").toLowerCase())}" data-location="${safeEscapeHtml((job.location || "").toLowerCase())}" data-role="${safeEscapeHtml((job.role_type || "").toLowerCase())}" data-match="${job.match_percentage}">
+          <div class="card h-100 border rounded-4 p-4 shadow-sm job-item-card transition-all position-relative bg-white">
+            ${targetCompanyBadge}
+            <div class="d-flex align-items-start gap-3 mb-3">
+              <div class="rounded-3 d-flex align-items-center justify-content-center text-white fw-bold shadow-sm flex-shrink-0" style="width: 48px; height: 48px; background-color: ${logoColor}; font-size: 1.25rem;">
+                ${initial}
+              </div>
+              <div class="flex-grow-1 pe-4">
+                <h5 class="fw-bold mb-1 text-dark line-clamp-1">${safeEscapeHtml(job.title || "Graduate Engineer")}</h5>
+                <div class="d-flex align-items-center flex-wrap gap-2 text-secondary small">
+                  <span class="fw-semibold text-primary"><i class="fa-solid fa-building me-1"></i>${safeEscapeHtml(job.company || "Enterprise")}</span>
+                  <span>•</span>
+                  <span><i class="fa-solid fa-location-dot me-1"></i>${safeEscapeHtml(job.location || "Remote")}</span>
+                  <span>•</span>
+                  <span class="badge bg-light text-dark border rounded-pill">${safeEscapeHtml(job.role_type || "Full-time")}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center p-2 px-3 rounded-3 bg-light border mb-3 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <div class="fw-bold text-${safeEscapeHtml(job.tier_badge || "primary")} fs-5">
+                  ${job.match_percentage}%
+                </div>
+                <div>
+                  <span class="badge bg-${safeEscapeHtml(job.tier_badge || "primary")}-subtle text-${safeEscapeHtml(job.tier_badge || "primary")} border border-${safeEscapeHtml(job.tier_badge || "primary")}-subtle rounded-pill px-2 py-0 small fw-semibold">
+                    ${safeEscapeHtml(job.tier_label || "Matched")}
+                  </span>
+                  <small class="text-muted d-block" style="font-size: 0.72rem;">${job.matched_required_count || 0}/${job.total_required_count || 0} core skills matched</small>
+                </div>
+              </div>
+              <div class="text-end">
+                <span class="fw-bold text-dark d-block small"><i class="fa-solid fa-indian-rupee-sign text-success me-1"></i>${safeEscapeHtml(job.salary_range || "Competitive CTC")}</span>
+                <small class="text-muted" style="font-size: 0.72rem;"><i class="fa-regular fa-clock me-1"></i>${safeEscapeHtml(job.posted_date || "Recent")}</small>
+              </div>
+            </div>
+
+            <p class="text-secondary small mb-3 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+              ${safeEscapeHtml(job.description || "")}
             </p>
-          </div>
 
-          <div class="mb-3">
-            <div class="small fw-semibold text-secondary mb-1">Impact Enhancements:</div>
-            <div class="d-flex flex-wrap mb-2">
-              ${diffPills}
+            <div class="mb-3">
+              <div class="small fw-semibold text-dark mb-1">
+                <i class="fa-solid fa-circle-check text-success me-1"></i> Matched Skills:
+              </div>
+              <div class="d-flex flex-wrap gap-1 mb-2">
+                ${matchedPills || '<span class="text-muted small">Developing baseline</span>'}
+                ${extraMatchedBadge}
+              </div>
+              ${missingPills}
             </div>
-            <div class="alert alert-light border p-2 rounded-3 small text-secondary mb-0" style="font-size: 0.75rem;">
-              <i class="fa-solid fa-lightbulb text-warning me-1"></i> ${escapeHtml(rw.key_enhancement || '')}
-            </div>
-          </div>
 
-          <div class="d-flex gap-2 pt-2 border-top mt-auto">
-            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 flex-grow-1 btn-copy-variation" title="Copy to clipboard">
-              <i class="fa-solid fa-copy me-1"></i> Copy
-            </button>
-            <button type="button" class="btn btn-sm btn-success rounded-pill px-3 flex-grow-1 btn-accept-variation" title="1-Click Replace Line">
-              <i class="fa-solid fa-check-double me-1"></i> Accept Line
-            </button>
+            <div class="alert alert-light border p-2 px-3 rounded-3 small mb-3 text-secondary" style="font-size: 0.78rem;">
+              <i class="fa-solid fa-lightbulb text-primary me-1"></i> ${safeEscapeHtml(job.fit_summary || "")}
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-auto">
+              <div class="small text-muted" style="font-size: 0.75rem;">
+                <i class="fa-solid fa-id-badge text-primary me-1"></i> ${safeEscapeHtml(job.drive_mode || "Campus Drive")}
+              </div>
+              <a href="${safeEscapeHtml(job.apply_url || "#")}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary rounded-pill px-3 fw-semibold">
+                Apply Now <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+              </a>
+            </div>
           </div>
         </div>
       `;
+    }).join("");
 
-      // Copy Variation Listener
-      const btnCopy = col.querySelector(".btn-copy-variation");
-      if (btnCopy) {
-        btnCopy.addEventListener("click", () => {
-          navigator.clipboard.writeText(rw.rewritten_bullet).then(() => {
-            const originalHtml = btnCopy.innerHTML;
-            btnCopy.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
-            btnCopy.classList.replace("btn-outline-secondary", "btn-secondary");
-            setTimeout(() => {
-              btnCopy.innerHTML = originalHtml;
-              btnCopy.classList.replace("btn-secondary", "btn-outline-secondary");
-            }, 1800);
-          });
-        });
-      }
+    grid.innerHTML = cardsHtml;
+  }
 
-      // Accept Variation Listener (1-Click Replace)
-      const btnAccept = col.querySelector(".btn-accept-variation");
-      if (btnAccept) {
-        btnAccept.addEventListener("click", () => {
-          acceptOptimizedBullet(rw.rewritten_bullet, rw.flavor, rw.impact_score_boost);
-          btnAccept.innerHTML = '<i class="fa-solid fa-check me-1"></i> Accepted!';
-          btnAccept.disabled = true;
-          setTimeout(() => {
-            btnAccept.innerHTML = '<i class="fa-solid fa-check-double me-1"></i> Accept Line';
-            btnAccept.disabled = false;
-          }, 2000);
-        });
-      }
+  // Filter change listeners
+  if (locationFilter) locationFilter.addEventListener("change", () => fetchJobs());
+  if (roleTypeFilter) roleTypeFilter.addEventListener("change", () => fetchJobs());
+  if (minMatchFilter) minMatchFilter.addEventListener("change", () => fetchJobs());
 
-      cardsRow.appendChild(col);
+  // Search input debounced
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        fetchJobs();
+      }, 280);
     });
-
-    resultsContainer.classList.remove("d-none");
   }
 
-  function acceptOptimizedBullet(bulletText, flavor, boost) {
-    if (!bulletText) return;
-
-    if (!acceptedBullets.includes(bulletText)) {
-      acceptedBullets.push(bulletText);
-    }
-
-    if (currentTargetElement) {
-      currentTargetElement.innerHTML = `<i class="fa-solid fa-check text-success me-1"></i>${escapeHtml(bulletText)}`;
-      currentTargetElement.classList.add("text-success", "fw-semibold");
-    }
-
-    if (sessionEmptyNotice) sessionEmptyNotice.classList.add("d-none");
-    if (sessionListUl) {
-      sessionListUl.classList.remove("d-none");
-      const li = document.createElement("li");
-      li.className = "mb-2 p-2 rounded-2 bg-light border d-flex justify-content-between align-items-center gap-2";
-      li.innerHTML = `
-        <span class="text-dark"><i class="fa-solid fa-circle-check text-success me-2"></i>${escapeHtml(bulletText)}</span>
-        <span class="badge bg-primary-subtle text-primary border rounded-pill flex-shrink-0 small">${escapeHtml(flavor || 'Optimized')}</span>
-      `;
-      sessionListUl.appendChild(li);
-    }
-
-    if (sessionCount) {
-      sessionCount.innerText = `${acceptedBullets.length} bullet${acceptedBullets.length > 1 ? 's' : ''} optimized (+${boost || 24}% boost)`;
-    }
+  // Refresh Feed button
+  if (btnRefresh) {
+    btnRefresh.addEventListener("click", () => fetchJobs(true));
   }
 
-  // Export handlers
-  function triggerExport(format) {
-    const bulletsToExport = acceptedBullets.length > 0 ? acceptedBullets : [];
-    const payload = {
-      format: format,
-      analysis_id: analysisId,
-      company_name: companyName,
-      bullets: bulletsToExport
-    };
-
-    fetch("/api/resume/export-optimized", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`Export failed with HTTP status ${res.status}`);
-        return res.blob();
-      })
-      .then((blob) => {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.style.display = "none";
-        a.href = url;
-        a.download = `Optimized_Resume_${companyName}_${Date.now()}.${format}`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-      })
-      .catch((err) => {
-        console.error("Export download failed:", err);
-        alert("Failed to export optimized document. Please try again.");
-      });
-  }
-
-  if (btnExportDocx) {
-    btnExportDocx.addEventListener("click", () => triggerExport("docx"));
-  }
-
-  if (btnExportPdf) {
-    btnExportPdf.addEventListener("click", () => triggerExport("pdf"));
+  // Reset Filters button
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      if (locationFilter) locationFilter.value = "all";
+      if (roleTypeFilter) roleTypeFilter.value = "all";
+      if (minMatchFilter) minMatchFilter.value = "0";
+      if (searchInput) searchInput.value = "";
+      fetchJobs();
+    });
   }
 }
 
