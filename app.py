@@ -41,6 +41,7 @@ from utils.progress_tracker import (
     build_longitudinal_series,
     generate_side_by_side_diff
 )
+from utils.cohort_analytics import CohortAnalyticsService
 from utils.pdf_reader import (
     extract_text_from_pdf,
     extract_text_from_docx,
@@ -67,9 +68,11 @@ from utils.async_pipeline import (
     get_analysis_task,
     start_async_analysis,
 )
+from utils.job_feed_service import JobFeedService
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
+from agents.job_recommendation_agent import JobRecommendationAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -600,6 +603,20 @@ def dashboard(analysis_id: str) -> str:
     delta_data = calculate_version_delta(analysis_record, previous_record)
     trend_series = build_longitudinal_series(all_versions)
 
+    # Fetch initial recommended campus drives for seamless SSR
+    try:
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs()
+        job_matcher = JobRecommendationAgent()
+        initial_recommended_jobs = job_matcher.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            min_match=0
+        )
+    except Exception as job_err:
+        logger.error(f"Error fetching initial recommended campus drives: {job_err}")
+        initial_recommended_jobs = []
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -609,8 +626,49 @@ def dashboard(analysis_id: str) -> str:
         previous_record=previous_record,
         delta_data=delta_data,
         trend_series=trend_series,
-        trend_series_json=json.dumps(trend_series)
+        trend_series_json=json.dumps(trend_series),
+        recommended_jobs=initial_recommended_jobs
     )
+
+    candidate_percentile = None
+    if current_analysis_id:
+        try:
+            candidate_percentile = cohort_service.calculate_percentile_rank(current_analysis_id)
+        except Exception:
+            candidate_percentile = None
+
+    return render_template(
+        "leaderboard.html",
+        stats=view_data["stats"],
+        podium=view_data["podium"],
+        leaderboard=view_data["leaderboard"],
+        total_ranked=view_data["total_ranked"],
+        filters=view_data["filters"],
+        current_analysis_id=current_analysis_id,
+        candidate_percentile=candidate_percentile
+    )
+
+@app.route("/api/leaderboard", methods=["GET"])
+def api_leaderboard():
+    """
+    Returns JSON payload of anonymized cohort benchmarks and ranking metrics.
+    """
+    branch = request.args.get("branch", "all").strip()
+    year = request.args.get("year", "all").strip()
+    search = request.args.get("search", "").strip()
+    current_analysis_id = request.args.get("analysis_id", "").strip() or None
+
+    cohort_service = CohortAnalyticsService()
+    view_data = cohort_service.get_leaderboard_view(
+        department=branch if branch != "all" else None,
+        grad_year=int(year) if year.isdigit() else None,
+        search=search,
+        current_analysis_id=current_analysis_id
+    )
+    return jsonify({
+        "success": True,
+        **view_data
+    }), 200
 
 @app.route("/interview/<analysis_id>")
 def interview(analysis_id: str) -> str:
@@ -1076,6 +1134,77 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
+def api_job_recommendations(analysis_id: str):
+    """
+    Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
+    scored against verified technical skill overlap, ATS readiness, and hiring requirements.
+    Supports query parameters: location, role_type, min_match, search, and force_refresh.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({
+                "success": False,
+                "error": f"Candidate analysis record '{analysis_id}' not found."
+            }), 404
+
+        location = request.args.get("location", "all").strip()
+        role_type = request.args.get("role_type", "all").strip()
+        search_query = request.args.get("search", "").strip()
+        force_refresh = request.args.get("force_refresh", "false").lower() in ("true", "1")
+
+        try:
+            raw_min = request.args.get("min_match", "0").strip()
+            min_match = int(raw_min) if raw_min else 0
+        except (ValueError, TypeError):
+            min_match = 0
+
+        try:
+            raw_limit = request.args.get("limit", "").strip()
+            limit = int(raw_limit) if raw_limit else None
+        except (ValueError, TypeError):
+            limit = None
+
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs(force_refresh=force_refresh)
+
+        matcher_agent = JobRecommendationAgent()
+        recommendations = matcher_agent.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            location=location,
+            role_type=role_type,
+            min_match=min_match,
+            search_query=search_query
+        )
+
+        if limit and limit > 0:
+            recommendations = recommendations[:limit]
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "company_target": analysis_record.get("company_name", "General"),
+            "total_available": len(active_jobs),
+            "total_matched": len(recommendations),
+            "filters_applied": {
+                "location": location,
+                "role_type": role_type,
+                "min_match": min_match,
+                "search": search_query
+            },
+            "jobs": recommendations
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error computing job recommendations for {analysis_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to compute job recommendations: {str(e)}"
+        }), 500
+
+
 @app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
@@ -1111,6 +1240,123 @@ def api_database_backup():
         return jsonify({
             "success": False,
             "error": str(exc),
+        }), 500
+
+
+@app.route("/api/resume/rewrite-bullet", methods=["POST"])
+def api_rewrite_bullet():
+    """
+    Rewrites an individual resume bullet point into 3 distinct recruiter-grade variations:
+    1. Metric-Driven (Quantified)
+    2. Technical Depth & Systems
+    3. Leadership & Ownership Impact
+    """
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        bullet = data.get("bullet", "").strip()
+        if not bullet:
+            return jsonify({
+                "success": False,
+                "error": "Resume bullet point text is required."
+            }), 400
+
+        company_name = data.get("company_name", "General").strip()
+        role_target = data.get("role_target", "Software Engineer").strip()
+        context = data.get("context", "").strip()
+        analysis_id = data.get("analysis_id", "").strip()
+
+        # If analysis_id is provided and company_name not specified, pull from analysis
+        if analysis_id and (not company_name or company_name == "General"):
+            rec = get_analysis(analysis_id)
+            if rec and rec.get("company_name"):
+                company_name = rec["company_name"]
+
+        agent = BulletOptimizerAgent()
+        result = agent.optimize_bullet(
+            original_bullet=bullet,
+            company_name=company_name,
+            role_target=role_target,
+            context=context
+        )
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        logger.error(f"Error in api_rewrite_bullet: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to rewrite bullet: {str(e)}"
+        }), 500
+
+
+@app.route("/api/resume/export-optimized", methods=["POST"])
+def api_export_optimized_resume():
+    """
+    Generates and exports finalized resume document containing AI-optimized
+    bullet points in either .docx or .pdf format.
+    """
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        export_format = data.get("format", "docx").strip().lower()
+        bullets = data.get("bullets", [])
+        if isinstance(bullets, str):
+            try:
+                bullets = json.loads(bullets)
+            except Exception:
+                bullets = [bullets]
+
+        analysis_id = data.get("analysis_id", "").strip()
+        candidate_name = data.get("candidate_name", "").strip()
+        company_name = data.get("company_name", "").strip()
+        role_target = data.get("role_target", "Software Engineer").strip()
+
+        # If analysis_id provided, augment metadata
+        skills = []
+        if analysis_id:
+            rec = get_analysis(analysis_id)
+            if rec:
+                if not company_name and rec.get("company_name"):
+                    company_name = rec["company_name"]
+                if not candidate_name and rec.get("resume_filename"):
+                    candidate_name = os.path.splitext(rec["resume_filename"])[0]
+                results = rec.get("results") or {}
+                skills = results.get("job_match", {}).get("matched_skills", [])
+                if not bullets:
+                    bullets = results.get("resume_analysis", {}).get("strengths", [])
+
+        if not candidate_name:
+            candidate_name = "Candidate"
+        if not company_name:
+            company_name = "General"
+
+        metadata = {
+            "candidate_name": candidate_name,
+            "company_name": company_name,
+            "role_target": role_target,
+            "skills": skills
+        }
+
+        if export_format == "pdf":
+            file_path = generate_optimized_resume_pdf(bullets=bullets, metadata=metadata)
+            download_name = f"Optimized_Resume_{candidate_name}_{int(time.time())}.pdf"
+            mimetype = "application/pdf"
+        else:
+            file_path = generate_optimized_resume_docx(bullets=bullets, metadata=metadata)
+            download_name = f"Optimized_Resume_{candidate_name}_{int(time.time())}.docx"
+            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+        return send_file(
+            file_path,
+            as_attachment=True,
+            download_name=download_name,
+            mimetype=mimetype
+        )
+
+    except Exception as e:
+        logger.error(f"Error exporting optimized resume: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to export optimized resume: {str(e)}"
         }), 500
 
 

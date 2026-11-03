@@ -26,6 +26,9 @@
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-arrow-left me-1"></i> <span class="d-none d-sm-inline">New</span> Analysis
         </a>
+        <a href="/leaderboard?analysis_id={{ analysis_id }}" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Campus Placement Leaderboard">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
         <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-award me-1"></i> Certificate
         </a>
@@ -46,7 +49,20 @@
     <div class="card glass-card p-4 mb-4 border-0">
       <div class="row align-items-center">
         <div class="col-md-8">
-          <span class="text-primary fw-semibold text-uppercase small">Placement Readiness Dashboard</span>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <span class="text-primary fw-semibold text-uppercase small">Placement Readiness Dashboard</span>
+            {% if peer_benchmark %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill fw-bold" title="Candidate Peer Percentile">
+                <i class="fa-solid fa-trophy text-warning me-1"></i> {{ peer_benchmark.percentile_badge }}
+              </span>
+              <span class="badge tier-badge-{{ peer_benchmark.tier_badge_class|default('gold') }}">
+                <i class="fa-solid {{ peer_benchmark.tier_icon|default('fa-medal') }} me-1"></i> {{ peer_benchmark.tier|default('Gold') }} Tier
+              </span>
+              <span class="badge bg-light text-secondary border rounded-pill small">
+                Rank #{{ peer_benchmark.rank }} of {{ peer_benchmark.total_peers }} Peers
+              </span>
+            {% endif %}
+          </div>
           <h2 class="fw-bold mt-1 mb-2">Analysis Report: Target Company - {{ analysis.company_name }}</h2>
           <p class="text-secondary mb-0">
             Uploaded Resume: <b>{{ analysis.resume_filename }}</b> | Evaluated on: {{ analysis.created_at }}
@@ -86,20 +102,29 @@
 
     <!-- Actions Bar -->
     <div class="row g-4 mb-4">
-      <div class="col-md-6">
+      <div class="col-md-4">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
-          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-4 rounded-pill mx-auto">
-            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview Session
+          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill mx-auto">
+            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview
           </a>
         </div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
+        <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
+          <h5 class="fw-bold mb-2"><i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i> AI Rewrite Sandbox</h5>
+          <p class="text-secondary small mb-3">Line-by-line optimizer offering Metric-Driven, Technical Depth, and Leadership impact rewrites with 1-click replacement.</p>
+          <button type="button" class="btn btn-outline-primary py-2 px-3 rounded-pill mx-auto" data-bs-toggle="modal" data-bs-target="#bulletRewriteModal" id="btnOpenRewriteModal">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Open Rewrite Sandbox
+          </button>
+        </div>
+      </div>
+      <div class="col-md-4">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
           <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
-          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-4 rounded-pill mx-auto">
+          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill mx-auto">
             <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
           </a>
         </div>
@@ -171,6 +196,36 @@
           </div>
         </div>
       </div>
+
+      {% if peer_benchmark %}
+        <div class="border-top pt-3 mt-3">
+          <div class="row align-items-center g-3">
+            <div class="col-md-8">
+              <div class="d-flex align-items-center flex-wrap gap-2 mb-1">
+                <span class="small fw-bold text-dark">
+                  <i class="fa-solid fa-users text-primary me-1"></i> Campus Peer Cohort Benchmark ({{ peer_benchmark.department }} • {{ peer_benchmark.grad_year }} Batch):
+                </span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill fw-bold small">
+                  {{ peer_benchmark.percentile_badge }}
+                </span>
+                <span class="badge tier-badge-{{ peer_benchmark.tier_badge_class }}">
+                  {{ peer_benchmark.tier }} Tier
+                </span>
+              </div>
+              <p class="small text-secondary mb-0">
+                You rank <b>#{{ peer_benchmark.rank }}</b> of <b>{{ peer_benchmark.total_peers }}</b> peers.
+                Your ATS Score is <b>{{ peer_benchmark.candidate_ats }}</b> (Cohort Avg: <b>{{ peer_benchmark.cohort_avg_ats }}</b>, {% if peer_benchmark.ats_delta >= 0 %}+{{ peer_benchmark.ats_delta }}{% else %}{{ peer_benchmark.ats_delta }}{% endif %} pts).
+                Job Match is <b>{{ peer_benchmark.candidate_match }}%</b> (Cohort Avg: <b>{{ peer_benchmark.cohort_avg_match }}%</b>).
+              </p>
+            </div>
+            <div class="col-md-4 text-md-end">
+              <a href="/leaderboard?analysis_id={{ analysis_id }}&branch={{ peer_benchmark.department|urlencode }}&year={{ peer_benchmark.grad_year }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                <i class="fa-solid fa-trophy text-warning me-1"></i> View Cohort Leaderboard
+              </a>
+            </div>
+          </div>
+        </div>
+      {% endif %}
     </div>
 
     <!-- Multi-Version Resume Comparison & Longitudinal Progress Tracker -->
@@ -318,6 +373,199 @@
 
     </div>
 
+    <!-- Live Curated Campus Job Feed & Automated Role Matcher -->
+    <div class="card glass-card p-4 border-0 mb-4" id="campusDrivesSection" data-analysis-id="{{ analysis_id }}">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Live Campus Job Feed</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-briefcase text-primary me-2"></i> Recommended Campus Drives &amp; Freshers Openings
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span id="jobsMatchedCountBadge" class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-semibold">
+            <i class="fa-solid fa-bolt me-1"></i> <span id="jobsCountNum">{{ (recommended_jobs|length) if recommended_jobs else 0 }}</span> Drives Available
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnRefreshJobFeed" title="Reload live campus recruitment feed">
+            <i class="fa-solid fa-arrows-rotate me-1" id="refreshFeedIcon"></i> Refresh Feed
+          </button>
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-3">
+        Curated live fresher recruitment drives, graduate engineer roles, and high-stipend internships scored and ranked in real-time against your verified skill profile and ATS readiness.
+      </p>
+
+      <!-- Filter Controls Bar -->
+      <div class="p-3 bg-light rounded-4 border mb-4">
+        <div class="row g-2 align-items-center">
+          <!-- Search input -->
+          <div class="col-md-4 col-12">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white border-end-0 rounded-start-pill text-muted">
+                <i class="fa-solid fa-magnifying-glass"></i>
+              </span>
+              <input type="text" id="jobSearchInput" class="form-control border-start-0 rounded-end-pill" placeholder="Search company, title, or skill..." aria-label="Search job listings">
+            </div>
+          </div>
+          <!-- Location Filter -->
+          <div class="col-md-3 col-6">
+            <select class="form-select form-select-sm rounded-pill px-3" id="jobLocationFilter" aria-label="Filter jobs by location">
+              <option value="all">📍 All Locations</option>
+              <option value="bengaluru">Bengaluru</option>
+              <option value="hyderabad">Hyderabad</option>
+              <option value="pune">Pune</option>
+              <option value="noida">Noida / Delhi-NCR</option>
+              <option value="mumbai">Mumbai</option>
+              <option value="remote">Remote / Pan-India</option>
+            </select>
+          </div>
+          <!-- Role Type Filter -->
+          <div class="col-md-2 col-6">
+            <select class="form-select form-select-sm rounded-pill px-3" id="jobRoleTypeFilter" aria-label="Filter jobs by role type">
+              <option value="all">💼 All Roles</option>
+              <option value="full-time">Full-time</option>
+              <option value="internship">Internship</option>
+            </select>
+          </div>
+          <!-- Min Match Filter -->
+          <div class="col-md-3 col-12">
+            <select class="form-select form-select-sm rounded-pill px-3" id="jobMinMatchFilter" aria-label="Filter jobs by minimum match">
+              <option value="0">🎯 Any Match %</option>
+              <option value="50">50%+ Match (Eligible)</option>
+              <option value="70">70%+ Match (Strong Fit)</option>
+              <option value="80">80%+ Match (Top Tier)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Loading Spinner -->
+      <div id="jobsLoadingSpinner" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="small text-muted mt-2">Fetching &amp; scoring curated campus drives...</div>
+      </div>
+
+      <!-- Job Cards Grid -->
+      <div class="row g-4" id="recommendedJobsGrid">
+        {% if recommended_jobs %}
+          {% for job in recommended_jobs %}
+            <div class="col-lg-6 col-12 job-card-col" data-company="{{ job.company|lower }}" data-location="{{ job.location|lower }}" data-role="{{ job.role_type|lower }}" data-match="{{ job.match_percentage }}">
+              <div class="card h-100 border rounded-4 p-4 shadow-sm job-item-card transition-all position-relative bg-white">
+                {% if job.is_target_company %}
+                  <div class="position-absolute top-0 end-0 mt-3 me-3">
+                    <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2 py-1 small">
+                      <i class="fa-solid fa-bullseye me-1"></i> Target Company Drive
+                    </span>
+                  </div>
+                {% endif %}
+
+                <div class="d-flex align-items-start gap-3 mb-3">
+                  <div class="rounded-3 d-flex align-items-center justify-content-center text-white fw-bold shadow-sm flex-shrink-0" style="width: 48px; height: 48px; background-color: {{ job.logo_color|default('#1a73e8') }}; font-size: 1.25rem;">
+                    {{ job.company[:1] }}
+                  </div>
+                  <div class="flex-grow-1 pe-4">
+                    <h5 class="fw-bold mb-1 text-dark line-clamp-1">{{ job.title }}</h5>
+                    <div class="d-flex align-items-center flex-wrap gap-2 text-secondary small">
+                      <span class="fw-semibold text-primary"><i class="fa-solid fa-building me-1"></i>{{ job.company }}</span>
+                      <span>•</span>
+                      <span><i class="fa-solid fa-location-dot me-1"></i>{{ job.location }}</span>
+                      <span>•</span>
+                      <span class="badge bg-light text-dark border rounded-pill">{{ job.role_type }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Match score badge & Compensation -->
+                <div class="d-flex justify-content-between align-items-center p-2 px-3 rounded-3 bg-light border mb-3 flex-wrap gap-2">
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="fw-bold text-{{ job.tier_badge }} fs-5">
+                      {{ job.match_percentage }}%
+                    </div>
+                    <div>
+                      <span class="badge bg-{{ job.tier_badge }}-subtle text-{{ job.tier_badge }} border border-{{ job.tier_badge }}-subtle rounded-pill px-2 py-0 small fw-semibold">
+                        {{ job.tier_label }}
+                      </span>
+                      <small class="text-muted d-block" style="font-size: 0.72rem;">{{ job.matched_required_count }}/{{ job.total_required_count }} core skills matched</small>
+                    </div>
+                  </div>
+                  <div class="text-end">
+                    <span class="fw-bold text-dark d-block small"><i class="fa-solid fa-indian-rupee-sign text-success me-1"></i>{{ job.salary_range }}</span>
+                    <small class="text-muted" style="font-size: 0.72rem;"><i class="fa-regular fa-clock me-1"></i>{{ job.posted_date }}</small>
+                  </div>
+                </div>
+
+                <!-- Job Description Snippet -->
+                <p class="text-secondary small mb-3 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                  {{ job.description }}
+                </p>
+
+                <!-- Matched & Missing Skills Pills -->
+                <div class="mb-3">
+                  <div class="small fw-semibold text-dark mb-1">
+                    <i class="fa-solid fa-circle-check text-success me-1"></i> Matched Skills:
+                  </div>
+                  <div class="d-flex flex-wrap gap-1 mb-2">
+                    {% for ms in job.matched_skills[:5] %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2" style="font-size: 0.72rem;">
+                        <i class="fa-solid fa-check me-1"></i>{{ ms }}
+                      </span>
+                    {% else %}
+                      <span class="text-muted small">Developing baseline</span>
+                    {% endfor %}
+                    {% if job.matched_skills|length > 5 %}
+                      <span class="badge bg-light text-muted border rounded-pill py-1 px-2" style="font-size: 0.72rem;">+{{ job.matched_skills|length - 5 }} more</span>
+                    {% endif %}
+                  </div>
+
+                  {% if job.missing_skills %}
+                    <div class="small fw-semibold text-secondary mb-1">
+                      <i class="fa-solid fa-circle-plus text-warning me-1"></i> Recommended to Learn:
+                    </div>
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for mis in job.missing_skills[:3] %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill py-1 px-2 text-dark" style="font-size: 0.72rem;">
+                          +{{ mis }}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+
+                <!-- Fit Summary Note -->
+                <div class="alert alert-light border p-2 px-3 rounded-3 small mb-3 text-secondary" style="font-size: 0.78rem;">
+                  <i class="fa-solid fa-lightbulb text-primary me-1"></i> {{ job.fit_summary }}
+                </div>
+
+                <!-- Footer with Drive Info and Quick Apply -->
+                <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-auto">
+                  <div class="small text-muted" style="font-size: 0.75rem;">
+                    <i class="fa-solid fa-id-badge text-primary me-1"></i> {{ job.drive_mode|default('Campus Drive') }}
+                  </div>
+                  <a href="{{ job.apply_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary rounded-pill px-3 fw-semibold">
+                    Apply Now <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+                  </a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+
+      <!-- Empty State -->
+      <div id="jobsEmptyState" class="text-center py-5 {{ 'd-none' if recommended_jobs else '' }}">
+        <div class="mb-3 text-secondary">
+          <i class="fa-solid fa-filter-circle-xmark fa-3x text-muted"></i>
+        </div>
+        <h5 class="fw-bold text-dark">No Campus Drives Found</h5>
+        <p class="text-secondary small mb-3">No active drives match your selected location, role type, or minimum match score criteria.</p>
+        <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" id="btnResetJobFilters">
+          <i class="fa-solid fa-rotate-left me-1"></i> Reset Filters
+        </button>
+      </div>
+
+    </div>
+
     <!-- Resume Feedback Panel -->
     <div class="row g-4 mb-4">
       
@@ -336,9 +584,14 @@
               </h2>
               <div id="collapseStrengths" class="accordion-collapse collapse show" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
-                  <ul class="mb-0">
+                  <ul class="mb-0 list-unstyled">
                     {% for strength in analysis.results.resume_analysis.strengths %}
-                      <li class="mb-2">{{ strength }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="resume-bullet-text small text-dark"><i class="fa-solid fa-check text-success me-1"></i>{{ strength }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ strength|e }}" title="Optimize this bullet with AI">
+                          <i class="fa-solid fa-wand-magic-sparkles me-1 small"></i> Rewrite
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -417,8 +670,11 @@
           <h6 class="fw-bold text-secondary mb-3">Top 5 Resume Changes Required:</h6>
           <ol class="list-group list-group-numbered list-group-flush mb-4">
             {% for change in analysis.results.job_match.top_5_resume_changes %}
-              <li class="list-group-item d-flex justify-content-between align-items-start border-0 bg-transparent px-0 py-2">
-                <span class="ms-2 me-auto small fw-medium">{{ change }}</span>
+              <li class="list-group-item d-flex justify-content-between align-items-center border-0 bg-transparent px-0 py-2 gap-2">
+                <span class="ms-2 me-auto small fw-medium resume-bullet-text">{{ change }}</span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ change|e }}" title="Optimize this bullet with AI">
+                  <i class="fa-solid fa-wand-magic-sparkles small"></i>
+                </button>
               </li>
             {% endfor %}
           </ol>
@@ -724,6 +980,124 @@
               </a>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Resume Line-by-Line AI Rewrite Sandbox Modal -->
+    <div class="modal fade" id="bulletRewriteModal" tabindex="-1" aria-labelledby="bulletRewriteModalLabel" aria-hidden="true" data-analysis-id="{{ analysis_id }}" data-company="{{ analysis.company_name }}">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content rounded-4 border-0 shadow">
+          
+          <!-- Modal Header -->
+          <div class="modal-header border-0 pb-0 pt-4 px-4">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <h5 class="modal-title fw-bold text-dark mb-0" id="bulletRewriteModalLabel">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-2"></i> Line-by-Line Resume AI Rewrite Sandbox
+              </h5>
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 small">
+                Target: {{ analysis.company_name }}
+              </span>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="modal-body p-4">
+            <p class="text-secondary small mb-3">
+              Transform passive or vague resume bullet points into high-impact, recruiter-grade statements. Select a line from your resume or paste below to inspect 3 tailored rewrite variations (Metric-Driven, Technical Depth, Leadership Impact) with 1-click text replacement.
+            </p>
+
+            <!-- Line Input & Quick Pick Selector -->
+            <div class="p-3 bg-light rounded-4 border mb-4">
+              <div class="row g-2 align-items-center mb-3">
+                <div class="col-md-7 col-12">
+                  <label for="quickPickBulletSelect" class="small fw-bold text-secondary mb-1">
+                    <i class="fa-solid fa-list-check text-primary me-1"></i> Quick-Pick a Line from Your Analysis:
+                  </label>
+                  <select class="form-select form-select-sm rounded-pill px-3" id="quickPickBulletSelect">
+                    <option value="">-- Choose a line to optimize --</option>
+                    {% for strength in analysis.results.resume_analysis.strengths %}
+                      <option value="{{ strength }}">{{ strength[:90] }}...</option>
+                    {% endfor %}
+                    {% for change in analysis.results.job_match.top_5_resume_changes %}
+                      <option value="{{ change }}">{{ change[:90] }}...</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-5 col-12 text-md-end mt-3 mt-md-0">
+                  <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" id="btnRunBulletRewrite">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1" id="rewriteBtnIcon"></i> Generate 3 AI Variations
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label for="inputBulletTextarea" class="small fw-bold text-secondary mb-1">
+                  Active Bullet Point Text:
+                </label>
+                <textarea class="form-control rounded-3" id="inputBulletTextarea" rows="2" placeholder="e.g. Worked on web application backend with Python and managed database queries..."></textarea>
+              </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="rewriteLoadingSpinner" class="text-center py-5 d-none">
+              <div class="spinner-border text-primary" role="status"></div>
+              <div class="small text-muted mt-2">Synthesizing Metric-Driven, Technical Depth, and Leadership rewrites...</div>
+            </div>
+
+            <!-- Results Section (Side-by-Side Variations) -->
+            <div id="rewriteResultsContainer" class="d-none">
+              
+              <!-- Baseline Comparison Header -->
+              <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3 border flex-wrap gap-2">
+                <div>
+                  <span class="small text-secondary fw-semibold">Original Line Baseline Impact:</span>
+                  <span class="badge bg-secondary rounded-pill px-3 py-1 ms-2" id="originalBulletScoreBadge">Score: 52/100</span>
+                </div>
+                <small class="text-muted"><i class="fa-solid fa-check me-1 text-success"></i> Choose any variation to 1-click replace or copy</small>
+              </div>
+
+              <!-- 3 Variation Cards Grid -->
+              <div class="row g-3 mb-4" id="rewriteCardsRow">
+                <!-- Dynamically populated via JS -->
+              </div>
+            </div>
+
+            <!-- Working Session: Finalized & Optimized Resume Document Bullets -->
+            <div class="p-3 bg-light rounded-4 border mt-4">
+              <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                  <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-file-lines text-primary me-2"></i> Finalized Optimized Document Session
+                  </h6>
+                  <small class="text-secondary" id="sessionOptimizedCount">0 bullets optimized in this session</small>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnExportOptimizedDocx">
+                    <i class="fa-solid fa-file-word text-primary me-1"></i> Export .DOCX
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnExportOptimizedPdf">
+                    <i class="fa-solid fa-file-pdf text-danger me-1"></i> Export .PDF
+                  </button>
+                </div>
+              </div>
+
+              <div id="sessionBulletsList" class="bg-white p-3 rounded-3 border" style="min-height: 80px; max-height: 200px; overflow-y: auto;">
+                <p class="text-muted small mb-0 fst-italic" id="sessionEmptyNotice">
+                  No bullets accepted yet. Click "1-Click Replace" on any variation above to incorporate it into your finalized document.
+                </p>
+                <ul class="mb-0 ps-3 small list-unstyled d-none" id="sessionListUl"></ul>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="modal-footer border-0 pt-0 px-4 pb-4">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close Sandbox</button>
+          </div>
+
         </div>
       </div>
     </div>

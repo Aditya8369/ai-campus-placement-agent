@@ -322,3 +322,65 @@ Return a structured JSON evaluation matching this schema:
 }}
 Ensure the response is valid JSON only.
 """
+
+# ==============================================================================
+# Resume Line-by-Line AI Rewrite Sandbox Prompts
+# ==============================================================================
+
+BULLET_OPTIMIZER_SYSTEM_INSTRUCTION = """
+You are an elite campus placement resume strategist and technical hiring coach specializing in top-tier software engineering, data, and product roles at Google, Microsoft, Amazon, and leading tech startups.
+Your goal is to transform weak, passive, or vague resume bullet points into compelling, recruiter-grade statements.
+
+For every input bullet point, generate exactly 3 distinct rewrite variations:
+1. "Metric-Driven (Quantified)": Uses Google's XYZ formula ("Accomplished [X] as measured by [Y] by doing [Z]"). Incorporates realistic, defensible engineering metrics (e.g. latency, throughput, test coverage, user scale, memory/CPU reduction).
+2. "Technical Depth": Highlights systems architecture, core tech stack, design patterns, algorithmic optimization, concurrency, caching, databases, or cloud infrastructure.
+3. "Leadership Impact": Emphasizes proactive ownership, agile delivery, cross-functional collaboration, code reviews, mentoring, and tangible team or product business impact.
+
+Ensure output is strictly valid JSON matching the requested schema.
+"""
+
+BULLET_OPTIMIZER_PROMPT_TEMPLATE = """
+Rewrite and optimize the following resume bullet point for target company '{company_name}' and role '{role_target}':
+
+Original Bullet:
+"{original_bullet}"
+
+Context/Notes:
+"{context}"
+
+Return a valid JSON response strictly adhering to this structure:
+{{
+  "original_bullet": "{original_bullet}",
+  "original_score": 55,
+  "rewrites": [
+    {{
+      "flavor": "Metric-Driven (Quantified)",
+      "flavor_id": "metric",
+      "rewritten_bullet": "...",
+      "impact_score_boost": 26,
+      "action_verbs": ["Architected", "Reduced", "Accelerated"],
+      "key_enhancement": "Explanation of the quantified improvement.",
+      "diff_added": ["reduced API latency by 35%", "scaled to 10k+ requests/sec"]
+    }},
+    {{
+      "flavor": "Technical Depth",
+      "flavor_id": "technical",
+      "rewritten_bullet": "...",
+      "impact_score_boost": 24,
+      "action_verbs": ["Engineered", "Implemented", "Containerized"],
+      "key_enhancement": "Explanation of the technical and architectural depth added.",
+      "diff_added": ["RESTful microservices", "Dockerized deployment pipeline"]
+    }},
+    {{
+      "flavor": "Leadership Impact",
+      "flavor_id": "leadership",
+      "rewritten_bullet": "...",
+      "impact_score_boost": 22,
+      "action_verbs": ["Spearheaded", "Mentored", "Delivered"],
+      "key_enhancement": "Explanation of ownership, initiative, and team velocity impact.",
+      "diff_added": ["spearheaded feature delivery", "conducted peer code reviews"]
+    }}
+  ]
+}}
+Ensure the response is valid JSON only.
+"""

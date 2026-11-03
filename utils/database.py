@@ -129,6 +129,30 @@ def save_analysis(
         ))
         conn.commit()
         logger.info(f"Analysis saved with ID: {analysis_id} (Student: {effective_student_id}, Version: v{version_number})")
+
+        # Automatically register or update candidate on the cohort benchmark leaderboard
+        try:
+            res_analysis = results_dict.get("resume_analysis", {}) if isinstance(results_dict, dict) else {}
+            job_match = results_dict.get("job_match", {}) if isinstance(results_dict, dict) else {}
+            ats_val = int(res_analysis.get("ats_score", 70))
+            match_val = int(job_match.get("match_percentage", 65))
+            skills_cnt = len(job_match.get("matched_skills", [])) if isinstance(job_match.get("matched_skills"), list) else 0
+
+            handle_suffix = abs(hash(analysis_id)) % 100
+            anon_handle = f"Candidate_{handle_suffix:02d}"
+
+            record_or_update_cohort_benchmark(
+                analysis_id=analysis_id,
+                student_handle=anon_handle,
+                department="Computer Science",
+                grad_year=2026,
+                ats_score=ats_val,
+                job_match_score=match_val,
+                target_company=company_name or "General",
+                skills_count=skills_cnt
+            )
+        except Exception as bench_err:
+            logger.warning(f"Failed to record cohort benchmark on save_analysis: {bench_err}")
     except Exception as e:
         logger.error(f"Error saving analysis {analysis_id} to database: {str(e)}")
         raise e
@@ -396,6 +420,9 @@ def verify_database_integrity() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM interviews")
         interviews_count = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
+        cohort_count = cursor.fetchone()[0]
+
         cursor.execute("PRAGMA journal_mode")
         journal_mode = cursor.fetchone()[0]
 
@@ -406,6 +433,7 @@ def verify_database_integrity() -> Dict[str, Any]:
             "tables": {
                 "analyses_count": analyses_count,
                 "interviews_count": interviews_count,
+                "cohort_benchmarks_count": cohort_count,
             },
             "journal_mode": journal_mode,
         }
