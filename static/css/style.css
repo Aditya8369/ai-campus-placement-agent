@@ -769,34 +769,57 @@ html, body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* Recommended Campus Drives Card Styling */
-.job-item-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-  background-color: var(--card-bg, #ffffff);
+/* ==============================================================================
+   Batch Company Comparison & Offer Likelihood Matrix Styles
+   ============================================================================== */
+.company-pill-badge {
+  background-color: #ffffff;
+  color: var(--text-dark);
+  border: 1px solid var(--border-color);
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.job-item-card:hover {
+.company-pill-badge:hover {
+  border-color: var(--primary-blue);
+  background-color: var(--secondary-light);
+  transform: translateY(-1px);
+}
+
+.company-pill-badge.active,
+.company-pill-badge:has(input:checked) {
+  background-color: #e8f0fe !important;
+  color: var(--primary-blue) !important;
+  border-color: var(--primary-blue) !important;
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.15);
+}
+
+.company-pill-badge .pill-check-icon {
+  display: none;
+}
+
+.company-pill-badge.active .pill-check-icon,
+.company-pill-badge:has(input:checked) .pill-check-icon {
+  display: inline-flex;
+}
+
+[data-bs-theme="dark"] .company-pill-badge {
+  background-color: #202124;
+  color: #e8eaed;
+  border-color: #5f6368;
+}
+
+[data-bs-theme="dark"] .company-pill-badge.active,
+[data-bs-theme="dark"] .company-pill-badge:has(input:checked) {
+  background-color: #1a3c6b !important;
+  color: #8ab4f8 !important;
+  border-color: #8ab4f8 !important;
+}
+
+.likelihood-rank-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.likelihood-rank-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-color: #1a73e8 !important;
-}
-
-[data-bs-theme="dark"] .job-item-card {
-  background-color: #1e2228 !important;
-  border-color: #30363d !important;
-}
-
-[data-bs-theme="dark"] .job-item-card .bg-light {
-  background-color: #161b22 !important;
-  border-color: #30363d !important;
-}
-
-[data-bs-theme="dark"] .job-item-card .text-dark {
-  color: #e6edf3 !important;
-}
-
-[data-bs-theme="dark"] .job-item-card .alert-light {
-  background-color: #161b22 !important;
-  border-color: #30363d !important;
-  color: #c9d1d9 !important;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
