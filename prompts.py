@@ -322,3 +322,86 @@ Return a structured JSON evaluation matching this schema:
 }}
 Ensure the response is valid JSON only.
 """
+
+# ==============================================================================
+# STAR Behavioral Evaluation & Non-Verbal Composure Coach Prompts
+# ==============================================================================
+
+STAR_SYSTEM_INSTRUCTION = """
+You are an executive campus placement behavioral interview coach, leadership evaluation specialist, and speech diagnostician.
+Your job is to rigorously dissect a candidate's behavioral or HR interview answer using the STAR methodology:
+1. Situation: Did the candidate establish a clear, relevant context and background?
+2. Task: Did they clearly articulate the specific problem, goal, challenge, or responsibility?
+3. Action: Did they describe detailed, proactive, individual steps taken (using 'I' rather than vague 'we')?
+4. Result: Did they quantify tangible outcomes, metrics, business impacts, or key lessons learned?
+
+Also evaluate verbal speech patterns, articulation, and deliver actionable coaching feedback including a polished STAR rewrite example.
+Respond strictly with valid JSON without markdown formatting, code fences, or extraneous text.
+"""
+
+STAR_USER_PROMPT_TEMPLATE = """
+Evaluate the candidate's interview answer below using the STAR (Situation, Task, Action, Result) framework.
+
+Question ({question_type}): {question}
+Candidate's Answer:
+\"\"\"{answer}\"\"\"
+
+Additional Speech & Telemetry Metrics (if available):
+{speech_metrics_str}
+
+Return a valid JSON object matching this exact schema:
+{{
+  "star_score": 85,
+  "situation": {{
+    "present": true,
+    "score": 85,
+    "feedback": "Clear explanation of team context and initial timeline crisis.",
+    "excerpt": "Relevant sentence or phrase identifying Situation"
+  }},
+  "task": {{
+    "present": true,
+    "score": 80,
+    "feedback": "Defined specific technical bottleneck and personal ownership.",
+    "excerpt": "Relevant sentence or phrase identifying Task"
+  }},
+  "action": {{
+    "present": true,
+    "score": 90,
+    "feedback": "Strong personal initiative shown with clear breakdown of proactive technical steps.",
+    "excerpt": "Relevant sentence or phrase identifying Action"
+  }},
+  "result": {{
+    "present": true,
+    "score": 85,
+    "feedback": "Quantified impact achieved and team delivery outcomes.",
+    "excerpt": "Relevant sentence or phrase identifying Result"
+  }},
+  "verbal_metrics": {{
+    "filler_words_detected": ["like", "um"],
+    "filler_word_count": 2,
+    "clarity_score": 85,
+    "conciseness_score": 80,
+    "speech_pace_wpm": 130.0,
+    "pacing_evaluation": "Optimal"
+  }},
+  "non_verbal_composure": {{
+    "eye_contact_score": 85,
+    "eye_contact_status": "Good Center Focus",
+    "composure_score": 88,
+    "composure_rating": "Confident & Composed",
+    "feedback": "Steady delivery with minimal distraction."
+  }},
+  "coaching": {{
+    "strengths": [
+      "First key strength in their storytelling or clarity.",
+      "Second strength such as active ownership verbs."
+    ],
+    "improvements": [
+      "Specific tip to strengthen metrics or deeper Task explanation.",
+      "Guidance to eliminate remaining filler words."
+    ],
+    "suggested_star_rewrite": "A model 3-4 sentence rewrite of the candidate's answer demonstrating a flawless STAR approach."
+  }}
+}}
+Ensure the response is valid JSON only.
+"""

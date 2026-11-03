@@ -69,6 +69,7 @@ class AnalysisTask:
         }
 
         if extra:
+            event_data["extra"] = extra
             event_data.update(extra)
 
         with self._lock:

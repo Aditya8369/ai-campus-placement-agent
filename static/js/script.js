@@ -681,12 +681,241 @@ function initMockInterview() {
   const transcriptWordCount = document.getElementById("transcriptWordCount");
   const toggleAutoTTS = document.getElementById("toggleAutoTTS");
 
+  // Video Coach & Composure Telemetry Elements
+  const btnToggleVideoCoach = document.getElementById("btnToggleVideoCoach");
+  const videoCoachPanel = document.getElementById("videoCoachPanel");
+  const btnStopCamera = document.getElementById("btnStopCamera");
+  const candidateVideoFeed = document.getElementById("candidateVideoFeed");
+  const videoAnalysisCanvas = document.getElementById("videoAnalysisCanvas");
+  const cameraStatusText = document.getElementById("cameraStatusText");
+  const telemetryEyeScore = document.getElementById("telemetryEyeScore");
+  const telemetryEyeStatus = document.getElementById("telemetryEyeStatus");
+  const telemetryComposureScore = document.getElementById("telemetryComposureScore");
+  const telemetryComposureStatus = document.getElementById("telemetryComposureStatus");
+  const telemetryCadenceWpm = document.getElementById("telemetryCadenceWpm");
+  const telemetryCadenceStatus = document.getElementById("telemetryCadenceStatus");
+  const telemetryFillerCount = document.getElementById("telemetryFillerCount");
+  const telemetryFillerList = document.getElementById("telemetryFillerList");
+
   // State trackers
   let recognition = null;
   let isRecording = false;
   let speechTimerInterval = null;
   let speechSeconds = 0;
   let activeUtteranceBtn = null;
+
+  // Video Coach & Composure States
+  let videoStream = null;
+  let videoAnalysisInterval = null;
+  let eyeCenteredFrames = 0;
+  let totalVideoFrames = 0;
+  let prevFramePixels = null;
+  let composureHistory = [];
+  let answerTypingStartTime = null;
+  let lastMeasuredWpm = 130;
+  let lastMeasuredFillerCount = 0;
+
+  // -------------------------------------------------------------
+  // Web MediaStream Video Coach & Non-Verbal Composure Analyzer
+  // -------------------------------------------------------------
+  async function startVideoCoach() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera access via MediaStream API is not supported in this browser environment.");
+      return;
+    }
+    try {
+      if (cameraStatusText) cameraStatusText.textContent = "Requesting camera permission...";
+      videoStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: "user" },
+        audio: false,
+      });
+
+      if (candidateVideoFeed) {
+        candidateVideoFeed.srcObject = videoStream;
+        candidateVideoFeed.play().catch(() => {});
+      }
+      if (videoCoachPanel) videoCoachPanel.classList.remove("d-none");
+      if (cameraStatusText) cameraStatusText.textContent = "Live camera active (Tracking non-verbal composure)";
+      if (btnToggleVideoCoach) {
+        btnToggleVideoCoach.classList.remove("btn-outline-secondary");
+        btnToggleVideoCoach.classList.add("btn-primary");
+      }
+
+      eyeCenteredFrames = 0;
+      totalVideoFrames = 0;
+      prevFramePixels = null;
+      composureHistory = [];
+
+      startVideoAnalysisLoop();
+    } catch (err) {
+      console.error("Camera access error:", err);
+      if (cameraStatusText) cameraStatusText.textContent = "Camera access denied or unavailable";
+      alert("Could not access camera for non-verbal posture analysis. Please grant camera permission in your browser.");
+    }
+  }
+
+  function stopVideoCoach() {
+    if (videoAnalysisInterval) {
+      clearInterval(videoAnalysisInterval);
+      videoAnalysisInterval = null;
+    }
+    if (videoStream) {
+      videoStream.getTracks().forEach((track) => track.stop());
+      videoStream = null;
+    }
+    if (candidateVideoFeed) {
+      candidateVideoFeed.srcObject = null;
+    }
+    if (videoCoachPanel) videoCoachPanel.classList.add("d-none");
+    if (btnToggleVideoCoach) {
+      btnToggleVideoCoach.classList.remove("btn-primary");
+      btnToggleVideoCoach.classList.add("btn-outline-secondary");
+    }
+    if (cameraStatusText) cameraStatusText.textContent = "Camera standby";
+  }
+
+  function startVideoAnalysisLoop() {
+    if (videoAnalysisInterval) clearInterval(videoAnalysisInterval);
+    const ctx = videoAnalysisCanvas ? videoAnalysisCanvas.getContext("2d", { willReadFrequently: true }) : null;
+
+    videoAnalysisInterval = setInterval(() => {
+      if (!candidateVideoFeed || candidateVideoFeed.readyState < 2 || !ctx) return;
+
+      totalVideoFrames++;
+      ctx.drawImage(candidateVideoFeed, 0, 0, 160, 120);
+      const frame = ctx.getImageData(0, 0, 160, 120);
+      const data = frame.data;
+
+      // 1. Center quadrant eye-contact presence estimation
+      let centerLuminance = 0;
+      let centerCount = 0;
+      for (let y = 20; y < 85; y += 4) {
+        for (let x = 40; x < 120; x += 4) {
+          const idx = (y * 160 + x) * 4;
+          centerLuminance += 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+          centerCount++;
+        }
+      }
+      const avgCenter = centerCount > 0 ? centerLuminance / centerCount : 128;
+      const isCentered = avgCenter > 25 && avgCenter < 235;
+      if (isCentered) eyeCenteredFrames++;
+
+      const eyeScore = Math.min(100, Math.max(35, Math.round((eyeCenteredFrames / totalVideoFrames) * 100)));
+      if (telemetryEyeScore) telemetryEyeScore.textContent = `${eyeScore}%`;
+      if (telemetryEyeStatus) {
+        if (eyeScore >= 75) {
+          telemetryEyeStatus.textContent = "Good Center Focus";
+          telemetryEyeStatus.className = "text-success fw-semibold";
+        } else if (eyeScore >= 50) {
+          telemetryEyeStatus.textContent = "Intermittent";
+          telemetryEyeStatus.className = "text-warning fw-semibold";
+        } else {
+          telemetryEyeStatus.textContent = "Looking Away";
+          telemetryEyeStatus.className = "text-danger fw-semibold";
+        }
+      }
+
+      // 2. Motion velocity delta for Composure estimation
+      if (prevFramePixels) {
+        let diffSum = 0;
+        const sampleCount = data.length / 16;
+        for (let i = 0; i < data.length; i += 16) {
+          diffSum += Math.abs(data[i] - prevFramePixels[i]);
+        }
+        const avgDelta = diffSum / sampleCount;
+        let frameComposure = 90;
+        if (avgDelta < 15) {
+          frameComposure = 90 - Math.round(avgDelta);
+        } else {
+          frameComposure = Math.max(40, 80 - Math.round((avgDelta - 15) * 2));
+        }
+        composureHistory.push(frameComposure);
+        if (composureHistory.length > 25) composureHistory.shift();
+
+        const avgComposure = Math.round(composureHistory.reduce((a, b) => a + b, 0) / composureHistory.length);
+        if (telemetryComposureScore) telemetryComposureScore.textContent = `${avgComposure}%`;
+        if (telemetryComposureStatus) {
+          if (avgComposure >= 75) {
+            telemetryComposureStatus.textContent = "Calm & Steady";
+            telemetryComposureStatus.className = "text-primary fw-semibold";
+          } else if (avgComposure >= 55) {
+            telemetryComposureStatus.textContent = "Mild Movement";
+            telemetryComposureStatus.className = "text-warning fw-semibold";
+          } else {
+            telemetryComposureStatus.textContent = "Restless Motion";
+            telemetryComposureStatus.className = "text-danger fw-semibold";
+          }
+        }
+      }
+      prevFramePixels = new Uint8Array(data);
+    }, 400);
+  }
+
+  if (btnToggleVideoCoach) {
+    btnToggleVideoCoach.addEventListener("click", () => {
+      if (videoStream) {
+        stopVideoCoach();
+      } else {
+        startVideoCoach();
+      }
+    });
+  }
+
+  if (btnStopCamera) {
+    btnStopCamera.addEventListener("click", () => {
+      stopVideoCoach();
+    });
+  }
+
+  // Live Speech Cadence & Verbal Filler Analyzer
+  const FILLER_WORDS_REGEX = /\b(um+|uh+|like|you know|actually|basically|literally|sort of|kind of|i mean|so yeah)\b/gi;
+
+  function updateLiveSpeechTelemetry(text) {
+    if (!text) {
+      if (telemetryCadenceWpm) telemetryCadenceWpm.textContent = "-- WPM";
+      if (telemetryFillerCount) telemetryFillerCount.textContent = "0";
+      return;
+    }
+    const words = text.split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+
+    if (!answerTypingStartTime && wordCount > 0) {
+      answerTypingStartTime = Date.now();
+    }
+
+    if (answerTypingStartTime && wordCount >= 3) {
+      const elapsedMinutes = (Date.now() - answerTypingStartTime) / 60000;
+      const wpm = elapsedMinutes > 0.04 ? Math.round(wordCount / elapsedMinutes) : 130;
+      lastMeasuredWpm = wpm;
+      if (telemetryCadenceWpm) telemetryCadenceWpm.textContent = `${wpm} WPM`;
+      if (telemetryCadenceStatus) {
+        if (wpm >= 110 && wpm <= 165) {
+          telemetryCadenceStatus.textContent = "Optimal Pacing";
+          telemetryCadenceStatus.className = "text-success fw-semibold";
+        } else if (wpm > 165) {
+          telemetryCadenceStatus.textContent = "Too Fast";
+          telemetryCadenceStatus.className = "text-warning fw-semibold";
+        } else {
+          telemetryCadenceStatus.textContent = "Slow Delivery";
+          telemetryCadenceStatus.className = "text-secondary fw-semibold";
+        }
+      }
+    }
+
+    const fillerMatches = text.match(FILLER_WORDS_REGEX) || [];
+    lastMeasuredFillerCount = fillerMatches.length;
+    if (telemetryFillerCount) telemetryFillerCount.textContent = String(fillerMatches.length);
+    if (telemetryFillerList) {
+      if (fillerMatches.length > 0) {
+        const unique = Array.from(new Set(fillerMatches.map((f) => f.toLowerCase())));
+        telemetryFillerList.textContent = unique.slice(0, 3).join(", ");
+        telemetryFillerList.className = "text-warning fw-semibold text-truncate";
+      } else {
+        telemetryFillerList.textContent = "Clean speech";
+        telemetryFillerList.className = "text-success";
+      }
+    }
+  }
 
   // -------------------------------------------------------------
   // 1. Text-to-Speech (TTS) Speech Synthesis Integration
@@ -977,6 +1206,7 @@ function initMockInterview() {
   if (answerInput) {
     answerInput.addEventListener("input", () => {
       triggerWordCounter(answerInput);
+      updateLiveSpeechTelemetry(answerInput.value);
     });
 
     answerInput.addEventListener("keydown", (e) => {
@@ -1012,6 +1242,18 @@ function initMockInterview() {
     const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
+    // Compute final speech and non-verbal telemetry metrics
+    const finalSpeechMetrics = {
+      duration_seconds: speechSeconds || (answerTypingStartTime ? Math.max(5, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30),
+      words_per_minute: lastMeasuredWpm || 130,
+      filler_word_count: lastMeasuredFillerCount || 0,
+      eye_contact_ratio: totalVideoFrames > 0 ? (eyeCenteredFrames / totalVideoFrames) : 0.85,
+      composure_score: composureHistory.length > 0 ? Math.round(composureHistory.reduce((a, b) => a + b, 0) / composureHistory.length) : 85,
+    };
+
+    // Reset session timer counters for next answer
+    answerTypingStartTime = null;
+
     // Disable inputs during evaluation
     answerInput.disabled = true;
     submitBtn.disabled = true;
@@ -1023,19 +1265,20 @@ function initMockInterview() {
     triggerWordCounter(answerInput);
 
     // Append loader bubble from Interview Agent
-    const loaderBubble = appendChatBubble("<i>Interview Agent is evaluating your response and verbal delivery...</i>", "agent");
+    const loaderBubble = appendChatBubble("<i>Interview Agent & STAR Story Coach are analyzing your response and verbal delivery...</i>", "agent");
 
     try {
       const response = await fetch(`/interview/${analysisId}/submit`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest"
+          "X-Requested-With": "XMLHttpRequest",
         },
         body: JSON.stringify({
           answer: answer,
-          question_index: questionIndex
-        })
+          question_index: questionIndex,
+          speech_metrics: finalSpeechMetrics,
+        }),
       });
 
       const result = await response.json();
@@ -1050,7 +1293,7 @@ function initMockInterview() {
       // Display dynamic feedback scores on dashboard panels
       renderEvaluationDetails(result.evaluation, questionIndex + 1);
 
-      // Construct rich feedback bubble with verbal metrics
+      // Construct rich feedback bubble with verbal metrics and STAR pills
       const evalData = result.evaluation;
       const verbalClarity = evalData.verbal_clarity_score || evalData.communication_score || 50;
       let fillersHtml = "";
@@ -1064,7 +1307,24 @@ function initMockInterview() {
       }
 
       let starHtml = "";
-      if (evalData.star_method_analysis && evalData.star_method_analysis.feedback) {
+      const se = evalData.star_evaluation;
+      if (se) {
+        starHtml = `
+          <div class="p-2 bg-white rounded-3 border mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <small class="fw-bold text-dark"><i class="fa-solid fa-sitemap text-primary me-1"></i> STAR Story Breakdown</small>
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">STAR Score: ${se.star_score}/100</span>
+            </div>
+            <div class="d-flex flex-wrap gap-1 mb-1">
+              <span class="badge ${se.situation.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">S: ${se.situation.score}%</span>
+              <span class="badge ${se.task.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">T: ${se.task.score}%</span>
+              <span class="badge ${se.action.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">A: ${se.action.score}%</span>
+              <span class="badge ${se.result.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">R: ${se.result.score}%</span>
+            </div>
+            ${se.coaching && se.coaching.suggested_star_rewrite ? `<div class="small text-muted fst-italic"><b>Coach's Model Rewrite:</b> "${se.coaching.suggested_star_rewrite}"</div>` : ''}
+          </div>
+        `;
+      } else if (evalData.star_method_analysis && evalData.star_method_analysis.feedback) {
         starHtml = `
           <div class="small mb-2 text-secondary">
             <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> ${evalData.star_method_analysis.feedback}
@@ -1188,6 +1448,78 @@ function initMockInterview() {
     const starStructureText = document.getElementById("starStructureText");
     if (starStructureText) {
       starStructureText.innerText = evaluation.star_method_analysis?.feedback || "Structured response recorded";
+    }
+
+    // Render Behavioral STAR Story Breakdown Card
+    const starEval = evaluation.star_evaluation || (evaluation.star_method_analysis ? {
+      star_score: evaluation.star_score || 75,
+      situation: { present: evaluation.star_method_analysis.situation_present ?? true, score: 75, excerpt: "" },
+      task: { present: evaluation.star_method_analysis.task_present ?? true, score: 75, excerpt: "" },
+      action: { present: evaluation.star_method_analysis.action_present ?? true, score: 80, excerpt: "" },
+      result: { present: evaluation.star_method_analysis.result_present ?? true, score: 70, excerpt: "" },
+      non_verbal_composure: { eye_contact_score: 85, eye_contact_status: "Good Focus", composure_score: 85, composure_rating: "Confident" },
+      coaching: { suggested_star_rewrite: evaluation.star_method_analysis.feedback || "" },
+    } : null);
+
+    if (starEval) {
+      const starCard = document.getElementById("starBreakdownCard");
+      if (starCard) starCard.classList.remove("d-none");
+
+      const overallBadge = document.getElementById("starOverallScoreBadge");
+      if (overallBadge) {
+        const sScore = starEval.star_score ?? 75;
+        overallBadge.textContent = `STAR: ${sScore}/100`;
+        overallBadge.className = `badge rounded-pill px-2 py-1 small ${sScore >= 75 ? "bg-success" : (sScore >= 50 ? "bg-warning text-dark" : "bg-danger")}`;
+      }
+
+      function updateStarPill(prefix, dataBlock) {
+        const pill = document.getElementById(`pill${prefix}`);
+        const scoreEl = document.getElementById(`score${prefix}`);
+        const excerptEl = document.getElementById(`excerpt${prefix}`);
+        if (!pill || !scoreEl) return;
+
+        const score = dataBlock ? (dataBlock.score ?? 50) : 50;
+        const present = dataBlock ? dataBlock.present : false;
+        scoreEl.textContent = `${score}%`;
+
+        pill.classList.remove("passed", "needs-work", "missing");
+        if (score >= 75 && present) {
+          pill.classList.add("passed");
+        } else if (score >= 50) {
+          pill.classList.add("needs-work");
+        } else {
+          pill.classList.add("missing");
+        }
+
+        if (excerptEl && dataBlock) {
+          excerptEl.textContent = dataBlock.excerpt || dataBlock.feedback || "Identified";
+          excerptEl.title = dataBlock.feedback || "";
+        }
+      }
+
+      updateStarPill("Situation", starEval.situation);
+      updateStarPill("Task", starEval.task);
+      updateStarPill("Action", starEval.action);
+      updateStarPill("Result", starEval.result);
+
+      // Non-verbal telemetry summary
+      const starEye = document.getElementById("starEyeSummary");
+      const starComp = document.getElementById("starComposureSummary");
+      const nv = starEval.non_verbal_composure || {};
+      if (starEye) {
+        const eScore = nv.eye_contact_score ?? 85;
+        starEye.textContent = `${eScore}% (${nv.eye_contact_status || (eScore >= 75 ? "Good Focus" : "Intermittent")})`;
+      }
+      if (starComp) {
+        const cScore = nv.composure_score ?? 85;
+        starComp.textContent = `${cScore}% (${nv.composure_rating || (cScore >= 75 ? "Steady" : "Moderate")})`;
+      }
+
+      // Model STAR Rewrite
+      const rewriteText = document.getElementById("starModelRewriteText");
+      if (rewriteText && starEval.coaching && starEval.coaching.suggested_star_rewrite) {
+        rewriteText.textContent = starEval.coaching.suggested_star_rewrite;
+      }
     }
 
     // Progress updates

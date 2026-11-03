@@ -768,3 +768,72 @@ html, body {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
+
+/* ==============================================================================
+   AI Behavioral STAR Story Coach & Non-Verbal Composure Analyzer Styles
+   ============================================================================== */
+.star-pill {
+  transition: all 0.2s ease-in-out;
+  border-left: 3px solid transparent !important;
+}
+
+.star-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.star-pill.passed {
+  border-left: 3px solid var(--success-green) !important;
+  background-color: rgba(52, 168, 83, 0.05) !important;
+}
+
+.star-pill.needs-work {
+  border-left: 3px solid var(--warning-yellow) !important;
+  background-color: rgba(251, 188, 4, 0.05) !important;
+}
+
+.star-pill.missing {
+  border-left: 3px solid #ea4335 !important;
+  background-color: rgba(234, 67, 53, 0.05) !important;
+}
+
+.star-component-score {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.star-excerpt {
+  color: var(--text-secondary);
+  max-width: 100%;
+}
+
+#cameraEyeReticle {
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.4);
+  animation: reticlePulse 2s infinite ease-in-out;
+}
+
+@keyframes reticlePulse {
+  0% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.4; }
+  50% { transform: translate(-50%, -50%) scale(1.04); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.4; }
+}
+
+.pointer-events-none {
+  pointer-events: none;
+}
+
+.shadow-xs {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-bs-theme="dark"] .star-pill {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] #starBreakdownCard {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+}

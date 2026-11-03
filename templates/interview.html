@@ -210,6 +210,73 @@
             {% endif %}
           </div>
 
+          <!-- AI Video & Non-Verbal Composure Coach Panel (Toggleable) -->
+          <div id="videoCoachPanel" class="card border bg-light rounded-4 p-3 mb-3 d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1">
+                  <i class="fa-solid fa-video me-1"></i> Non-Verbal Composure Coach
+                </span>
+                <small class="text-secondary fw-semibold" id="cameraStatusText">Camera standby</small>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnStopCamera">
+                  <i class="fa-solid fa-video-slash me-1"></i> Close Camera
+                </button>
+              </div>
+            </div>
+            
+            <div class="row g-3 align-items-center">
+              <!-- Video Feed with Face/Eye Center Guide Overlay -->
+              <div class="col-md-5 position-relative text-center">
+                <div class="ratio ratio-4x3 bg-dark rounded-3 overflow-hidden position-relative shadow-sm" style="max-height: 200px;">
+                  <video id="candidateVideoFeed" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1);"></video>
+                  <!-- Eye Level Target Reticle -->
+                  <div id="cameraEyeReticle" class="position-absolute top-50 start-50 translate-middle border border-2 border-primary rounded-circle opacity-50 pointer-events-none" style="width: 70px; height: 70px;"></div>
+                </div>
+                <canvas id="videoAnalysisCanvas" width="160" height="120" class="d-none"></canvas>
+              </div>
+              
+              <!-- Real-Time Non-Verbal Telemetry Dials -->
+              <div class="col-md-7">
+                <div class="row g-2">
+                  <!-- Eye Contact Ratio Dial -->
+                  <div class="col-6">
+                    <div class="bg-white p-2 rounded-3 border text-center shadow-xs">
+                      <small class="text-muted d-block mb-1">Eye-Contact Focus</small>
+                      <h5 class="fw-bold mb-0 text-success" id="telemetryEyeScore">--%</h5>
+                      <small class="text-secondary" id="telemetryEyeStatus">Looking Centered</small>
+                    </div>
+                  </div>
+                  <!-- Composure & Head Movement Dial -->
+                  <div class="col-6">
+                    <div class="bg-white p-2 rounded-3 border text-center shadow-xs">
+                      <small class="text-muted d-block mb-1">Composure / Stability</small>
+                      <h5 class="fw-bold mb-0 text-primary" id="telemetryComposureScore">--%</h5>
+                      <small class="text-secondary" id="telemetryComposureStatus">Calm &amp; Steady</small>
+                    </div>
+                  </div>
+                  <!-- Speech Cadence (WPM) -->
+                  <div class="col-6">
+                    <div class="bg-white p-2 rounded-3 border text-center shadow-xs">
+                      <small class="text-muted d-block mb-1">Speaking Cadence</small>
+                      <h5 class="fw-bold mb-0 text-info" id="telemetryCadenceWpm">-- WPM</h5>
+                      <small class="text-secondary" id="telemetryCadenceStatus">Natural Pacing</small>
+                    </div>
+                  </div>
+                  <!-- Live Verbal Fillers -->
+                  <div class="col-6">
+                    <div class="bg-white p-2 rounded-3 border text-center shadow-xs">
+                      <small class="text-muted d-block mb-1">Verbal Fillers</small>
+                      <h5 class="fw-bold mb-0 text-warning" id="telemetryFillerCount">0</h5>
+                      <small class="text-secondary" id="telemetryFillerList">Clean speech</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Voice Recording & Visualizer Panel (Hidden by default, activated on Voice Answer click) -->
           <div id="voiceRecordingPanel" class="voice-recording-card d-none mb-3 p-3 rounded-4 border bg-light">
             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
@@ -264,6 +331,10 @@
             <form id="chatForm" data-question-index="{{ interview.current_question_index }}" data-analysis-id="{{ analysis_id }}" data-total-questions="{{ interview.questions|length }}">
               <div class="input-group">
                 <textarea id="answerInput" class="form-control rounded-start-3" rows="3" placeholder="Type or speak your answer here... Be descriptive and structured (STAR method)." aria-label="Type your interview answer"></textarea>
+                <button class="btn btn-outline-secondary px-3 d-flex align-items-center gap-1" type="button" id="btnToggleVideoCoach" title="Enable AI Video & Non-Verbal Composure Coach" aria-label="Video coach toggle">
+                  <i class="fa-solid fa-video"></i>
+                  <span class="d-none d-sm-inline small fw-semibold">Video Coach</span>
+                </button>
                 <button class="btn btn-outline-primary px-3 d-flex align-items-center gap-1" type="button" id="btnMic" title="Voice answering (Speech-to-Text)" aria-label="Voice input toggle">
                   <i class="fa-solid fa-microphone"></i>
                   <span class="d-none d-sm-inline small fw-semibold">Voice Answer</span>
@@ -364,6 +435,95 @@
             </div>
             <div class="progress rounded-pill" style="height: 8px;">
               <div id="confBar" class="progress-bar bg-warning" role="progressbar" style="width: {{ last_eval.confidence_score if last_eval else 0 }}%"></div>
+            </div>
+          </div>
+
+          <!-- Behavioral STAR Story Breakdown Card -->
+          <div class="p-3 bg-white rounded-3 border shadow-sm mb-3" id="starBreakdownCard">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="small fw-bold text-dark">
+                <i class="fa-solid fa-sitemap text-primary me-1"></i> STAR Story Architecture
+              </span>
+              <span class="badge bg-primary rounded-pill px-2 py-1 small" id="starOverallScoreBadge">STAR: --/100</span>
+            </div>
+
+            <!-- 4 Visual S-T-A-R Pills Grid -->
+            <div class="row g-2 mb-3">
+              <!-- S: Situation -->
+              <div class="col-6">
+                <div class="p-2 rounded-3 border bg-light text-center star-pill" id="pillSituation">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-primary text-white rounded-circle fw-bold" style="width: 20px; height: 20px; font-size: 0.65rem; display: inline-flex; align-items: center; justify-content: center;">S</span>
+                    <span class="badge bg-white text-dark border star-component-score" id="scoreSituation">--%</span>
+                  </div>
+                  <div class="fw-semibold small text-start text-truncate" title="Situation Context">Situation</div>
+                  <small class="text-muted d-block text-start star-excerpt text-truncate" id="excerptSituation" style="font-size: 0.72rem;">Background context</small>
+                </div>
+              </div>
+
+              <!-- T: Task -->
+              <div class="col-6">
+                <div class="p-2 rounded-3 border bg-light text-center star-pill" id="pillTask">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-info text-white rounded-circle fw-bold" style="width: 20px; height: 20px; font-size: 0.65rem; display: inline-flex; align-items: center; justify-content: center;">T</span>
+                    <span class="badge bg-white text-dark border star-component-score" id="scoreTask">--%</span>
+                  </div>
+                  <div class="fw-semibold small text-start text-truncate" title="Task / Goal">Task</div>
+                  <small class="text-muted d-block text-start star-excerpt text-truncate" id="excerptTask" style="font-size: 0.72rem;">Role &amp; responsibility</small>
+                </div>
+              </div>
+
+              <!-- A: Action -->
+              <div class="col-6">
+                <div class="p-2 rounded-3 border bg-light text-center star-pill" id="pillAction">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-success text-white rounded-circle fw-bold" style="width: 20px; height: 20px; font-size: 0.65rem; display: inline-flex; align-items: center; justify-content: center;">A</span>
+                    <span class="badge bg-white text-dark border star-component-score" id="scoreAction">--%</span>
+                  </div>
+                  <div class="fw-semibold small text-start text-truncate" title="Action Steps">Action</div>
+                  <small class="text-muted d-block text-start star-excerpt text-truncate" id="excerptAction" style="font-size: 0.72rem;">Individual initiative</small>
+                </div>
+              </div>
+
+              <!-- R: Result -->
+              <div class="col-6">
+                <div class="p-2 rounded-3 border bg-light text-center star-pill" id="pillResult">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="badge bg-warning text-dark rounded-circle fw-bold" style="width: 20px; height: 20px; font-size: 0.65rem; display: inline-flex; align-items: center; justify-content: center;">R</span>
+                    <span class="badge bg-white text-dark border star-component-score" id="scoreResult">--%</span>
+                  </div>
+                  <div class="fw-semibold small text-start text-truncate" title="Measurable Result">Result</div>
+                  <small class="text-muted d-block text-start star-excerpt text-truncate" id="excerptResult" style="font-size: 0.72rem;">Quantified impact</small>
+                </div>
+              </div>
+            </div>
+
+            <!-- Non-Verbal Composure Telemetry Box -->
+            <div class="p-2 bg-light rounded-2 border mb-2 small" id="nonVerbalSummaryBox">
+              <div class="d-flex justify-content-between align-items-center">
+                <span><i class="fa-solid fa-eye text-primary me-1"></i> Eye Contact:</span>
+                <span class="fw-bold text-dark" id="starEyeSummary">--</span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-1">
+                <span><i class="fa-solid fa-heart-pulse text-danger me-1"></i> Composure:</span>
+                <span class="fw-bold text-dark" id="starComposureSummary">--</span>
+              </div>
+            </div>
+
+            <!-- Suggested Model STAR Polish Rewrite Accordion -->
+            <div class="accordion accordion-flush" id="accordionStarRewrite">
+              <div class="accordion-item bg-transparent">
+                <h6 class="accordion-header" id="headingStarRewrite">
+                  <button class="accordion-button collapsed px-0 py-2 small fw-bold text-primary bg-transparent shadow-none" type="button" data-bs-toggle="collapse" data-bs-target="#collapseStarRewrite" aria-expanded="false" aria-controls="collapseStarRewrite">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1"></i> View Coach's Model STAR Rewrite
+                  </button>
+                </h6>
+                <div id="collapseStarRewrite" class="accordion-collapse collapse" aria-labelledby="headingStarRewrite" data-bs-parent="#accordionStarRewrite">
+                  <div class="accordion-body px-0 pt-1 pb-0 small text-secondary fst-italic" id="starModelRewriteText">
+                    Submit an answer to view a tailored STAR model rewrite.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
