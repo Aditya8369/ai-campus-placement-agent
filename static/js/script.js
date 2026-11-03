@@ -1219,6 +1219,25 @@ function initMockInterview() {
     if (techScoreEl && cats.Technical) techScoreEl.innerText = `${cats.Technical.average_score}%`;
     if (behScoreEl && cats.Behavioral) behScoreEl.innerText = `${cats.Behavioral.average_score}%`;
 
+    // Also populate inline completed scorecard if present
+    const scorecardTech = document.getElementById("scorecardTechScore");
+    const scorecardComm = document.getElementById("scorecardCommScore");
+    const scorecardClarity = document.getElementById("scorecardClarityScore");
+    const barTech = document.getElementById("progressBarTech");
+    const barComm = document.getElementById("progressBarComm");
+    const barClarity = document.getElementById("progressBarClarity");
+
+    const tScore = cats.Technical ? Math.round(cats.Technical.average_score) : Math.round(summary.overall_score || 0);
+    const cScore = cats.HR ? Math.round(cats.HR.average_score) : Math.round(summary.overall_score || 0);
+    const clarScore = summary.verbal_metrics ? Math.round(summary.verbal_metrics.average_verbal_clarity || 0) : cScore;
+
+    if (scorecardTech) scorecardTech.innerText = `${tScore}%`;
+    if (barTech) barTech.style.width = `${tScore}%`;
+    if (scorecardComm) scorecardComm.innerText = `${cScore}%`;
+    if (barComm) barComm.style.width = `${cScore}%`;
+    if (scorecardClarity) scorecardClarity.innerText = `${clarScore}%`;
+    if (barClarity) barClarity.style.width = `${clarScore}%`;
+
     // Display Verbal Performance Metrics in Modal if available
     const modalVerbalStatsCard = document.getElementById("modalVerbalStatsCard");
     const modalVerbalClarity = document.getElementById("modalVerbalClarity");
@@ -1650,6 +1669,27 @@ function initProgressTracker() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  // -------------------------------------------------------------
+  // Share Profile URL Copy Handler
+  // -------------------------------------------------------------
+  const btnCopyShareUrl = document.getElementById("btnCopyShareUrl");
+  const shareProfileUrl = document.getElementById("shareProfileUrl");
+  if (btnCopyShareUrl && shareProfileUrl) {
+    btnCopyShareUrl.addEventListener("click", () => {
+      shareProfileUrl.select();
+      shareProfileUrl.setSelectionRange(0, 99999);
+      navigator.clipboard.writeText(shareProfileUrl.value).then(() => {
+        const originalHtml = btnCopyShareUrl.innerHTML;
+        btnCopyShareUrl.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+        btnCopyShareUrl.classList.replace("btn-outline-primary", "btn-success");
+        setTimeout(() => {
+          btnCopyShareUrl.innerHTML = originalHtml;
+          btnCopyShareUrl.classList.replace("btn-success", "btn-outline-primary");
+        }, 2000);
+      });
+    });
   }
 }
 

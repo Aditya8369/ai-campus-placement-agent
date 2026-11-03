@@ -45,6 +45,55 @@ def cleanup_expired_files(max_age_hours: int = 24, dry_run: bool = False) -> dic
     return stats
 
 
+def cleanup_database_records(max_age_days: int = 30, dry_run: bool = False) -> dict:
+    """
+    Cleans up obsolete analysis and interview records older than max_age_days.
+    Returns a dictionary of deleted record counts.
+    """
+    from utils.database import get_db_connection
+    cutoff_timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time() - (max_age_days * 86400)))
+    conn = get_db_connection()
+    stats = {"analyses_scanned": 0, "analyses_purged": 0, "interviews_purged": 0}
+
+    try:
+        # Scan analyses count
+        row = conn.execute("SELECT count(*) as cnt FROM analyses WHERE created_at < ?", (cutoff_timestamp,)).fetchone()
+        stats["analyses_scanned"] = row["cnt"] if row else 0
+
+        if not dry_run and stats["analyses_scanned"] > 0:
+            # Delete corresponding interview sessions first to maintain integrity
+            conn.execute(
+                "DELETE FROM interviews WHERE analysis_id IN (SELECT id FROM analyses WHERE created_at < ?)",
+                (cutoff_timestamp,),
+            )
+            stats["interviews_purged"] = conn.total_changes
+
+            cur = conn.execute("DELETE FROM analyses WHERE created_at < ?", (cutoff_timestamp,))
+            stats["analyses_purged"] = cur.rowcount
+            conn.commit()
+            logger.info(f"Purged {stats['analyses_purged']} old analyses before {cutoff_timestamp}")
+    except Exception as e:
+        logger.error(f"Error purging old database records: {e}")
+        stats["error"] = str(e)
+    finally:
+        conn.close()
+
+    return stats
+
+
+def run_full_retention_policy(max_file_age_hours: int = 24, max_db_age_days: int = 30, dry_run: bool = False) -> dict:
+    """
+    Executes a comprehensive data retention pass across both local artifacts and database entries.
+    """
+    file_stats = cleanup_expired_files(max_age_hours=max_file_age_hours, dry_run=dry_run)
+    db_stats = cleanup_database_records(max_age_days=max_db_age_days, dry_run=dry_run)
+    return {
+        "files": file_stats,
+        "database": db_stats,
+        "dry_run": dry_run
+    }
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     print("Executing automated upload and report file cleanup...")
