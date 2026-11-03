@@ -86,7 +86,7 @@
 
     <!-- Actions Bar -->
     <div class="row g-4 mb-4">
-      <div class="col-md-6">
+      <div class="col-lg-4 col-md-6">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
@@ -95,7 +95,16 @@
           </a>
         </div>
       </div>
-      <div class="col-md-6">
+      <div class="col-lg-4 col-md-6">
+        <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
+          <h5 class="fw-bold mb-2">Tailored Outreach &amp; Pitch</h5>
+          <p class="text-secondary small mb-3">Generate tailored formal cover letters, high-response LinkedIn InMail, and cold recruiter emails for {{ analysis.company_name }}.</p>
+          <a href="#outreachSectionCard" class="btn btn-custom-outline py-2 px-4 rounded-pill mx-auto" id="btnJumpToOutreach">
+            <i class="fa-solid fa-paper-plane me-2"></i> Craft Outreach Pitch
+          </a>
+        </div>
+      </div>
+      <div class="col-lg-4 col-md-12">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
           <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
@@ -316,6 +325,169 @@
         {% endif %}
       </div>
 
+    </div>
+
+    <!-- Tailored Cover Letter & Outreach Pitch Generator -->
+    <div class="card glass-card p-4 border-0 mb-4" id="outreachSectionCard" data-outreach='{{ initial_outreach_json|safe }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Outreach &amp; Talent Pitch Studio</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-paper-plane text-primary me-2"></i> Tailored Cover Letter &amp; Recruiter Outreach
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#outreachPreviewModal" id="btnOpenOutreachModal">
+            <i class="fa-solid fa-expand me-1"></i> Interactive Studio
+          </button>
+          <a href="/api/outreach/{{ analysis_id }}/download?format=docx" class="btn btn-sm btn-outline-success rounded-pill px-3" id="btnQuickDownloadDocx" title="Download all materials as formatted Word Document">
+            <i class="fa-solid fa-file-word me-1"></i> Download .docx
+          </a>
+          <a href="/api/outreach/{{ analysis_id }}/download?format=txt" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnQuickDownloadTxt" title="Download all materials as plain text">
+            <i class="fa-solid fa-file-lines me-1"></i> Download .txt
+          </a>
+        </div>
+      </div>
+
+      <!-- Tone Switcher & Generator Controls -->
+      <div class="p-3 bg-light rounded-4 border mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-lg-6 col-12 d-flex flex-wrap align-items-center gap-2">
+            <span class="small fw-bold text-secondary me-2"><i class="fa-solid fa-sliders text-primary me-1"></i> Outreach Tone:</span>
+            <div class="btn-group" role="group" id="outreachToneGroup" aria-label="Outreach Tone Selector">
+              <button type="button" class="btn btn-sm btn-primary active rounded-start-pill px-3 outreach-tone-btn" data-tone="formal">
+                <i class="fa-solid fa-briefcase me-1"></i> Formal
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary px-3 outreach-tone-btn" data-tone="enthusiastic">
+                <i class="fa-solid fa-fire me-1"></i> Enthusiastic
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-end-pill px-3 outreach-tone-btn" data-tone="concise">
+                <i class="fa-solid fa-bolt me-1"></i> Concise
+              </button>
+            </div>
+          </div>
+          <div class="col-lg-4 col-md-7 col-12">
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white border-end-0 rounded-start-pill"><i class="fa-solid fa-user-tag text-muted"></i></span>
+              <input type="text" id="outreachRoleInput" class="form-control rounded-end-pill" placeholder="Target Role Title (e.g. Software Engineer)" value="{{ initial_outreach.role_title|default('Software Engineer') }}">
+            </div>
+          </div>
+          <div class="col-lg-2 col-md-5 col-12 text-lg-end">
+            <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnGenerateOutreach">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="outreachSpinner" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-wand-magic-sparkles me-1" id="outreachIcon"></i> Regenerate
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Outreach Format Navigation Tabs -->
+      <ul class="nav nav-pills mb-3 gap-2" id="outreachPillsTab" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active rounded-pill px-3 py-2 fw-semibold" id="pills-cover-tab" data-bs-toggle="pill" data-bs-target="#pills-cover" type="button" role="tab" aria-controls="pills-cover" aria-selected="true">
+            <i class="fa-solid fa-file-contract me-1"></i> Formal Cover Letter
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="pills-linkedin-tab" data-bs-toggle="pill" data-bs-target="#pills-linkedin" type="button" role="tab" aria-controls="pills-linkedin" aria-selected="false">
+            <i class="fa-brands fa-linkedin me-1"></i> LinkedIn InMail Pitch
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="pills-cold-tab" data-bs-toggle="pill" data-bs-target="#pills-cold" type="button" role="tab" aria-controls="pills-cold" aria-selected="false">
+            <i class="fa-solid fa-envelope-open-text me-1"></i> Cold Recruiter Email
+          </button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="pills-highlights-tab" data-bs-toggle="pill" data-bs-target="#pills-highlights" type="button" role="tab" aria-controls="pills-highlights" aria-selected="false">
+            <i class="fa-solid fa-star me-1"></i> Pitch Highlights &amp; Subject Lines
+          </button>
+        </li>
+      </ul>
+
+      <!-- Outreach Tabs Content -->
+      <div class="tab-content" id="outreachPillsTabContent">
+        <!-- Tab 1: Formal Cover Letter -->
+        <div class="tab-pane fade show active" id="pills-cover" role="tabpanel" aria-labelledby="pills-cover-tab" tabindex="0">
+          <div class="p-4 bg-light rounded-4 border position-relative">
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
+              <span class="small text-muted">
+                <i class="fa-solid fa-building me-1"></i> Tailored for <b>{{ analysis.company_name }}</b>
+                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-2 outreach-active-tone-badge">Tone: {{ initial_outreach.tone|capitalize }}</span>
+              </span>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-copy-outreach" data-copy-target="coverLetterContent">
+                  <i class="fa-regular fa-copy me-1"></i> Copy Letter
+                </button>
+              </div>
+            </div>
+            <div class="outreach-text-display small lh-lg text-dark" id="coverLetterContent" style="white-space: pre-wrap; font-family: inherit;">{{ initial_outreach.cover_letter }}</div>
+          </div>
+        </div>
+
+        <!-- Tab 2: LinkedIn InMail -->
+        <div class="tab-pane fade" id="pills-linkedin" role="tabpanel" aria-labelledby="pills-linkedin-tab" tabindex="0">
+          <div class="p-4 bg-light rounded-4 border position-relative">
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
+              <span class="small text-muted">
+                <i class="fa-brands fa-linkedin text-primary me-1"></i> Crisp 75-120 Word Referral / Recruiter Connection
+                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-2 outreach-active-tone-badge">Tone: {{ initial_outreach.tone|capitalize }}</span>
+              </span>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-copy-outreach" data-copy-target="linkedinInmailContent">
+                  <i class="fa-regular fa-copy me-1"></i> Copy InMail
+                </button>
+              </div>
+            </div>
+            <div class="outreach-text-display small lh-lg text-dark" id="linkedinInmailContent" style="white-space: pre-wrap; font-family: inherit;">{{ initial_outreach.linkedin_inmail }}</div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Cold Recruiter Email -->
+        <div class="tab-pane fade" id="pills-cold" role="tabpanel" aria-labelledby="pills-cold-tab" tabindex="0">
+          <div class="p-4 bg-light rounded-4 border position-relative">
+            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
+              <span class="small text-muted">
+                <i class="fa-solid fa-at text-danger me-1"></i> High-Converting Recruiter Pitch
+                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-2 outreach-active-tone-badge">Tone: {{ initial_outreach.tone|capitalize }}</span>
+              </span>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-copy-outreach" data-copy-target="coldEmailContent">
+                  <i class="fa-regular fa-copy me-1"></i> Copy Email
+                </button>
+              </div>
+            </div>
+            <div class="outreach-text-display small lh-lg text-dark" id="coldEmailContent" style="white-space: pre-wrap; font-family: inherit;">{{ initial_outreach.cold_email }}</div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Pitch Highlights & Subject Lines -->
+        <div class="tab-pane fade" id="pills-highlights" role="tabpanel" aria-labelledby="pills-highlights-tab" tabindex="0">
+          <div class="p-4 bg-light rounded-4 border">
+            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-bullhorn text-warning me-2"></i> Cold Email Subject Line Variants</h6>
+            <div class="list-group mb-4" id="subjectLinesContainer">
+              {% for sl in initial_outreach.subject_lines %}
+                <div class="list-group-item d-flex justify-content-between align-items-center border bg-white rounded-3 mb-2">
+                  <span class="small fw-medium text-dark"><i class="fa-regular fa-envelope me-2 text-primary"></i>{{ sl }}</span>
+                  <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-text" data-copy-value="{{ sl }}" title="Copy Subject Line">
+                    <i class="fa-regular fa-copy"></i>
+                  </button>
+                </div>
+              {% endfor %}
+            </div>
+
+            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-award text-success me-2"></i> Elevator Pitch Bullet Points</h6>
+            <ul class="list-unstyled mb-0" id="keyHighlightsContainer">
+              {% for hl in initial_outreach.key_highlights %}
+                <li class="p-2 bg-white rounded-3 border mb-2 small text-secondary d-flex align-items-start">
+                  <i class="fa-solid fa-check-circle text-success me-2 mt-1"></i>
+                  <span>{{ hl }}</span>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Resume Feedback Panel -->
@@ -723,6 +895,67 @@
                 <i class="fa-brands fa-whatsapp me-1"></i> WhatsApp
               </a>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Outreach Preview & Customization Modal -->
+    <div class="modal fade" id="outreachPreviewModal" tabindex="-1" aria-labelledby="outreachPreviewModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content rounded-4 border-0 shadow">
+          <div class="modal-header border-bottom pb-3">
+            <div>
+              <span class="text-primary fw-semibold text-uppercase small">Outreach Studio</span>
+              <h5 class="modal-title fw-bold mb-0" id="outreachPreviewModalLabel">
+                <i class="fa-solid fa-paper-plane text-primary me-2"></i> Interactive Outreach &amp; Cover Letter Studio
+              </h5>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="small fw-semibold text-secondary">Switch Tone:</span>
+                <div class="btn-group btn-group-sm" role="group" id="modalToneGroup">
+                  <button type="button" class="btn btn-outline-primary modal-tone-btn active" data-tone="formal">Formal</button>
+                  <button type="button" class="btn btn-outline-primary modal-tone-btn" data-tone="enthusiastic">Enthusiastic</button>
+                  <button type="button" class="btn btn-outline-primary modal-tone-btn" data-tone="concise">Concise</button>
+                </div>
+              </div>
+              <ul class="nav nav-pills nav-pills-sm gap-1" id="modalSectionTabs" role="tablist">
+                <li class="nav-item">
+                  <button class="nav-link active rounded-pill px-3 py-1 small fw-semibold" data-modal-target="cover_letter">Cover Letter</button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link rounded-pill px-3 py-1 small fw-semibold" data-modal-target="linkedin_inmail">LinkedIn InMail</button>
+                </li>
+                <li class="nav-item">
+                  <button class="nav-link rounded-pill px-3 py-1 small fw-semibold" data-modal-target="cold_email">Cold Email</button>
+                </li>
+              </ul>
+            </div>
+            <div class="mb-3">
+              <textarea id="modalOutreachEditor" class="form-control rounded-3 p-3 font-monospace small" rows="12" style="resize: vertical; line-height: 1.6;" placeholder="Generated outreach content..."></textarea>
+            </div>
+            <div class="d-flex justify-content-between align-items-center small text-muted">
+              <span id="modalWordCount">0 words | 0 characters</span>
+              <span class="text-secondary"><i class="fa-solid fa-pen-to-square me-1"></i> Editable before download/copy</span>
+            </div>
+          </div>
+          <div class="modal-footer border-top pt-3 d-flex justify-content-between flex-wrap gap-2">
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-primary rounded-pill px-3" id="btnModalCopyText">
+                <i class="fa-solid fa-copy me-1"></i> Copy to Clipboard
+              </button>
+              <button type="button" class="btn btn-outline-success rounded-pill px-3" id="btnModalDownloadDocx">
+                <i class="fa-solid fa-file-word me-1"></i> Download .docx
+              </button>
+              <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnModalDownloadTxt">
+                <i class="fa-solid fa-file-lines me-1"></i> Download .txt
+              </button>
+            </div>
+            <button type="button" class="btn btn-light border rounded-pill px-4" data-bs-dismiss="modal">Close</button>
           </div>
         </div>
       </div>
