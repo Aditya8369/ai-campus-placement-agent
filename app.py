@@ -52,11 +52,7 @@ from utils.gemini import (
     format_ai_error_for_user,
 )
 from utils.report_generator import generate_pdf_report
-from utils.gemini import (
-    AIAnalysisError,
-    AIRateLimitError,
-    format_ai_error_for_user,
-)
+from utils.rate_limiter import rate_limit
 from utils.async_pipeline import (
     create_analysis_task,
     get_analysis_task,
@@ -79,10 +75,57 @@ app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
 
 
+@app.before_request
+def assign_request_id():
+    """Assign or extract an X-Request-ID for distributed tracing and structured correlation."""
+    from flask import g
+    req_id = request.headers.get("X-Request-ID")
+    if not req_id:
+        req_id = str(uuid.uuid4())
+    g.request_id = req_id
+
+
+@app.after_request
+def inject_correlation_headers(response):
+    """Echo the X-Request-ID correlation header in every response for client observability."""
+    from flask import g
+    req_id = getattr(g, "request_id", None)
+    if req_id:
+        response.headers["X-Request-ID"] = req_id
+    return response
+
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     flash("Uploaded file exceeds the 16MB size limit. Please upload a smaller PDF.", "error")
     return redirect(url_for("index"))
+
+
+@app.after_request
+def set_security_headers(response):
+    """
+    Applies security headers to every HTTP response:
+    - Content-Security-Policy (CSP) restricting script, style, and connect sources
+    - X-Content-Type-Options: nosniff
+    - X-Frame-Options: SAMEORIGIN
+    - Referrer-Policy: strict-origin-when-cross-origin
+    - Permissions-Policy: camera=(), microphone=(), geolocation=()
+    """
+    csp_directives = [
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://va.vercel-scripts.com",
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
+        "img-src 'self' data: https:",
+        "connect-src 'self' https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+        "frame-ancestors 'self'",
+    ]
+    response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    return response
 
 # Ensure directories exist
 os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
@@ -203,6 +246,7 @@ def _extract_and_validate_resume(req):
 
 
 @app.route("/analyze", methods=["POST"])
+@rate_limit(max_requests=15, window_seconds=60, scope="analyze_submission", is_api=False)
 def analyze():
     """
     Handles PDF resume uploads, processes files, calls coordinator,
@@ -470,6 +514,7 @@ def interview(analysis_id: str) -> str:
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
+@rate_limit(max_requests=30, window_seconds=60, scope="interview_eval", is_api=True)
 def submit_interview_answer(analysis_id: str):
     """
     Endpoint that evaluates a candidate response dynamically and updates session progress.
@@ -557,6 +602,38 @@ def submit_interview_answer(analysis_id: str):
     except Exception as e:
         logger.error(f"Failed to process answer submission: {str(e)}")
         return jsonify({"error": f"Internal process error evaluating response: {str(e)}"}), 500
+
+
+@app.route("/interview/<analysis_id>/reset", methods=["POST"])
+def reset_interview_session(analysis_id: str):
+    """
+    Resets an active mock interview session back to question index 0 with empty answers,
+    enabling students to retake and practice rounds anew without losing the parent analysis.
+    """
+    try:
+        raw_round = request.args.get("round", "").lower()
+        session_id = f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else analysis_id
+
+        session = get_interview_session(session_id)
+        if not session:
+            return jsonify({"success": False, "error": "Interview session not found"}), 404
+
+        update_interview_session(
+            interview_id=session_id,
+            current_question_index=0,
+            answers_list=[],
+            completed=False,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": "Interview session reset successfully. You can now retake this round.",
+            "session_id": session_id,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error resetting interview session: {exc}")
+        return jsonify({"success": False, "error": str(exc)}), 500
+
 
 
 @app.route("/api/interview/<analysis_id>/coding-problem", methods=["GET"])
