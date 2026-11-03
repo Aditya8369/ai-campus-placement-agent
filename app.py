@@ -29,7 +29,9 @@ from utils.database import (
     get_interview_session,
     update_interview_session,
     get_student_versions,
-    get_previous_analysis
+    get_previous_analysis,
+    create_database_backup,
+    verify_database_integrity,
 )
 from utils.progress_tracker import (
     calculate_version_delta,
@@ -927,67 +929,42 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/healthz", methods=["GET"], endpoint="healthz")
-@app.route("/api/health", methods=["GET"], endpoint="api_health")
-def health_check():
+@app.route("/api/admin/database/integrity", methods=["GET"])
+def api_database_integrity():
     """
-    Production-grade Kubernetes / Cloud liveness and readiness probe endpoint.
-    Performs checks on:
-    - SQLite database connectivity and query response time
-    - Storage directories accessibility (uploads, reports)
-    - Gemini API key configuration status
+    Returns database integrity verification status and table statistics.
     """
-    start_time = time.time()
-    checks = {
-        "database": {"status": "unknown"},
-        "storage": {"status": "unknown"},
-        "gemini_config": {"status": "unknown"},
-    }
-    all_healthy = True
-
-    # 1. Database check
-    try:
-        conn = get_db_connection()
-        conn.execute("SELECT 1").fetchone()
-        conn.close()
-        checks["database"] = {"status": "healthy", "engine": "sqlite"}
-    except Exception as db_err:
-        all_healthy = False
-        checks["database"] = {"status": "unhealthy", "error": str(db_err)}
-
-    # 2. Storage write permissions
-    try:
-        uploads_ok = os.path.exists(config.UPLOAD_FOLDER) and os.access(config.UPLOAD_FOLDER, os.W_OK)
-        reports_ok = os.path.exists(config.REPORT_FOLDER) and os.access(config.REPORT_FOLDER, os.W_OK)
-        if uploads_ok and reports_ok:
-            checks["storage"] = {"status": "healthy", "writable": True}
-        else:
-            all_healthy = False
-            checks["storage"] = {
-                "status": "unhealthy",
-                "uploads_writable": uploads_ok,
-                "reports_writable": reports_ok,
-            }
-    except Exception as st_err:
-        all_healthy = False
-        checks["storage"] = {"status": "unhealthy", "error": str(st_err)}
-
-    # 3. Gemini API key presence
-    api_key = config.GEMINI_API_KEY
-    if api_key and api_key != "YOUR_GEMINI_API_KEY_HERE":
-        checks["gemini_config"] = {"status": "configured"}
-    else:
-        checks["gemini_config"] = {"status": "unconfigured_or_placeholder"}
-
-    latency_ms = round((time.time() - start_time) * 1000, 2)
-    http_status = 200 if all_healthy else 503
-
+    integrity_data = verify_database_integrity()
+    status_code = 200 if integrity_data.get("healthy") else 500
     return jsonify({
-        "status": "healthy" if all_healthy else "degraded",
-        "service": "ai-campus-placement-agent",
-        "latency_ms": latency_ms,
-        "checks": checks,
-    }), http_status
+        "success": integrity_data.get("healthy", False),
+        "integrity": integrity_data
+    }), status_code
+
+
+@app.route("/api/admin/database/backup", methods=["POST"])
+def api_database_backup():
+    """
+    Triggers an atomic online hot backup of the SQLite database and returns metadata.
+    """
+    try:
+        backup_filename = f"placement_backup_{int(time.time())}.db"
+        backup_path = os.path.join(config.BASE_DIR, backup_filename)
+        create_database_backup(backup_path)
+
+        file_size = os.path.getsize(backup_path) if os.path.exists(backup_path) else 0
+        return jsonify({
+            "success": True,
+            "message": "Online hot backup completed successfully.",
+            "backup_filename": backup_filename,
+            "size_bytes": file_size,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error creating admin database backup: {exc}")
+        return jsonify({
+            "success": False,
+            "error": str(exc),
+        }), 500
 
 
 if __name__ == "__main__":
