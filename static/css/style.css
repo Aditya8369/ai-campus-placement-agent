@@ -770,56 +770,70 @@ html, body {
 }
 
 /* ==============================================================================
-   Batch Company Comparison & Offer Likelihood Matrix Styles
+   AI Behavioral STAR Story Coach & Non-Verbal Composure Analyzer Styles
    ============================================================================== */
-.company-pill-badge {
-  background-color: #ffffff;
-  color: var(--text-dark);
-  border: 1px solid var(--border-color);
-  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+.star-pill {
+  transition: all 0.2s ease-in-out;
+  border-left: 3px solid transparent !important;
 }
 
-.company-pill-badge:hover {
-  border-color: var(--primary-blue);
-  background-color: var(--secondary-light);
-  transform: translateY(-1px);
+.star-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
 
-.company-pill-badge.active,
-.company-pill-badge:has(input:checked) {
-  background-color: #e8f0fe !important;
-  color: var(--primary-blue) !important;
-  border-color: var(--primary-blue) !important;
-  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.15);
+.star-pill.passed {
+  border-left: 3px solid var(--success-green) !important;
+  background-color: rgba(52, 168, 83, 0.05) !important;
 }
 
-.company-pill-badge .pill-check-icon {
-  display: none;
+.star-pill.needs-work {
+  border-left: 3px solid var(--warning-yellow) !important;
+  background-color: rgba(251, 188, 4, 0.05) !important;
 }
 
-.company-pill-badge.active .pill-check-icon,
-.company-pill-badge:has(input:checked) .pill-check-icon {
-  display: inline-flex;
+.star-pill.missing {
+  border-left: 3px solid #ea4335 !important;
+  background-color: rgba(234, 67, 53, 0.05) !important;
 }
 
-[data-bs-theme="dark"] .company-pill-badge {
-  background-color: #202124;
-  color: #e8eaed;
-  border-color: #5f6368;
+.star-component-score {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 999px;
 }
 
-[data-bs-theme="dark"] .company-pill-badge.active,
-[data-bs-theme="dark"] .company-pill-badge:has(input:checked) {
-  background-color: #1a3c6b !important;
-  color: #8ab4f8 !important;
-  border-color: #8ab4f8 !important;
+.star-excerpt {
+  color: var(--text-secondary);
+  max-width: 100%;
 }
 
-.likelihood-rank-card {
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+#cameraEyeReticle {
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.4);
+  animation: reticlePulse 2s infinite ease-in-out;
 }
 
-.likelihood-rank-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+@keyframes reticlePulse {
+  0% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.4; }
+  50% { transform: translate(-50%, -50%) scale(1.04); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(0.96); opacity: 0.4; }
+}
+
+.pointer-events-none {
+  pointer-events: none;
+}
+
+.shadow-xs {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+[data-bs-theme="dark"] .star-pill {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] #starBreakdownCard {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
 }

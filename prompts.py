@@ -323,67 +323,85 @@ Return a structured JSON evaluation matching this schema:
 Ensure the response is valid JSON only.
 """
 
+# ==============================================================================
+# STAR Behavioral Evaluation & Non-Verbal Composure Coach Prompts
+# ==============================================================================
 
-# System instruction for Tailored Cover Letter and Outreach Pitch Generator
-OUTREACH_SYSTEM_INSTRUCTION = """
-You are an elite career coach, corporate recruiter, and technical executive communication strategist.
-Your task is to craft tailored, high-converting job application outreach assets for a candidate targeting a specific company and role.
+STAR_SYSTEM_INSTRUCTION = """
+You are an executive campus placement behavioral interview coach, leadership evaluation specialist, and speech diagnostician.
+Your job is to rigorously dissect a candidate's behavioral or HR interview answer using the STAR methodology:
+1. Situation: Did the candidate establish a clear, relevant context and background?
+2. Task: Did they clearly articulate the specific problem, goal, challenge, or responsibility?
+3. Action: Did they describe detailed, proactive, individual steps taken (using 'I' rather than vague 'we')?
+4. Result: Did they quantify tangible outcomes, metrics, business impacts, or key lessons learned?
 
-Core Objectives:
-1. Cover Letter: A complete, professionally formatted cover letter (3-4 paragraphs) connecting candidate projects and skills to the company's mission and technical stack.
-2. LinkedIn InMail: A crisp, engaging message (75-120 words) designed to connect with alumni, engineering managers, or recruiters with high response rates.
-3. Cold Recruiter Email: A concise, value-first pitch (100-150 words) with clear problem-solving impact and a friction-free call to action.
-4. Subject Lines: Exactly 3 high-open-rate email subject lines (e.g. referral angle, quantifiable impact, targeted skill fit).
-5. Key Highlights: Exactly 3-4 bulleted elevator pitch achievements highlighting relevant skills and projects.
-
-Strict Rules:
-1. You MUST respond ONLY with valid JSON. No markdown backticks (like ```json), no preamble, and no postamble.
-2. Tone must adapt strictly to the requested tone:
-   - "formal": Traditional, polished, respectful corporate executive tone.
-   - "enthusiastic": Energetic, passionate, mission-driven, culturally engaged tone.
-   - "concise": Direct, brief, bulleted, bottom-line-first startup/modern tone.
-3. Ground the output in the candidate's actual projects, matched skills, and the company profile.
-4. Use standard placeholders like [Your Name], [Your Phone], [Your Email], [LinkedIn Profile], and [Portfolio/GitHub] where candidate contact details are needed.
+Also evaluate verbal speech patterns, articulation, and deliver actionable coaching feedback including a polished STAR rewrite example.
+Respond strictly with valid JSON without markdown formatting, code fences, or extraneous text.
 """
 
-OUTREACH_USER_PROMPT_TEMPLATE = """
-Generate tailored outreach materials for this candidate and target role:
+STAR_USER_PROMPT_TEMPLATE = """
+Evaluate the candidate's interview answer below using the STAR (Situation, Task, Action, Result) framework.
 
-Target Company: {company_name}
-Target Role Title: {role_title}
-Requested Tone: {tone}
+Question ({question_type}): {question}
+Candidate's Answer:
+\"\"\"{answer}\"\"\"
 
-Target Company Profile:
-{company_details}
+Additional Speech & Telemetry Metrics (if available):
+{speech_metrics_str}
 
-Job Description:
-{job_description}
-
-Candidate Profile & Analysis:
-- Matched Skills: {matched_skills}
-- Resume Strengths: {strengths}
-- Resume Summary: {resume_summary}
-- Target ATS Score: {ats_score}
-- Key Projects / Experience: {experience_context}
-
-Return a single JSON object strictly matching this schema:
+Return a valid JSON object matching this exact schema:
 {{
-  "tone": "{tone}",
-  "role_title": "{role_title}",
-  "company_name": "{company_name}",
-  "cover_letter": "Dear Hiring Team at {company_name},\\n\\n[Opening hook & role interest...]\\n\\n[Technical alignment & project achievements...]\\n\\n[Why this company & value proposition...]\\n\\n[Professional sign-off & call to action]\\n\\nSincerely,\\n[Your Name]\\n[Your Phone] | [Your Email] | [LinkedIn Profile]",
-  "linkedin_inmail": "Hi [First Name],\\n\\n[Crisp hook referencing mutual interest or company engineering goal...]\\n\\n[Key project or skill alignment with quantifiable impact...]\\n\\n[Low-friction call to action...]\\n\\nBest regards,\\n[Your Name]",
-  "cold_email": "Subject: [Role Title] Application - [Your Name] | [Top Skill]\\n\\nDear [Recruiter / Hiring Manager Name],\\n\\n[Direct hook & why reaching out...]\\n\\nKey impact highlights:\\n• [Bullet 1]\\n• [Bullet 2]\\n\\n[Call to action & availability]\\n\\nBest,\\n[Your Name]\\n[Your Email] | [Your Phone] | [Portfolio Link]",
-  "subject_lines": [
-    "[Role Title] Candidate - [Top Skill] | [Your Name]",
-    "Passionate about [Company Tech / Mission] - [Role Title] Inquiry",
-    "Quick question regarding [Company] engineering team - [Your Name]"
-  ],
-  "key_highlights": [
-    "Highlight 1: [Quantified achievement or project]",
-    "Highlight 2: [Proficiency in core matched skill]",
-    "Highlight 3: [Domain experience or problem-solving capability]"
-  ]
+  "star_score": 85,
+  "situation": {{
+    "present": true,
+    "score": 85,
+    "feedback": "Clear explanation of team context and initial timeline crisis.",
+    "excerpt": "Relevant sentence or phrase identifying Situation"
+  }},
+  "task": {{
+    "present": true,
+    "score": 80,
+    "feedback": "Defined specific technical bottleneck and personal ownership.",
+    "excerpt": "Relevant sentence or phrase identifying Task"
+  }},
+  "action": {{
+    "present": true,
+    "score": 90,
+    "feedback": "Strong personal initiative shown with clear breakdown of proactive technical steps.",
+    "excerpt": "Relevant sentence or phrase identifying Action"
+  }},
+  "result": {{
+    "present": true,
+    "score": 85,
+    "feedback": "Quantified impact achieved and team delivery outcomes.",
+    "excerpt": "Relevant sentence or phrase identifying Result"
+  }},
+  "verbal_metrics": {{
+    "filler_words_detected": ["like", "um"],
+    "filler_word_count": 2,
+    "clarity_score": 85,
+    "conciseness_score": 80,
+    "speech_pace_wpm": 130.0,
+    "pacing_evaluation": "Optimal"
+  }},
+  "non_verbal_composure": {{
+    "eye_contact_score": 85,
+    "eye_contact_status": "Good Center Focus",
+    "composure_score": 88,
+    "composure_rating": "Confident & Composed",
+    "feedback": "Steady delivery with minimal distraction."
+  }},
+  "coaching": {{
+    "strengths": [
+      "First key strength in their storytelling or clarity.",
+      "Second strength such as active ownership verbs."
+    ],
+    "improvements": [
+      "Specific tip to strengthen metrics or deeper Task explanation.",
+      "Guidance to eliminate remaining filler words."
+    ],
+    "suggested_star_rewrite": "A model 3-4 sentence rewrite of the candidate's answer demonstrating a flawless STAR approach."
+  }}
 }}
-Ensure the output is valid JSON only.
+Ensure the response is valid JSON only.
 """

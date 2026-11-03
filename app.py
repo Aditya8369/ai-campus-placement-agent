@@ -74,7 +74,7 @@ from utils.job_feed_service import JobFeedService
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
-from agents.outreach_agent import OutreachGeneratorAgent
+from agents.star_agent import StarEvaluationAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -138,7 +138,7 @@ def set_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
     return response
 
 # Ensure directories exist
@@ -155,7 +155,7 @@ except Exception as db_err:
 coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
-outreach_agent = OutreachGeneratorAgent()
+star_evaluation_agent = StarEvaluationAgent()
 
 def get_available_companies() -> list:
     """
@@ -174,55 +174,68 @@ def get_available_companies() -> list:
     return default_companies
 
 
-@app.route("/healthz")
-@app.route("/api/health")
-@app.route("/health")
+@app.route("/healthz", methods=["GET"], endpoint="healthz")
+@app.route("/health", methods=["GET"], endpoint="health")
+@app.route("/api/health", methods=["GET"], endpoint="api_health")
 def health_check():
     """
-    Health check endpoint verifying application uptime, database connectivity, and storage permissions.
+    Production-grade Kubernetes / Cloud liveness and readiness probe endpoint.
+    Performs checks on:
+    - SQLite database connectivity and query response time
+    - Storage directories accessibility (uploads, reports)
+    - Gemini API key configuration status
     """
-    start_time = time.perf_counter()
-    db_check = {"status": "healthy"}
+    start_time = time.time()
+    checks = {
+        "database": {"status": "unknown"},
+        "storage": {"status": "unknown"},
+        "gemini_config": {"status": "unknown"},
+    }
+    all_healthy = True
+
+    # 1. Database check
     try:
         conn = get_db_connection()
         conn.execute("SELECT 1").fetchone()
         conn.close()
+        checks["database"] = {"status": "healthy", "engine": "sqlite"}
     except Exception as db_err:
-        logger.error(f"Healthcheck database error: {str(db_err)}")
-        db_check = {"status": "unhealthy", "error": str(db_err)}
+        all_healthy = False
+        checks["database"] = {"status": "unhealthy", "error": str(db_err)}
 
-    storage_check = {"status": "healthy"}
+    # 2. Storage write permissions
     try:
-        test_file = Path(config.UPLOAD_FOLDER) / f".health_probe_{uuid.uuid4().hex[:8]}"
-        test_file.write_text("ok", encoding="utf-8")
-        if test_file.exists():
-            test_file.unlink(missing_ok=True)
-    except Exception as st_err:
-        logger.error(f"Healthcheck storage error: {str(st_err)}")
-        storage_check = {"status": "unhealthy", "error": str(st_err)}
-
-    is_healthy = (db_check["status"] == "healthy" and storage_check["status"] == "healthy")
-    status_code = 200 if is_healthy else 503
-    latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
-
-    return (
-        jsonify(
-            {
-                "status": "healthy" if is_healthy else "degraded",
-                "service": "ai-campus-placement-agent",
-                "version": config.__version__,
-                "latency_ms": latency_ms,
-                "checks": {
-                    "database": db_check,
-                    "storage": storage_check,
-                    "gemini": {
-                        "configured": bool(config.GEMINI_API_KEY)
-                    }
-                }
+        uploads_ok = os.path.exists(config.UPLOAD_FOLDER) and os.access(config.UPLOAD_FOLDER, os.W_OK)
+        reports_ok = os.path.exists(config.REPORT_FOLDER) and os.access(config.REPORT_FOLDER, os.W_OK)
+        if uploads_ok and reports_ok:
+            checks["storage"] = {"status": "healthy", "writable": True}
+        else:
+            all_healthy = False
+            checks["storage"] = {
+                "status": "unhealthy",
+                "uploads_writable": uploads_ok,
+                "reports_writable": reports_ok,
             }
-        ),
-        status_code,
-    )
+    except Exception as st_err:
+        all_healthy = False
+        checks["storage"] = {"status": "unhealthy", "error": str(st_err)}
+
+    # 3. Gemini API key presence
+    api_key = config.GEMINI_API_KEY
+    if api_key and api_key != "YOUR_GEMINI_API_KEY_HERE":
+        checks["gemini_config"] = {"status": "configured"}
+    else:
+        checks["gemini_config"] = {"status": "unconfigured_or_placeholder"}
+
+    latency_ms = round((time.time() - start_time) * 1000, 2)
+    http_status = 200 if all_healthy else 503
+
+    return jsonify({
+        "status": "healthy" if all_healthy else "degraded",
+        "service": "ai-campus-placement-agent",
+        "latency_ms": latency_ms,
+        "checks": checks,
+    }), http_status
 
 @app.route("/")
 def index() -> str:
@@ -758,6 +771,18 @@ def submit_interview_answer(analysis_id: str):
             answer=candidate_response
         )
 
+        # Enhance with deep STAR evaluation and non-verbal speech telemetry
+        speech_telemetry = post_data.get("speech_metrics") or {}
+        star_eval = star_evaluation_agent.evaluate_star(
+            question=target_question["question"],
+            answer=candidate_response,
+            question_type=target_question["type"],
+            speech_metrics=speech_telemetry
+        )
+        evaluation_results["star_evaluation"] = star_eval
+        if "star_score" in star_eval:
+            evaluation_results["star_score"] = star_eval["star_score"]
+
         # Structure response details
         response_record = {
             "question_index": question_index,
@@ -805,6 +830,58 @@ def submit_interview_answer(analysis_id: str):
     except Exception as e:
         logger.error(f"Failed to process answer submission: {str(e)}")
         return jsonify({"error": f"Internal process error evaluating response: {str(e)}"}), 500
+
+
+@app.route("/api/interview/evaluate-star", methods=["POST"])
+@rate_limit(max_requests=30, window_seconds=60, scope="star_eval", is_api=True)
+def api_evaluate_star():
+    """
+    Evaluates candidate interview responses against the STAR behavioral framework
+    and analyzes verbal and non-verbal speech telemetry.
+    """
+    try:
+        data = request.get_json(silent=True) or request.form.to_dict() or {}
+        question = data.get("question", "").strip()
+        answer = data.get("answer", "").strip()
+        question_type = data.get("question_type", "Behavioral").strip()
+        analysis_id = data.get("analysis_id", "").strip()
+
+        raw_metrics = data.get("speech_metrics")
+        if isinstance(raw_metrics, str):
+            try:
+                speech_metrics = json.loads(raw_metrics)
+            except Exception:
+                speech_metrics = {}
+        elif isinstance(raw_metrics, dict):
+            speech_metrics = raw_metrics
+        else:
+            speech_metrics = {}
+
+        if not answer:
+            return jsonify({
+                "status": "error",
+                "message": "Answer text is required for STAR story evaluation."
+            }), 400
+
+        star_results = star_evaluation_agent.evaluate_star(
+            question=question,
+            answer=answer,
+            question_type=question_type,
+            speech_metrics=speech_metrics
+        )
+
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "star_evaluation": star_results
+        }), 200
+
+    except Exception as exc:
+        logger.error(f"Error in STAR evaluation endpoint: {exc}")
+        return jsonify({
+            "status": "error",
+            "message": str(exc)
+        }), 500
 
 
 @app.route("/interview/<analysis_id>/reset", methods=["POST"])
@@ -1367,32 +1444,26 @@ def api_database_backup():
 
 
 @app.route("/api/admin/retention/run", methods=["POST"])
-def api_admin_retention_run():
+def api_admin_run_retention():
     """
-    Admin endpoint to trigger data retention cleanup across uploads, reports, and database records.
+    Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
     """
     try:
-        data = request.get_json(silent=True) or {}
-        max_file_age_hours = int(data.get("max_file_age_hours", 24))
-        max_db_age_days = int(data.get("max_db_age_days", 30))
-        dry_run = bool(data.get("dry_run", False))
-
         from utils.cleanup import run_full_retention_policy
+        body = request.get_json(silent=True) or {}
+        max_file_age = int(body.get("max_file_age_hours", 24))
+        max_db_age = int(body.get("max_db_age_days", 30))
+        dry_run = bool(body.get("dry_run", False))
+
         results = run_full_retention_policy(
-            max_file_age_hours=max_file_age_hours,
-            max_db_age_days=max_db_age_days,
+            max_file_age_hours=max_file_age,
+            max_db_age_days=max_db_age,
             dry_run=dry_run
         )
-        return jsonify({
-            "status": "success",
-            "results": results
-        }), 200
-    except Exception as exc:
-        logger.error(f"Error running retention policy: {exc}")
-        return jsonify({
-            "status": "error",
-            "error": str(exc)
-        }), 500
+        return jsonify({"status": "success", "results": results}), 200
+    except Exception as e:
+        logger.error(f"Error during retention cycle execution: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 if __name__ == "__main__":
