@@ -54,6 +54,8 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
+from utils.report_generator import generate_pdf_report
+from utils.rate_limiter import rate_limit
 from utils.async_pipeline import (
     create_analysis_task,
     get_analysis_task,
@@ -200,6 +202,7 @@ def _extract_and_validate_resume(req):
 
 
 @app.route("/analyze", methods=["POST"])
+@rate_limit(max_requests=15, window_seconds=60, scope="analyze_submission", is_api=False)
 def analyze():
     """
     Handles PDF resume uploads, processes files, calls coordinator,
@@ -467,6 +470,7 @@ def interview(analysis_id: str) -> str:
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
+@rate_limit(max_requests=30, window_seconds=60, scope="interview_eval", is_api=True)
 def submit_interview_answer(analysis_id: str):
     """
     Endpoint that evaluates a candidate response dynamically and updates session progress.
