@@ -22,6 +22,9 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
         <button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap" data-bs-toggle="offcanvas"
           data-bs-target="#offcanvasRecentAnalyses" aria-controls="offcanvasRecentAnalyses" id="btnOpenRecentAnalyses">
           <i class="fa-solid fa-clock-rotate-left me-1"></i> <span class="d-none d-sm-inline">Recent</span> Analyses
@@ -145,20 +148,62 @@
                   placeholder="Paste the job post description here to check your matching compatibility..."></textarea>
               </div>
 
-              <!-- Target Company Select -->
+              <!-- Target Company & Multi-Company Matrix Mode Selector -->
               <div class="mb-4">
-                <label for="companySelect" class="form-label fw-semibold text-secondary">3. Select Target
-                  Company</label>
-                <select name="company" id="companySelect" class="form-select rounded-3">
-                  <option value="General">General Placement Preparation</option>
-                  {% for c in companies %}
-                  <option value="{{ c }}">{{ c }}</option>
-                  {% endfor %}
-                </select>
-                <button type="button" id="btnExploreCompany"
-                  class="btn btn-sm btn-outline-primary mt-2 rounded-pill w-100 w-sm-auto py-2">
-                  <i class="fa-solid fa-building me-1"></i> Explore Company Hiring Guide
-                </button>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <label for="companySelect" class="form-label fw-semibold text-secondary mb-0">3. Target Company Evaluation</label>
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="batchModeSwitch" name="batch_mode" value="true">
+                    <label class="form-check-label small fw-semibold text-primary" for="batchModeSwitch">
+                      <i class="fa-solid fa-layer-group me-1"></i> Multi-Company Matrix
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Single Company Dropdown (Default Mode) -->
+                <div id="singleCompanyContainer">
+                  <select name="company" id="companySelect" class="form-select rounded-3">
+                    <option value="General">General Placement Preparation</option>
+                    {% for c in companies %}
+                    <option value="{{ c }}">{{ c }}</option>
+                    {% endfor %}
+                  </select>
+                  <button type="button" id="btnExploreCompany"
+                    class="btn btn-sm btn-outline-primary mt-2 rounded-pill w-100 w-sm-auto py-2">
+                    <i class="fa-solid fa-building me-1"></i> Explore Company Hiring Guide
+                  </button>
+                </div>
+
+                <!-- Multi-Company Batch Selection Container (Interactive Pill Badges) -->
+                <div id="batchCompanyContainer" class="d-none mt-2 p-3 bg-light rounded-4 border">
+                  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <span class="small fw-bold text-dark">
+                      <i class="fa-solid fa-check-double text-primary me-1"></i> Choose Target Companies to Compare:
+                    </span>
+                    <div class="d-flex gap-1">
+                      <button type="button" id="btnSelectAllBatch" class="btn btn-link btn-sm text-decoration-none p-0 small fw-semibold">
+                        Select Top 4
+                      </button>
+                      <span class="text-muted small">|</span>
+                      <button type="button" id="btnClearAllBatch" class="btn btn-link btn-sm text-decoration-none p-0 small text-secondary">
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 mb-2" id="companyPillBadgesGroup">
+                    {% for c in companies %}
+                    <label class="company-pill-badge border rounded-pill px-3 py-1 small fw-semibold cursor-pointer user-select-none d-flex align-items-center gap-1 transition-all" data-company="{{ c }}" style="cursor: pointer;">
+                      <input type="checkbox" name="batch_companies" value="{{ c }}" class="form-check-input d-none company-pill-check" {% if loop.index <= 4 %}checked{% endif %}>
+                      <span class="pill-check-icon"><i class="fa-solid fa-check text-primary"></i></span>
+                      <span class="pill-name">{{ c }}</span>
+                    </label>
+                    {% endfor %}
+                  </div>
+                  <div class="small text-muted d-flex align-items-center gap-1 mt-1">
+                    <i class="fa-solid fa-chart-pie text-primary me-1"></i>
+                    <span>Runs concurrent background evaluations and generates a comparative Radar Chart &amp; Offer Probability Matrix.</span>
+                  </div>
+                </div>
               </div>
 
               <!-- Candidate Profile / Student ID for Multi-Version Progress Tracking -->

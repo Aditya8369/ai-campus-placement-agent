@@ -21,7 +21,7 @@ def get_db_connection() -> sqlite3.Connection:
 
 def init_db() -> None:
     """
-    Initializes the database tables (analyses, interviews) if they do not exist.
+    Initializes the database tables (analyses, interviews, batch_comparisons) if they do not exist.
     Performs migrations to ensure student_id and version_number columns are present.
     """
     conn = get_db_connection()
@@ -54,6 +54,18 @@ def init_db() -> None:
                 FOREIGN KEY (analysis_id) REFERENCES analyses (id)
             )
         """)
+
+        # Table 3: Store multi-company batch comparisons & offer likelihood matrices
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS batch_comparisons (
+                id TEXT PRIMARY KEY,
+                student_id TEXT DEFAULT 'default_student',
+                resume_filename TEXT NOT NULL,
+                companies_json TEXT NOT NULL,
+                results_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -67,6 +79,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
@@ -116,6 +129,30 @@ def save_analysis(
         ))
         conn.commit()
         logger.info(f"Analysis saved with ID: {analysis_id} (Student: {effective_student_id}, Version: v{version_number})")
+
+        # Automatically register or update candidate on the cohort benchmark leaderboard
+        try:
+            res_analysis = results_dict.get("resume_analysis", {}) if isinstance(results_dict, dict) else {}
+            job_match = results_dict.get("job_match", {}) if isinstance(results_dict, dict) else {}
+            ats_val = int(res_analysis.get("ats_score", 70))
+            match_val = int(job_match.get("match_percentage", 65))
+            skills_cnt = len(job_match.get("matched_skills", [])) if isinstance(job_match.get("matched_skills"), list) else 0
+
+            handle_suffix = abs(hash(analysis_id)) % 100
+            anon_handle = f"Candidate_{handle_suffix:02d}"
+
+            record_or_update_cohort_benchmark(
+                analysis_id=analysis_id,
+                student_handle=anon_handle,
+                department="Computer Science",
+                grad_year=2026,
+                ats_score=ats_val,
+                job_match_score=match_val,
+                target_company=company_name or "General",
+                skills_count=skills_cnt
+            )
+        except Exception as bench_err:
+            logger.warning(f"Failed to record cohort benchmark on save_analysis: {bench_err}")
     except Exception as e:
         logger.error(f"Error saving analysis {analysis_id} to database: {str(e)}")
         raise e
@@ -383,6 +420,9 @@ def verify_database_integrity() -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM interviews")
         interviews_count = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
+        cohort_count = cursor.fetchone()[0]
+
         cursor.execute("PRAGMA journal_mode")
         journal_mode = cursor.fetchone()[0]
 
@@ -393,6 +433,7 @@ def verify_database_integrity() -> Dict[str, Any]:
             "tables": {
                 "analyses_count": analyses_count,
                 "interviews_count": interviews_count,
+                "cohort_benchmarks_count": cohort_count,
             },
             "journal_mode": journal_mode,
         }
@@ -408,3 +449,58 @@ def verify_database_integrity() -> Dict[str, Any]:
     finally:
         conn.close()
 
+
+def save_batch_comparison(
+    batch_id: str,
+    student_id: str,
+    resume_filename: str,
+    companies_list: List[str],
+    results_dict: Dict[str, Any]
+) -> None:
+    """
+    Persists a multi-company batch comparison result into the SQLite database.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT OR REPLACE INTO batch_comparisons (
+                id, student_id, resume_filename, companies_json, results_json
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            batch_id,
+            effective_student_id,
+            resume_filename,
+            json.dumps(companies_list),
+            json.dumps(results_dict)
+        ))
+        conn.commit()
+        logger.info(f"Batch comparison saved with ID: {batch_id} ({len(companies_list)} companies)")
+    except Exception as e:
+        logger.error(f"Error saving batch comparison {batch_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_batch_comparison(batch_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a multi-company batch comparison record by ID, deserializing stored JSON.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM batch_comparisons WHERE id = ?", (batch_id,))
+        row = cursor.fetchone()
+        if row:
+            rec = dict(row)
+            rec["companies"] = json.loads(rec["companies_json"])
+            rec["results"] = json.loads(rec["results_json"])
+            return rec
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching batch comparison {batch_id}: {e}")
+        raise e
+    finally:
+        conn.close()

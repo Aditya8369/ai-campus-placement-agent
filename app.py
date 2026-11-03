@@ -1,8 +1,10 @@
 import os
+import io
 import uuid
 import json
 import time
 import logging
+from pathlib import Path
 from flask import (
     Flask,
     render_template,
@@ -32,12 +34,16 @@ from utils.database import (
     get_previous_analysis,
     create_database_backup,
     verify_database_integrity,
+    get_batch_comparison,
+    save_batch_comparison,
 )
+from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
     generate_side_by_side_diff
 )
+from utils.cohort_analytics import CohortAnalyticsService
 from utils.pdf_reader import (
     extract_text_from_pdf,
     extract_text_from_docx,
@@ -64,6 +70,7 @@ from utils.async_pipeline import (
     get_analysis_task,
     start_async_analysis,
 )
+from utils.job_feed_service import JobFeedService
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
@@ -311,6 +318,35 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # Multi-company batch comparison request
+        batch_companies = request.form.getlist("batch_companies")
+        if not batch_companies:
+            raw_comp = request.form.get("companies", "")
+            if raw_comp:
+                batch_companies = [c.strip() for c in raw_comp.split(",") if c.strip()]
+
+        if request.form.get("batch_mode") == "true" or (batch_companies and len(batch_companies) > 1):
+            if not batch_companies:
+                batch_companies = [selected_company] if selected_company != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
+            batch_payload = run_batch_company_comparison(
+                resume_text=extracted_resume_text,
+                companies=batch_companies,
+                job_description=job_description,
+                resume_filename=resume_filename,
+                student_id=student_id,
+                coordinator_agent=coordinator_agent,
+                save_to_db=True
+            )
+            redirect_url = url_for("view_batch_compare", batch_id=batch_payload["batch_id"])
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({
+                    "success": True,
+                    "batch_id": batch_payload["batch_id"],
+                    "redirect_url": redirect_url,
+                    "data": batch_payload
+                }), 200
+            return redirect(redirect_url)
+
         # Check for asynchronous execution request
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             task = create_analysis_task(
@@ -470,6 +506,121 @@ def get_analysis_task_status(task_id: str):
 
     return jsonify({"success": True, **task.to_dict()}), 200
 
+
+@app.route("/api/analysis/batch-compare", methods=["POST"])
+@app.route("/batch-compare", methods=["POST"])
+@rate_limit(max_requests=10, window_seconds=60, scope="batch_compare", is_api=True)
+def api_batch_compare():
+    """
+    Dedicated endpoint for multi-company batch placement evaluation.
+    Orchestrates concurrent evaluations, builds offer likelihood probability metrics,
+    and returns comparison rankings and Chart.js radar multi-dataset data.
+    """
+    try:
+        if request.is_json:
+            json_data = request.get_json(silent=True) or {}
+            resume_text = (json_data.get("resume_text") or "").strip()
+            companies = json_data.get("companies") or json_data.get("batch_companies") or []
+            if isinstance(companies, str):
+                companies = [c.strip() for c in companies.split(",") if c.strip()]
+            job_description = (json_data.get("job_description") or "").strip()
+            student_id = (json_data.get("student_id") or "default_student").strip()
+            resume_filename = json_data.get("resume_filename") or "pasted_resume.txt"
+            validation_error = None
+            if not resume_text:
+                validation_error = "Please provide resume text for batch comparison."
+        else:
+            resume_text, resume_filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+            companies = request.form.getlist("batch_companies") or request.form.getlist("companies")
+            if not companies:
+                raw_comp = request.form.get("companies", "")
+                if raw_comp:
+                    companies = [c.strip() for c in raw_comp.split(",") if c.strip()]
+                else:
+                    sel = request.form.get("company", "Google").strip()
+                    companies = [sel] if sel != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
+            job_description = request.form.get("job_description", "").strip()
+            student_id = request.form.get("student_id", "default_student").strip()
+
+        if validation_error:
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": validation_error}), 400
+            flash(validation_error, "error")
+            return redirect(url_for("index"))
+
+        if len(job_description) > 15000:
+            job_description = job_description[:15000]
+
+        batch_result = run_batch_company_comparison(
+            resume_text=resume_text,
+            companies=companies,
+            job_description=job_description,
+            resume_filename=resume_filename,
+            student_id=student_id,
+            coordinator_agent=coordinator_agent,
+            save_to_db=True
+        )
+
+        redirect_url = url_for("view_batch_compare", batch_id=batch_result["batch_id"])
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("async") == "true":
+            return jsonify({
+                "success": True,
+                "batch_id": batch_result["batch_id"],
+                "redirect_url": redirect_url,
+                "data": batch_result
+            }), 200
+
+        return redirect(redirect_url)
+
+    except Exception as exc:
+        logger.error(f"Batch comparison failed: {exc}")
+        friendly_error = format_ai_error_for_user(exc)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": friendly_error}), 500
+        flash(friendly_error, "error")
+        return redirect(url_for("index"))
+
+
+@app.route("/batch-compare/<batch_id>", methods=["GET"])
+def view_batch_compare(batch_id: str):
+    """
+    Renders the Company Comparison Matrix view featuring Chart.js Multi-Dataset
+    Radar charts and hiring probability rankings.
+    """
+    record = get_batch_comparison(batch_id)
+    if not record:
+        flash("Batch comparison record not found.", "error")
+        return redirect(url_for("index"))
+
+    batch_payload = record.get("results", {})
+    return render_template(
+        "batch_compare.html",
+        batch_id=batch_id,
+        batch=batch_payload,
+        comparisons=batch_payload.get("comparisons", []),
+        best_match=batch_payload.get("best_match", {}),
+        quickest_entry=batch_payload.get("quickest_entry", {}),
+        summary_insights=batch_payload.get("summary_insights", {}),
+        radar_data_json=json.dumps(batch_payload.get("radar_data", {}))
+    )
+
+
+@app.route("/api/analysis/batch-compare/<batch_id>", methods=["GET"])
+def api_get_batch_compare(batch_id: str):
+    """
+    Retrieves stored batch comparison results JSON for a given batch_id.
+    """
+    record = get_batch_comparison(batch_id)
+    if not record:
+        return jsonify({"success": False, "error": f"Batch '{batch_id}' not found."}), 404
+    return jsonify({
+        "success": True,
+        "batch_id": batch_id,
+        "data": record.get("results", {})
+    }), 200
+
+
 @app.route("/dashboard/<analysis_id>")
 def dashboard(analysis_id: str) -> str:
     """
@@ -490,6 +641,21 @@ def dashboard(analysis_id: str) -> str:
     previous_record = get_previous_analysis(student_id, current_version=current_version)
     delta_data = calculate_version_delta(analysis_record, previous_record)
     trend_series = build_longitudinal_series(all_versions)
+    initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
+
+    # Fetch initial recommended campus drives for seamless SSR
+    try:
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs()
+        job_matcher = JobRecommendationAgent()
+        initial_recommended_jobs = job_matcher.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            min_match=0
+        )
+    except Exception as job_err:
+        logger.error(f"Error fetching initial recommended campus drives: {job_err}")
+        initial_recommended_jobs = []
 
     return render_template(
         "dashboard.html",
@@ -500,8 +666,14 @@ def dashboard(analysis_id: str) -> str:
         previous_record=previous_record,
         delta_data=delta_data,
         trend_series=trend_series,
-        trend_series_json=json.dumps(trend_series)
+        trend_series_json=json.dumps(trend_series),
+        initial_outreach=initial_outreach,
+        initial_outreach_json=json.dumps(initial_outreach)
     )
+    return jsonify({
+        "success": True,
+        **view_data
+    }), 200
 
 @app.route("/interview/<analysis_id>")
 def interview(analysis_id: str) -> str:
@@ -947,6 +1119,137 @@ def download_pdf_report(analysis_id: str):
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
+
+@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
+@rate_limit(max_requests=20, window_seconds=60, scope="generate_outreach", is_api=True)
+def api_generate_outreach(analysis_id: str):
+    """
+    Generates tailored application outreach assets (formal cover letter, LinkedIn InMail,
+    cold recruiter email, subject lines, key highlights) for a given analysis ID.
+    Supports tone selection ('formal', 'enthusiastic', 'concise') and custom role title.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({
+                "success": False,
+                "error": f"Analysis '{analysis_id}' not found."
+            }), 404
+
+        payload = request.get_json(silent=True) or {}
+        tone = payload.get("tone") or request.form.get("tone", "formal")
+        role_title = payload.get("role_title") or request.form.get("role_title", "")
+
+        outreach_data = outreach_agent.generate_outreach(
+            analysis_record=analysis_record,
+            tone=tone,
+            role_title=role_title
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "tone": outreach_data.get("tone", tone),
+            "role_title": outreach_data.get("role_title", role_title),
+            "outreach": outreach_data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating outreach for {analysis_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate outreach materials: {str(e)}"
+        }), 500
+
+
+@app.route("/api/outreach/download", methods=["POST"])
+@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
+def api_download_outreach(analysis_id: str = None):
+    """
+    Downloads generated application outreach assets as formatted .docx or plain .txt files.
+    Can accept pre-generated outreach data in POST body or dynamically generate for an analysis_id.
+    """
+    try:
+        payload = (request.get_json(silent=True) or {}) if request.method == "POST" else {}
+        aid = analysis_id or payload.get("analysis_id") or request.args.get("analysis_id")
+        file_format = (payload.get("format") or request.args.get("format") or "docx").strip().lower()
+        tone = (payload.get("tone") or request.args.get("tone") or "formal").strip().lower()
+        role_title = payload.get("role_title") or request.args.get("role_title", "")
+        candidate_name = payload.get("candidate_name") or request.args.get("candidate_name", "Candidate")
+        content_type = (payload.get("content_type") or request.args.get("type") or "all").strip().lower()
+        custom_content = payload.get("content")
+
+        analysis_record = get_analysis(aid) if aid else None
+        company_name = (
+            payload.get("company_name")
+            or (analysis_record.get("company_name") if analysis_record else None)
+            or request.args.get("company_name")
+            or "Target_Company"
+        )
+
+        # If client passed complete outreach_data, use it; otherwise generate
+        outreach_data = payload.get("outreach") or payload.get("outreach_data")
+        if not outreach_data and analysis_record:
+            outreach_data = outreach_agent.generate_outreach(
+                analysis_record=analysis_record,
+                tone=tone,
+                role_title=role_title
+            )
+        elif not outreach_data and not analysis_record:
+            if not custom_content:
+                return jsonify({"success": False, "error": "Analysis record or outreach content required."}), 404
+            outreach_data = {
+                "tone": tone,
+                "role_title": role_title or "Software Engineer",
+                "company_name": company_name,
+                "cover_letter": custom_content,
+                "linkedin_inmail": custom_content,
+                "cold_email": custom_content,
+                "subject_lines": [],
+                "key_highlights": []
+            }
+
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Company"
+        safe_name = "".join(c for c in candidate_name if c.isalnum() or c in ("-", "_")) or "Candidate"
+
+        if file_format == "txt":
+            if custom_content and content_type != "all":
+                txt_data = custom_content
+                filename = f"{safe_name}_{safe_company}_{content_type}.txt"
+            else:
+                txt_data = outreach_agent.export_to_txt(
+                    outreach_data=outreach_data,
+                    candidate_name=safe_name,
+                    company_name=safe_company
+                )
+                filename = f"{safe_name}_{safe_company}_Outreach_Portfolio.txt"
+
+            return Response(
+                txt_data,
+                mimetype="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": f"attachment; filename=\"{filename}\""
+                }
+            )
+
+        # Default to DOCX
+        docx_bytes = outreach_agent.export_to_docx(
+            outreach_data=outreach_data,
+            candidate_name=safe_name,
+            company_name=safe_company
+        )
+        filename = f"{safe_name}_{safe_company}_Outreach_Portfolio.docx"
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"Error serving outreach download: {str(e)}")
+        return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
+
 @app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
@@ -1029,6 +1332,77 @@ def api_progress_diff(id_a: str, id_b: str):
     except Exception as e:
         logger.error(f"Error computing diff between {id_a} and {id_b}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
+def api_job_recommendations(analysis_id: str):
+    """
+    Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
+    scored against verified technical skill overlap, ATS readiness, and hiring requirements.
+    Supports query parameters: location, role_type, min_match, search, and force_refresh.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({
+                "success": False,
+                "error": f"Candidate analysis record '{analysis_id}' not found."
+            }), 404
+
+        location = request.args.get("location", "all").strip()
+        role_type = request.args.get("role_type", "all").strip()
+        search_query = request.args.get("search", "").strip()
+        force_refresh = request.args.get("force_refresh", "false").lower() in ("true", "1")
+
+        try:
+            raw_min = request.args.get("min_match", "0").strip()
+            min_match = int(raw_min) if raw_min else 0
+        except (ValueError, TypeError):
+            min_match = 0
+
+        try:
+            raw_limit = request.args.get("limit", "").strip()
+            limit = int(raw_limit) if raw_limit else None
+        except (ValueError, TypeError):
+            limit = None
+
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs(force_refresh=force_refresh)
+
+        matcher_agent = JobRecommendationAgent()
+        recommendations = matcher_agent.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            location=location,
+            role_type=role_type,
+            min_match=min_match,
+            search_query=search_query
+        )
+
+        if limit and limit > 0:
+            recommendations = recommendations[:limit]
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "company_target": analysis_record.get("company_name", "General"),
+            "total_available": len(active_jobs),
+            "total_matched": len(recommendations),
+            "filters_applied": {
+                "location": location,
+                "role_type": role_type,
+                "min_match": min_match,
+                "search": search_query
+            },
+            "jobs": recommendations
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error computing job recommendations for {analysis_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to compute job recommendations: {str(e)}"
+        }), 500
 
 
 @app.route("/api/admin/database/integrity", methods=["GET"])

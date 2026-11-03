@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillGapFilter();
   initRoadmapExport();
   initCodingSandbox();
+  initOutreachGenerator();
 });
 
 function initThemeToggle() {
@@ -484,6 +485,76 @@ function initFormUpload() {
     }, 1000);
   }
 
+  // Multi-Company Matrix Mode Controls
+  const batchModeSwitch = document.getElementById("batchModeSwitch");
+  const singleCompanyContainer = document.getElementById("singleCompanyContainer");
+  const batchCompanyContainer = document.getElementById("batchCompanyContainer");
+  const submitBtnSpan = uploadForm.querySelector("button[type='submit'] span");
+  const submitBtnIcon = uploadForm.querySelector("button[type='submit'] i");
+
+  if (batchModeSwitch) {
+    batchModeSwitch.addEventListener("change", () => {
+      const isBatch = batchModeSwitch.checked;
+      if (isBatch) {
+        if (singleCompanyContainer) singleCompanyContainer.classList.add("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.remove("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Compare Companies & Offer Matrix";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-chart-pie me-2";
+      } else {
+        if (singleCompanyContainer) singleCompanyContainer.classList.remove("d-none");
+        if (batchCompanyContainer) batchCompanyContainer.classList.add("d-none");
+        if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
+        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+      }
+    });
+  }
+
+  // Pill badge toggles
+  const companyPills = document.querySelectorAll(".company-pill-badge");
+  companyPills.forEach((pill) => {
+    const chk = pill.querySelector(".company-pill-check");
+    pill.addEventListener("click", (e) => {
+      if (e.target !== chk) {
+        chk.checked = !chk.checked;
+      }
+      if (chk.checked) {
+        pill.classList.add("active");
+      } else {
+        pill.classList.remove("active");
+      }
+    });
+    if (chk && chk.checked) {
+      pill.classList.add("active");
+    }
+  });
+
+  const btnSelectAllBatch = document.getElementById("btnSelectAllBatch");
+  if (btnSelectAllBatch) {
+    btnSelectAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill, idx) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = (idx < 4);
+          if (chk.checked) pill.classList.add("active");
+          else pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
+  const btnClearAllBatch = document.getElementById("btnClearAllBatch");
+  if (btnClearAllBatch) {
+    btnClearAllBatch.addEventListener("click", () => {
+      companyPills.forEach((pill) => {
+        const chk = pill.querySelector(".company-pill-check");
+        if (chk) {
+          chk.checked = false;
+          pill.classList.remove("active");
+        }
+      });
+    });
+  }
+
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -494,6 +565,47 @@ function initFormUpload() {
 
     if (!hasFile && !hasText) {
       alert("Please upload a PDF or DOCX resume, or paste your resume text first.");
+      return;
+    }
+
+    // Handle Multi-Company Matrix Mode Submission
+    if (batchModeSwitch && batchModeSwitch.checked) {
+      const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
+      if (selectedChecks.length === 0) {
+        alert("Please select at least one company to compare.");
+        return;
+      }
+
+      resetProgressPanel();
+      if (progressOverlay) progressOverlay.classList.remove("d-none");
+      if (progressTitle) progressTitle.textContent = "Multi-Company Batch Comparison";
+      if (progressSubtitle) progressSubtitle.textContent = "Evaluating candidate profile across selected recruiters in background workers...";
+      if (analysisProgressBar) {
+        analysisProgressBar.style.width = "40%";
+        analysisProgressBar.setAttribute("aria-valuenow", "40");
+      }
+
+      const formData = new FormData(uploadForm);
+      fetch("/api/analysis/batch-compare", {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "XMLHttpRequest" }
+      })
+        .then(async (response) => {
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || "Batch comparison failed.");
+          }
+          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressTitle) progressTitle.textContent = "Comparison Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 500);
+        })
+        .catch((err) => {
+          showPipelineError(err.message || "An unexpected error occurred during batch comparison.");
+        });
       return;
     }
 
@@ -2022,6 +2134,405 @@ function initProgressTracker() {
         }, 2000);
       });
     });
+  }
+}
+
+/**
+ * Outreach & Cover Letter Pitch Generator
+ * Handles tone switching, LLM / heuristic regeneration, 1-click clipboard copy,
+ * interactive studio modal editing, and formatted download (.docx and .txt).
+ */
+function initOutreachGenerator() {
+  const sectionCard = document.getElementById("outreachSectionCard");
+  if (!sectionCard) return;
+
+  const dashboardContainer = document.getElementById("dashboardContainer");
+  const analysisId = dashboardContainer ? dashboardContainer.dataset.analysisId : "";
+  const companyName = dashboardContainer ? dashboardContainer.dataset.company : "Company";
+
+  // Elements
+  const roleInput = document.getElementById("outreachRoleInput");
+  const btnGenerate = document.getElementById("btnGenerateOutreach");
+  const spinner = document.getElementById("outreachSpinner");
+  const icon = document.getElementById("outreachIcon");
+
+  const coverLetterContent = document.getElementById("coverLetterContent");
+  const linkedinContent = document.getElementById("linkedinInmailContent");
+  const coldEmailContent = document.getElementById("coldEmailContent");
+  const subjectLinesContainer = document.getElementById("subjectLinesContainer");
+  const keyHighlightsContainer = document.getElementById("keyHighlightsContainer");
+
+  const btnDownloadDocx = document.getElementById("btnQuickDownloadDocx");
+  const btnDownloadTxt = document.getElementById("btnQuickDownloadTxt");
+
+  // Modal elements
+  const modalEditor = document.getElementById("modalOutreachEditor");
+  const modalWordCount = document.getElementById("modalWordCount");
+  const btnModalCopy = document.getElementById("btnModalCopyText");
+  const btnModalDocx = document.getElementById("btnModalDownloadDocx");
+  const btnModalTxt = document.getElementById("btnModalDownloadTxt");
+
+  // State
+  let currentTone = "formal";
+  let modalActiveSection = "cover_letter";
+  const toneCache = {};
+
+  // Parse initial outreach if rendered from server
+  try {
+    if (sectionCard.dataset.outreach) {
+      const initial = JSON.parse(sectionCard.dataset.outreach);
+      if (initial && typeof initial === "object") {
+        currentTone = (initial.tone || "formal").toLowerCase();
+        toneCache[currentTone] = initial;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not parse initial outreach data:", err);
+  }
+
+  // Update Download Links
+  function updateDownloadUrls() {
+    const role = roleInput ? roleInput.value.trim() : "";
+    if (btnDownloadDocx && analysisId) {
+      btnDownloadDocx.href = `/api/outreach/${analysisId}/download?format=docx&tone=${currentTone}&role_title=${encodeURIComponent(role)}`;
+    }
+    if (btnDownloadTxt && analysisId) {
+      btnDownloadTxt.href = `/api/outreach/${analysisId}/download?format=txt&tone=${currentTone}&role_title=${encodeURIComponent(role)}`;
+    }
+  }
+  updateDownloadUrls();
+
+  // Tone Buttons (Card)
+  const toneButtons = document.querySelectorAll(".outreach-tone-btn");
+  toneButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selectedTone = btn.dataset.tone;
+      if (selectedTone === currentTone && toneCache[selectedTone]) return;
+      setTone(selectedTone, false);
+    });
+  });
+
+  // Tone Buttons (Modal)
+  const modalToneButtons = document.querySelectorAll(".modal-tone-btn");
+  modalToneButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selectedTone = btn.dataset.tone;
+      setTone(selectedTone, false);
+    });
+  });
+
+  function setTone(newTone, forceRegenerate) {
+    currentTone = (newTone || "formal").toLowerCase();
+
+    // Sync button styling
+    toneButtons.forEach((b) => {
+      if (b.dataset.tone === currentTone) {
+        b.classList.add("btn-primary", "active");
+        b.classList.remove("btn-outline-secondary");
+      } else {
+        b.classList.remove("btn-primary", "active");
+        b.classList.add("btn-outline-secondary");
+      }
+    });
+
+    modalToneButtons.forEach((b) => {
+      if (b.dataset.tone === currentTone) {
+        b.classList.add("btn-primary", "active");
+        b.classList.remove("btn-outline-primary");
+      } else {
+        b.classList.remove("btn-primary", "active");
+        b.classList.add("btn-outline-primary");
+      }
+    });
+
+    // Update tone badges
+    document.querySelectorAll(".outreach-active-tone-badge").forEach((badge) => {
+      badge.textContent = `Tone: ${currentTone.charAt(0).toUpperCase() + currentTone.slice(1)}`;
+    });
+
+    updateDownloadUrls();
+
+    if (!forceRegenerate && toneCache[currentTone]) {
+      renderOutreach(toneCache[currentTone]);
+    } else {
+      generateOutreach(currentTone);
+    }
+  }
+
+  // Regenerate button
+  if (btnGenerate) {
+    btnGenerate.addEventListener("click", () => {
+      generateOutreach(currentTone);
+    });
+  }
+
+  if (roleInput) {
+    roleInput.addEventListener("change", () => {
+      updateDownloadUrls();
+    });
+  }
+
+  // Fetch Outreach from API
+  async function generateOutreach(tone) {
+    if (!analysisId) return;
+
+    if (btnGenerate) {
+      btnGenerate.disabled = true;
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+    }
+
+    try {
+      const role = roleInput ? roleInput.value.trim() : "";
+      const res = await fetch(`/api/generate-outreach/${analysisId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tone: tone, role_title: role })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Generation failed with HTTP status ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success && data.outreach) {
+        toneCache[tone] = data.outreach;
+        renderOutreach(data.outreach);
+      }
+    } catch (err) {
+      console.error("Error generating outreach:", err);
+    } finally {
+      if (btnGenerate) {
+        btnGenerate.disabled = false;
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+      }
+    }
+  }
+
+  function renderOutreach(outreach) {
+    if (!outreach) return;
+
+    if (coverLetterContent && outreach.cover_letter) {
+      coverLetterContent.textContent = outreach.cover_letter;
+    }
+    if (linkedinContent && outreach.linkedin_inmail) {
+      linkedinContent.textContent = outreach.linkedin_inmail;
+    }
+    if (coldEmailContent && outreach.cold_email) {
+      coldEmailContent.textContent = outreach.cold_email;
+    }
+
+    // Render Subject Lines
+    if (subjectLinesContainer && Array.isArray(outreach.subject_lines)) {
+      subjectLinesContainer.innerHTML = outreach.subject_lines
+        .map(
+          (sl) => `
+          <div class="list-group-item d-flex justify-content-between align-items-center border bg-white rounded-3 mb-2">
+            <span class="small fw-medium text-dark"><i class="fa-regular fa-envelope me-2 text-primary"></i>${escapeHtml(sl)}</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-text" data-copy-value="${escapeHtml(sl)}" title="Copy Subject Line">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </div>`
+        )
+        .join("");
+      attachCopyTextListeners();
+    }
+
+    // Render Key Highlights
+    if (keyHighlightsContainer && Array.isArray(outreach.key_highlights)) {
+      keyHighlightsContainer.innerHTML = outreach.key_highlights
+        .map(
+          (hl) => `
+          <li class="p-2 bg-white rounded-3 border mb-2 small text-secondary d-flex align-items-start">
+            <i class="fa-solid fa-check-circle text-success me-2 mt-1"></i>
+            <span>${escapeHtml(hl)}</span>
+          </li>`
+        )
+        .join("");
+    }
+
+    // Sync modal editor if open
+    syncModalEditor();
+  }
+
+  // 1-Click Clipboard Copying
+  function copyToClipboard(text, btn) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(
+      () => showCopyFeedback(btn),
+      () => {
+        // Fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showCopyFeedback(btn);
+      }
+    );
+  }
+
+  function showCopyFeedback(btn) {
+    if (!btn) return;
+    const origHtml = btn.innerHTML;
+    const isPrimary = btn.classList.contains("btn-outline-primary") || btn.classList.contains("btn-primary");
+    btn.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+    if (isPrimary) {
+      btn.classList.add("btn-success");
+      btn.classList.remove("btn-outline-primary", "btn-primary");
+    }
+    setTimeout(() => {
+      btn.innerHTML = origHtml;
+      if (isPrimary) {
+        btn.classList.remove("btn-success");
+        btn.classList.add("btn-outline-primary");
+      }
+    }, 2000);
+  }
+
+  // Card Copy Buttons
+  document.querySelectorAll(".btn-copy-outreach").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.copyTarget;
+      const targetEl = document.getElementById(targetId);
+      if (targetEl) {
+        copyToClipboard(targetEl.textContent.trim(), btn);
+      }
+    });
+  });
+
+  function attachCopyTextListeners() {
+    document.querySelectorAll(".btn-copy-text").forEach((btn) => {
+      btn.removeEventListener("click", onCopyTextClick);
+      btn.addEventListener("click", onCopyTextClick);
+    });
+  }
+  function onCopyTextClick(e) {
+    const btn = e.currentTarget;
+    const val = btn.dataset.copyValue;
+    if (val) copyToClipboard(val, btn);
+  }
+  attachCopyTextListeners();
+
+  // -------------------------------------------------------------
+  // Modal Studio Controller
+  // -------------------------------------------------------------
+  const modalEl = document.getElementById("outreachPreviewModal");
+  if (modalEl) {
+    modalEl.addEventListener("show.bs.modal", () => {
+      syncModalEditor();
+    });
+  }
+
+  const modalSectionTabs = document.querySelectorAll("#modalSectionTabs [data-modal-target]");
+  modalSectionTabs.forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      modalSectionTabs.forEach((b) => b.classList.remove("active"));
+      tabBtn.classList.add("active");
+      modalActiveSection = tabBtn.dataset.modalTarget;
+      syncModalEditor();
+    });
+  });
+
+  function syncModalEditor() {
+    if (!modalEditor) return;
+    const cur = toneCache[currentTone] || {};
+    let text = "";
+    if (modalActiveSection === "cover_letter") {
+      text = cur.cover_letter || "";
+    } else if (modalActiveSection === "linkedin_inmail") {
+      text = cur.linkedin_inmail || "";
+    } else if (modalActiveSection === "cold_email") {
+      text = cur.cold_email || "";
+    }
+    modalEditor.value = text;
+    updateModalWordCount();
+  }
+
+  if (modalEditor) {
+    modalEditor.addEventListener("input", updateModalWordCount);
+  }
+
+  function updateModalWordCount() {
+    if (!modalEditor || !modalWordCount) return;
+    const val = modalEditor.value.trim();
+    const words = val.length > 0 ? val.split(/\s+/).length : 0;
+    const chars = val.length;
+    modalWordCount.textContent = `${words} words | ${chars} characters`;
+  }
+
+  if (btnModalCopy) {
+    btnModalCopy.addEventListener("click", () => {
+      if (modalEditor) {
+        copyToClipboard(modalEditor.value, btnModalCopy);
+      }
+    });
+  }
+
+  // Modal Download Handlers
+  async function downloadFromModal(format) {
+    if (!modalEditor) return;
+    const content = modalEditor.value;
+    const role = roleInput ? roleInput.value.trim() : "Software Engineer";
+
+    try {
+      const res = await fetch("/api/outreach/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysis_id: analysisId,
+          format: format,
+          content_type: modalActiveSection,
+          content: content,
+          tone: currentTone,
+          company_name: companyName,
+          role_title: role,
+          outreach: toneCache[currentTone]
+        })
+      });
+
+      if (!res.ok) throw new Error("Download request failed");
+
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition");
+      let filename = `outreach_${modalActiveSection}.${format}`;
+      if (disposition && disposition.indexOf("filename=") !== -1) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, "");
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Modal download failed:", err);
+    }
+  }
+
+  if (btnModalDocx) {
+    btnModalDocx.addEventListener("click", () => downloadFromModal("docx"));
+  }
+  if (btnModalTxt) {
+    btnModalTxt.addEventListener("click", () => downloadFromModal("txt"));
+  }
+
+  function escapeHtml(str) {
+    if (typeof str !== "string") str = String(str);
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 }
 
