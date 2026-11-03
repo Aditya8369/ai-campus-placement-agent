@@ -86,20 +86,29 @@
 
     <!-- Actions Bar -->
     <div class="row g-4 mb-4">
-      <div class="col-md-6">
+      <div class="col-md-4">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
-          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-4 rounded-pill mx-auto">
-            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview Session
+          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill mx-auto">
+            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview
           </a>
         </div>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
+        <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
+          <h5 class="fw-bold mb-2"><i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i> AI Rewrite Sandbox</h5>
+          <p class="text-secondary small mb-3">Line-by-line optimizer offering Metric-Driven, Technical Depth, and Leadership impact rewrites with 1-click replacement.</p>
+          <button type="button" class="btn btn-outline-primary py-2 px-3 rounded-pill mx-auto" data-bs-toggle="modal" data-bs-target="#bulletRewriteModal" id="btnOpenRewriteModal">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Open Rewrite Sandbox
+          </button>
+        </div>
+      </div>
+      <div class="col-md-4">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
           <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
-          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-4 rounded-pill mx-auto">
+          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill mx-auto">
             <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
           </a>
         </div>
@@ -336,9 +345,14 @@
               </h2>
               <div id="collapseStrengths" class="accordion-collapse collapse show" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
-                  <ul class="mb-0">
+                  <ul class="mb-0 list-unstyled">
                     {% for strength in analysis.results.resume_analysis.strengths %}
-                      <li class="mb-2">{{ strength }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="resume-bullet-text small text-dark"><i class="fa-solid fa-check text-success me-1"></i>{{ strength }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ strength|e }}" title="Optimize this bullet with AI">
+                          <i class="fa-solid fa-wand-magic-sparkles me-1 small"></i> Rewrite
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -417,8 +431,11 @@
           <h6 class="fw-bold text-secondary mb-3">Top 5 Resume Changes Required:</h6>
           <ol class="list-group list-group-numbered list-group-flush mb-4">
             {% for change in analysis.results.job_match.top_5_resume_changes %}
-              <li class="list-group-item d-flex justify-content-between align-items-start border-0 bg-transparent px-0 py-2">
-                <span class="ms-2 me-auto small fw-medium">{{ change }}</span>
+              <li class="list-group-item d-flex justify-content-between align-items-center border-0 bg-transparent px-0 py-2 gap-2">
+                <span class="ms-2 me-auto small fw-medium resume-bullet-text">{{ change }}</span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ change|e }}" title="Optimize this bullet with AI">
+                  <i class="fa-solid fa-wand-magic-sparkles small"></i>
+                </button>
               </li>
             {% endfor %}
           </ol>
@@ -724,6 +741,124 @@
               </a>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive Resume Line-by-Line AI Rewrite Sandbox Modal -->
+    <div class="modal fade" id="bulletRewriteModal" tabindex="-1" aria-labelledby="bulletRewriteModalLabel" aria-hidden="true" data-analysis-id="{{ analysis_id }}" data-company="{{ analysis.company_name }}">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content rounded-4 border-0 shadow">
+          
+          <!-- Modal Header -->
+          <div class="modal-header border-0 pb-0 pt-4 px-4">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <h5 class="modal-title fw-bold text-dark mb-0" id="bulletRewriteModalLabel">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-2"></i> Line-by-Line Resume AI Rewrite Sandbox
+              </h5>
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 small">
+                Target: {{ analysis.company_name }}
+              </span>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="modal-body p-4">
+            <p class="text-secondary small mb-3">
+              Transform passive or vague resume bullet points into high-impact, recruiter-grade statements. Select a line from your resume or paste below to inspect 3 tailored rewrite variations (Metric-Driven, Technical Depth, Leadership Impact) with 1-click text replacement.
+            </p>
+
+            <!-- Line Input & Quick Pick Selector -->
+            <div class="p-3 bg-light rounded-4 border mb-4">
+              <div class="row g-2 align-items-center mb-3">
+                <div class="col-md-7 col-12">
+                  <label for="quickPickBulletSelect" class="small fw-bold text-secondary mb-1">
+                    <i class="fa-solid fa-list-check text-primary me-1"></i> Quick-Pick a Line from Your Analysis:
+                  </label>
+                  <select class="form-select form-select-sm rounded-pill px-3" id="quickPickBulletSelect">
+                    <option value="">-- Choose a line to optimize --</option>
+                    {% for strength in analysis.results.resume_analysis.strengths %}
+                      <option value="{{ strength }}">{{ strength[:90] }}...</option>
+                    {% endfor %}
+                    {% for change in analysis.results.job_match.top_5_resume_changes %}
+                      <option value="{{ change }}">{{ change[:90] }}...</option>
+                    {% endfor %}
+                  </select>
+                </div>
+                <div class="col-md-5 col-12 text-md-end mt-3 mt-md-0">
+                  <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" id="btnRunBulletRewrite">
+                    <i class="fa-solid fa-wand-magic-sparkles me-1" id="rewriteBtnIcon"></i> Generate 3 AI Variations
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label for="inputBulletTextarea" class="small fw-bold text-secondary mb-1">
+                  Active Bullet Point Text:
+                </label>
+                <textarea class="form-control rounded-3" id="inputBulletTextarea" rows="2" placeholder="e.g. Worked on web application backend with Python and managed database queries..."></textarea>
+              </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="rewriteLoadingSpinner" class="text-center py-5 d-none">
+              <div class="spinner-border text-primary" role="status"></div>
+              <div class="small text-muted mt-2">Synthesizing Metric-Driven, Technical Depth, and Leadership rewrites...</div>
+            </div>
+
+            <!-- Results Section (Side-by-Side Variations) -->
+            <div id="rewriteResultsContainer" class="d-none">
+              
+              <!-- Baseline Comparison Header -->
+              <div class="d-flex justify-content-between align-items-center mb-3 p-3 bg-light rounded-3 border flex-wrap gap-2">
+                <div>
+                  <span class="small text-secondary fw-semibold">Original Line Baseline Impact:</span>
+                  <span class="badge bg-secondary rounded-pill px-3 py-1 ms-2" id="originalBulletScoreBadge">Score: 52/100</span>
+                </div>
+                <small class="text-muted"><i class="fa-solid fa-check me-1 text-success"></i> Choose any variation to 1-click replace or copy</small>
+              </div>
+
+              <!-- 3 Variation Cards Grid -->
+              <div class="row g-3 mb-4" id="rewriteCardsRow">
+                <!-- Dynamically populated via JS -->
+              </div>
+            </div>
+
+            <!-- Working Session: Finalized & Optimized Resume Document Bullets -->
+            <div class="p-3 bg-light rounded-4 border mt-4">
+              <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                  <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-solid fa-file-lines text-primary me-2"></i> Finalized Optimized Document Session
+                  </h6>
+                  <small class="text-secondary" id="sessionOptimizedCount">0 bullets optimized in this session</small>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnExportOptimizedDocx">
+                    <i class="fa-solid fa-file-word text-primary me-1"></i> Export .DOCX
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnExportOptimizedPdf">
+                    <i class="fa-solid fa-file-pdf text-danger me-1"></i> Export .PDF
+                  </button>
+                </div>
+              </div>
+
+              <div id="sessionBulletsList" class="bg-white p-3 rounded-3 border" style="min-height: 80px; max-height: 200px; overflow-y: auto;">
+                <p class="text-muted small mb-0 fst-italic" id="sessionEmptyNotice">
+                  No bullets accepted yet. Click "1-Click Replace" on any variation above to incorporate it into your finalized document.
+                </p>
+                <ul class="mb-0 ps-3 small list-unstyled d-none" id="sessionListUl"></ul>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Modal Footer -->
+          <div class="modal-footer border-0 pt-0 px-4 pb-4">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close Sandbox</button>
+          </div>
+
         </div>
       </div>
     </div>

@@ -768,3 +768,37 @@ html, body {
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
+
+/* ==========================================================================
+   Line-by-Line AI Rewrite Sandbox Styling
+   ========================================================================== */
+.rewrite-flavor-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  background-color: var(--card-bg, #ffffff);
+}
+
+.rewrite-flavor-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  border-color: #1a73e8 !important;
+}
+
+[data-bs-theme="dark"] .rewrite-flavor-card {
+  background-color: #1e2228 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] .rewrite-flavor-card .bg-light {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] .rewrite-flavor-card .text-dark {
+  color: #e6edf3 !important;
+}
+
+.btn-xs {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+}

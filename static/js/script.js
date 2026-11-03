@@ -9,6 +9,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillGapFilter();
   initRoadmapExport();
   initCodingSandbox();
+  initProgressTracker();
+  initCampusJobMatcher();
+  initBulletRewriteSandbox();
 });
 
 function initThemeToggle() {
@@ -1692,4 +1695,300 @@ function initProgressTracker() {
     });
   }
 }
+
+/**
+ * Interactive Resume Line-by-Line AI Rewrite Sandbox
+ * Manages line selection, API interaction, 3-flavor card rendering,
+ * diff inspection, 1-click text replacement, and finalized document export (.docx / .pdf).
+ */
+function initBulletRewriteSandbox() {
+  const modalEl = document.getElementById("bulletRewriteModal");
+  if (!modalEl) return;
+
+  const analysisId = modalEl.getAttribute("data-analysis-id") || "";
+  const companyName = modalEl.getAttribute("data-company") || "General";
+
+  const quickPickSelect = document.getElementById("quickPickBulletSelect");
+  const inputTextarea = document.getElementById("inputBulletTextarea");
+  const btnRun = document.getElementById("btnRunBulletRewrite");
+  const runIcon = document.getElementById("rewriteBtnIcon");
+  const spinner = document.getElementById("rewriteLoadingSpinner");
+  const resultsContainer = document.getElementById("rewriteResultsContainer");
+  const cardsRow = document.getElementById("rewriteCardsRow");
+  const originalScoreBadge = document.getElementById("originalBulletScoreBadge");
+
+  const sessionListUl = document.getElementById("sessionListUl");
+  const sessionEmptyNotice = document.getElementById("sessionEmptyNotice");
+  const sessionCount = document.getElementById("sessionOptimizedCount");
+  const btnExportDocx = document.getElementById("btnExportOptimizedDocx");
+  const btnExportPdf = document.getElementById("btnExportOptimizedPdf");
+
+  let acceptedBullets = [];
+  let currentTargetElement = null; // References the DOM element on the dashboard that triggered the rewrite
+
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  // Quick-pick dropdown populates the textarea
+  if (quickPickSelect) {
+    quickPickSelect.addEventListener("change", () => {
+      if (quickPickSelect.value && inputTextarea) {
+        inputTextarea.value = quickPickSelect.value;
+      }
+    });
+  }
+
+  // Dashboard rewrite trigger buttons (.btn-rewrite-line)
+  document.querySelectorAll(".btn-rewrite-line").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lineText = btn.getAttribute("data-bullet") || "";
+      const parentLi = btn.closest("li");
+      currentTargetElement = parentLi ? parentLi.querySelector(".resume-bullet-text") : null;
+
+      if (inputTextarea) {
+        inputTextarea.value = lineText;
+      }
+
+      if (window.bootstrap && window.bootstrap.Modal) {
+        const modalInstance = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+        modalInstance.show();
+      }
+
+      if (lineText.trim()) {
+        runBulletRewrite(lineText.trim());
+      }
+    });
+  });
+
+  // Run rewrite button in modal
+  if (btnRun) {
+    btnRun.addEventListener("click", () => {
+      const text = inputTextarea ? inputTextarea.value.trim() : "";
+      if (!text) {
+        if (inputTextarea) {
+          inputTextarea.focus();
+          inputTextarea.classList.add("is-invalid");
+          setTimeout(() => inputTextarea.classList.remove("is-invalid"), 1500);
+        }
+        return;
+      }
+      runBulletRewrite(text);
+    });
+  }
+
+  function runBulletRewrite(bulletText) {
+    if (spinner) spinner.classList.remove("d-none");
+    if (resultsContainer) resultsContainer.classList.add("d-none");
+    if (runIcon) runIcon.classList.add("fa-spin");
+
+    fetch("/api/resume/rewrite-bullet", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        bullet: bulletText,
+        analysis_id: analysisId,
+        company_name: companyName
+      })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!data.success) {
+          throw new Error(data.error || "Failed to optimize bullet point");
+        }
+        renderRewriteVariations(data);
+      })
+      .catch((err) => {
+        console.error("Rewrite request failed:", err);
+        alert("Failed to rewrite bullet point. Please try again.");
+      })
+      .finally(() => {
+        if (spinner) spinner.classList.add("d-none");
+        if (runIcon) runIcon.classList.remove("fa-spin");
+      });
+  }
+
+  function renderRewriteVariations(data) {
+    if (!cardsRow || !resultsContainer) return;
+
+    if (originalScoreBadge) {
+      originalScoreBadge.innerText = `Baseline Score: ${data.original_score || 50}/100`;
+    }
+
+    const rewrites = data.rewrites || [];
+    cardsRow.innerHTML = "";
+
+    rewrites.forEach((rw) => {
+      const col = document.createElement("div");
+      col.className = "col-lg-4 col-12";
+
+      const diffPills = (rw.diff_added || [])
+        .map(
+          (d) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2 small me-1 mb-1">
+                    <i class="fa-solid fa-plus me-1"></i>${escapeHtml(d)}
+                  </span>`
+        )
+        .join("");
+
+      col.innerHTML = `
+        <div class="card h-100 border rounded-4 p-3 shadow-sm bg-white rewrite-flavor-card">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="badge bg-${rw.badge_class || 'primary'}-subtle text-${rw.badge_class || 'primary'} border border-${rw.badge_class || 'primary'}-subtle rounded-pill px-3 py-1 fw-bold small">
+              <i class="fa-solid ${rw.icon || 'fa-wand-magic-sparkles'} me-1"></i> ${escapeHtml(rw.flavor)}
+            </span>
+            <span class="badge bg-success text-white rounded-pill px-2 py-1 small fw-bold">
+              +${rw.impact_score_boost || 20}% Boost
+            </span>
+          </div>
+
+          <div class="small text-muted mb-2">
+            <span class="fw-semibold text-secondary">Target Standard:</span> ${escapeHtml(rw.tag || 'Recruiter-Grade')}
+          </div>
+
+          <div class="p-3 bg-light rounded-3 border mb-3 flex-grow-1">
+            <p class="mb-0 small text-dark fw-medium line-rewritten-text" style="line-height: 1.6;">
+              ${escapeHtml(rw.rewritten_bullet)}
+            </p>
+          </div>
+
+          <div class="mb-3">
+            <div class="small fw-semibold text-secondary mb-1">Impact Enhancements:</div>
+            <div class="d-flex flex-wrap mb-2">
+              ${diffPills}
+            </div>
+            <div class="alert alert-light border p-2 rounded-3 small text-secondary mb-0" style="font-size: 0.75rem;">
+              <i class="fa-solid fa-lightbulb text-warning me-1"></i> ${escapeHtml(rw.key_enhancement || '')}
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 pt-2 border-top mt-auto">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 flex-grow-1 btn-copy-variation" title="Copy to clipboard">
+              <i class="fa-solid fa-copy me-1"></i> Copy
+            </button>
+            <button type="button" class="btn btn-sm btn-success rounded-pill px-3 flex-grow-1 btn-accept-variation" title="1-Click Replace Line">
+              <i class="fa-solid fa-check-double me-1"></i> Accept Line
+            </button>
+          </div>
+        </div>
+      `;
+
+      // Copy Variation Listener
+      const btnCopy = col.querySelector(".btn-copy-variation");
+      if (btnCopy) {
+        btnCopy.addEventListener("click", () => {
+          navigator.clipboard.writeText(rw.rewritten_bullet).then(() => {
+            const originalHtml = btnCopy.innerHTML;
+            btnCopy.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+            btnCopy.classList.replace("btn-outline-secondary", "btn-secondary");
+            setTimeout(() => {
+              btnCopy.innerHTML = originalHtml;
+              btnCopy.classList.replace("btn-secondary", "btn-outline-secondary");
+            }, 1800);
+          });
+        });
+      }
+
+      // Accept Variation Listener (1-Click Replace)
+      const btnAccept = col.querySelector(".btn-accept-variation");
+      if (btnAccept) {
+        btnAccept.addEventListener("click", () => {
+          acceptOptimizedBullet(rw.rewritten_bullet, rw.flavor, rw.impact_score_boost);
+          btnAccept.innerHTML = '<i class="fa-solid fa-check me-1"></i> Accepted!';
+          btnAccept.disabled = true;
+          setTimeout(() => {
+            btnAccept.innerHTML = '<i class="fa-solid fa-check-double me-1"></i> Accept Line';
+            btnAccept.disabled = false;
+          }, 2000);
+        });
+      }
+
+      cardsRow.appendChild(col);
+    });
+
+    resultsContainer.classList.remove("d-none");
+  }
+
+  function acceptOptimizedBullet(bulletText, flavor, boost) {
+    if (!bulletText) return;
+
+    if (!acceptedBullets.includes(bulletText)) {
+      acceptedBullets.push(bulletText);
+    }
+
+    if (currentTargetElement) {
+      currentTargetElement.innerHTML = `<i class="fa-solid fa-check text-success me-1"></i>${escapeHtml(bulletText)}`;
+      currentTargetElement.classList.add("text-success", "fw-semibold");
+    }
+
+    if (sessionEmptyNotice) sessionEmptyNotice.classList.add("d-none");
+    if (sessionListUl) {
+      sessionListUl.classList.remove("d-none");
+      const li = document.createElement("li");
+      li.className = "mb-2 p-2 rounded-2 bg-light border d-flex justify-content-between align-items-center gap-2";
+      li.innerHTML = `
+        <span class="text-dark"><i class="fa-solid fa-circle-check text-success me-2"></i>${escapeHtml(bulletText)}</span>
+        <span class="badge bg-primary-subtle text-primary border rounded-pill flex-shrink-0 small">${escapeHtml(flavor || 'Optimized')}</span>
+      `;
+      sessionListUl.appendChild(li);
+    }
+
+    if (sessionCount) {
+      sessionCount.innerText = `${acceptedBullets.length} bullet${acceptedBullets.length > 1 ? 's' : ''} optimized (+${boost || 24}% boost)`;
+    }
+  }
+
+  // Export handlers
+  function triggerExport(format) {
+    const bulletsToExport = acceptedBullets.length > 0 ? acceptedBullets : [];
+    const payload = {
+      format: format,
+      analysis_id: analysisId,
+      company_name: companyName,
+      bullets: bulletsToExport
+    };
+
+    fetch("/api/resume/export-optimized", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`Export failed with HTTP status ${res.status}`);
+        return res.blob();
+      })
+      .then((blob) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.style.display = "none";
+        a.href = url;
+        a.download = `Optimized_Resume_${companyName}_${Date.now()}.${format}`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      })
+      .catch((err) => {
+        console.error("Export download failed:", err);
+        alert("Failed to export optimized document. Please try again.");
+      });
+  }
+
+  if (btnExportDocx) {
+    btnExportDocx.addEventListener("click", () => triggerExport("docx"));
+  }
+
+  if (btnExportPdf) {
+    btnExportPdf.addEventListener("click", () => triggerExport("pdf"));
+  }
+}
+
 
