@@ -64,9 +64,11 @@ from utils.async_pipeline import (
     get_analysis_task,
     start_async_analysis,
 )
+from utils.job_feed_service import JobFeedService
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
+from agents.job_recommendation_agent import JobRecommendationAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -453,6 +455,20 @@ def dashboard(analysis_id: str) -> str:
     delta_data = calculate_version_delta(analysis_record, previous_record)
     trend_series = build_longitudinal_series(all_versions)
 
+    # Fetch initial recommended campus drives for seamless SSR
+    try:
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs()
+        job_matcher = JobRecommendationAgent()
+        initial_recommended_jobs = job_matcher.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            min_match=0
+        )
+    except Exception as job_err:
+        logger.error(f"Error fetching initial recommended campus drives: {job_err}")
+        initial_recommended_jobs = []
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -462,7 +478,8 @@ def dashboard(analysis_id: str) -> str:
         previous_record=previous_record,
         delta_data=delta_data,
         trend_series=trend_series,
-        trend_series_json=json.dumps(trend_series)
+        trend_series_json=json.dumps(trend_series),
+        recommended_jobs=initial_recommended_jobs
     )
 
 @app.route("/interview/<analysis_id>")
@@ -927,6 +944,77 @@ def api_progress_diff(id_a: str, id_b: str):
     except Exception as e:
         logger.error(f"Error computing diff between {id_a} and {id_b}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
+def api_job_recommendations(analysis_id: str):
+    """
+    Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
+    scored against verified technical skill overlap, ATS readiness, and hiring requirements.
+    Supports query parameters: location, role_type, min_match, search, and force_refresh.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({
+                "success": False,
+                "error": f"Candidate analysis record '{analysis_id}' not found."
+            }), 404
+
+        location = request.args.get("location", "all").strip()
+        role_type = request.args.get("role_type", "all").strip()
+        search_query = request.args.get("search", "").strip()
+        force_refresh = request.args.get("force_refresh", "false").lower() in ("true", "1")
+
+        try:
+            raw_min = request.args.get("min_match", "0").strip()
+            min_match = int(raw_min) if raw_min else 0
+        except (ValueError, TypeError):
+            min_match = 0
+
+        try:
+            raw_limit = request.args.get("limit", "").strip()
+            limit = int(raw_limit) if raw_limit else None
+        except (ValueError, TypeError):
+            limit = None
+
+        feed_service = JobFeedService()
+        active_jobs = feed_service.get_all_jobs(force_refresh=force_refresh)
+
+        matcher_agent = JobRecommendationAgent()
+        recommendations = matcher_agent.recommend_jobs(
+            analysis_record=analysis_record,
+            jobs=active_jobs,
+            location=location,
+            role_type=role_type,
+            min_match=min_match,
+            search_query=search_query
+        )
+
+        if limit and limit > 0:
+            recommendations = recommendations[:limit]
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "company_target": analysis_record.get("company_name", "General"),
+            "total_available": len(active_jobs),
+            "total_matched": len(recommendations),
+            "filters_applied": {
+                "location": location,
+                "role_type": role_type,
+                "min_match": min_match,
+                "search": search_query
+            },
+            "jobs": recommendations
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error computing job recommendations for {analysis_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to compute job recommendations: {str(e)}"
+        }), 500
 
 
 @app.route("/api/admin/database/integrity", methods=["GET"])

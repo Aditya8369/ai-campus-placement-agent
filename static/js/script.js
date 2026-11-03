@@ -9,6 +9,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillGapFilter();
   initRoadmapExport();
   initCodingSandbox();
+  initProgressTracker();
+  initCampusJobMatcher();
 });
 
 function initThemeToggle() {
@@ -1692,4 +1694,245 @@ function initProgressTracker() {
     });
   }
 }
+
+/**
+ * Live Curated Campus Job Feed & Automated Role Matcher
+ * Handles dynamic filtering (location, role type, min match, search query),
+ * real-time API polling, refresh triggers, and client-side rendering.
+ */
+function initCampusJobMatcher() {
+  const container = document.getElementById("campusDrivesSection");
+  if (!container) return;
+
+  const analysisId = container.getAttribute("data-analysis-id");
+  if (!analysisId) return;
+
+  const grid = document.getElementById("recommendedJobsGrid");
+  const spinner = document.getElementById("jobsLoadingSpinner");
+  const emptyState = document.getElementById("jobsEmptyState");
+  const countNum = document.getElementById("jobsCountNum");
+
+  const locationFilter = document.getElementById("jobLocationFilter");
+  const roleTypeFilter = document.getElementById("jobRoleTypeFilter");
+  const minMatchFilter = document.getElementById("jobMinMatchFilter");
+  const searchInput = document.getElementById("jobSearchInput");
+  const btnRefresh = document.getElementById("btnRefreshJobFeed");
+  const refreshIcon = document.getElementById("refreshFeedIcon");
+  const btnReset = document.getElementById("btnResetJobFilters");
+
+  let searchDebounceTimer = null;
+
+  function safeEscapeHtml(str) {
+    if (str === null || str === undefined) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function fetchJobs(forceRefresh = false) {
+    if (spinner) spinner.classList.remove("d-none");
+    if (grid) grid.classList.add("opacity-50");
+    if (emptyState) emptyState.classList.add("d-none");
+    if (refreshIcon) refreshIcon.classList.add("fa-spin");
+
+    const loc = locationFilter ? locationFilter.value : "all";
+    const role = roleTypeFilter ? roleTypeFilter.value : "all";
+    const minMatch = minMatchFilter ? minMatchFilter.value : "0";
+    const search = searchInput ? searchInput.value.trim() : "";
+
+    const params = new URLSearchParams({
+      location: loc,
+      role_type: role,
+      min_match: minMatch,
+      search: search,
+      force_refresh: forceRefresh ? "true" : "false"
+    });
+
+    fetch(`/api/jobs/recommendations/${encodeURIComponent(analysisId)}?${params.toString()}`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!data.success) {
+          throw new Error(data.error || "Failed to load job recommendations");
+        }
+        renderJobs(data.jobs || []);
+      })
+      .catch((err) => {
+        console.error("Job feed fetch failed:", err);
+        // If fetch fails and no cards are present, show empty state
+        if (grid && grid.children.length === 0 && emptyState) {
+          emptyState.classList.remove("d-none");
+        }
+      })
+      .finally(() => {
+        if (spinner) spinner.classList.add("d-none");
+        if (grid) grid.classList.remove("opacity-50");
+        if (refreshIcon) refreshIcon.classList.remove("fa-spin");
+      });
+  }
+
+  function renderJobs(jobs) {
+    if (!grid) return;
+
+    if (countNum) countNum.innerText = jobs.length;
+
+    if (jobs.length === 0) {
+      grid.innerHTML = "";
+      if (emptyState) emptyState.classList.remove("d-none");
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add("d-none");
+
+    const cardsHtml = jobs.map((job) => {
+      const targetCompanyBadge = job.is_target_company
+        ? `<div class="position-absolute top-0 end-0 mt-3 me-3">
+             <span class="badge bg-warning text-dark border border-warning-subtle rounded-pill px-2 py-1 small">
+               <i class="fa-solid fa-bullseye me-1"></i> Target Company Drive
+             </span>
+           </div>`
+        : "";
+
+      const initial = (job.company || "C").charAt(0).toUpperCase();
+      const logoColor = safeEscapeHtml(job.logo_color || "#1a73e8");
+
+      const matchedPills = (job.matched_skills || [])
+        .slice(0, 5)
+        .map(
+          (s) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2" style="font-size: 0.72rem;">
+                    <i class="fa-solid fa-check me-1"></i>${safeEscapeHtml(s)}
+                  </span>`
+        )
+        .join("");
+
+      const extraMatchedCount = (job.matched_skills || []).length - 5;
+      const extraMatchedBadge = extraMatchedCount > 0
+        ? `<span class="badge bg-light text-muted border rounded-pill py-1 px-2" style="font-size: 0.72rem;">+${extraMatchedCount} more</span>`
+        : "";
+
+      const missingPills = (job.missing_skills || []).length > 0
+        ? `<div class="small fw-semibold text-secondary mb-1">
+             <i class="fa-solid fa-circle-plus text-warning me-1"></i> Recommended to Learn:
+           </div>
+           <div class="d-flex flex-wrap gap-1">
+             ${(job.missing_skills || []).slice(0, 3).map((s) => `
+               <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill py-1 px-2 text-dark" style="font-size: 0.72rem;">
+                 +${safeEscapeHtml(s)}
+               </span>
+             `).join("")}
+           </div>`
+        : "";
+
+      return `
+        <div class="col-lg-6 col-12 job-card-col" data-company="${safeEscapeHtml((job.company || "").toLowerCase())}" data-location="${safeEscapeHtml((job.location || "").toLowerCase())}" data-role="${safeEscapeHtml((job.role_type || "").toLowerCase())}" data-match="${job.match_percentage}">
+          <div class="card h-100 border rounded-4 p-4 shadow-sm job-item-card transition-all position-relative bg-white">
+            ${targetCompanyBadge}
+            <div class="d-flex align-items-start gap-3 mb-3">
+              <div class="rounded-3 d-flex align-items-center justify-content-center text-white fw-bold shadow-sm flex-shrink-0" style="width: 48px; height: 48px; background-color: ${logoColor}; font-size: 1.25rem;">
+                ${initial}
+              </div>
+              <div class="flex-grow-1 pe-4">
+                <h5 class="fw-bold mb-1 text-dark line-clamp-1">${safeEscapeHtml(job.title || "Graduate Engineer")}</h5>
+                <div class="d-flex align-items-center flex-wrap gap-2 text-secondary small">
+                  <span class="fw-semibold text-primary"><i class="fa-solid fa-building me-1"></i>${safeEscapeHtml(job.company || "Enterprise")}</span>
+                  <span>•</span>
+                  <span><i class="fa-solid fa-location-dot me-1"></i>${safeEscapeHtml(job.location || "Remote")}</span>
+                  <span>•</span>
+                  <span class="badge bg-light text-dark border rounded-pill">${safeEscapeHtml(job.role_type || "Full-time")}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center p-2 px-3 rounded-3 bg-light border mb-3 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <div class="fw-bold text-${safeEscapeHtml(job.tier_badge || "primary")} fs-5">
+                  ${job.match_percentage}%
+                </div>
+                <div>
+                  <span class="badge bg-${safeEscapeHtml(job.tier_badge || "primary")}-subtle text-${safeEscapeHtml(job.tier_badge || "primary")} border border-${safeEscapeHtml(job.tier_badge || "primary")}-subtle rounded-pill px-2 py-0 small fw-semibold">
+                    ${safeEscapeHtml(job.tier_label || "Matched")}
+                  </span>
+                  <small class="text-muted d-block" style="font-size: 0.72rem;">${job.matched_required_count || 0}/${job.total_required_count || 0} core skills matched</small>
+                </div>
+              </div>
+              <div class="text-end">
+                <span class="fw-bold text-dark d-block small"><i class="fa-solid fa-indian-rupee-sign text-success me-1"></i>${safeEscapeHtml(job.salary_range || "Competitive CTC")}</span>
+                <small class="text-muted" style="font-size: 0.72rem;"><i class="fa-regular fa-clock me-1"></i>${safeEscapeHtml(job.posted_date || "Recent")}</small>
+              </div>
+            </div>
+
+            <p class="text-secondary small mb-3 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+              ${safeEscapeHtml(job.description || "")}
+            </p>
+
+            <div class="mb-3">
+              <div class="small fw-semibold text-dark mb-1">
+                <i class="fa-solid fa-circle-check text-success me-1"></i> Matched Skills:
+              </div>
+              <div class="d-flex flex-wrap gap-1 mb-2">
+                ${matchedPills || '<span class="text-muted small">Developing baseline</span>'}
+                ${extraMatchedBadge}
+              </div>
+              ${missingPills}
+            </div>
+
+            <div class="alert alert-light border p-2 px-3 rounded-3 small mb-3 text-secondary" style="font-size: 0.78rem;">
+              <i class="fa-solid fa-lightbulb text-primary me-1"></i> ${safeEscapeHtml(job.fit_summary || "")}
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center pt-2 border-top mt-auto">
+              <div class="small text-muted" style="font-size: 0.75rem;">
+                <i class="fa-solid fa-id-badge text-primary me-1"></i> ${safeEscapeHtml(job.drive_mode || "Campus Drive")}
+              </div>
+              <a href="${safeEscapeHtml(job.apply_url || "#")}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-primary rounded-pill px-3 fw-semibold">
+                Apply Now <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    grid.innerHTML = cardsHtml;
+  }
+
+  // Filter change listeners
+  if (locationFilter) locationFilter.addEventListener("change", () => fetchJobs());
+  if (roleTypeFilter) roleTypeFilter.addEventListener("change", () => fetchJobs());
+  if (minMatchFilter) minMatchFilter.addEventListener("change", () => fetchJobs());
+
+  // Search input debounced
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        fetchJobs();
+      }, 280);
+    });
+  }
+
+  // Refresh Feed button
+  if (btnRefresh) {
+    btnRefresh.addEventListener("click", () => fetchJobs(true));
+  }
+
+  // Reset Filters button
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      if (locationFilter) locationFilter.value = "all";
+      if (roleTypeFilter) roleTypeFilter.value = "all";
+      if (minMatchFilter) minMatchFilter.value = "0";
+      if (searchInput) searchInput.value = "";
+      fetchJobs();
+    });
+  }
+}
+
 
