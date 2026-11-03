@@ -72,6 +72,26 @@ app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
 
 
+@app.before_request
+def assign_request_id():
+    """Assign or extract an X-Request-ID for distributed tracing and structured correlation."""
+    from flask import g
+    req_id = request.headers.get("X-Request-ID")
+    if not req_id:
+        req_id = str(uuid.uuid4())
+    g.request_id = req_id
+
+
+@app.after_request
+def inject_correlation_headers(response):
+    """Echo the X-Request-ID correlation header in every response for client observability."""
+    from flask import g
+    req_id = getattr(g, "request_id", None)
+    if req_id:
+        response.headers["X-Request-ID"] = req_id
+    return response
+
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     flash("Uploaded file exceeds the 16MB size limit. Please upload a smaller PDF.", "error")
