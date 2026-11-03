@@ -162,8 +162,47 @@
               </div>
             {% else %}
               <div class="chat-bubble chat-bubble-agent">
-                <b>Congratulations! You have completed all mock interview questions.</b><br/>
-                Please return to your dashboard to review overall scores and recommendations.
+                <div class="d-flex align-items-center gap-2 mb-2">
+                  <i class="fa-solid fa-circle-check text-success fs-5"></i>
+                  <b>Congratulations! You have completed all mock interview questions.</b>
+                </div>
+                <p class="mb-3 text-muted">Below is your comprehensive interview performance scorecard across evaluated competencies:</p>
+                
+                <!-- Performance Scorecard Grid -->
+                <div class="row g-3 mb-3" id="interviewScorecard">
+                  <div class="col-sm-4">
+                    <div class="card border-0 bg-primary-subtle p-3 rounded-3 text-center shadow-sm">
+                      <span class="small fw-semibold text-primary text-uppercase">Avg Technical Score</span>
+                      <h3 class="fw-bold text-primary mb-0 mt-1" id="scorecardTechScore">--</h3>
+                      <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-primary" id="progressBarTech" role="progressbar" style="width: 0%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-sm-4">
+                    <div class="card border-0 bg-success-subtle p-3 rounded-3 text-center shadow-sm">
+                      <span class="small fw-semibold text-success text-uppercase">Avg Communication</span>
+                      <h3 class="fw-bold text-success mb-0 mt-1" id="scorecardCommScore">--</h3>
+                      <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-success" id="progressBarComm" role="progressbar" style="width: 0%"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col-sm-4">
+                    <div class="card border-0 bg-info-subtle p-3 rounded-3 text-center shadow-sm">
+                      <span class="small fw-semibold text-info text-uppercase">Verbal Clarity</span>
+                      <h3 class="fw-bold text-info mb-0 mt-1" id="scorecardClarityScore">--</h3>
+                      <div class="progress mt-2" style="height: 6px;">
+                        <div class="progress-bar bg-info" id="progressBarClarity" role="progressbar" style="width: 0%"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="alert alert-light border rounded-3 p-3 mb-2 small text-muted">
+                  <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                  <strong>Pro-Tip:</strong> Review individual question feedback above or return to your dashboard to inspect full personalized placement recommendations.
+                </div>
               </div>
             {% endif %}
           </div>
