@@ -1,8 +1,10 @@
 import os
+import io
 import uuid
 import json
 import time
 import logging
+from pathlib import Path
 from flask import (
     Flask,
     render_template,
@@ -72,7 +74,7 @@ from utils.job_feed_service import JobFeedService
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
-from agents.job_recommendation_agent import JobRecommendationAgent
+from agents.outreach_agent import OutreachGeneratorAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -153,6 +155,7 @@ except Exception as db_err:
 coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
+outreach_agent = OutreachGeneratorAgent()
 
 def get_available_companies() -> list:
     """
@@ -171,28 +174,51 @@ def get_available_companies() -> list:
     return default_companies
 
 
+@app.route("/healthz")
 @app.route("/api/health")
 @app.route("/health")
 def health_check():
     """
-    Health check endpoint verifying application uptime and database connectivity.
+    Health check endpoint verifying application uptime, database connectivity, and storage permissions.
     """
+    start_time = time.perf_counter()
+    db_check = {"status": "healthy"}
     try:
         conn = get_db_connection()
         conn.execute("SELECT 1").fetchone()
         conn.close()
-        db_status = "connected"
     except Exception as db_err:
         logger.error(f"Healthcheck database error: {str(db_err)}")
-        db_status = f"unhealthy: {str(db_err)}"
+        db_check = {"status": "unhealthy", "error": str(db_err)}
 
-    status_code = 200 if db_status == "connected" else 503
+    storage_check = {"status": "healthy"}
+    try:
+        test_file = Path(config.UPLOAD_FOLDER) / f".health_probe_{uuid.uuid4().hex[:8]}"
+        test_file.write_text("ok", encoding="utf-8")
+        if test_file.exists():
+            test_file.unlink(missing_ok=True)
+    except Exception as st_err:
+        logger.error(f"Healthcheck storage error: {str(st_err)}")
+        storage_check = {"status": "unhealthy", "error": str(st_err)}
+
+    is_healthy = (db_check["status"] == "healthy" and storage_check["status"] == "healthy")
+    status_code = 200 if is_healthy else 503
+    latency_ms = round((time.perf_counter() - start_time) * 1000, 2)
+
     return (
         jsonify(
             {
-                "status": "healthy" if status_code == 200 else "degraded",
+                "status": "healthy" if is_healthy else "degraded",
+                "service": "ai-campus-placement-agent",
                 "version": config.__version__,
-                "database": db_status,
+                "latency_ms": latency_ms,
+                "checks": {
+                    "database": db_check,
+                    "storage": storage_check,
+                    "gemini": {
+                        "configured": bool(config.GEMINI_API_KEY)
+                    }
+                }
             }
         ),
         status_code,
@@ -602,6 +628,7 @@ def dashboard(analysis_id: str) -> str:
     previous_record = get_previous_analysis(student_id, current_version=current_version)
     delta_data = calculate_version_delta(analysis_record, previous_record)
     trend_series = build_longitudinal_series(all_versions)
+    initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
 
     # Fetch initial recommended campus drives for seamless SSR
     try:
@@ -627,43 +654,8 @@ def dashboard(analysis_id: str) -> str:
         delta_data=delta_data,
         trend_series=trend_series,
         trend_series_json=json.dumps(trend_series),
-        recommended_jobs=initial_recommended_jobs
-    )
-
-    candidate_percentile = None
-    if current_analysis_id:
-        try:
-            candidate_percentile = cohort_service.calculate_percentile_rank(current_analysis_id)
-        except Exception:
-            candidate_percentile = None
-
-    return render_template(
-        "leaderboard.html",
-        stats=view_data["stats"],
-        podium=view_data["podium"],
-        leaderboard=view_data["leaderboard"],
-        total_ranked=view_data["total_ranked"],
-        filters=view_data["filters"],
-        current_analysis_id=current_analysis_id,
-        candidate_percentile=candidate_percentile
-    )
-
-@app.route("/api/leaderboard", methods=["GET"])
-def api_leaderboard():
-    """
-    Returns JSON payload of anonymized cohort benchmarks and ranking metrics.
-    """
-    branch = request.args.get("branch", "all").strip()
-    year = request.args.get("year", "all").strip()
-    search = request.args.get("search", "").strip()
-    current_analysis_id = request.args.get("analysis_id", "").strip() or None
-
-    cohort_service = CohortAnalyticsService()
-    view_data = cohort_service.get_leaderboard_view(
-        department=branch if branch != "all" else None,
-        grad_year=int(year) if year.isdigit() else None,
-        search=search,
-        current_analysis_id=current_analysis_id
+        initial_outreach=initial_outreach,
+        initial_outreach_json=json.dumps(initial_outreach)
     )
     return jsonify({
         "success": True,
@@ -1050,6 +1042,137 @@ def download_pdf_report(analysis_id: str):
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
+
+@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
+@rate_limit(max_requests=20, window_seconds=60, scope="generate_outreach", is_api=True)
+def api_generate_outreach(analysis_id: str):
+    """
+    Generates tailored application outreach assets (formal cover letter, LinkedIn InMail,
+    cold recruiter email, subject lines, key highlights) for a given analysis ID.
+    Supports tone selection ('formal', 'enthusiastic', 'concise') and custom role title.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({
+                "success": False,
+                "error": f"Analysis '{analysis_id}' not found."
+            }), 404
+
+        payload = request.get_json(silent=True) or {}
+        tone = payload.get("tone") or request.form.get("tone", "formal")
+        role_title = payload.get("role_title") or request.form.get("role_title", "")
+
+        outreach_data = outreach_agent.generate_outreach(
+            analysis_record=analysis_record,
+            tone=tone,
+            role_title=role_title
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "tone": outreach_data.get("tone", tone),
+            "role_title": outreach_data.get("role_title", role_title),
+            "outreach": outreach_data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating outreach for {analysis_id}: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate outreach materials: {str(e)}"
+        }), 500
+
+
+@app.route("/api/outreach/download", methods=["POST"])
+@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
+def api_download_outreach(analysis_id: str = None):
+    """
+    Downloads generated application outreach assets as formatted .docx or plain .txt files.
+    Can accept pre-generated outreach data in POST body or dynamically generate for an analysis_id.
+    """
+    try:
+        payload = (request.get_json(silent=True) or {}) if request.method == "POST" else {}
+        aid = analysis_id or payload.get("analysis_id") or request.args.get("analysis_id")
+        file_format = (payload.get("format") or request.args.get("format") or "docx").strip().lower()
+        tone = (payload.get("tone") or request.args.get("tone") or "formal").strip().lower()
+        role_title = payload.get("role_title") or request.args.get("role_title", "")
+        candidate_name = payload.get("candidate_name") or request.args.get("candidate_name", "Candidate")
+        content_type = (payload.get("content_type") or request.args.get("type") or "all").strip().lower()
+        custom_content = payload.get("content")
+
+        analysis_record = get_analysis(aid) if aid else None
+        company_name = (
+            payload.get("company_name")
+            or (analysis_record.get("company_name") if analysis_record else None)
+            or request.args.get("company_name")
+            or "Target_Company"
+        )
+
+        # If client passed complete outreach_data, use it; otherwise generate
+        outreach_data = payload.get("outreach") or payload.get("outreach_data")
+        if not outreach_data and analysis_record:
+            outreach_data = outreach_agent.generate_outreach(
+                analysis_record=analysis_record,
+                tone=tone,
+                role_title=role_title
+            )
+        elif not outreach_data and not analysis_record:
+            if not custom_content:
+                return jsonify({"success": False, "error": "Analysis record or outreach content required."}), 404
+            outreach_data = {
+                "tone": tone,
+                "role_title": role_title or "Software Engineer",
+                "company_name": company_name,
+                "cover_letter": custom_content,
+                "linkedin_inmail": custom_content,
+                "cold_email": custom_content,
+                "subject_lines": [],
+                "key_highlights": []
+            }
+
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Company"
+        safe_name = "".join(c for c in candidate_name if c.isalnum() or c in ("-", "_")) or "Candidate"
+
+        if file_format == "txt":
+            if custom_content and content_type != "all":
+                txt_data = custom_content
+                filename = f"{safe_name}_{safe_company}_{content_type}.txt"
+            else:
+                txt_data = outreach_agent.export_to_txt(
+                    outreach_data=outreach_data,
+                    candidate_name=safe_name,
+                    company_name=safe_company
+                )
+                filename = f"{safe_name}_{safe_company}_Outreach_Portfolio.txt"
+
+            return Response(
+                txt_data,
+                mimetype="text/plain; charset=utf-8",
+                headers={
+                    "Content-Disposition": f"attachment; filename=\"{filename}\""
+                }
+            )
+
+        # Default to DOCX
+        docx_bytes = outreach_agent.export_to_docx(
+            outreach_data=outreach_data,
+            candidate_name=safe_name,
+            company_name=safe_company
+        )
+        filename = f"{safe_name}_{safe_company}_Outreach_Portfolio.docx"
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.error(f"Error serving outreach download: {str(e)}")
+        return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
+
 @app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
@@ -1243,120 +1366,32 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/resume/rewrite-bullet", methods=["POST"])
-def api_rewrite_bullet():
+@app.route("/api/admin/retention/run", methods=["POST"])
+def api_admin_retention_run():
     """
-    Rewrites an individual resume bullet point into 3 distinct recruiter-grade variations:
-    1. Metric-Driven (Quantified)
-    2. Technical Depth & Systems
-    3. Leadership & Ownership Impact
+    Admin endpoint to trigger data retention cleanup across uploads, reports, and database records.
     """
     try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        bullet = data.get("bullet", "").strip()
-        if not bullet:
-            return jsonify({
-                "success": False,
-                "error": "Resume bullet point text is required."
-            }), 400
+        data = request.get_json(silent=True) or {}
+        max_file_age_hours = int(data.get("max_file_age_hours", 24))
+        max_db_age_days = int(data.get("max_db_age_days", 30))
+        dry_run = bool(data.get("dry_run", False))
 
-        company_name = data.get("company_name", "General").strip()
-        role_target = data.get("role_target", "Software Engineer").strip()
-        context = data.get("context", "").strip()
-        analysis_id = data.get("analysis_id", "").strip()
-
-        # If analysis_id is provided and company_name not specified, pull from analysis
-        if analysis_id and (not company_name or company_name == "General"):
-            rec = get_analysis(analysis_id)
-            if rec and rec.get("company_name"):
-                company_name = rec["company_name"]
-
-        agent = BulletOptimizerAgent()
-        result = agent.optimize_bullet(
-            original_bullet=bullet,
-            company_name=company_name,
-            role_target=role_target,
-            context=context
+        from utils.cleanup import run_full_retention_policy
+        results = run_full_retention_policy(
+            max_file_age_hours=max_file_age_hours,
+            max_db_age_days=max_db_age_days,
+            dry_run=dry_run
         )
-
-        return jsonify(result), 200
-
-    except Exception as e:
-        logger.error(f"Error in api_rewrite_bullet: {e}")
         return jsonify({
-            "success": False,
-            "error": f"Failed to rewrite bullet: {str(e)}"
-        }), 500
-
-
-@app.route("/api/resume/export-optimized", methods=["POST"])
-def api_export_optimized_resume():
-    """
-    Generates and exports finalized resume document containing AI-optimized
-    bullet points in either .docx or .pdf format.
-    """
-    try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        export_format = data.get("format", "docx").strip().lower()
-        bullets = data.get("bullets", [])
-        if isinstance(bullets, str):
-            try:
-                bullets = json.loads(bullets)
-            except Exception:
-                bullets = [bullets]
-
-        analysis_id = data.get("analysis_id", "").strip()
-        candidate_name = data.get("candidate_name", "").strip()
-        company_name = data.get("company_name", "").strip()
-        role_target = data.get("role_target", "Software Engineer").strip()
-
-        # If analysis_id provided, augment metadata
-        skills = []
-        if analysis_id:
-            rec = get_analysis(analysis_id)
-            if rec:
-                if not company_name and rec.get("company_name"):
-                    company_name = rec["company_name"]
-                if not candidate_name and rec.get("resume_filename"):
-                    candidate_name = os.path.splitext(rec["resume_filename"])[0]
-                results = rec.get("results") or {}
-                skills = results.get("job_match", {}).get("matched_skills", [])
-                if not bullets:
-                    bullets = results.get("resume_analysis", {}).get("strengths", [])
-
-        if not candidate_name:
-            candidate_name = "Candidate"
-        if not company_name:
-            company_name = "General"
-
-        metadata = {
-            "candidate_name": candidate_name,
-            "company_name": company_name,
-            "role_target": role_target,
-            "skills": skills
-        }
-
-        if export_format == "pdf":
-            file_path = generate_optimized_resume_pdf(bullets=bullets, metadata=metadata)
-            download_name = f"Optimized_Resume_{candidate_name}_{int(time.time())}.pdf"
-            mimetype = "application/pdf"
-        else:
-            file_path = generate_optimized_resume_docx(bullets=bullets, metadata=metadata)
-            download_name = f"Optimized_Resume_{candidate_name}_{int(time.time())}.docx"
-            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-        return send_file(
-            file_path,
-            as_attachment=True,
-            download_name=download_name,
-            mimetype=mimetype
-        )
-
-    except Exception as e:
-        logger.error(f"Error exporting optimized resume: {e}")
+            "status": "success",
+            "results": results
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error running retention policy: {exc}")
         return jsonify({
-            "success": False,
-            "error": f"Failed to export optimized resume: {str(e)}"
+            "status": "error",
+            "error": str(exc)
         }), 500
 
 

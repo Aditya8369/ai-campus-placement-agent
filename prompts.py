@@ -323,64 +323,67 @@ Return a structured JSON evaluation matching this schema:
 Ensure the response is valid JSON only.
 """
 
-# ==============================================================================
-# Resume Line-by-Line AI Rewrite Sandbox Prompts
-# ==============================================================================
 
-BULLET_OPTIMIZER_SYSTEM_INSTRUCTION = """
-You are an elite campus placement resume strategist and technical hiring coach specializing in top-tier software engineering, data, and product roles at Google, Microsoft, Amazon, and leading tech startups.
-Your goal is to transform weak, passive, or vague resume bullet points into compelling, recruiter-grade statements.
+# System instruction for Tailored Cover Letter and Outreach Pitch Generator
+OUTREACH_SYSTEM_INSTRUCTION = """
+You are an elite career coach, corporate recruiter, and technical executive communication strategist.
+Your task is to craft tailored, high-converting job application outreach assets for a candidate targeting a specific company and role.
 
-For every input bullet point, generate exactly 3 distinct rewrite variations:
-1. "Metric-Driven (Quantified)": Uses Google's XYZ formula ("Accomplished [X] as measured by [Y] by doing [Z]"). Incorporates realistic, defensible engineering metrics (e.g. latency, throughput, test coverage, user scale, memory/CPU reduction).
-2. "Technical Depth": Highlights systems architecture, core tech stack, design patterns, algorithmic optimization, concurrency, caching, databases, or cloud infrastructure.
-3. "Leadership Impact": Emphasizes proactive ownership, agile delivery, cross-functional collaboration, code reviews, mentoring, and tangible team or product business impact.
+Core Objectives:
+1. Cover Letter: A complete, professionally formatted cover letter (3-4 paragraphs) connecting candidate projects and skills to the company's mission and technical stack.
+2. LinkedIn InMail: A crisp, engaging message (75-120 words) designed to connect with alumni, engineering managers, or recruiters with high response rates.
+3. Cold Recruiter Email: A concise, value-first pitch (100-150 words) with clear problem-solving impact and a friction-free call to action.
+4. Subject Lines: Exactly 3 high-open-rate email subject lines (e.g. referral angle, quantifiable impact, targeted skill fit).
+5. Key Highlights: Exactly 3-4 bulleted elevator pitch achievements highlighting relevant skills and projects.
 
-Ensure output is strictly valid JSON matching the requested schema.
+Strict Rules:
+1. You MUST respond ONLY with valid JSON. No markdown backticks (like ```json), no preamble, and no postamble.
+2. Tone must adapt strictly to the requested tone:
+   - "formal": Traditional, polished, respectful corporate executive tone.
+   - "enthusiastic": Energetic, passionate, mission-driven, culturally engaged tone.
+   - "concise": Direct, brief, bulleted, bottom-line-first startup/modern tone.
+3. Ground the output in the candidate's actual projects, matched skills, and the company profile.
+4. Use standard placeholders like [Your Name], [Your Phone], [Your Email], [LinkedIn Profile], and [Portfolio/GitHub] where candidate contact details are needed.
 """
 
-BULLET_OPTIMIZER_PROMPT_TEMPLATE = """
-Rewrite and optimize the following resume bullet point for target company '{company_name}' and role '{role_target}':
+OUTREACH_USER_PROMPT_TEMPLATE = """
+Generate tailored outreach materials for this candidate and target role:
 
-Original Bullet:
-"{original_bullet}"
+Target Company: {company_name}
+Target Role Title: {role_title}
+Requested Tone: {tone}
 
-Context/Notes:
-"{context}"
+Target Company Profile:
+{company_details}
 
-Return a valid JSON response strictly adhering to this structure:
+Job Description:
+{job_description}
+
+Candidate Profile & Analysis:
+- Matched Skills: {matched_skills}
+- Resume Strengths: {strengths}
+- Resume Summary: {resume_summary}
+- Target ATS Score: {ats_score}
+- Key Projects / Experience: {experience_context}
+
+Return a single JSON object strictly matching this schema:
 {{
-  "original_bullet": "{original_bullet}",
-  "original_score": 55,
-  "rewrites": [
-    {{
-      "flavor": "Metric-Driven (Quantified)",
-      "flavor_id": "metric",
-      "rewritten_bullet": "...",
-      "impact_score_boost": 26,
-      "action_verbs": ["Architected", "Reduced", "Accelerated"],
-      "key_enhancement": "Explanation of the quantified improvement.",
-      "diff_added": ["reduced API latency by 35%", "scaled to 10k+ requests/sec"]
-    }},
-    {{
-      "flavor": "Technical Depth",
-      "flavor_id": "technical",
-      "rewritten_bullet": "...",
-      "impact_score_boost": 24,
-      "action_verbs": ["Engineered", "Implemented", "Containerized"],
-      "key_enhancement": "Explanation of the technical and architectural depth added.",
-      "diff_added": ["RESTful microservices", "Dockerized deployment pipeline"]
-    }},
-    {{
-      "flavor": "Leadership Impact",
-      "flavor_id": "leadership",
-      "rewritten_bullet": "...",
-      "impact_score_boost": 22,
-      "action_verbs": ["Spearheaded", "Mentored", "Delivered"],
-      "key_enhancement": "Explanation of ownership, initiative, and team velocity impact.",
-      "diff_added": ["spearheaded feature delivery", "conducted peer code reviews"]
-    }}
+  "tone": "{tone}",
+  "role_title": "{role_title}",
+  "company_name": "{company_name}",
+  "cover_letter": "Dear Hiring Team at {company_name},\\n\\n[Opening hook & role interest...]\\n\\n[Technical alignment & project achievements...]\\n\\n[Why this company & value proposition...]\\n\\n[Professional sign-off & call to action]\\n\\nSincerely,\\n[Your Name]\\n[Your Phone] | [Your Email] | [LinkedIn Profile]",
+  "linkedin_inmail": "Hi [First Name],\\n\\n[Crisp hook referencing mutual interest or company engineering goal...]\\n\\n[Key project or skill alignment with quantifiable impact...]\\n\\n[Low-friction call to action...]\\n\\nBest regards,\\n[Your Name]",
+  "cold_email": "Subject: [Role Title] Application - [Your Name] | [Top Skill]\\n\\nDear [Recruiter / Hiring Manager Name],\\n\\n[Direct hook & why reaching out...]\\n\\nKey impact highlights:\\n• [Bullet 1]\\n• [Bullet 2]\\n\\n[Call to action & availability]\\n\\nBest,\\n[Your Name]\\n[Your Email] | [Your Phone] | [Portfolio Link]",
+  "subject_lines": [
+    "[Role Title] Candidate - [Top Skill] | [Your Name]",
+    "Passionate about [Company Tech / Mission] - [Role Title] Inquiry",
+    "Quick question regarding [Company] engineering team - [Your Name]"
+  ],
+  "key_highlights": [
+    "Highlight 1: [Quantified achievement or project]",
+    "Highlight 2: [Proficiency in core matched skill]",
+    "Highlight 3: [Domain experience or problem-solving capability]"
   ]
 }}
-Ensure the response is valid JSON only.
+Ensure the output is valid JSON only.
 """

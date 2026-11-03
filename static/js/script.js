@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillGapFilter();
   initRoadmapExport();
   initCodingSandbox();
-  initBatchComparison();
+  initOutreachGenerator();
 });
 
 function initThemeToggle() {
@@ -1806,109 +1806,401 @@ function initProgressTracker() {
 }
 
 /**
- * Multi-Company Batch Comparison & Radar Chart Controller
- * Renders the Chart.js Multi-Dataset Radar Chart on templates/batch_compare.html
- * and handles interactive dataset toggle filters.
+ * Outreach & Cover Letter Pitch Generator
+ * Handles tone switching, LLM / heuristic regeneration, 1-click clipboard copy,
+ * interactive studio modal editing, and formatted download (.docx and .txt).
  */
-function initBatchComparison() {
-  const radarCanvas = document.getElementById("companyRadarCanvas");
-  if (!radarCanvas) return;
+function initOutreachGenerator() {
+  const sectionCard = document.getElementById("outreachSectionCard");
+  if (!sectionCard) return;
 
-  let radarData = null;
+  const dashboardContainer = document.getElementById("dashboardContainer");
+  const analysisId = dashboardContainer ? dashboardContainer.dataset.analysisId : "";
+  const companyName = dashboardContainer ? dashboardContainer.dataset.company : "Company";
+
+  // Elements
+  const roleInput = document.getElementById("outreachRoleInput");
+  const btnGenerate = document.getElementById("btnGenerateOutreach");
+  const spinner = document.getElementById("outreachSpinner");
+  const icon = document.getElementById("outreachIcon");
+
+  const coverLetterContent = document.getElementById("coverLetterContent");
+  const linkedinContent = document.getElementById("linkedinInmailContent");
+  const coldEmailContent = document.getElementById("coldEmailContent");
+  const subjectLinesContainer = document.getElementById("subjectLinesContainer");
+  const keyHighlightsContainer = document.getElementById("keyHighlightsContainer");
+
+  const btnDownloadDocx = document.getElementById("btnQuickDownloadDocx");
+  const btnDownloadTxt = document.getElementById("btnQuickDownloadTxt");
+
+  // Modal elements
+  const modalEditor = document.getElementById("modalOutreachEditor");
+  const modalWordCount = document.getElementById("modalWordCount");
+  const btnModalCopy = document.getElementById("btnModalCopyText");
+  const btnModalDocx = document.getElementById("btnModalDownloadDocx");
+  const btnModalTxt = document.getElementById("btnModalDownloadTxt");
+
+  // State
+  let currentTone = "formal";
+  let modalActiveSection = "cover_letter";
+  const toneCache = {};
+
+  // Parse initial outreach if rendered from server
   try {
-    const rawData = radarCanvas.getAttribute("data-radar");
-    if (rawData) {
-      radarData = JSON.parse(rawData);
-    }
-  } catch (err) {
-    console.error("Failed to parse batch radar data:", err);
-    return;
-  }
-
-  if (!radarData || !radarData.labels || !radarData.datasets) return;
-
-  const isDarkMode = document.documentElement.getAttribute("data-bs-theme") === "dark";
-  const gridColor = isDarkMode ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)";
-  const labelColor = isDarkMode ? "#e8eaed" : "#202124";
-
-  const ctx = radarCanvas.getContext("2d");
-  const radarChart = new Chart(ctx, {
-    type: "radar",
-    data: radarData,
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: true,
-          position: "top",
-          labels: {
-            boxWidth: 14,
-            color: labelColor,
-            font: {
-              family: "'Outfit', sans-serif",
-              size: 12,
-              weight: "600"
-            }
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function (context) {
-              return `${context.dataset.label}: ${context.raw}/100`;
-            }
-          }
-        }
-      },
-      scales: {
-        r: {
-          min: 0,
-          max: 100,
-          ticks: {
-            stepSize: 20,
-            color: labelColor,
-            backdropColor: "transparent",
-            font: {
-              size: 10
-            }
-          },
-          grid: {
-            color: gridColor
-          },
-          angleLines: {
-            color: gridColor
-          },
-          pointLabels: {
-            color: labelColor,
-            font: {
-              family: "'Outfit', sans-serif",
-              size: 11,
-              weight: "600"
-            }
-          }
-        }
+    if (sectionCard.dataset.outreach) {
+      const initial = JSON.parse(sectionCard.dataset.outreach);
+      if (initial && typeof initial === "object") {
+        currentTone = (initial.tone || "formal").toLowerCase();
+        toneCache[currentTone] = initial;
       }
     }
+  } catch (err) {
+    console.warn("Could not parse initial outreach data:", err);
+  }
+
+  // Update Download Links
+  function updateDownloadUrls() {
+    const role = roleInput ? roleInput.value.trim() : "";
+    if (btnDownloadDocx && analysisId) {
+      btnDownloadDocx.href = `/api/outreach/${analysisId}/download?format=docx&tone=${currentTone}&role_title=${encodeURIComponent(role)}`;
+    }
+    if (btnDownloadTxt && analysisId) {
+      btnDownloadTxt.href = `/api/outreach/${analysisId}/download?format=txt&tone=${currentTone}&role_title=${encodeURIComponent(role)}`;
+    }
+  }
+  updateDownloadUrls();
+
+  // Tone Buttons (Card)
+  const toneButtons = document.querySelectorAll(".outreach-tone-btn");
+  toneButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const selectedTone = btn.dataset.tone;
+      if (selectedTone === currentTone && toneCache[selectedTone]) return;
+      setTone(selectedTone, false);
+    });
   });
 
-  // Dataset Toggle Buttons in #radarLegendContainer
-  const toggleButtons = document.querySelectorAll(".radar-toggle-btn");
-  toggleButtons.forEach((btn) => {
+  // Tone Buttons (Modal)
+  const modalToneButtons = document.querySelectorAll(".modal-tone-btn");
+  modalToneButtons.forEach((btn) => {
     btn.addEventListener("click", () => {
-      const datasetIndex = parseInt(btn.getAttribute("data-dataset-index"), 10);
-      if (isNaN(datasetIndex)) return;
+      const selectedTone = btn.dataset.tone;
+      setTone(selectedTone, false);
+    });
+  });
 
-      const isVisible = radarChart.isDatasetVisible(datasetIndex);
-      if (isVisible) {
-        radarChart.hide(datasetIndex);
-        btn.classList.remove("active");
-        btn.style.opacity = "0.4";
+  function setTone(newTone, forceRegenerate) {
+    currentTone = (newTone || "formal").toLowerCase();
+
+    // Sync button styling
+    toneButtons.forEach((b) => {
+      if (b.dataset.tone === currentTone) {
+        b.classList.add("btn-primary", "active");
+        b.classList.remove("btn-outline-secondary");
       } else {
-        radarChart.show(datasetIndex);
-        btn.classList.add("active");
-        btn.style.opacity = "1";
+        b.classList.remove("btn-primary", "active");
+        b.classList.add("btn-outline-secondary");
+      }
+    });
+
+    modalToneButtons.forEach((b) => {
+      if (b.dataset.tone === currentTone) {
+        b.classList.add("btn-primary", "active");
+        b.classList.remove("btn-outline-primary");
+      } else {
+        b.classList.remove("btn-primary", "active");
+        b.classList.add("btn-outline-primary");
+      }
+    });
+
+    // Update tone badges
+    document.querySelectorAll(".outreach-active-tone-badge").forEach((badge) => {
+      badge.textContent = `Tone: ${currentTone.charAt(0).toUpperCase() + currentTone.slice(1)}`;
+    });
+
+    updateDownloadUrls();
+
+    if (!forceRegenerate && toneCache[currentTone]) {
+      renderOutreach(toneCache[currentTone]);
+    } else {
+      generateOutreach(currentTone);
+    }
+  }
+
+  // Regenerate button
+  if (btnGenerate) {
+    btnGenerate.addEventListener("click", () => {
+      generateOutreach(currentTone);
+    });
+  }
+
+  if (roleInput) {
+    roleInput.addEventListener("change", () => {
+      updateDownloadUrls();
+    });
+  }
+
+  // Fetch Outreach from API
+  async function generateOutreach(tone) {
+    if (!analysisId) return;
+
+    if (btnGenerate) {
+      btnGenerate.disabled = true;
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+    }
+
+    try {
+      const role = roleInput ? roleInput.value.trim() : "";
+      const res = await fetch(`/api/generate-outreach/${analysisId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tone: tone, role_title: role })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Generation failed with HTTP status ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (data.success && data.outreach) {
+        toneCache[tone] = data.outreach;
+        renderOutreach(data.outreach);
+      }
+    } catch (err) {
+      console.error("Error generating outreach:", err);
+    } finally {
+      if (btnGenerate) {
+        btnGenerate.disabled = false;
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+      }
+    }
+  }
+
+  function renderOutreach(outreach) {
+    if (!outreach) return;
+
+    if (coverLetterContent && outreach.cover_letter) {
+      coverLetterContent.textContent = outreach.cover_letter;
+    }
+    if (linkedinContent && outreach.linkedin_inmail) {
+      linkedinContent.textContent = outreach.linkedin_inmail;
+    }
+    if (coldEmailContent && outreach.cold_email) {
+      coldEmailContent.textContent = outreach.cold_email;
+    }
+
+    // Render Subject Lines
+    if (subjectLinesContainer && Array.isArray(outreach.subject_lines)) {
+      subjectLinesContainer.innerHTML = outreach.subject_lines
+        .map(
+          (sl) => `
+          <div class="list-group-item d-flex justify-content-between align-items-center border bg-white rounded-3 mb-2">
+            <span class="small fw-medium text-dark"><i class="fa-regular fa-envelope me-2 text-primary"></i>${escapeHtml(sl)}</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-text" data-copy-value="${escapeHtml(sl)}" title="Copy Subject Line">
+              <i class="fa-regular fa-copy"></i>
+            </button>
+          </div>`
+        )
+        .join("");
+      attachCopyTextListeners();
+    }
+
+    // Render Key Highlights
+    if (keyHighlightsContainer && Array.isArray(outreach.key_highlights)) {
+      keyHighlightsContainer.innerHTML = outreach.key_highlights
+        .map(
+          (hl) => `
+          <li class="p-2 bg-white rounded-3 border mb-2 small text-secondary d-flex align-items-start">
+            <i class="fa-solid fa-check-circle text-success me-2 mt-1"></i>
+            <span>${escapeHtml(hl)}</span>
+          </li>`
+        )
+        .join("");
+    }
+
+    // Sync modal editor if open
+    syncModalEditor();
+  }
+
+  // 1-Click Clipboard Copying
+  function copyToClipboard(text, btn) {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(
+      () => showCopyFeedback(btn),
+      () => {
+        // Fallback
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        showCopyFeedback(btn);
+      }
+    );
+  }
+
+  function showCopyFeedback(btn) {
+    if (!btn) return;
+    const origHtml = btn.innerHTML;
+    const isPrimary = btn.classList.contains("btn-outline-primary") || btn.classList.contains("btn-primary");
+    btn.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+    if (isPrimary) {
+      btn.classList.add("btn-success");
+      btn.classList.remove("btn-outline-primary", "btn-primary");
+    }
+    setTimeout(() => {
+      btn.innerHTML = origHtml;
+      if (isPrimary) {
+        btn.classList.remove("btn-success");
+        btn.classList.add("btn-outline-primary");
+      }
+    }, 2000);
+  }
+
+  // Card Copy Buttons
+  document.querySelectorAll(".btn-copy-outreach").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.copyTarget;
+      const targetEl = document.getElementById(targetId);
+      if (targetEl) {
+        copyToClipboard(targetEl.textContent.trim(), btn);
       }
     });
   });
+
+  function attachCopyTextListeners() {
+    document.querySelectorAll(".btn-copy-text").forEach((btn) => {
+      btn.removeEventListener("click", onCopyTextClick);
+      btn.addEventListener("click", onCopyTextClick);
+    });
+  }
+  function onCopyTextClick(e) {
+    const btn = e.currentTarget;
+    const val = btn.dataset.copyValue;
+    if (val) copyToClipboard(val, btn);
+  }
+  attachCopyTextListeners();
+
+  // -------------------------------------------------------------
+  // Modal Studio Controller
+  // -------------------------------------------------------------
+  const modalEl = document.getElementById("outreachPreviewModal");
+  if (modalEl) {
+    modalEl.addEventListener("show.bs.modal", () => {
+      syncModalEditor();
+    });
+  }
+
+  const modalSectionTabs = document.querySelectorAll("#modalSectionTabs [data-modal-target]");
+  modalSectionTabs.forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      modalSectionTabs.forEach((b) => b.classList.remove("active"));
+      tabBtn.classList.add("active");
+      modalActiveSection = tabBtn.dataset.modalTarget;
+      syncModalEditor();
+    });
+  });
+
+  function syncModalEditor() {
+    if (!modalEditor) return;
+    const cur = toneCache[currentTone] || {};
+    let text = "";
+    if (modalActiveSection === "cover_letter") {
+      text = cur.cover_letter || "";
+    } else if (modalActiveSection === "linkedin_inmail") {
+      text = cur.linkedin_inmail || "";
+    } else if (modalActiveSection === "cold_email") {
+      text = cur.cold_email || "";
+    }
+    modalEditor.value = text;
+    updateModalWordCount();
+  }
+
+  if (modalEditor) {
+    modalEditor.addEventListener("input", updateModalWordCount);
+  }
+
+  function updateModalWordCount() {
+    if (!modalEditor || !modalWordCount) return;
+    const val = modalEditor.value.trim();
+    const words = val.length > 0 ? val.split(/\s+/).length : 0;
+    const chars = val.length;
+    modalWordCount.textContent = `${words} words | ${chars} characters`;
+  }
+
+  if (btnModalCopy) {
+    btnModalCopy.addEventListener("click", () => {
+      if (modalEditor) {
+        copyToClipboard(modalEditor.value, btnModalCopy);
+      }
+    });
+  }
+
+  // Modal Download Handlers
+  async function downloadFromModal(format) {
+    if (!modalEditor) return;
+    const content = modalEditor.value;
+    const role = roleInput ? roleInput.value.trim() : "Software Engineer";
+
+    try {
+      const res = await fetch("/api/outreach/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          analysis_id: analysisId,
+          format: format,
+          content_type: modalActiveSection,
+          content: content,
+          tone: currentTone,
+          company_name: companyName,
+          role_title: role,
+          outreach: toneCache[currentTone]
+        })
+      });
+
+      if (!res.ok) throw new Error("Download request failed");
+
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition");
+      let filename = `outreach_${modalActiveSection}.${format}`;
+      if (disposition && disposition.indexOf("filename=") !== -1) {
+        const matches = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/.exec(disposition);
+        if (matches != null && matches[1]) {
+          filename = matches[1].replace(/['"]/g, "");
+        }
+      }
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Modal download failed:", err);
+    }
+  }
+
+  if (btnModalDocx) {
+    btnModalDocx.addEventListener("click", () => downloadFromModal("docx"));
+  }
+  if (btnModalTxt) {
+    btnModalTxt.addEventListener("click", () => downloadFromModal("txt"));
+  }
+
+  function escapeHtml(str) {
+    if (typeof str !== "string") str = String(str);
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
 }
 
