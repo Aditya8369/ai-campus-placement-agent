@@ -55,8 +55,11 @@
       <a href="/dashboard/{{ analysis_id }}" class="btn btn-outline-secondary rounded-pill px-4">
         <i class="fa-solid fa-arrow-left me-1"></i> Back to Dashboard
       </a>
+      <a href="/certificate/{{ analysis_id }}/download" class="btn btn-success rounded-pill px-4" id="btnDownloadCertPdf">
+        <i class="fa-solid fa-file-pdf me-1"></i> Download Certificate PDF
+      </a>
       <button onclick="window.print()" class="btn btn-primary rounded-pill px-4">
-        <i class="fa-solid fa-print me-1"></i> Print / Save Certificate
+        <i class="fa-solid fa-print me-1"></i> Print Certificate
       </button>
     </div>
   </div>
