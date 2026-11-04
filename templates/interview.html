@@ -113,20 +113,28 @@
 
             <!-- Populate history if page refreshed -->
             {% for ans in interview.answers %}
-              <div class="chat-bubble chat-bubble-agent">
-                <div class="d-flex justify-content-between align-items-start mb-1">
-                  <span>[<b>Question {{ ans.question_index + 1 }} - {{ ans.type }}</b>]</span>
+              <div class="chat-bubble chat-bubble-question">
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
+                    <i class="fa-solid fa-circle-question me-1"></i> Question {{ ans.question_index + 1 }} &bull; {{ ans.type }}
+                  </span>
                   <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ ans.question|escape }}">
                     <i class="fa-solid fa-volume-high me-1"></i> Listen
                   </button>
                 </div>
-                <div>{{ ans.question }}</div>
+                <div class="fw-medium text-dark lh-base fs-6">{{ ans.question }}</div>
               </div>
               <div class="chat-bubble chat-bubble-user">
-                {{ ans.answer }}
+                <div class="small text-white-50 mb-1 fw-semibold"><i class="fa-solid fa-user me-1"></i> Your Response:</div>
+                <div class="lh-base">{{ ans.answer }}</div>
               </div>
-              <div class="chat-bubble chat-bubble-agent">
-                <b>Feedback:</b> {{ ans.evaluation.feedback }}<br/>
+              <div class="chat-bubble chat-bubble-evaluation">
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                    <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
+                  </span>
+                </div>
+                <div class="mb-2 lh-base"><b>Feedback:</b> {{ ans.evaluation.feedback }}</div>
                 <div class="row g-2 mt-2 mb-2">
                   <div class="col-sm-4"><span class="badge bg-primary-subtle text-primary border border-primary-subtle w-100 py-1">Tech: {{ ans.evaluation.technical_accuracy }}/100</span></div>
                   <div class="col-sm-4"><span class="badge bg-success-subtle text-success border border-success-subtle w-100 py-1">Comm: {{ ans.evaluation.communication_score }}/100</span></div>
@@ -146,9 +154,9 @@
                   </div>
                 {% endif %}
                 <b>Suggestions:</b>
-                <ul class="mb-0 mt-1">
+                <ul class="mb-0 mt-1 ps-3">
                   {% for sug in ans.evaluation.suggestions %}
-                    <li>{{ sug }}</li>
+                    <li class="small text-secondary">{{ sug }}</li>
                   {% endfor %}
                 </ul>
               </div>
@@ -157,14 +165,16 @@
             <!-- Display current active question if not completed -->
             {% if not interview.completed %}
               {% set current_q = interview.questions[interview.current_question_index] %}
-              <div class="chat-bubble chat-bubble-agent" id="currentQuestionBubble">
-                <div class="d-flex justify-content-between align-items-start mb-1">
-                  <span>[<b>Question {{ current_q.index + 1 }} - {{ current_q.type }}</b>]</span>
+              <div class="chat-bubble chat-bubble-question" id="currentQuestionBubble">
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                  <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
+                    <i class="fa-solid fa-play me-1"></i> Active Question {{ current_q.index + 1 }} &bull; {{ current_q.type }}
+                  </span>
                   <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ current_q.question|escape }}">
                     <i class="fa-solid fa-volume-high me-1"></i> Listen
                   </button>
                 </div>
-                <div id="currentQuestionText">{{ current_q.question }}</div>
+                <div id="currentQuestionText" class="fw-semibold text-dark fs-6 lh-base">{{ current_q.question }}</div>
               </div>
             {% else %}
               <div class="chat-bubble chat-bubble-agent">
