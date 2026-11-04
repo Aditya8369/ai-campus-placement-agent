@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitHub Developer Profile Analyzer - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> Analysis Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-5 fade-in">
+    <div class="card glass-card p-4 p-md-5 mb-4 border-0">
+      <span class="badge bg-dark text-white px-3 py-2 rounded-pill fw-bold text-uppercase small mb-2 d-inline-block" style="width: fit-content;">
+        <i class="fa-brands fa-github me-1"></i> Developer Portfolio Audit
+      </span>
+      <h2 class="fw-bold mt-1 mb-2">GitHub Profile Analyzer</h2>
+      <p class="text-secondary mb-0">
+        Evaluate your public GitHub repositories, primary programming languages, stars, commit cadence, and portfolio presentation for technical campus placement recruiters.
+      </p>
+    </div>
+
+    <!-- Search Form -->
+    <div class="card glass-card p-4 border-0 mb-4">
+      <form method="POST" action="/github-analyzer" id="githubForm">
+        <label for="githubUsername" class="form-label fw-semibold text-secondary">
+          Enter GitHub Username or Public Profile URL:
+        </label>
+        <div class="input-group input-group-lg">
+          <span class="input-group-text bg-white border-end-0 rounded-start-pill text-muted px-3">
+            <i class="fa-brands fa-github fs-4"></i>
+          </span>
+          <input type="text" class="form-control border-start-0 px-2" id="githubUsername" name="github_username" 
+            placeholder="e.g. torvalds or https://github.com/octocat" value="{{ query_username or '' }}" required>
+          <button class="btn btn-primary rounded-end-pill px-4" type="submit" id="btnAnalyzeGithub">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Audit Profile
+          </button>
+        </div>
+        <div class="form-text mt-2 text-muted small">
+          <i class="fa-solid fa-shield-halved text-success me-1"></i> We only inspect public repositories and metadata. Passwords or personal access tokens are never requested.
+        </div>
+      </form>
+    </div>
+
+    <!-- Results Display -->
+    {% if analysis %}
+      {% if analysis.success %}
+        <div class="card glass-card p-4 border-0 mb-4" id="githubResultsSection">
+          
+          <!-- Profile Header -->
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 pb-4 border-bottom mb-4">
+            <div class="d-flex align-items-center gap-3">
+              <img src="{{ analysis.avatar_url }}" alt="{{ analysis.username }}" class="rounded-circle shadow-sm border" width="75" height="75">
+              <div>
+                <h4 class="fw-bold mb-0 text-dark">{{ analysis.name }}</h4>
+                <a href="{{ analysis.html_url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-primary small fw-semibold">
+                  <i class="fa-brands fa-github me-1"></i>@{{ analysis.username }} <i class="fa-solid fa-arrow-up-right-from-square ms-1" style="font-size: 0.75rem;"></i>
+                </a>
+                <p class="text-secondary small mb-0 mt-1">{{ analysis.bio }}</p>
+              </div>
+            </div>
+
+            <!-- Score Pill -->
+            <div class="text-center p-3 bg-light rounded-4 border">
+              <span class="small text-muted fw-semibold text-uppercase d-block">Developer Presence Score</span>
+              <h2 class="fw-bold text-primary mb-0 mt-1">{{ analysis.developer_score }}<span class="fs-6 text-muted">/100</span></h2>
+            </div>
+          </div>
+
+          <!-- Quick Metrics Grid -->
+          <div class="row g-3 mb-4 text-center">
+            <div class="col-md-3 col-6">
+              <div class="card p-3 border-0 bg-light rounded-3 shadow-xs">
+                <span class="small text-muted fw-semibold">Public Repositories</span>
+                <h4 class="fw-bold my-1 text-dark">{{ analysis.public_repos_count }}</h4>
+                <small class="text-muted">projects hosted</small>
+              </div>
+            </div>
+            <div class="col-md-3 col-6">
+              <div class="card p-3 border-0 bg-warning-subtle rounded-3 shadow-xs">
+                <span class="small text-warning-emphasis fw-semibold">Total Stars</span>
+                <h4 class="fw-bold my-1 text-warning-emphasis"><i class="fa-solid fa-star me-1"></i>{{ analysis.total_stars }}</h4>
+                <small class="text-muted">community appreciation</small>
+              </div>
+            </div>
+            <div class="col-md-3 col-6">
+              <div class="card p-3 border-0 bg-info-subtle rounded-3 shadow-xs">
+                <span class="small text-info-emphasis fw-semibold">Total Forks</span>
+                <h4 class="fw-bold my-1 text-info-emphasis"><i class="fa-solid fa-code-fork me-1"></i>{{ analysis.total_forks }}</h4>
+                <small class="text-muted">code reuse</small>
+              </div>
+            </div>
+            <div class="col-md-3 col-6">
+              <div class="card p-3 border-0 bg-success-subtle rounded-3 shadow-xs">
+                <span class="small text-success fw-semibold">Followers</span>
+                <h4 class="fw-bold my-1 text-success">{{ analysis.followers }}</h4>
+                <small class="text-muted">peer network</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Programming Languages -->
+          <div class="card border rounded-3 p-3 mb-4 bg-light">
+            <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-code text-primary me-2"></i> Primary Programming Languages</h6>
+            <div class="d-flex flex-wrap gap-2">
+              {% for lang in analysis.top_languages %}
+                <span class="badge bg-white text-dark border py-2 px-3 rounded-pill shadow-xs">
+                  <span class="fw-bold text-primary">{{ lang.language }}</span> &bull; {{ lang.count }} repo{{ 's' if lang.count > 1 else '' }}
+                </span>
+              {% else %}
+                <span class="text-muted small">No language metadata detected in public repos.</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Strengths & Suggestions -->
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <div class="card border rounded-3 p-3 h-100 bg-light">
+                <h6 class="fw-bold text-success mb-2"><i class="fa-solid fa-circle-check me-2"></i> Profile Strengths</h6>
+                <ul class="mb-0 ps-3 small text-secondary">
+                  {% for strn in analysis.strengths %}
+                    <li class="mb-1">{{ strn }}</li>
+                  {% else %}
+                    <li>Profile is active on GitHub.</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="card border rounded-3 p-3 h-100 bg-light">
+                <h6 class="fw-bold text-primary mb-2"><i class="fa-solid fa-wand-magic-sparkles me-2"></i> Actionable Suggestions for Recruiters</h6>
+                <ul class="mb-0 ps-3 small text-secondary">
+                  {% for sug in analysis.suggestions %}
+                    <li class="mb-1">{{ sug }}</li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Highlighted Repositories -->
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-book-bookmark text-primary me-2"></i> Highlighted Public Projects</h5>
+          <div class="row g-3">
+            {% for proj in analysis.highlighted_projects %}
+              <div class="col-md-6">
+                <div class="card border rounded-3 p-3 h-100 shadow-xs bg-white">
+                  <div class="d-flex justify-content-between align-items-start mb-2">
+                    <a href="{{ proj.url }}" target="_blank" rel="noopener noreferrer" class="fw-bold text-primary text-decoration-none">
+                      {{ proj.name }} <i class="fa-solid fa-arrow-up-right-from-square small"></i>
+                    </a>
+                    <span class="badge bg-light text-secondary border small">{{ proj.language }}</span>
+                  </div>
+                  <p class="small text-secondary mb-2 lh-sm">{{ proj.description }}</p>
+                  <div class="mt-auto d-flex align-items-center gap-3 text-muted small">
+                    <span><i class="fa-regular fa-star text-warning me-1"></i>{{ proj.stars }}</span>
+                    <span><i class="fa-solid fa-code-fork me-1"></i>{{ proj.forks }}</span>
+                    <span>Updated: {{ proj.updated_at }}</span>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+        </div>
+      {% else %}
+        <div class="alert alert-danger rounded-3 p-3">
+          <i class="fa-solid fa-triangle-exclamation me-2"></i> {{ analysis.error }}
+        </div>
+      {% endif %}
+    {% endif %}
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-4 mt-auto">
+    <div class="container text-center text-secondary small">
+      &copy; 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom JS -->
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
