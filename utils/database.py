@@ -504,3 +504,264 @@ def get_batch_comparison(batch_id: str) -> Optional[Dict[str, Any]]:
         raise e
     finally:
         conn.close()
+
+
+
+def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
+    """
+    Populates default cohort records representing diverse university branch peers.
+    """
+    seed_peers = [
+        ("peer-01", "AlgoMaster_99", "Computer Science", 2026, 95, 94, 94.4, "Google", 9, "Platinum"),
+        ("peer-02", "CloudArchitect_42", "Information Technology", 2026, 92, 91, 91.4, "Microsoft", 8, "Platinum"),
+        ("peer-03", "SystemSurgeon_18", "Computer Science", 2026, 90, 89, 89.4, "Amazon", 8, "Platinum"),
+        ("peer-04", "DataVoyager_77", "Data Science & AI", 2026, 88, 86, 86.9, "Adobe", 7, "Gold"),
+        ("peer-05", "DevScholar_12", "Computer Science", 2026, 86, 84, 84.9, "Uber", 7, "Gold"),
+        ("peer-06", "BinaryMonk_33", "Electronics & Comm", 2026, 85, 82, 83.3, "Cisco", 6, "Gold"),
+        ("peer-07", "PixelCraft_29", "Information Technology", 2026, 84, 83, 83.4, "Swiggy", 6, "Gold"),
+        ("peer-08", "CodeCrafter_05", "Computer Science", 2026, 83, 80, 81.3, "Razorpay", 6, "Gold"),
+        ("peer-09", "NeuralNomad_64", "Data Science & AI", 2025, 82, 79, 80.3, "Oracle", 6, "Gold"),
+        ("peer-10", "SyntaxSamurai_81", "Computer Science", 2025, 81, 78, 79.3, "Goldman Sachs", 6, "Gold"),
+        ("peer-11", "KernelKnight_56", "Electronics & Comm", 2026, 80, 77, 78.3, "Qualcomm", 5, "Gold"),
+        ("peer-12", "StackWizard_21", "Information Technology", 2026, 78, 76, 76.9, "Flipkart", 5, "Silver"),
+        ("peer-13", "LogicWhiz_44", "Computer Science", 2026, 77, 75, 75.9, "TCS", 5, "Silver"),
+        ("peer-14", "CyberFalcon_87", "Computer Science", 2025, 76, 74, 74.9, "Infosys", 5, "Silver"),
+        ("peer-15", "QuantumCoder_19", "Electronics & Comm", 2027, 75, 72, 73.3, "Accenture", 4, "Silver"),
+        ("peer-16", "ByteSurgeon_63", "Information Technology", 2026, 74, 71, 72.3, "Capgemini", 4, "Silver"),
+        ("peer-17", "MatrixMaster_38", "Electrical Engineering", 2026, 73, 70, 71.3, "Wipro", 4, "Silver"),
+        ("peer-18", "PromptArchitect_90", "Data Science & AI", 2026, 72, 69, 70.3, "Cognizant", 4, "Silver"),
+        ("peer-19", "GitGuru_08", "Computer Science", 2027, 70, 68, 68.9, "General", 4, "Silver"),
+        ("peer-20", "ScriptSage_52", "Electronics & Comm", 2025, 69, 66, 67.3, "General", 4, "Silver"),
+        ("peer-21", "SiliconPioneer_35", "Electrical Engineering", 2026, 67, 65, 65.9, "General", 3, "Silver"),
+        ("peer-22", "TurboCoder_14", "Mechanical Engineering", 2026, 64, 62, 62.9, "General", 3, "Bronze"),
+        ("peer-23", "ApexDev_93", "Computer Science", 2027, 62, 60, 60.9, "General", 3, "Bronze"),
+        ("peer-24", "VeloceBytes_41", "Civil Engineering", 2026, 58, 55, 56.3, "General", 2, "Bronze"),
+    ]
+    cursor.executemany("""
+        INSERT OR IGNORE INTO cohort_benchmarks 
+        (id, student_handle, department, grad_year, ats_score, job_match_score, overall_score, target_company, skills_count, tier)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, seed_peers)
+    logger.info(f"Seeded {len(seed_peers)} default peer cohort benchmark records.")
+
+
+def record_or_update_cohort_benchmark(
+    analysis_id: str,
+    student_handle: str,
+    department: str = "Computer Science",
+    grad_year: int = 2026,
+    ats_score: int = 70,
+    job_match_score: int = 65,
+    overall_score: Optional[float] = None,
+    target_company: str = "General",
+    skills_count: int = 0,
+    tier: Optional[str] = None
+) -> str:
+    """
+    Inserts or updates an anonymized student evaluation in the cohort_benchmarks table.
+    Computes overall composite score and achievement tier if omitted.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        
+        # Calculate composite score (45% ATS, 55% Job Match)
+        if overall_score is None:
+            overall_score = round((ats_score * 0.45) + (job_match_score * 0.55), 1)
+
+        # Derive achievement tier if omitted
+        if not tier:
+            if overall_score >= 88.0:
+                tier = "Platinum"
+            elif overall_score >= 78.0:
+                tier = "Gold"
+            elif overall_score >= 65.0:
+                tier = "Silver"
+            else:
+                tier = "Bronze"
+
+        # Check if record for this analysis_id already exists
+        cursor.execute("SELECT id FROM cohort_benchmarks WHERE analysis_id = ?", (analysis_id,))
+        existing = cursor.fetchone()
+
+        if existing:
+            benchmark_id = existing[0]
+            cursor.execute("""
+                UPDATE cohort_benchmarks
+                SET student_handle = ?, department = ?, grad_year = ?,
+                    ats_score = ?, job_match_score = ?, overall_score = ?,
+                    target_company = ?, skills_count = ?, tier = ?
+                WHERE id = ?
+            """, (
+                student_handle, department, grad_year,
+                ats_score, job_match_score, overall_score,
+                target_company, skills_count, tier,
+                benchmark_id
+            ))
+        else:
+            benchmark_id = f"cohort-{analysis_id}"
+            cursor.execute("""
+                INSERT INTO cohort_benchmarks
+                (id, analysis_id, student_handle, department, grad_year, ats_score, job_match_score, overall_score, target_company, skills_count, tier)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                benchmark_id, analysis_id, student_handle, department, grad_year,
+                ats_score, job_match_score, overall_score, target_company, skills_count, tier
+            ))
+
+        conn.commit()
+        return benchmark_id
+    except Exception as e:
+        logger.error(f"Error saving cohort benchmark for analysis {analysis_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_cohort_benchmark_by_analysis_id(analysis_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves the cohort benchmark record for a specific analysis ID.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM cohort_benchmarks WHERE analysis_id = ?", (analysis_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error fetching cohort benchmark for {analysis_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def get_cohort_benchmarks(
+    department: Optional[str] = None,
+    grad_year: Optional[int] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves sorted cohort benchmark entries ordered by overall_score DESC.
+    Supports filtering by department, graduation year, and keyword search.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
+
+        if department and department.strip() and department.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(department) = LOWER(?)")
+            params.append(department.strip())
+
+        if grad_year and int(grad_year) > 0:
+            conditions.append("grad_year = ?")
+            params.append(int(grad_year))
+
+        if search and search.strip():
+            kw = f"%{search.strip().lower()}%"
+            conditions.append("(LOWER(student_handle) LIKE ? OR LOWER(target_company) LIKE ? OR LOWER(department) LIKE ?)")
+            params.extend([kw, kw, kw])
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"""
+            SELECT * FROM cohort_benchmarks
+            {where_clause}
+            ORDER BY overall_score DESC, ats_score DESC, job_match_score DESC
+            LIMIT ? OFFSET ?
+        """
+        params.extend([limit, offset])
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        
+        benchmarks = []
+        for idx, row in enumerate(rows):
+            rec = dict(row)
+            rec["rank"] = offset + idx + 1
+            benchmarks.append(rec)
+
+        return benchmarks
+    except Exception as e:
+        logger.error(f"Error fetching cohort benchmarks: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_cohort_stats(
+    department: Optional[str] = None,
+    grad_year: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Computes aggregate metrics across the specified cohort segment:
+    count, avg_ats, avg_match, avg_overall, max_score, and tier distribution.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
+
+        if department and department.strip() and department.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(department) = LOWER(?)")
+            params.append(department.strip())
+
+        if grad_year and int(grad_year) > 0:
+            conditions.append("grad_year = ?")
+            params.append(int(grad_year))
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+
+        cursor.execute(f"""
+            SELECT 
+                COUNT(*) as total_students,
+                COALESCE(AVG(ats_score), 0) as avg_ats,
+                COALESCE(AVG(job_match_score), 0) as avg_match,
+                COALESCE(AVG(overall_score), 0) as avg_overall,
+                COALESCE(MAX(overall_score), 0) as max_overall,
+                COALESCE(SUM(CASE WHEN tier = 'Platinum' THEN 1 ELSE 0 END), 0) as platinum_count,
+                COALESCE(SUM(CASE WHEN tier = 'Gold' THEN 1 ELSE 0 END), 0) as gold_count,
+                COALESCE(SUM(CASE WHEN tier = 'Silver' THEN 1 ELSE 0 END), 0) as silver_count,
+                COALESCE(SUM(CASE WHEN tier = 'Bronze' THEN 1 ELSE 0 END), 0) as bronze_count
+            FROM cohort_benchmarks
+            {where_clause}
+        """, params)
+
+        stats = dict(cursor.fetchone())
+        stats["avg_ats"] = round(float(stats.get("avg_ats", 0)), 1)
+        stats["avg_match"] = round(float(stats.get("avg_match", 0)), 1)
+        stats["avg_overall"] = round(float(stats.get("avg_overall", 0)), 1)
+        stats["max_overall"] = round(float(stats.get("max_overall", 0)), 1)
+
+        # Department distribution
+        cursor.execute(f"""
+            SELECT department, COUNT(*) as count
+            FROM cohort_benchmarks
+            {where_clause}
+            GROUP BY department
+            ORDER BY count DESC
+        """, params)
+        stats["department_breakdown"] = [dict(r) for r in cursor.fetchall()]
+
+        return stats
+    except Exception as e:
+        logger.error(f"Error computing cohort statistics: {e}")
+        return {
+            "total_students": 0,
+            "avg_ats": 0.0,
+            "avg_match": 0.0,
+            "avg_overall": 0.0,
+            "max_overall": 0.0,
+            "platinum_count": 0,
+            "gold_count": 0,
+            "silver_count": 0,
+            "bronze_count": 0,
+            "department_breakdown": []
+        }
+    finally:
+        conn.close()
+
+
