@@ -4,6 +4,7 @@ import uuid
 import json
 import time
 import logging
+import re
 from pathlib import Path
 from flask import (
     Flask,
@@ -76,6 +77,7 @@ from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
 from agents.star_agent import StarEvaluationAgent
+from agents.coding_practice_agent import CodingPracticeAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -157,6 +159,7 @@ coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
 star_evaluation_agent = StarEvaluationAgent()
+coding_practice_agent = CodingPracticeAgent()
 
 def get_available_companies() -> list:
     """
@@ -1467,6 +1470,28 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/coding-practice", methods=["GET", "POST"])
+def coding_practice_view():
+    """
+    Personalized Coding Practice Recommendation View and Endpoint (#147).
+    Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
+    """
+    target_company = request.args.get("company", "").strip()
+    difficulty = request.args.get("difficulty", "All").strip()
+    raw_skills = request.args.get("skills", "").strip()
+
+    if request.method == "POST":
+        target_company = request.form.get("company", "").strip()
+        difficulty = request.form.get("difficulty", "All").strip()
+        raw_skills = request.form.get("skills", "").strip()
+
+    skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+
+    recommendations_data = coding_practice_agent.recommend_problems(
+        skill_gaps=skill_gaps,
+        target_company=target_company,
+        difficulty_preference=difficulty,
+        limit=8
 @app.route("/my-reports")
 def user_placement_history_view():
     """
@@ -1486,6 +1511,37 @@ def user_placement_history_view():
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
+            "data": recommendations_data
+        }), 200
+
+    return render_template(
+        "coding_practice.html",
+        data=recommendations_data,
+        target_company=target_company,
+        difficulty=difficulty,
+        skills_input=raw_skills
+    )
+
+
+@app.route("/api/coding-practice/recommendations")
+def api_coding_practice_recommendations():
+    """
+    API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
+    """
+    target_company = request.args.get("company", "").strip()
+    difficulty = request.args.get("difficulty", "All").strip()
+    raw_skills = request.args.get("skills", "").strip()
+    skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+
+    recommendations_data = coding_practice_agent.recommend_problems(
+        skill_gaps=skill_gaps,
+        target_company=target_company,
+        difficulty_preference=difficulty,
+        limit=10
+    )
+    return jsonify({
+        "success": True,
+        "data": recommendations_data
             "data": history_data
         }), 200
 
