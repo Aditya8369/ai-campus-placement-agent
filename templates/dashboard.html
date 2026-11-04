@@ -649,6 +649,11 @@
                   <i class="fa-solid fa-wand-magic-sparkles small"></i>
                 </button>
               </li>
+            {% else %}
+              <div class="p-3 bg-light rounded-3 text-center my-2 text-muted">
+                <i class="fa-solid fa-wand-magic-sparkles text-secondary mb-2 d-block"></i>
+                <span class="small">No urgent resume bullet revisions suggested.</span>
+              </div>
             {% endfor %}
           </ol>
           <hr/>
@@ -656,6 +661,8 @@
           <div class="d-flex flex-wrap gap-2">
             {% for cert in analysis.results.job_match.required_certifications %}
               <span class="badge bg-secondary-subtle text-primary border py-2 px-3 rounded-pill small">{{ cert }}</span>
+            {% else %}
+              <span class="text-muted small fst-italic">No additional mandatory certifications required for this role.</span>
             {% endfor %}
           </div>
         </div>
@@ -711,11 +718,30 @@
                   </span>
                 </td>
               </tr>
+            {% else %}
+              <tr id="skillGapNoItemsInitial">
+                <td colspan="6" class="text-center py-5">
+                  <div class="empty-state-container p-4">
+                    <i class="fa-solid fa-circle-check fa-3x text-success mb-3 d-block"></i>
+                    <h5 class="fw-bold text-dark mb-1">No Skill Gaps Identified</h5>
+                    <p class="text-secondary small mb-3">Your resume matches all required competencies for this target role! Explore the interview prep or practice DSA coding problems below.</p>
+                    <a href="/interview/{{ analysis.id }}" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                      <i class="fa-solid fa-comments me-1"></i> Start Practice Interview
+                    </a>
+                  </div>
+                </td>
+              </tr>
             {% endfor %}
             <tr id="skillGapEmptyState" class="d-none">
-              <td colspan="6" class="text-center py-4 text-muted">
-                <i class="fa-solid fa-filter-circle-xmark fa-2x mb-2 text-secondary d-block"></i>
-                <span>No missing skills match the selected filter criteria.</span>
+              <td colspan="6" class="text-center py-5">
+                <div class="empty-state-container p-4">
+                  <i class="fa-solid fa-filter-circle-xmark fa-3x mb-3 text-secondary d-block"></i>
+                  <h5 class="fw-bold text-dark mb-1">No Matching Skills Found</h5>
+                  <p class="text-secondary small mb-3">No identified missing skills matched your current keyword search or priority filter.</p>
+                  <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="document.getElementById('skillSearchInput').value=''; document.getElementById('skillPriorityFilter').value='ALL'; document.getElementById('skillSearchInput').dispatchEvent(new Event('input'));">
+                    <i class="fa-solid fa-rotate-left me-1"></i> Clear Filters
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
