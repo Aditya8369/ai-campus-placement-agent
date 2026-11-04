@@ -4,6 +4,7 @@ import uuid
 import json
 import time
 import logging
+import re
 from pathlib import Path
 from flask import (
     Flask,
@@ -35,7 +36,14 @@ from utils.database import (
     create_database_backup,
     verify_database_integrity,
     get_batch_comparison,
+    get_student_interview_history,
+    get_student_interview_performance_analytics,
+    get_user_placement_history,
     save_batch_comparison,
+    save_job_application,
+    get_job_applications,
+    delete_job_application,
+    update_job_application_status,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -76,6 +84,9 @@ from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
 from agents.star_agent import StarEvaluationAgent
 from agents.github_agent import GitHubAnalyzerAgent
+from agents.internship_agent import InternshipRecommendationAgent
+from agents.linkedin_agent import LinkedInAgent
+from agents.coding_practice_agent import CodingPracticeAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -158,6 +169,9 @@ live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
 star_evaluation_agent = StarEvaluationAgent()
 github_analyzer_agent = GitHubAnalyzerAgent()
+internship_agent = InternshipRecommendationAgent()
+linkedin_agent = LinkedInAgent()
+coding_practice_agent = CodingPracticeAgent()
 
 def get_available_companies() -> list:
     """
@@ -1493,6 +1507,301 @@ def github_analyzer_view():
         return jsonify(analysis), (200 if analysis.get("success") else 400)
 
     return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
+@app.route("/internships", methods=["GET", "POST"])
+def internships_view():
+    """
+    Interactive student internship recommendation engine (#142).
+    Matches candidate skills with real internship listings and explains match rationales.
+    """
+    skills_raw = request.args.get("skills") or request.form.get("skills", "")
+    role_filter = request.args.get("role") or request.form.get("role", "All")
+    location_filter = request.args.get("location") or request.form.get("location", "All")
+    search_query = request.args.get("search") or request.form.get("search", "")
+
+    candidate_skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else [
+        "Python", "SQL", "Git", "Data Structures", "Java"
+    ]
+
+    recommendations_data = internship_agent.get_recommendations(
+        candidate_skills=candidate_skills,
+        preferred_role=None if role_filter == "All" else role_filter,
+        location=None if location_filter == "All" else location_filter,
+        search_query=search_query
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(recommendations_data), 200
+
+    return render_template(
+        "internships.html",
+        data=recommendations_data,
+        skills_str=",".join(candidate_skills),
+        current_role=role_filter,
+        current_location=location_filter,
+        search_query=search_query
+    )
+@app.route("/applications", methods=["GET", "POST"])
+def job_applications_tracker():
+    """
+    Candidate Job Application Tracker view and management handler (#143).
+    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    """
+    student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
+    status_filter = request.args.get("status", "All")
+
+    if request.method == "POST":
+        company = request.form.get("company_name", "").strip()
+        role = request.form.get("role_title", "").strip()
+        status = request.form.get("status", "Applied").strip()
+        app_date = request.form.get("application_date", "").strip()
+        job_url = request.form.get("job_url", "").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not company or not role:
+            flash("Company name and job role are required.", "error")
+            return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+        app_id = f"app-{uuid.uuid4().hex[:12]}"
+        save_job_application(
+            app_id=app_id,
+            student_id=student_id,
+            company_name=company,
+            role_title=role,
+            status=status,
+            application_date=app_date or None,
+            job_url=job_url,
+            notes=notes
+        )
+        flash("Application record saved successfully!", "success")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "count": len(applications),
+            "applications": applications
+        }), 200
+
+    return render_template(
+        "applications.html",
+        applications=applications,
+        student_id=student_id,
+        current_status=status_filter
+    )
+
+
+@app.route("/api/applications/<app_id>/status", methods=["POST"])
+def api_update_application_status(app_id: str):
+    """
+    Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
+    """
+    payload = request.get_json(silent=True) or {}
+    new_status = payload.get("status") or request.form.get("status", "")
+    student_id = payload.get("student_id") or request.form.get("student_id", "default_student")
+
+    if not new_status:
+        return jsonify({"success": False, "error": "New status is required."}), 400
+
+    updated = update_job_application_status(app_id=app_id, student_id=student_id, new_status=new_status)
+    return jsonify({"success": updated}), (200 if updated else 404)
+
+
+@app.route("/api/applications/<app_id>", methods=["DELETE"])
+def api_delete_application(app_id: str):
+    """
+    Deletes an application record owned by student_id.
+    """
+    student_id = request.args.get("student_id") or "default_student"
+    deleted = delete_job_application(app_id=app_id, student_id=student_id)
+    return jsonify({"success": deleted}), (200 if deleted else 404)
+@app.route("/interview-history")
+def interview_history_view():
+    """
+    Mock Interview Performance History view (#144).
+    Displays historical mock interview attempts, scores by question type, and score progression trends.
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    analytics = get_student_interview_performance_analytics(student_id=student_id)
+    return render_template("interview_history.html", analytics=analytics, student_id=student_id)
+
+
+@app.route("/api/interview-history")
+def api_interview_history():
+    """
+    API endpoint returning historical mock interview attempts and analytics (#144).
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    analytics = get_student_interview_performance_analytics(student_id=student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "analytics": analytics
+@app.route("/linkedin-analyzer", methods=["GET", "POST"])
+def linkedin_analyzer():
+    """
+    LinkedIn Profile Analyzer View and API endpoint (#146).
+    Reviews headline, summary/about, experience, and skills to provide ATS-style
+    profile strength evaluation, missing keywords, and AI-powered headline rewrites.
+    """
+    analysis_result = None
+    target_role = "Software Engineer"
+    headline = ""
+    about = ""
+    experience = ""
+    skills = ""
+
+    if request.method == "POST":
+        target_role = request.form.get("target_role", "Software Engineer").strip()
+        headline = request.form.get("headline", "").strip()
+        about = request.form.get("about", "").strip()
+        experience = request.form.get("experience", "").strip()
+        skills = request.form.get("skills", "").strip()
+
+        if not headline and not about and not experience and not skills:
+            flash("Please enter at least one profile section (Headline, About, Experience, or Skills).", "error")
+        else:
+            analysis_result = linkedin_agent.analyze_profile(
+                headline=headline,
+                about=about,
+                experience=experience,
+                skills=skills,
+                target_role=target_role
+            )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        if not analysis_result:
+            json_data = request.get_json(silent=True) or {}
+            target_role = json_data.get("target_role", "Software Engineer")
+            headline = json_data.get("headline", "")
+            about = json_data.get("about", "")
+            experience = json_data.get("experience", "")
+            skills = json_data.get("skills", "")
+            analysis_result = linkedin_agent.analyze_profile(
+                headline=headline,
+                about=about,
+                experience=experience,
+                skills=skills,
+                target_role=target_role
+            )
+        return jsonify({
+            "success": True,
+            "analysis": analysis_result
+        }), 200
+
+    return render_template(
+        "linkedin_analyzer.html",
+        result=analysis_result,
+        target_role=target_role,
+        headline=headline,
+        about=about,
+        experience=experience,
+        skills=skills
+    )
+@app.route("/coding-practice", methods=["GET", "POST"])
+def coding_practice_view():
+    """
+    Personalized Coding Practice Recommendation View and Endpoint (#147).
+    Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
+    """
+    target_company = request.args.get("company", "").strip()
+    difficulty = request.args.get("difficulty", "All").strip()
+    raw_skills = request.args.get("skills", "").strip()
+
+    if request.method == "POST":
+        target_company = request.form.get("company", "").strip()
+        difficulty = request.form.get("difficulty", "All").strip()
+        raw_skills = request.form.get("skills", "").strip()
+
+    skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+
+    recommendations_data = coding_practice_agent.recommend_problems(
+        skill_gaps=skill_gaps,
+        target_company=target_company,
+        difficulty_preference=difficulty,
+        limit=8
+@app.route("/my-reports")
+def user_placement_history_view():
+    """
+    Save and Retrieve Previous Placement Analysis History View (#149).
+    Enforces per-student isolation and allows searching, filtering by company, and retrieving past reports.
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    company_filter = request.args.get("company", "").strip()
+    sort_by = request.args.get("sort", "date_desc").strip()
+
+    history_data = get_user_placement_history(
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "data": recommendations_data
+        }), 200
+
+    return render_template(
+        "coding_practice.html",
+        data=recommendations_data,
+        target_company=target_company,
+        difficulty=difficulty,
+        skills_input=raw_skills
+    )
+
+
+@app.route("/api/coding-practice/recommendations")
+def api_coding_practice_recommendations():
+    """
+    API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
+    """
+    target_company = request.args.get("company", "").strip()
+    difficulty = request.args.get("difficulty", "All").strip()
+    raw_skills = request.args.get("skills", "").strip()
+    skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+
+    recommendations_data = coding_practice_agent.recommend_problems(
+        skill_gaps=skill_gaps,
+        target_company=target_company,
+        difficulty_preference=difficulty,
+        limit=10
+    )
+    return jsonify({
+        "success": True,
+        "data": recommendations_data
+            "data": history_data
+        }), 200
+
+    return render_template(
+        "my_reports.html",
+        data=history_data,
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+
+
+@app.route("/api/user/analyses")
+def api_user_placement_analyses():
+    """
+    API endpoint to retrieve placement analysis history for a specific candidate (#149).
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    company_filter = request.args.get("company", "").strip()
+    sort_by = request.args.get("sort", "date_desc").strip()
+
+    history_data = get_user_placement_history(
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+    return jsonify({
+        "success": True,
+        "data": history_data
+    }), 200
 
 
 if __name__ == "__main__":
