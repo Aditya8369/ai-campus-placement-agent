@@ -521,3 +521,191 @@ def generate_certificate_pdf(analysis_data: dict, output_path: str) -> str:
         logger.error("Error generating certificate PDF: %s", str(exc))
         raise RuntimeError(f"Certificate PDF generation failed: {exc}") from exc
 
+
+def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
+    """
+    Generates a dedicated, beautifully formatted standalone Skills Gap & Upskilling PDF report (#136).
+    Includes identified missing skills, priority rankings, learning resources, and mini-project recommendations.
+    """
+    try:
+        logger.info("Generating standalone Skills Gap PDF report at: %s", output_path)
+
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=letter,
+            rightMargin=45,
+            leftMargin=45,
+            topMargin=45,
+            bottomMargin=45,
+        )
+
+        styles = getSampleStyleSheet()
+
+        primary_blue = colors.HexColor("#1a73e8")
+        accent_light_blue = colors.HexColor("#e8f0fe")
+        dark_text = colors.HexColor("#202124")
+        border_grey = colors.HexColor("#dadce0")
+        light_grey_bg = colors.HexColor("#f8f9fa")
+        high_priority_red = colors.HexColor("#d93025")
+        med_priority_orange = colors.HexColor("#f2994a")
+        low_priority_green = colors.HexColor("#1e8e3e")
+
+        title_style = ParagraphStyle(
+            "SkillsGapTitle",
+            parent=styles["Heading1"],
+            fontSize=22,
+            leading=26,
+            textColor=primary_blue,
+            alignment=0,
+            spaceAfter=4,
+        )
+
+        subtitle_style = ParagraphStyle(
+            "SkillsGapSubtitle",
+            parent=styles["Normal"],
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#5f6368"),
+            spaceAfter=15,
+        )
+
+        h2_style = ParagraphStyle(
+            "SkillsGapH2",
+            parent=styles["Heading2"],
+            fontSize=13,
+            leading=17,
+            textColor=primary_blue,
+            spaceBefore=12,
+            spaceAfter=8,
+            keepWithNext=True,
+        )
+
+        body_style = ParagraphStyle(
+            "SkillsGapBody",
+            parent=styles["Normal"],
+            fontSize=9,
+            leading=13,
+            textColor=dark_text,
+        )
+
+        badge_style = ParagraphStyle(
+            "SkillsGapBadge",
+            parent=styles["Normal"],
+            fontSize=8,
+            leading=10,
+            alignment=TA_CENTER,
+            textColor=colors.white,
+        )
+
+        story = []
+
+        # Header Title
+        story.append(Paragraph("<b>Campus Placement — Target Skill Gap & Learning Audit</b>", title_style))
+        company = escape_xml(analysis_data.get("company_name", "Target Company"))
+        created_at = escape_xml(analysis_data.get("created_at", "N/A"))
+        story.append(Paragraph(f"Candidate Placement Audit for <b>{company}</b> &bull; Generated: {created_at}", subtitle_style))
+
+        # Skill Gap data extraction
+        results = analysis_data.get("results", {}) if isinstance(analysis_data.get("results"), dict) else {}
+        skill_gaps = results.get("skill_gap", [])
+
+        if not skill_gaps or not isinstance(skill_gaps, list):
+            # Graceful Empty State
+            empty_box = [
+                [
+                    Paragraph(
+                        "<b>🎉 Outstanding Readiness! No Critical Skill Gaps Detected</b><br/><br/>"
+                        "Your resume fully satisfies the analyzed baseline requirements for this role. "
+                        "Continue sharpening your interview problem solving and algorithmic fundamentals.",
+                        body_style
+                    )
+                ]
+            ]
+            empty_table = Table(empty_box, colWidths=[520])
+            empty_table.setStyle(
+                TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#e6f4ea")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#34a853")),
+                    ("TOPPADDING", (0, 0), (-1, -1), 16),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 16),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 16),
+                ])
+            )
+            story.append(empty_table)
+        else:
+            story.append(Paragraph(f"<b>Identified Competency Gaps ({len(skill_gaps)} Missing Competencies)</b>", h2_style))
+
+            # Table Header
+            table_data = [
+                [
+                    Paragraph("<b>Missing Skill</b>", body_style),
+                    Paragraph("<b>Importance</b>", body_style),
+                    Paragraph("<b>Est. Time</b>", body_style),
+                    Paragraph("<b>Priority</b>", body_style),
+                    Paragraph("<b>Curated Platform / Project</b>", body_style),
+                ]
+            ]
+
+            for item in skill_gaps:
+                skill_name = escape_xml(item.get("skill", "Core Technical Skill"))
+                importance = escape_xml(item.get("importance", "High"))
+                learning_time = escape_xml(item.get("learning_time", "1-2 weeks"))
+                priority = str(item.get("priority", "Medium")).strip().capitalize()
+                resource = escape_xml(item.get("learning_resource", "Documentation & Courseware"))
+                proj = escape_xml(item.get("project_suggestion", ""))
+
+                p_bg = high_priority_red if priority == "High" else (med_priority_orange if priority == "Medium" else low_priority_green)
+
+                resource_block = f"<b>Resource:</b> {resource}"
+                if proj:
+                    resource_block += f"<br/><b>Project:</b> {proj}"
+
+                table_data.append([
+                    Paragraph(f"<b>{skill_name}</b>", body_style),
+                    Paragraph(importance, body_style),
+                    Paragraph(learning_time, body_style),
+                    Paragraph(f"<b>{priority}</b>", badge_style),
+                    Paragraph(resource_block, body_style),
+                ])
+
+            gap_table = Table(table_data, colWidths=[100, 75, 65, 60, 220])
+            gap_style = [
+                ("BACKGROUND", (0, 0), (-1, 0), accent_light_blue),
+                ("TEXTCOLOR", (0, 0), (-1, 0), primary_blue),
+                ("ALIGN", (0, 0), (-1, -1), "LEFT"),
+                ("ALIGN", (3, 1), (3, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("BOX", (0, 0), (-1, -1), 1, border_grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, border_grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+
+            for row_idx, item in enumerate(skill_gaps, start=1):
+                pri = str(item.get("priority", "Medium")).strip().capitalize()
+                bg_col = high_priority_red if pri == "High" else (med_priority_orange if pri == "Medium" else low_priority_green)
+                gap_style.append(("BACKGROUND", (3, row_idx), (3, row_idx), bg_col))
+
+            gap_table.setStyle(TableStyle(gap_style))
+            story.append(gap_table)
+
+        # Footer Notice
+        story.append(Spacer(1, 20))
+        footer_p = Paragraph(
+            "<i>Report generated by AI Campus Placement Agent. Designed to accelerate syllabus roadmap planning and recruiter interview readiness.</i>",
+            subtitle_style
+        )
+        story.append(footer_p)
+
+        doc.build(story)
+        logger.info("Skills gap PDF report compiled successfully.")
+        return output_path
+
+    except Exception as exc:
+        logger.error("Error generating skills gap PDF: %s", str(exc))
+        raise RuntimeError(f"Skills gap PDF generation failed: {exc}") from exc
+
+
