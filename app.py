@@ -36,6 +36,8 @@ from utils.database import (
     create_database_backup,
     verify_database_integrity,
     get_batch_comparison,
+    get_student_interview_history,
+    get_student_interview_performance_analytics,
     get_user_placement_history,
     save_batch_comparison,
 )
@@ -1472,6 +1474,28 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/interview-history")
+def interview_history_view():
+    """
+    Mock Interview Performance History view (#144).
+    Displays historical mock interview attempts, scores by question type, and score progression trends.
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    analytics = get_student_interview_performance_analytics(student_id=student_id)
+    return render_template("interview_history.html", analytics=analytics, student_id=student_id)
+
+
+@app.route("/api/interview-history")
+def api_interview_history():
+    """
+    API endpoint returning historical mock interview attempts and analytics (#144).
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    analytics = get_student_interview_performance_analytics(student_id=student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "analytics": analytics
 @app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """

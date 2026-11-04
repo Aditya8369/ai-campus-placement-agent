@@ -767,6 +767,10 @@ def get_cohort_stats(
 
 
 
+def get_student_interview_history(student_id: str = "default_student") -> List[Dict[str, Any]]:
+    """
+    Retrieves full mock interview session history for a student across all attempts (#144).
+    Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
 def get_user_placement_history(
     student_id: str = "default_student",
     company_filter: Optional[str] = None,
@@ -780,6 +784,152 @@ def get_user_placement_history(
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                i.id AS session_id,
+                i.analysis_id,
+                i.current_question_index,
+                i.questions_json,
+                i.answers_json,
+                i.completed,
+                a.company_name,
+                a.created_at AS analysis_date
+            FROM interviews i
+            JOIN analyses a ON i.analysis_id = a.id
+            WHERE a.student_id = ?
+            ORDER BY a.created_at DESC, i.id DESC
+        """, (student_id,))
+        rows = cursor.fetchall()
+
+        history = []
+        for r in rows:
+            rec = dict(r)
+            questions = json.loads(rec.get("questions_json", "[]") or "[]")
+            answers = json.loads(rec.get("answers_json", "[]") or "[]")
+
+            scores = []
+            type_scores = {"Technical": [], "HR": [], "Behavioral": []}
+            for ans in answers:
+                eval_data = ans.get("evaluation", {})
+                score = eval_data.get("score")
+                if score is not None:
+                    try:
+                        score_val = float(score)
+                        scores.append(score_val)
+                        q_type = ans.get("type", "General")
+                        if q_type in type_scores:
+                            type_scores[q_type].append(score_val)
+                    except (ValueError, TypeError):
+                        pass
+
+            avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+            technical_avg = round(sum(type_scores["Technical"]) / len(type_scores["Technical"]), 1) if type_scores["Technical"] else 0.0
+            hr_avg = round(sum(type_scores["HR"]) / len(type_scores["HR"]), 1) if type_scores["HR"] else 0.0
+            behavioral_avg = round(sum(type_scores["Behavioral"]) / len(type_scores["Behavioral"]), 1) if type_scores["Behavioral"] else 0.0
+
+            history.append({
+                "session_id": rec["session_id"],
+                "analysis_id": rec["analysis_id"],
+                "company_name": rec.get("company_name", "General"),
+                "total_questions": len(questions),
+                "answered_questions": len(answers),
+                "completed": bool(rec.get("completed", 0)),
+                "average_score": avg_score,
+                "technical_score": technical_avg,
+                "hr_score": hr_avg,
+                "behavioral_score": behavioral_avg,
+                "date": rec.get("analysis_date", ""),
+                "questions": questions,
+                "answers": answers
+            })
+        return history
+    except Exception as e:
+        logger.error(f"Error retrieving student interview history: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_student_interview_performance_analytics(student_id: str = "default_student") -> Dict[str, Any]:
+    """
+    Computes performance analytics, score trends, and strengths/weaknesses for mock interviews (#144).
+    """
+    history = get_student_interview_history(student_id=student_id)
+    if not history:
+        return {
+            "total_sessions": 0,
+            "completed_sessions": 0,
+            "total_questions_answered": 0,
+            "overall_average_score": 0.0,
+            "technical_average": 0.0,
+            "hr_average": 0.0,
+            "behavioral_average": 0.0,
+            "score_trend": [],
+            "strengths": [],
+            "weaknesses": [],
+            "sessions": []
+        }
+
+    total_sessions = len(history)
+    completed_sessions = sum(1 for s in history if s["completed"])
+    total_answered = sum(s["answered_questions"] for s in history)
+
+    all_scores = [s["average_score"] for s in history if s["average_score"] > 0]
+    overall_avg = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0.0
+
+    tech_scores = [s["technical_score"] for s in history if s["technical_score"] > 0]
+    hr_scores = [s["hr_score"] for s in history if s["hr_score"] > 0]
+    behav_scores = [s["behavioral_score"] for s in history if s["behavioral_score"] > 0]
+
+    tech_avg = round(sum(tech_scores) / len(tech_scores), 1) if tech_scores else 0.0
+    hr_avg = round(sum(hr_scores) / len(hr_scores), 1) if hr_scores else 0.0
+    behav_avg = round(sum(behav_scores) / len(behav_scores), 1) if behav_scores else 0.0
+
+    # Trend line sorted chronologically
+    score_trend = [
+        {
+            "date": s.get("date", "")[:10],
+            "company": s["company_name"],
+            "score": s["average_score"],
+            "session_id": s["session_id"]
+        }
+        for s in reversed(history) if s["average_score"] > 0
+    ]
+
+    # Strengths and Weaknesses analysis
+    strengths = []
+    weaknesses = []
+
+    domain_eval = [
+        ("Technical Concepts", tech_avg),
+        ("HR and Culture Fit", hr_avg),
+        ("Behavioral and STAR Structure", behav_avg)
+    ]
+
+    for name, avg in domain_eval:
+        if avg >= 75.0:
+            strengths.append(f"{name} ({avg}/100) - Strong grasp of core concepts and structured communication")
+        elif avg > 0:
+            weaknesses.append(f"{name} ({avg}/100) - Needs further practice with concise articulation and situational examples")
+
+    if not strengths and overall_avg >= 70.0:
+        strengths.append("Consistent practice and willingness to complete structured multi-round interviews.")
+    if not weaknesses:
+        weaknesses.append("Practice speaking with greater conciseness and quantifiable impact metrics.")
+
+    return {
+        "total_sessions": total_sessions,
+        "completed_sessions": completed_sessions,
+        "total_questions_answered": total_answered,
+        "overall_average_score": overall_avg,
+        "technical_average": tech_avg,
+        "hr_average": hr_avg,
+        "behavioral_average": behav_avg,
+        "score_trend": score_trend,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "sessions": history
+    }
         effective_student_id = (student_id or "default_student").strip()
 
         query = """
