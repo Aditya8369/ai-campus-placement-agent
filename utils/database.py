@@ -771,6 +771,15 @@ def get_student_interview_history(student_id: str = "default_student") -> List[D
     """
     Retrieves full mock interview session history for a student across all attempts (#144).
     Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
+def get_user_placement_history(
+    student_id: str = "default_student",
+    company_filter: Optional[str] = None,
+    sort_by: str = "date_desc"
+) -> Dict[str, Any]:
+    """
+    Saves and retrieves comprehensive previous placement analysis history for a specific user (#149).
+    Includes per-student data isolation, ATS score tracking, role match percentages,
+    and historical performance metrics.
     """
     conn = get_db_connection()
     try:
@@ -921,3 +930,96 @@ def get_student_interview_performance_analytics(student_id: str = "default_stude
         "weaknesses": weaknesses,
         "sessions": history
     }
+        effective_student_id = (student_id or "default_student").strip()
+
+        query = """
+            SELECT id, resume_filename, company_name, job_description, results_json,
+                   student_id, version_number, created_at
+            FROM analyses
+            WHERE student_id = ?
+        """
+        params: List[Any] = [effective_student_id]
+
+        if company_filter and company_filter.strip() and company_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(company_name) LIKE ?"
+            params.append(f"%{company_filter.strip().lower()}%")
+
+        if sort_by == "score_desc":
+            # Will sort in python after parsing ATS score
+            query += " ORDER BY created_at DESC"
+        elif sort_by == "date_asc":
+            query += " ORDER BY created_at ASC"
+        else:
+            query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        records = []
+        ats_scores = []
+        match_scores = []
+        company_counts: Dict[str, int] = {}
+
+        for row in rows:
+            rec = dict(row)
+            try:
+                raw_json = rec.pop("results_json", "{}")
+                parsed = json.loads(raw_json)
+                rec["results"] = parsed
+
+                # Score resolution
+                ats = parsed.get("ats_score") or parsed.get("resume_analysis", {}).get("ats_score", 0)
+                match = parsed.get("job_match_score") or parsed.get("job_match", {}).get("match_percentage", 0)
+
+                rec["ats_score"] = int(ats)
+                rec["match_percentage"] = int(match)
+                ats_scores.append(rec["ats_score"])
+                match_scores.append(rec["match_percentage"])
+
+                # Extract extracted skills & missing skills count
+                rec["matched_skills_count"] = len(parsed.get("matched_skills") or parsed.get("job_match", {}).get("matched_skills", []))
+                rec["missing_skills_count"] = len(parsed.get("missing_skills") or parsed.get("job_match", {}).get("missing_skills", []))
+
+                comp = rec.get("company_name", "General")
+                company_counts[comp] = company_counts.get(comp, 0) + 1
+
+            except Exception as parse_err:
+                logger.warning(f"Failed to parse analysis payload for record {rec.get('id')}: {parse_err}")
+                rec["results"] = {}
+                rec["ats_score"] = 0
+                rec["match_percentage"] = 0
+                rec["matched_skills_count"] = 0
+                rec["missing_skills_count"] = 0
+
+            records.append(rec)
+
+        if sort_by == "score_desc":
+            records.sort(key=lambda x: x["ats_score"], reverse=True)
+
+        avg_ats = round(sum(ats_scores) / len(ats_scores), 1) if ats_scores else 0.0
+        avg_match = round(sum(match_scores) / len(match_scores), 1) if match_scores else 0.0
+        highest_ats = max(ats_scores) if ats_scores else 0
+
+        return {
+            "student_id": effective_student_id,
+            "total_analyses": len(records),
+            "average_ats_score": avg_ats,
+            "average_match_percentage": avg_match,
+            "highest_ats_score": highest_ats,
+            "company_counts": company_counts,
+            "analyses": records
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching placement analysis history for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "total_analyses": 0,
+            "average_ats_score": 0.0,
+            "average_match_percentage": 0.0,
+            "highest_ats_score": 0,
+            "company_counts": {},
+            "analyses": []
+        }
+    finally:
+        conn.close()
