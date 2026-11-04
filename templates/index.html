@@ -125,6 +125,41 @@
                       </span>
                     </div>
 
+                    <!-- Enhanced Resume File Preview Card (#133) -->
+                    <div id="resumePreviewCard" class="card border rounded-3 p-3 mt-3 d-none shadow-sm bg-body">
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-3">
+                          <div class="p-3 bg-primary-subtle text-primary rounded-3 fs-3" id="previewFileIconBox">
+                            <i class="fa-solid fa-file-pdf" id="previewFileIcon"></i>
+                          </div>
+                          <div>
+                            <h6 class="fw-bold mb-1 text-truncate text-dark" id="previewFileName" style="max-width: 320px;">resume.pdf</h6>
+                            <div class="d-flex align-items-center gap-2 text-muted small">
+                              <span id="previewFileSize">0 KB</span>
+                              <span>&bull;</span>
+                              <span id="previewFileType" class="text-uppercase">PDF Document</span>
+                              <span>&bull;</span>
+                              <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>Ready for Analysis</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnChangeResumeFile">
+                            <i class="fa-solid fa-arrow-rotate-right me-1"></i> Choose Another
+                          </button>
+                          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnDiscardResumePreview">
+                            <i class="fa-solid fa-trash-can me-1"></i> Discard
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Empty File Selection Notice (#133) -->
+                    <div id="resumeEmptyNotice" class="text-muted small mt-2 d-flex align-items-center gap-2 px-1">
+                      <i class="fa-regular fa-circle-question text-secondary"></i>
+                      <span>No resume file chosen yet. Upload your PDF or DOCX to verify before initiating AI analysis.</span>
+                    </div>
+
                     <!-- Unsupported File Type Error Alert -->
                     <div id="uploadTypeErrorAlert"
                       class="alert alert-danger d-none mt-2 p-2 small d-flex align-items-center gap-2 rounded-3"

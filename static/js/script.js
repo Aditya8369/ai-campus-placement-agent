@@ -247,6 +247,15 @@ function initFormUpload() {
   const uploadPromptText = document.getElementById("uploadPromptText");
   const uploadSubText = document.getElementById("uploadSubText");
 
+  const previewCard = document.getElementById("resumePreviewCard");
+  const previewFileName = document.getElementById("previewFileName");
+  const previewFileSize = document.getElementById("previewFileSize");
+  const previewFileType = document.getElementById("previewFileType");
+  const previewFileIcon = document.getElementById("previewFileIcon");
+  const resumeEmptyNotice = document.getElementById("resumeEmptyNotice");
+  const btnChangeResumeFile = document.getElementById("btnChangeResumeFile");
+  const btnDiscardResumePreview = document.getElementById("btnDiscardResumePreview");
+
   // Format file size nicely
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
@@ -258,7 +267,10 @@ function initFormUpload() {
 
   // Helper to validate and display feedback for chosen resume file
   const handleSelectedFile = (file) => {
-    if (!file) return;
+    if (!file) {
+      resetUploadArea();
+      return;
+    }
 
     const fileName = file.name || "";
     const lowerName = fileName.toLowerCase();
@@ -281,6 +293,8 @@ function initFormUpload() {
       // Clear input
       if (fileInput) fileInput.value = "";
       if (fileFeedbackBadge) fileFeedbackBadge.classList.add("d-none");
+      if (previewCard) previewCard.classList.add("d-none");
+      if (resumeEmptyNotice) resumeEmptyNotice.classList.remove("d-none");
       return false;
     }
 
@@ -305,6 +319,18 @@ function initFormUpload() {
     if (fileFeedbackBadge && fileFeedbackBadgeText) {
       fileFeedbackBadgeText.innerHTML = `<i class="fa-solid ${iconClass} me-1"></i> ${fileName} (${formatFileSize(file.size)})`;
       fileFeedbackBadge.classList.remove("d-none");
+    }
+
+    // Populate Resume Preview Card (#133)
+    if (previewCard) {
+      if (previewFileName) previewFileName.textContent = fileName;
+      if (previewFileSize) previewFileSize.textContent = formatFileSize(file.size);
+      if (previewFileType) previewFileType.textContent = isDocx ? "Word Document (.docx)" : "PDF Document (.pdf)";
+      if (previewFileIcon) previewFileIcon.className = `fa-solid ${iconClass}`;
+      previewCard.classList.remove("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.add("d-none");
     }
 
     return true;
@@ -333,6 +359,12 @@ function initFormUpload() {
     if (uploadTypeErrorAlert) {
       uploadTypeErrorAlert.classList.add("d-none");
     }
+    if (previewCard) {
+      previewCard.classList.add("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.remove("d-none");
+    }
   };
 
   // Highlight upload area on drag events and file change
@@ -352,15 +384,23 @@ function initFormUpload() {
 
     fileInput.addEventListener("change", () => {
       if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const lowerName = file.name.toLowerCase();
-        const isDocx = lowerName.endsWith(".docx");
-        const iconClass = isDocx ? "fa-file-word text-primary" : "fa-file-pdf text-danger";
-        uploadArea.querySelector("p").innerHTML = `<i class="fa-solid ${iconClass} me-2"></i>Selected File: <b>${file.name}</b>`;
-        uploadArea.style.borderColor = "var(--primary-blue)";
-        uploadArea.style.backgroundColor = "var(--secondary-light)";
+        handleSelectedFile(fileInput.files[0]);
+      } else {
+        resetUploadArea();
       }
     });
+
+    if (btnChangeResumeFile) {
+      btnChangeResumeFile.addEventListener("click", () => {
+        fileInput.click();
+      });
+    }
+
+    if (btnDiscardResumePreview) {
+      btnDiscardResumePreview.addEventListener("click", () => {
+        resetUploadArea();
+      });
+    }
 
     ["dragenter", "dragover"].forEach(eventName => {
       uploadArea.addEventListener(eventName, (e) => {
