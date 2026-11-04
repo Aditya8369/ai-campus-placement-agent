@@ -66,6 +66,22 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 4: Store job application tracking records (#143)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_applications (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Applied',
+                application_date TEXT NOT NULL,
+                job_url TEXT,
+                job_description TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -80,6 +96,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_id, created_at DESC)")
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
@@ -505,6 +522,116 @@ def get_batch_comparison(batch_id: str) -> Optional[Dict[str, Any]]:
     finally:
         conn.close()
 
+
+
+def save_job_application(
+    app_id: str,
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    status: str = "Applied",
+    application_date: Optional[str] = None,
+    job_url: Optional[str] = None,
+    job_description: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> None:
+    """
+    Saves or updates a candidate job application record (#143).
+    Ensures per-user data segregation.
+    """
+    import datetime
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        date_str = application_date or datetime.date.today().isoformat()
+        cursor.execute("""
+            INSERT OR REPLACE INTO job_applications (
+                id, student_id, company_name, role_title, status, application_date, job_url, job_description, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            app_id,
+            student_id.strip() if student_id else "default_student",
+            company_name.strip(),
+            role_title.strip(),
+            status.strip(),
+            date_str,
+            (job_url or "").strip(),
+            (job_description or "").strip(),
+            (notes or "").strip(),
+        ))
+        conn.commit()
+        logger.info(f"Saved job application {app_id} for student {student_id}")
+    except Exception as e:
+        logger.error(f"Error saving job application {app_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_job_applications(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all job application records for a specific student, with optional status filtering (#143).
+    Strictly enforces user data isolation.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = "SELECT * FROM job_applications WHERE student_id = ?"
+        params: List[Any] = [student_id.strip() if student_id else "default_student"]
+
+        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(status) = LOWER(?)"
+            params.append(status_filter.strip())
+
+        query += " ORDER BY application_date DESC, created_at DESC"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving job applications for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_job_application(app_id: str, student_id: str) -> bool:
+    """
+    Deletes a specific job application record owned by student_id (#143).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM job_applications WHERE id = ? AND student_id = ?", (app_id, student_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting job application {app_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_job_application_status(app_id: str, student_id: str, new_status: str) -> bool:
+    """
+    Updates the pipeline status of a specific job application (#143).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE job_applications SET status = ? WHERE id = ? AND student_id = ?",
+            (new_status.strip(), app_id, student_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating job application status for {app_id}: {e}")
+        return False
+    finally:
+        conn.close()
 
 
 def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
