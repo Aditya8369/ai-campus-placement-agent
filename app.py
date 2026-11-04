@@ -41,7 +41,8 @@ from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
-    generate_side_by_side_diff
+    generate_side_by_side_diff,
+    compare_two_resume_texts
 )
 from utils.cohort_analytics import CohortAnalyticsService
 from utils.pdf_reader import (
@@ -1332,6 +1333,72 @@ def api_progress_diff(id_a: str, id_b: str):
     except Exception as e:
         logger.error(f"Error computing diff between {id_a} and {id_b}: {str(e)}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/compare-resumes", methods=["GET", "POST"])
+def compare_resumes_view():
+    """
+    Dedicated view and handler for comparing two resume versions directly (#140).
+    Accepts two uploaded files (.pdf or .docx) or raw text payloads, extracts content,
+    and returns comprehensive side-by-side differentials and AI feedback.
+    """
+    if request.method == "GET":
+        return render_template("resume_compare.html")
+
+    try:
+        file_v1 = request.files.get("resume_v1")
+        file_v2 = request.files.get("resume_v2")
+        text_v1 = request.form.get("text_v1", "").strip()
+        text_v2 = request.form.get("text_v2", "").strip()
+        name_v1 = "Resume Version 1"
+        name_v2 = "Resume Version 2"
+
+        if file_v1 and file_v1.filename:
+            name_v1 = secure_filename(file_v1.filename)
+            path_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_v1_{name_v1}")
+            file_v1.save(path_v1)
+            try:
+                text_v1 = extract_text_from_file(path_v1)
+            finally:
+                if os.path.exists(path_v1):
+                    os.remove(path_v1)
+
+        if file_v2 and file_v2.filename:
+            name_v2 = secure_filename(file_v2.filename)
+            path_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_v2_{name_v2}")
+            file_v2.save(path_v2)
+            try:
+                text_v2 = extract_text_from_file(path_v2)
+            finally:
+                if os.path.exists(path_v2):
+                    os.remove(path_v2)
+
+        if not text_v1 or not text_v2:
+            err_msg = "Please provide content for both resume versions to compare."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("compare_resumes_view"))
+
+        comparison = compare_two_resume_texts(
+            text_v1=text_v1,
+            text_v2=text_v2,
+            filename_v1=name_v1,
+            filename_v2=name_v2,
+        )
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "comparison": comparison}), 200
+
+        return render_template("resume_compare.html", comparison=comparison)
+
+    except Exception as exc:
+        logger.error(f"Error comparing resume versions: {exc}")
+        err_msg = f"Failed to compare resumes: {str(exc)}"
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 500
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
 
 
 @app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
