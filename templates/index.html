@@ -22,6 +22,23 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare</span> Versions
+        <a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-brands fa-github me-1"></i> GitHub <span class="d-none d-sm-inline">Audit</span>
+        <a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-briefcase me-1"></i> <span class="d-none d-sm-inline">Find</span> Internships
+        <a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-clipboard-list me-1"></i> Applications
+        <a href="/interview-history" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-chart-line me-1"></i> Interview History
+        <a href="/linkedin-analyzer" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-brands fa-linkedin me-1"></i> LinkedIn Analyzer
+        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-code me-1"></i> Practice DSA
+        <a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-folder-open me-1"></i> My Reports
+        </a>
         <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-trophy me-1"></i> Leaderboard
         </a>
@@ -123,6 +140,41 @@
                           <i class="fa-solid fa-xmark"></i> Remove
                         </button>
                       </span>
+                    </div>
+
+                    <!-- Enhanced Resume File Preview Card (#133) -->
+                    <div id="resumePreviewCard" class="card border rounded-3 p-3 mt-3 d-none shadow-sm bg-body">
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-3">
+                          <div class="p-3 bg-primary-subtle text-primary rounded-3 fs-3" id="previewFileIconBox">
+                            <i class="fa-solid fa-file-pdf" id="previewFileIcon"></i>
+                          </div>
+                          <div>
+                            <h6 class="fw-bold mb-1 text-truncate text-dark" id="previewFileName" style="max-width: 320px;">resume.pdf</h6>
+                            <div class="d-flex align-items-center gap-2 text-muted small">
+                              <span id="previewFileSize">0 KB</span>
+                              <span>&bull;</span>
+                              <span id="previewFileType" class="text-uppercase">PDF Document</span>
+                              <span>&bull;</span>
+                              <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>Ready for Analysis</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnChangeResumeFile">
+                            <i class="fa-solid fa-arrow-rotate-right me-1"></i> Choose Another
+                          </button>
+                          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnDiscardResumePreview">
+                            <i class="fa-solid fa-trash-can me-1"></i> Discard
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Empty File Selection Notice (#133) -->
+                    <div id="resumeEmptyNotice" class="text-muted small mt-2 d-flex align-items-center gap-2 px-1">
+                      <i class="fa-regular fa-circle-question text-secondary"></i>
+                      <span>No resume file chosen yet. Upload your PDF or DOCX to verify before initiating AI analysis.</span>
                     </div>
 
                     <!-- Unsupported File Type Error Alert -->

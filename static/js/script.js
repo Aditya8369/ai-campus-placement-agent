@@ -248,6 +248,15 @@ function initFormUpload() {
   const uploadPromptText = document.getElementById("uploadPromptText");
   const uploadSubText = document.getElementById("uploadSubText");
 
+  const previewCard = document.getElementById("resumePreviewCard");
+  const previewFileName = document.getElementById("previewFileName");
+  const previewFileSize = document.getElementById("previewFileSize");
+  const previewFileType = document.getElementById("previewFileType");
+  const previewFileIcon = document.getElementById("previewFileIcon");
+  const resumeEmptyNotice = document.getElementById("resumeEmptyNotice");
+  const btnChangeResumeFile = document.getElementById("btnChangeResumeFile");
+  const btnDiscardResumePreview = document.getElementById("btnDiscardResumePreview");
+
   // Format file size nicely
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
@@ -259,7 +268,10 @@ function initFormUpload() {
 
   // Helper to validate and display feedback for chosen resume file
   const handleSelectedFile = (file) => {
-    if (!file) return;
+    if (!file) {
+      resetUploadArea();
+      return;
+    }
 
     const fileName = file.name || "";
     const lowerName = fileName.toLowerCase();
@@ -282,6 +294,8 @@ function initFormUpload() {
       // Clear input
       if (fileInput) fileInput.value = "";
       if (fileFeedbackBadge) fileFeedbackBadge.classList.add("d-none");
+      if (previewCard) previewCard.classList.add("d-none");
+      if (resumeEmptyNotice) resumeEmptyNotice.classList.remove("d-none");
       return false;
     }
 
@@ -306,6 +320,18 @@ function initFormUpload() {
     if (fileFeedbackBadge && fileFeedbackBadgeText) {
       fileFeedbackBadgeText.innerHTML = `<i class="fa-solid ${iconClass} me-1"></i> ${fileName} (${formatFileSize(file.size)})`;
       fileFeedbackBadge.classList.remove("d-none");
+    }
+
+    // Populate Resume Preview Card (#133)
+    if (previewCard) {
+      if (previewFileName) previewFileName.textContent = fileName;
+      if (previewFileSize) previewFileSize.textContent = formatFileSize(file.size);
+      if (previewFileType) previewFileType.textContent = isDocx ? "Word Document (.docx)" : "PDF Document (.pdf)";
+      if (previewFileIcon) previewFileIcon.className = `fa-solid ${iconClass}`;
+      previewCard.classList.remove("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.add("d-none");
     }
 
     return true;
@@ -334,6 +360,12 @@ function initFormUpload() {
     if (uploadTypeErrorAlert) {
       uploadTypeErrorAlert.classList.add("d-none");
     }
+    if (previewCard) {
+      previewCard.classList.add("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.remove("d-none");
+    }
   };
 
   // Highlight upload area on drag events and file change
@@ -353,15 +385,23 @@ function initFormUpload() {
 
     fileInput.addEventListener("change", () => {
       if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const lowerName = file.name.toLowerCase();
-        const isDocx = lowerName.endsWith(".docx");
-        const iconClass = isDocx ? "fa-file-word text-primary" : "fa-file-pdf text-danger";
-        uploadArea.querySelector("p").innerHTML = `<i class="fa-solid ${iconClass} me-2"></i>Selected File: <b>${file.name}</b>`;
-        uploadArea.style.borderColor = "var(--primary-blue)";
-        uploadArea.style.backgroundColor = "var(--secondary-light)";
+        handleSelectedFile(fileInput.files[0]);
+      } else {
+        resetUploadArea();
       }
     });
+
+    if (btnChangeResumeFile) {
+      btnChangeResumeFile.addEventListener("click", () => {
+        fileInput.click();
+      });
+    }
+
+    if (btnDiscardResumePreview) {
+      btnDiscardResumePreview.addEventListener("click", () => {
+        resetUploadArea();
+      });
+    }
 
     ["dragenter", "dragover"].forEach(eventName => {
       uploadArea.addEventListener(eventName, (e) => {
@@ -1446,7 +1486,12 @@ function initMockInterview() {
       }
 
       const feedbackText = `
-        <b>Feedback:</b> ${evalData.feedback}<br/>
+        <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+            <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
+          </span>
+        </div>
+        <div class="mb-2 lh-base"><b>Feedback:</b> ${evalData.feedback}</div>
         <div class="row g-2 mt-2 mb-2">
           <div class="col-sm-4"><span class="badge bg-primary-subtle text-primary border border-primary-subtle w-100 py-1">Tech: ${evalData.technical_accuracy}/100</span></div>
           <div class="col-sm-4"><span class="badge bg-success-subtle text-success border border-success-subtle w-100 py-1">Comm: ${evalData.communication_score}/100</span></div>
@@ -1454,12 +1499,12 @@ function initMockInterview() {
         </div>
         ${fillersHtml}
         ${starHtml}
-        <b>Suggestions:</b><br/>
-        <ul class="mb-0 mt-1">
-          ${(evalData.suggestions || []).map(s => `<li>${s}</li>`).join("")}
+        <b>Suggestions:</b>
+        <ul class="mb-0 mt-1 ps-3">
+          ${(evalData.suggestions || []).map(s => `<li class="small text-secondary">${s}</li>`).join("")}
         </ul>
       `;
-      appendChatBubble(feedbackText, "agent");
+      appendChatBubble(feedbackText, "evaluation");
 
       if (result.completed) {
         appendChatBubble("<b>Congratulations! You have completed all mock interview questions.</b><br/>Please review your performance summary and export your transcript.", "agent");
@@ -1475,15 +1520,17 @@ function initMockInterview() {
         const nextQ = result.next_question;
         setTimeout(() => {
           const nextBubbleHtml = `
-            <div class="d-flex justify-content-between align-items-start mb-1">
-              <span>[<b>Question ${nextQ.index + 1} - ${nextQ.type}</b>]</span>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+              <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
+                <i class="fa-solid fa-play me-1"></i> Active Question ${nextQ.index + 1} &bull; ${nextQ.type}
+              </span>
               <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="${nextQ.question.replace(/"/g, '&quot;')}">
                 <i class="fa-solid fa-volume-high me-1"></i> Listen
               </button>
             </div>
-            <div>${nextQ.question}</div>
+            <div class="fw-semibold text-dark fs-6 lh-base">${nextQ.question}</div>
           `;
-          const newBubble = appendChatBubble(nextBubbleHtml, "agent");
+          const newBubble = appendChatBubble(nextBubbleHtml, "question");
           chatForm.setAttribute("data-question-index", nextQ.index);
           resetInputs();
 
