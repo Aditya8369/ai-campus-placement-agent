@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Placement Analysis History - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1"><i class="fa-solid fa-folder-open text-primary me-2"></i>My Placement Analysis History</h2>
+        <p class="text-muted mb-0">Retrieve, review, and compare all your past resume evaluations and company-specific match scores.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-primary fs-3 mb-1"><i class="fa-solid fa-file-waveform"></i></div>
+          <div class="fs-4 fw-bold">{{ data.total_analyses }}</div>
+          <div class="text-muted small">Total Reports</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-success fs-3 mb-1"><i class="fa-solid fa-star"></i></div>
+          <div class="fs-4 fw-bold">{{ data.highest_ats_score }}<span class="fs-6 text-muted">/100</span></div>
+          <div class="text-muted small">Best ATS Score</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-info fs-3 mb-1"><i class="fa-solid fa-chart-line"></i></div>
+          <div class="fs-4 fw-bold">{{ data.average_ats_score }}<span class="fs-6 text-muted">/100</span></div>
+          <div class="text-muted small">Avg ATS Score</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-warning fs-3 mb-1"><i class="fa-solid fa-bullseye"></i></div>
+          <div class="fs-4 fw-bold">{{ data.average_match_percentage }}%</div>
+          <div class="text-muted small">Avg Match Rate</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Filter Controls -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <form method="GET" action="/my-reports">
+        <input type="hidden" name="student_id" value="{{ student_id }}">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label for="company" class="form-label fw-semibold">Filter by Company</label>
+            <div class="input-group">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-building text-muted"></i></span>
+              <input type="text" class="form-control" id="company" name="company" value="{{ company_filter }}" placeholder="e.g. Google, Amazon, Microsoft">
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label for="sort" class="form-label fw-semibold">Sort Order</label>
+            <select class="form-select" id="sort" name="sort">
+              <option value="date_desc" {% if sort_by == 'date_desc' %}selected{% endif %}>Newest First</option>
+              <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>Oldest First</option>
+              <option value="score_desc" {% if sort_by == 'score_desc' %}selected{% endif %}>Highest ATS Score</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-primary rounded-pill w-100 py-2">
+              <i class="fa-solid fa-filter me-1"></i> Filter
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Analyses Grid -->
+    <div class="row g-4">
+      {% for analysis in data.analyses %}
+      <div class="col-md-6 col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100 p-4 d-flex flex-column justify-content-between">
+          <div>
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">
+                v{{ analysis.version_number }}
+              </span>
+              <span class="small text-muted">
+                <i class="fa-regular fa-clock me-1"></i> {{ analysis.created_at[:10] }}
+              </span>
+            </div>
+
+            <h5 class="fw-bold mb-1 text-truncate">
+              <i class="fa-solid fa-building text-secondary me-1"></i> {{ analysis.company_name }}
+            </h5>
+            <div class="small text-muted mb-3 text-truncate">
+              <i class="fa-solid fa-file-pdf me-1"></i> {{ analysis.resume_filename }}
+            </div>
+
+            <div class="row g-2 mb-3 text-center">
+              <div class="col-6">
+                <div class="p-2 bg-light rounded-3 border">
+                  <div class="small text-muted">ATS Score</div>
+                  <div class="fw-bold fs-5 {{ 'text-success' if analysis.ats_score >= 75 else ('text-primary' if analysis.ats_score >= 55 else 'text-warning') }}">
+                    {{ analysis.ats_score }}%
+                  </div>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="p-2 bg-light rounded-3 border">
+                  <div class="small text-muted">Job Match</div>
+                  <div class="fw-bold fs-5 text-info">
+                    {{ analysis.match_percentage }}%
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between small text-muted mb-3">
+              <span><i class="fa-solid fa-check text-success me-1"></i> {{ analysis.matched_skills_count }} matched skills</span>
+              <span><i class="fa-solid fa-circle-exclamation text-danger me-1"></i> {{ analysis.missing_skills_count }} skill gaps</span>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 pt-3 border-top">
+            <a href="/report/{{ analysis.id }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1">
+              <i class="fa-solid fa-eye me-1"></i> View Report
+            </a>
+            <a href="/interview/{{ analysis.id }}" class="btn btn-outline-success btn-sm rounded-pill">
+              <i class="fa-solid fa-microphone me-1"></i> Interview
+            </a>
+          </div>
+        </div>
+      </div>
+      {% else %}
+      <div class="col-12 text-center py-5">
+        <i class="fa-solid fa-folder-open fa-3x text-secondary opacity-50 mb-3"></i>
+        <h5 class="fw-bold text-muted">No Analysis History Found</h5>
+        <p class="text-muted mb-3">You haven't run any placement evaluations yet or no reports match your filter.</p>
+        <a href="/" class="btn btn-primary rounded-pill px-4">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Create Your First Placement Analysis
+        </a>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+
+</html>
