@@ -555,6 +555,89 @@ function initFormUpload() {
     });
   }
 
+  // -------------------------------------------------------------
+  // Handle Clear All option for the Analysis Form
+  // -------------------------------------------------------------
+  const btnClearForm = document.getElementById("btnClearForm");
+  const formResetAlert = document.getElementById("formResetAlert");
+  const formResetAlertMessage = document.getElementById("formResetAlertMessage");
+  const btnCloseResetAlert = document.getElementById("btnCloseResetAlert");
+
+  if (btnCloseResetAlert && formResetAlert) {
+    btnCloseResetAlert.addEventListener("click", () => {
+      formResetAlert.classList.add("d-none");
+    });
+  }
+
+  if (btnClearForm) {
+    btnClearForm.addEventListener("click", (e) => {
+      // Ensure the button does not accidentally submit the form
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 1. Clear the pasted resume text
+      const resumeTextInput = document.getElementById("resumeTextInput");
+      if (resumeTextInput) {
+        resumeTextInput.value = "";
+      }
+
+      // 2. Remove the currently selected PDF/DOCX file and reset upload dropzone
+      resetUploadArea();
+
+      // 3. Clear the job description field
+      const jdInput = document.getElementById("jdInput");
+      if (jdInput) {
+        jdInput.value = "";
+      }
+
+      // 4. Reset the selected company to General Placement Preparation
+      const companySelect = document.getElementById("companySelect");
+      if (companySelect) {
+        companySelect.value = "General";
+      }
+
+      // Reset candidate profile identifier if present
+      const studentIdInput = document.getElementById("studentIdInput");
+      if (studentIdInput) {
+        studentIdInput.value = "";
+      }
+
+      // Reset batch matrix mode switch if active
+      if (batchModeSwitch && batchModeSwitch.checked) {
+        batchModeSwitch.checked = false;
+        batchModeSwitch.dispatchEvent(new Event("change"));
+      }
+
+      // Switch back to the primary Upload PDF / DOCX tab
+      const pdfTab = document.getElementById("pdf-tab");
+      if (pdfTab) {
+        if (window.bootstrap && window.bootstrap.Tab) {
+          const tabInstance = window.bootstrap.Tab.getOrCreateInstance(pdfTab);
+          tabInstance.show();
+        } else {
+          pdfTab.click();
+        }
+      }
+
+      // 5. Display a confirmation message after clearing the form
+      if (formResetAlert) {
+        if (formResetAlertMessage) {
+          formResetAlertMessage.textContent = "Form cleared successfully. All inputs have been reset.";
+        }
+        formResetAlert.classList.remove("d-none");
+
+        // Scroll confirmation alert into view smoothly if not visible
+        formResetAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        // Auto-dismiss after 4 seconds
+        clearTimeout(window._formResetAlertTimeout);
+        window._formResetAlertTimeout = setTimeout(() => {
+          formResetAlert.classList.add("d-none");
+        }, 4000);
+      }
+    });
+  }
+
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();

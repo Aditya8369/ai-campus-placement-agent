@@ -68,6 +68,15 @@
           <div class="card glass-card p-4">
             <h4 class="fw-bold mb-4 text-center">Placement Analysis Workspace</h4>
 
+            <!-- Form Reset Confirmation Alert -->
+            <div id="formResetAlert" class="alert alert-success alert-dismissible fade show d-none p-2 px-3 small d-flex align-items-center justify-content-between rounded-3 mb-3" role="alert">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-circle-check text-success"></i>
+                <span id="formResetAlertMessage">Form cleared successfully. All inputs have been reset to defaults.</span>
+              </div>
+              <button type="button" class="btn-close p-2" id="btnCloseResetAlert" aria-label="Close"></button>
+            </div>
+
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             {% for category, message in messages %}
@@ -220,11 +229,18 @@
                   longitudinal ATS improvements.</div>
               </div>
 
-              <!-- Submit button -->
-              <button type="submit"
-                class="btn btn-custom-primary w-100 py-3 mt-2 fs-5 d-flex align-items-center justify-content-center">
-                <i class="fa-solid fa-wand-magic-sparkles me-2"></i> <span>Analyze Readiness</span>
-              </button>
+              <!-- Action Buttons: Analyze Readiness & Clear All -->
+              <div class="d-flex flex-column flex-sm-row gap-2 mt-3">
+                <button type="submit" id="btnSubmitAnalysis"
+                  class="btn btn-custom-primary flex-grow-1 py-3 fs-5 d-flex align-items-center justify-content-center">
+                  <i class="fa-solid fa-wand-magic-sparkles me-2" id="submitBtnIcon"></i> <span id="submitBtnSpan">Analyze Readiness</span>
+                </button>
+                <button type="button" id="btnClearForm"
+                  class="btn btn-outline-secondary py-3 px-4 rounded-pill d-flex align-items-center justify-content-center fw-semibold text-nowrap"
+                  title="Clear all inputs and reset form without refreshing">
+                  <i class="fa-solid fa-rotate-left me-2"></i> <span>Clear All</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>
