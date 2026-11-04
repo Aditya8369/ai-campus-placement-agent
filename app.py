@@ -83,6 +83,7 @@ from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
 from agents.star_agent import StarEvaluationAgent
+from agents.github_agent import GitHubAnalyzerAgent
 from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
@@ -167,6 +168,7 @@ coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
 star_evaluation_agent = StarEvaluationAgent()
+github_analyzer_agent = GitHubAnalyzerAgent()
 internship_agent = InternshipRecommendationAgent()
 linkedin_agent = LinkedInAgent()
 coding_practice_agent = CodingPracticeAgent()
@@ -1480,6 +1482,31 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/github-analyzer", methods=["GET", "POST"])
+def github_analyzer_view():
+    """
+    Evaluates public candidate developer profiles from GitHub (#141).
+    Fetches repositories, star counts, top programming languages, and portfolio recommendations.
+    """
+    if request.method == "GET":
+        username_query = request.args.get("username", "").strip()
+        analysis = None
+        if username_query:
+            analysis = github_analyzer_agent.analyze_profile(username_query)
+        return render_template("github_analyzer.html", analysis=analysis, query_username=username_query)
+
+    # POST Submission
+    target_username = request.form.get("github_username", "").strip()
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        target_username = payload.get("github_username", "").strip()
+
+    analysis = github_analyzer_agent.analyze_profile(target_username)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(analysis), (200 if analysis.get("success") else 400)
+
+    return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
 @app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
