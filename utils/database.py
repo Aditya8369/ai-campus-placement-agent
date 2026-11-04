@@ -66,6 +66,22 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 4: Store job application tracking records (#143)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS job_applications (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Applied',
+                application_date TEXT NOT NULL,
+                job_url TEXT,
+                job_description TEXT,
+                notes TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -80,6 +96,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_id, created_at DESC)")
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
@@ -507,6 +524,116 @@ def get_batch_comparison(batch_id: str) -> Optional[Dict[str, Any]]:
 
 
 
+def save_job_application(
+    app_id: str,
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    status: str = "Applied",
+    application_date: Optional[str] = None,
+    job_url: Optional[str] = None,
+    job_description: Optional[str] = None,
+    notes: Optional[str] = None,
+) -> None:
+    """
+    Saves or updates a candidate job application record (#143).
+    Ensures per-user data segregation.
+    """
+    import datetime
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        date_str = application_date or datetime.date.today().isoformat()
+        cursor.execute("""
+            INSERT OR REPLACE INTO job_applications (
+                id, student_id, company_name, role_title, status, application_date, job_url, job_description, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            app_id,
+            student_id.strip() if student_id else "default_student",
+            company_name.strip(),
+            role_title.strip(),
+            status.strip(),
+            date_str,
+            (job_url or "").strip(),
+            (job_description or "").strip(),
+            (notes or "").strip(),
+        ))
+        conn.commit()
+        logger.info(f"Saved job application {app_id} for student {student_id}")
+    except Exception as e:
+        logger.error(f"Error saving job application {app_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_job_applications(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all job application records for a specific student, with optional status filtering (#143).
+    Strictly enforces user data isolation.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = "SELECT * FROM job_applications WHERE student_id = ?"
+        params: List[Any] = [student_id.strip() if student_id else "default_student"]
+
+        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(status) = LOWER(?)"
+            params.append(status_filter.strip())
+
+        query += " ORDER BY application_date DESC, created_at DESC"
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving job applications for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_job_application(app_id: str, student_id: str) -> bool:
+    """
+    Deletes a specific job application record owned by student_id (#143).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM job_applications WHERE id = ? AND student_id = ?", (app_id, student_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting job application {app_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def update_job_application_status(app_id: str, student_id: str, new_status: str) -> bool:
+    """
+    Updates the pipeline status of a specific job application (#143).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE job_applications SET status = ? WHERE id = ? AND student_id = ?",
+            (new_status.strip(), app_id, student_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating job application status for {app_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
     """
     Populates default cohort records representing diverse university branch peers.
@@ -765,3 +892,261 @@ def get_cohort_stats(
         conn.close()
 
 
+
+
+def get_student_interview_history(student_id: str = "default_student") -> List[Dict[str, Any]]:
+    """
+    Retrieves full mock interview session history for a student across all attempts (#144).
+    Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
+def get_user_placement_history(
+    student_id: str = "default_student",
+    company_filter: Optional[str] = None,
+    sort_by: str = "date_desc"
+) -> Dict[str, Any]:
+    """
+    Saves and retrieves comprehensive previous placement analysis history for a specific user (#149).
+    Includes per-student data isolation, ATS score tracking, role match percentages,
+    and historical performance metrics.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                i.id AS session_id,
+                i.analysis_id,
+                i.current_question_index,
+                i.questions_json,
+                i.answers_json,
+                i.completed,
+                a.company_name,
+                a.created_at AS analysis_date
+            FROM interviews i
+            JOIN analyses a ON i.analysis_id = a.id
+            WHERE a.student_id = ?
+            ORDER BY a.created_at DESC, i.id DESC
+        """, (student_id,))
+        rows = cursor.fetchall()
+
+        history = []
+        for r in rows:
+            rec = dict(r)
+            questions = json.loads(rec.get("questions_json", "[]") or "[]")
+            answers = json.loads(rec.get("answers_json", "[]") or "[]")
+
+            scores = []
+            type_scores = {"Technical": [], "HR": [], "Behavioral": []}
+            for ans in answers:
+                eval_data = ans.get("evaluation", {})
+                score = eval_data.get("score")
+                if score is not None:
+                    try:
+                        score_val = float(score)
+                        scores.append(score_val)
+                        q_type = ans.get("type", "General")
+                        if q_type in type_scores:
+                            type_scores[q_type].append(score_val)
+                    except (ValueError, TypeError):
+                        pass
+
+            avg_score = round(sum(scores) / len(scores), 1) if scores else 0.0
+            technical_avg = round(sum(type_scores["Technical"]) / len(type_scores["Technical"]), 1) if type_scores["Technical"] else 0.0
+            hr_avg = round(sum(type_scores["HR"]) / len(type_scores["HR"]), 1) if type_scores["HR"] else 0.0
+            behavioral_avg = round(sum(type_scores["Behavioral"]) / len(type_scores["Behavioral"]), 1) if type_scores["Behavioral"] else 0.0
+
+            history.append({
+                "session_id": rec["session_id"],
+                "analysis_id": rec["analysis_id"],
+                "company_name": rec.get("company_name", "General"),
+                "total_questions": len(questions),
+                "answered_questions": len(answers),
+                "completed": bool(rec.get("completed", 0)),
+                "average_score": avg_score,
+                "technical_score": technical_avg,
+                "hr_score": hr_avg,
+                "behavioral_score": behavioral_avg,
+                "date": rec.get("analysis_date", ""),
+                "questions": questions,
+                "answers": answers
+            })
+        return history
+    except Exception as e:
+        logger.error(f"Error retrieving student interview history: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_student_interview_performance_analytics(student_id: str = "default_student") -> Dict[str, Any]:
+    """
+    Computes performance analytics, score trends, and strengths/weaknesses for mock interviews (#144).
+    """
+    history = get_student_interview_history(student_id=student_id)
+    if not history:
+        return {
+            "total_sessions": 0,
+            "completed_sessions": 0,
+            "total_questions_answered": 0,
+            "overall_average_score": 0.0,
+            "technical_average": 0.0,
+            "hr_average": 0.0,
+            "behavioral_average": 0.0,
+            "score_trend": [],
+            "strengths": [],
+            "weaknesses": [],
+            "sessions": []
+        }
+
+    total_sessions = len(history)
+    completed_sessions = sum(1 for s in history if s["completed"])
+    total_answered = sum(s["answered_questions"] for s in history)
+
+    all_scores = [s["average_score"] for s in history if s["average_score"] > 0]
+    overall_avg = round(sum(all_scores) / len(all_scores), 1) if all_scores else 0.0
+
+    tech_scores = [s["technical_score"] for s in history if s["technical_score"] > 0]
+    hr_scores = [s["hr_score"] for s in history if s["hr_score"] > 0]
+    behav_scores = [s["behavioral_score"] for s in history if s["behavioral_score"] > 0]
+
+    tech_avg = round(sum(tech_scores) / len(tech_scores), 1) if tech_scores else 0.0
+    hr_avg = round(sum(hr_scores) / len(hr_scores), 1) if hr_scores else 0.0
+    behav_avg = round(sum(behav_scores) / len(behav_scores), 1) if behav_scores else 0.0
+
+    # Trend line sorted chronologically
+    score_trend = [
+        {
+            "date": s.get("date", "")[:10],
+            "company": s["company_name"],
+            "score": s["average_score"],
+            "session_id": s["session_id"]
+        }
+        for s in reversed(history) if s["average_score"] > 0
+    ]
+
+    # Strengths and Weaknesses analysis
+    strengths = []
+    weaknesses = []
+
+    domain_eval = [
+        ("Technical Concepts", tech_avg),
+        ("HR and Culture Fit", hr_avg),
+        ("Behavioral and STAR Structure", behav_avg)
+    ]
+
+    for name, avg in domain_eval:
+        if avg >= 75.0:
+            strengths.append(f"{name} ({avg}/100) - Strong grasp of core concepts and structured communication")
+        elif avg > 0:
+            weaknesses.append(f"{name} ({avg}/100) - Needs further practice with concise articulation and situational examples")
+
+    if not strengths and overall_avg >= 70.0:
+        strengths.append("Consistent practice and willingness to complete structured multi-round interviews.")
+    if not weaknesses:
+        weaknesses.append("Practice speaking with greater conciseness and quantifiable impact metrics.")
+
+    return {
+        "total_sessions": total_sessions,
+        "completed_sessions": completed_sessions,
+        "total_questions_answered": total_answered,
+        "overall_average_score": overall_avg,
+        "technical_average": tech_avg,
+        "hr_average": hr_avg,
+        "behavioral_average": behav_avg,
+        "score_trend": score_trend,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
+        "sessions": history
+    }
+        effective_student_id = (student_id or "default_student").strip()
+
+        query = """
+            SELECT id, resume_filename, company_name, job_description, results_json,
+                   student_id, version_number, created_at
+            FROM analyses
+            WHERE student_id = ?
+        """
+        params: List[Any] = [effective_student_id]
+
+        if company_filter and company_filter.strip() and company_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(company_name) LIKE ?"
+            params.append(f"%{company_filter.strip().lower()}%")
+
+        if sort_by == "score_desc":
+            # Will sort in python after parsing ATS score
+            query += " ORDER BY created_at DESC"
+        elif sort_by == "date_asc":
+            query += " ORDER BY created_at ASC"
+        else:
+            query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        records = []
+        ats_scores = []
+        match_scores = []
+        company_counts: Dict[str, int] = {}
+
+        for row in rows:
+            rec = dict(row)
+            try:
+                raw_json = rec.pop("results_json", "{}")
+                parsed = json.loads(raw_json)
+                rec["results"] = parsed
+
+                # Score resolution
+                ats = parsed.get("ats_score") or parsed.get("resume_analysis", {}).get("ats_score", 0)
+                match = parsed.get("job_match_score") or parsed.get("job_match", {}).get("match_percentage", 0)
+
+                rec["ats_score"] = int(ats)
+                rec["match_percentage"] = int(match)
+                ats_scores.append(rec["ats_score"])
+                match_scores.append(rec["match_percentage"])
+
+                # Extract extracted skills & missing skills count
+                rec["matched_skills_count"] = len(parsed.get("matched_skills") or parsed.get("job_match", {}).get("matched_skills", []))
+                rec["missing_skills_count"] = len(parsed.get("missing_skills") or parsed.get("job_match", {}).get("missing_skills", []))
+
+                comp = rec.get("company_name", "General")
+                company_counts[comp] = company_counts.get(comp, 0) + 1
+
+            except Exception as parse_err:
+                logger.warning(f"Failed to parse analysis payload for record {rec.get('id')}: {parse_err}")
+                rec["results"] = {}
+                rec["ats_score"] = 0
+                rec["match_percentage"] = 0
+                rec["matched_skills_count"] = 0
+                rec["missing_skills_count"] = 0
+
+            records.append(rec)
+
+        if sort_by == "score_desc":
+            records.sort(key=lambda x: x["ats_score"], reverse=True)
+
+        avg_ats = round(sum(ats_scores) / len(ats_scores), 1) if ats_scores else 0.0
+        avg_match = round(sum(match_scores) / len(match_scores), 1) if match_scores else 0.0
+        highest_ats = max(ats_scores) if ats_scores else 0
+
+        return {
+            "student_id": effective_student_id,
+            "total_analyses": len(records),
+            "average_ats_score": avg_ats,
+            "average_match_percentage": avg_match,
+            "highest_ats_score": highest_ats,
+            "company_counts": company_counts,
+            "analyses": records
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching placement analysis history for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "total_analyses": 0,
+            "average_ats_score": 0.0,
+            "average_match_percentage": 0.0,
+            "highest_ats_score": 0,
+            "company_counts": {},
+            "analyses": []
+        }
+    finally:
+        conn.close()
