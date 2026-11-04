@@ -35,6 +35,7 @@ from utils.database import (
     create_database_backup,
     verify_database_integrity,
     get_batch_comparison,
+    get_user_placement_history,
     save_batch_comparison,
 )
 from utils.batch_analyzer import run_batch_company_comparison
@@ -1464,6 +1465,57 @@ def api_admin_run_retention():
     except Exception as e:
         logger.error(f"Error during retention cycle execution: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/my-reports")
+def user_placement_history_view():
+    """
+    Save and Retrieve Previous Placement Analysis History View (#149).
+    Enforces per-student isolation and allows searching, filtering by company, and retrieving past reports.
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    company_filter = request.args.get("company", "").strip()
+    sort_by = request.args.get("sort", "date_desc").strip()
+
+    history_data = get_user_placement_history(
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "data": history_data
+        }), 200
+
+    return render_template(
+        "my_reports.html",
+        data=history_data,
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+
+
+@app.route("/api/user/analyses")
+def api_user_placement_analyses():
+    """
+    API endpoint to retrieve placement analysis history for a specific candidate (#149).
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    company_filter = request.args.get("company", "").strip()
+    sort_by = request.args.get("sort", "date_desc").strip()
+
+    history_data = get_user_placement_history(
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
+    return jsonify({
+        "success": True,
+        "data": history_data
+    }), 200
 
 
 if __name__ == "__main__":
