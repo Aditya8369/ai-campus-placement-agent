@@ -1,5 +1,16 @@
 // Frontend interactions - AI Campus Placement Agent
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  if (typeof str !== "string") str = String(str);
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
   initFormUpload();
@@ -8,8 +19,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initCompanyExplorer();
   initSkillGapFilter();
   initRoadmapExport();
-  initCodingSandbox();
+  initRoadmapTracker();
+  initProgressTracker();
+  if (typeof initCodingSandbox === "function") {
+    initCodingSandbox();
+  }
   initOutreachGenerator();
+  initCopySuggestions();
 });
 
 function initThemeToggle() {
@@ -1454,8 +1470,15 @@ function initMockInterview() {
         ${fillersHtml}
         ${starHtml}
         <b>Suggestions:</b><br/>
-        <ul class="mb-0 mt-1">
-          ${(evalData.suggestions || []).map(s => `<li>${s}</li>`).join("")}
+        <ul class="mb-0 mt-1 list-unstyled">
+          ${(evalData.suggestions || []).map(s => `
+            <li class="mb-1 p-2 bg-white rounded-3 border d-flex justify-content-between align-items-center gap-2">
+              <span class="small text-dark">${escapeHtml(s)}</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="${escapeHtml(s)}" title="Copy suggestion">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </li>
+          `).join("")}
         </ul>
       `;
       appendChatBubble(feedbackText, "agent");
@@ -2535,4 +2558,195 @@ function initOutreachGenerator() {
       .replace(/'/g, "&#039;");
   }
 }
+
+/**
+ * Universal Clipboard Copy Helper for AI-Generated Suggestions & Recommendations
+ * Supports modern Clipboard API with fallback to document.execCommand('copy').
+ * Fully responsive and cross-browser compatible (Chrome, Safari, iOS WebKit, Firefox, Edge).
+ * Displays instant inline button state feedback and non-intrusive floating toast notifications.
+ */
+function initCopySuggestions() {
+  function getOrCreateToastContainer() {
+    let container = document.getElementById("copyToastContainer");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "copyToastContainer";
+      container.className = "copy-toast-container";
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("aria-atomic", "true");
+      document.body.appendChild(container);
+    }
+    return container;
+  }
+
+  function showCopyToast(message, isSuccess = true) {
+    const container = getOrCreateToastContainer();
+    const toast = document.createElement("div");
+    toast.className = "copy-toast";
+    toast.setAttribute("role", "status");
+
+    const iconClass = isSuccess
+      ? "fa-solid fa-circle-check text-success"
+      : "fa-solid fa-triangle-exclamation text-danger";
+
+    toast.innerHTML = `
+      <i class="${iconClass} flex-shrink-0"></i>
+      <span class="flex-grow-1">${escapeHtml(message)}</span>
+    `;
+
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
+      });
+    });
+
+    setTimeout(() => {
+      toast.classList.remove("show");
+      toast.classList.add("fade-out");
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, 2400);
+  }
+
+  async function copyTextToClipboard(text) {
+    if (!text || typeof text !== "string") return false;
+    const cleanText = text.trim();
+    if (!cleanText) return false;
+
+    // 1. Try modern navigator.clipboard API if available and permitted
+    if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(cleanText);
+        return true;
+      } catch (err) {
+        console.warn("navigator.clipboard.writeText failed, trying execCommand fallback:", err);
+      }
+    }
+
+    // 2. Fallback using document.execCommand('copy') for older browsers, iOS Safari, HTTP, and iframes
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = cleanText;
+      // Prevent mobile keyboard popping up and viewport scrolling
+      textarea.style.position = "fixed";
+      textarea.style.top = "0";
+      textarea.style.left = "-9999px";
+      textarea.style.width = "2em";
+      textarea.style.height = "2em";
+      textarea.style.padding = "0";
+      textarea.style.border = "none";
+      textarea.style.outline = "none";
+      textarea.style.boxShadow = "none";
+      textarea.style.background = "transparent";
+      textarea.style.fontSize = "16px";
+      textarea.setAttribute("readonly", "");
+      textarea.setAttribute("aria-hidden", "true");
+
+      document.body.appendChild(textarea);
+
+      // Handle iOS Safari selection range
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+
+      if (!successful) {
+        throw new Error("execCommand('copy') returned false");
+      }
+      return true;
+    } catch (fallbackErr) {
+      console.error("Clipboard copy failed across all methods:", fallbackErr);
+      return false;
+    }
+  }
+
+  function triggerButtonFeedback(btn, isSuccess) {
+    if (!btn) return;
+    if (btn.dataset.copyingInProgress === "true") return;
+    btn.dataset.copyingInProgress = "true";
+
+    const originalHtml = btn.innerHTML;
+    const originalTitle = btn.getAttribute("title") || "";
+    const hasText = btn.textContent.trim().length > 0;
+
+    if (isSuccess) {
+      btn.classList.add("copied");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-check text-success me-1"></i> Copied!'
+        : '<i class="fa-solid fa-check text-success"></i>';
+      btn.setAttribute("title", "Copied to clipboard!");
+    } else {
+      btn.classList.add("copy-error");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> Failed'
+        : '<i class="fa-solid fa-triangle-exclamation text-danger"></i>';
+      btn.setAttribute("title", "Failed to copy");
+    }
+
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.classList.remove("copied", "copy-error");
+      if (originalTitle) {
+        btn.setAttribute("title", originalTitle);
+      } else {
+        btn.removeAttribute("title");
+      }
+      delete btn.dataset.copyingInProgress;
+    }, 2000);
+  }
+
+  // Event delegation to catch clicks on any .btn-copy-suggestion or .btn-copy-text
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-copy-suggestion, .btn-copy-text");
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 1. Check data-copy-text or data-copy-value
+    let textToCopy = btn.dataset.copyText || btn.dataset.copyValue;
+
+    // 2. Check data-copy-target (id of element containing text)
+    if (!textToCopy && btn.dataset.copyTarget) {
+      const targetEl = document.getElementById(btn.dataset.copyTarget);
+      if (targetEl) {
+        textToCopy = targetEl.value !== undefined ? targetEl.value : targetEl.innerText || targetEl.textContent;
+      }
+    }
+
+    // 3. Fallback: Search parent or sibling container
+    if (!textToCopy) {
+      const parentContainer = btn.closest("li, .list-group-item, .alert, .p-3, .chat-bubble");
+      if (parentContainer) {
+        const textEl = parentContainer.querySelector(".resume-bullet-text, .suggestion-text, span, p");
+        if (textEl) {
+          textToCopy = textEl.innerText || textEl.textContent;
+        }
+      }
+    }
+
+    if (!textToCopy || !textToCopy.trim()) {
+      showCopyToast("No recommendation text found to copy.", false);
+      triggerButtonFeedback(btn, false);
+      return;
+    }
+
+    const success = await copyTextToClipboard(textToCopy);
+
+    if (success) {
+      triggerButtonFeedback(btn, true);
+      const customMsg = btn.dataset.copySuccessMsg || "Recommendation copied to clipboard!";
+      showCopyToast(customMsg, true);
+    } else {
+      triggerButtonFeedback(btn, false);
+      showCopyToast("Could not access clipboard. Please copy manually.", false);
+    }
+  });
+}
+
 

@@ -141,14 +141,24 @@
                   </div>
                 {% endif %}
                 {% if ans.evaluation.star_method_analysis and ans.evaluation.star_method_analysis.feedback %}
-                  <div class="small mb-2 text-secondary">
-                    <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> {{ ans.evaluation.star_method_analysis.feedback }}
+                  <div class="small mb-2 text-secondary d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                      <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> {{ ans.evaluation.star_method_analysis.feedback }}
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ ans.evaluation.star_method_analysis.feedback|e }}" title="Copy STAR feedback">
+                      <i class="fa-regular fa-copy"></i>
+                    </button>
                   </div>
                 {% endif %}
                 <b>Suggestions:</b>
-                <ul class="mb-0 mt-1">
+                <ul class="mb-0 mt-1 list-unstyled">
                   {% for sug in ans.evaluation.suggestions %}
-                    <li>{{ sug }}</li>
+                    <li class="mb-1 p-2 bg-white rounded-3 border d-flex justify-content-between align-items-center gap-2">
+                      <span class="small text-dark">{{ sug }}</span>
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ sug|e }}" title="Copy suggestion">
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                    </li>
                   {% endfor %}
                 </ul>
               </div>
@@ -800,6 +810,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Global Toast Notification Container for Suggestions -->
+  <div id="copyToastContainer" class="copy-toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Footer -->
   <footer class="bg-white border-top py-4 mt-auto">
