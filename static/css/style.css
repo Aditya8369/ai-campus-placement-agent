@@ -308,16 +308,29 @@ body {
 }
 
 .chat-bubble {
-  max-width: 75%;
+  max-width: 80%;
   margin-bottom: 20px;
-  padding: 15px;
+  padding: 16px 20px;
   border-radius: var(--border-radius-md);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  line-height: 1.55;
 }
 
 .chat-bubble-agent {
   background: var(--secondary-light);
   color: var(--text-dark);
   align-self: flex-start;
+  border-bottom-left-radius: 4px;
+  border-left: 4px solid var(--primary-blue);
+}
+
+.chat-bubble-question {
+  background: #ffffff;
+  border: 1px solid #d2e3fc;
+  border-left: 5px solid #1a73e8;
+  color: var(--text-dark);
+  align-self: flex-start;
+  border-radius: var(--border-radius-md);
   border-bottom-left-radius: 4px;
 }
 
@@ -327,6 +340,17 @@ body {
   align-self: flex-end;
   border-bottom-right-radius: 4px;
   margin-left: auto;
+  box-shadow: 0 2px 6px rgba(26, 115, 232, 0.25);
+}
+
+.chat-bubble-evaluation {
+  background: #f8fafd;
+  border: 1px solid #e1e7f0;
+  border-left: 5px solid #34a853;
+  color: var(--text-dark);
+  align-self: flex-start;
+  border-radius: var(--border-radius-md);
+  border-bottom-left-radius: 4px;
 }
 
 .interview-dashboard-scores {
@@ -411,6 +435,20 @@ body {
   background-color: #21262d;
   color: #e6edf3;
   border-color: #30363d;
+}
+
+[data-bs-theme="dark"] .chat-bubble-question {
+  background-color: #161b22;
+  color: #e6edf3;
+  border-color: #388bfd;
+  border-left: 5px solid #58a6ff;
+}
+
+[data-bs-theme="dark"] .chat-bubble-evaluation {
+  background-color: #161b22;
+  color: #e6edf3;
+  border-color: #238636;
+  border-left: 5px solid #2ea043;
 }
 
 [data-bs-theme="dark"] .chat-window {

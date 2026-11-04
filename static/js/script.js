@@ -1445,7 +1445,12 @@ function initMockInterview() {
       }
 
       const feedbackText = `
-        <b>Feedback:</b> ${evalData.feedback}<br/>
+        <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+            <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
+          </span>
+        </div>
+        <div class="mb-2 lh-base"><b>Feedback:</b> ${evalData.feedback}</div>
         <div class="row g-2 mt-2 mb-2">
           <div class="col-sm-4"><span class="badge bg-primary-subtle text-primary border border-primary-subtle w-100 py-1">Tech: ${evalData.technical_accuracy}/100</span></div>
           <div class="col-sm-4"><span class="badge bg-success-subtle text-success border border-success-subtle w-100 py-1">Comm: ${evalData.communication_score}/100</span></div>
@@ -1453,12 +1458,12 @@ function initMockInterview() {
         </div>
         ${fillersHtml}
         ${starHtml}
-        <b>Suggestions:</b><br/>
-        <ul class="mb-0 mt-1">
-          ${(evalData.suggestions || []).map(s => `<li>${s}</li>`).join("")}
+        <b>Suggestions:</b>
+        <ul class="mb-0 mt-1 ps-3">
+          ${(evalData.suggestions || []).map(s => `<li class="small text-secondary">${s}</li>`).join("")}
         </ul>
       `;
-      appendChatBubble(feedbackText, "agent");
+      appendChatBubble(feedbackText, "evaluation");
 
       if (result.completed) {
         appendChatBubble("<b>Congratulations! You have completed all mock interview questions.</b><br/>Please review your performance summary and export your transcript.", "agent");
@@ -1474,15 +1479,17 @@ function initMockInterview() {
         const nextQ = result.next_question;
         setTimeout(() => {
           const nextBubbleHtml = `
-            <div class="d-flex justify-content-between align-items-start mb-1">
-              <span>[<b>Question ${nextQ.index + 1} - ${nextQ.type}</b>]</span>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+              <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
+                <i class="fa-solid fa-play me-1"></i> Active Question ${nextQ.index + 1} &bull; ${nextQ.type}
+              </span>
               <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="${nextQ.question.replace(/"/g, '&quot;')}">
                 <i class="fa-solid fa-volume-high me-1"></i> Listen
               </button>
             </div>
-            <div>${nextQ.question}</div>
+            <div class="fw-semibold text-dark fs-6 lh-base">${nextQ.question}</div>
           `;
-          const newBubble = appendChatBubble(nextBubbleHtml, "agent");
+          const newBubble = appendChatBubble(nextBubbleHtml, "question");
           chatForm.setAttribute("data-question-index", nextQ.index);
           resetInputs();
 
