@@ -83,6 +83,7 @@ from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
 from agents.star_agent import StarEvaluationAgent
+from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 
@@ -166,6 +167,7 @@ coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
 star_evaluation_agent = StarEvaluationAgent()
+internship_agent = InternshipRecommendationAgent()
 linkedin_agent = LinkedInAgent()
 coding_practice_agent = CodingPracticeAgent()
 
@@ -1478,6 +1480,39 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/internships", methods=["GET", "POST"])
+def internships_view():
+    """
+    Interactive student internship recommendation engine (#142).
+    Matches candidate skills with real internship listings and explains match rationales.
+    """
+    skills_raw = request.args.get("skills") or request.form.get("skills", "")
+    role_filter = request.args.get("role") or request.form.get("role", "All")
+    location_filter = request.args.get("location") or request.form.get("location", "All")
+    search_query = request.args.get("search") or request.form.get("search", "")
+
+    candidate_skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else [
+        "Python", "SQL", "Git", "Data Structures", "Java"
+    ]
+
+    recommendations_data = internship_agent.get_recommendations(
+        candidate_skills=candidate_skills,
+        preferred_role=None if role_filter == "All" else role_filter,
+        location=None if location_filter == "All" else location_filter,
+        search_query=search_query
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(recommendations_data), 200
+
+    return render_template(
+        "internships.html",
+        data=recommendations_data,
+        skills_str=",".join(candidate_skills),
+        current_role=role_filter,
+        current_location=location_filter,
+        search_query=search_query
+    )
 @app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
