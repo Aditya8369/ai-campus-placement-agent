@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LinkedIn Profile Analyzer - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1"><i class="fa-brands fa-linkedin text-primary me-2"></i>LinkedIn Profile Analyzer</h2>
+        <p class="text-muted mb-0">Evaluate your LinkedIn headline, summary, and experience to maximize campus placement recruiter outreach.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-sparkles me-1"></i> AI Recruiter Optimization
+        </span>
+      </div>
+    </div>
+
+    <!-- Profile Input Form -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <form method="POST" action="/linkedin-analyzer">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="target_role" class="form-label fw-semibold">Target Placement Role</label>
+            <select class="form-select rounded-3" id="target_role" name="target_role">
+              <option value="Software Engineer" {% if target_role == 'Software Engineer' %}selected{% endif %}>Software Engineer / SDE</option>
+              <option value="Data Scientist" {% if target_role == 'Data Scientist' %}selected{% endif %}>Data Scientist / ML Engineer</option>
+              <option value="Frontend Developer" {% if target_role == 'Frontend Developer' %}selected{% endif %}>Frontend Developer</option>
+              <option value="Backend Developer" {% if target_role == 'Backend Developer' %}selected{% endif %}>Backend Developer</option>
+              <option value="Cloud Engineer" {% if target_role == 'Cloud Engineer' %}selected{% endif %}>Cloud / DevOps Engineer</option>
+              <option value="Product Manager" {% if target_role == 'Product Manager' %}selected{% endif %}>Product Manager / Associate PM</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label for="headline" class="form-label fw-semibold">Current LinkedIn Headline</label>
+            <input type="text" class="form-control rounded-3" id="headline" name="headline" value="{{ headline }}" placeholder="e.g. CS Undergrad | Aspiring SDE | React &amp; Python enthusiast">
+          </div>
+          <div class="col-md-6">
+            <label for="about" class="form-label fw-semibold">About / Summary Section</label>
+            <textarea class="form-control rounded-3" id="about" name="about" rows="3" placeholder="Paste your LinkedIn summary or personal bio...">{{ about }}</textarea>
+          </div>
+          <div class="col-md-6">
+            <label for="experience" class="form-label fw-semibold">Experience &amp; Featured Projects</label>
+            <textarea class="form-control rounded-3" id="experience" name="experience" rows="3" placeholder="Paste your internship, hackathon, or project bullet points...">{{ experience }}</textarea>
+          </div>
+          <div class="col-12">
+            <label for="skills" class="form-label fw-semibold">Skills (comma-separated)</label>
+            <input type="text" class="form-control rounded-3" id="skills" name="skills" value="{{ skills }}" placeholder="e.g. Python, Java, Docker, Git, REST APIs, SQL, Data Structures">
+          </div>
+          <div class="col-12 text-end">
+            <button type="submit" class="btn btn-primary rounded-pill px-4 py-2">
+              <i class="fa-solid fa-magnifying-glass me-1"></i> Analyze LinkedIn Profile
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Analysis Results -->
+    {% if result %}
+    <div class="row g-4 mb-4">
+      <!-- Profile Score Column -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 p-4 text-center h-100">
+          <h5 class="fw-bold mb-3">Profile Optimization Score</h5>
+          <div class="position-relative d-inline-block my-3">
+            <div class="display-3 fw-bold {{ 'text-success' if result.overall_score >= 80 else ('text-primary' if result.overall_score >= 60 else 'text-warning') }}">
+              {{ result.overall_score }}
+            </div>
+            <div class="text-muted small">out of 100</div>
+          </div>
+          <div class="badge {{ 'bg-success-subtle text-success' if result.overall_score >= 80 else ('bg-primary-subtle text-primary' if result.overall_score >= 60 else 'bg-warning-subtle text-warning') }} p-2 rounded-pill mb-3">
+            {{ 'Recruiter-Ready Profile' if result.overall_score >= 80 else ('Good Foundation - Needs Refinements' if result.overall_score >= 60 else 'Needs Profile Enhancement') }}
+          </div>
+          
+          <hr>
+          <div class="text-start">
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Headline Strength</span>
+              <span class="fw-bold">{{ result.headline_score }}/100</span>
+            </div>
+            <div class="progress mb-2" style="height: 6px;">
+              <div class="progress-bar bg-primary" style="width: {{ result.headline_score }}%"></div>
+            </div>
+
+            <div class="d-flex justify-content-between small mb-1">
+              <span>About / Summary</span>
+              <span class="fw-bold">{{ result.about_score }}/100</span>
+            </div>
+            <div class="progress mb-2" style="height: 6px;">
+              <div class="progress-bar bg-info" style="width: {{ result.about_score }}%"></div>
+            </div>
+
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Experience &amp; Impact</span>
+              <span class="fw-bold">{{ result.experience_score }}/100</span>
+            </div>
+            <div class="progress mb-2" style="height: 6px;">
+              <div class="progress-bar bg-success" style="width: {{ result.experience_score }}%"></div>
+            </div>
+
+            <div class="d-flex justify-content-between small mb-1">
+              <span>Skill &amp; Keyword Match</span>
+              <span class="fw-bold">{{ result.skills_score }}/100</span>
+            </div>
+            <div class="progress" style="height: 6px;">
+              <div class="progress-bar bg-warning" style="width: {{ result.skills_score }}%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actionable AI Recommendations & Rewrites -->
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-wand-magic-sparkles text-primary me-2"></i>AI-Powered Headline Rewrites</h5>
+          <p class="text-muted small">Choose any of these high-converting headlines formatted for maximum visibility in campus recruiter searches:</p>
+          
+          <div class="mb-4">
+            {% for rewrite in result.headline_rewrites %}
+            <div class="p-3 mb-2 bg-light rounded-3 border d-flex justify-content-between align-items-center">
+              <span class="fw-semibold text-dark">{{ rewrite }}</span>
+              <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 copy-btn" data-text="{{ rewrite }}">
+                <i class="fa-regular fa-copy me-1"></i> Copy
+              </button>
+            </div>
+            {% endfor %}
+          </div>
+
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-tags text-success me-2"></i>Keyword Optimization for {{ result.target_role }}</h5>
+          <div class="mb-3">
+            <div class="small fw-semibold text-success mb-1"><i class="fa-solid fa-check me-1"></i>Present Keywords:</div>
+            <div>
+              {% for kw in result.matched_keywords %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle me-1 mb-1">{{ kw }}</span>
+              {% else %}
+              <span class="text-muted small">No target keywords detected in your profile text.</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="mb-4">
+            <div class="small fw-semibold text-danger mb-1"><i class="fa-solid fa-plus me-1"></i>Recommended Missing Keywords to Add:</div>
+            <div>
+              {% for kw in result.missing_keywords %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle me-1 mb-1">+ {{ kw }}</span>
+              {% else %}
+              <span class="text-success small">Outstanding! All key target keywords are represented.</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <h5 class="fw-bold mb-2"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Recruiter Suggestions</h5>
+          <ul class="list-group list-group-flush small">
+            {% for sug in result.ai_suggestions %}
+            <li class="list-group-item bg-transparent px-0 text-muted">
+              <i class="fa-solid fa-chevron-right text-primary me-2"></i>{{ sug }}
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = btn.getAttribute('data-text');
+        navigator.clipboard.writeText(text).then(() => {
+          const originalHTML = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+          btn.classList.replace('btn-outline-secondary', 'btn-success');
+          setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.replace('btn-success', 'btn-outline-secondary');
+          }, 2000);
+        });
+      });
+    });
+  </script>
+</body>
+
+</html>
