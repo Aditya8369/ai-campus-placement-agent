@@ -36,6 +36,10 @@ from utils.database import (
     verify_database_integrity,
     get_batch_comparison,
     save_batch_comparison,
+    save_job_application,
+    get_job_applications,
+    delete_job_application,
+    update_job_application_status,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1464,6 +1468,85 @@ def api_admin_run_retention():
     except Exception as e:
         logger.error(f"Error during retention cycle execution: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/applications", methods=["GET", "POST"])
+def job_applications_tracker():
+    """
+    Candidate Job Application Tracker view and management handler (#143).
+    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    """
+    student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
+    status_filter = request.args.get("status", "All")
+
+    if request.method == "POST":
+        company = request.form.get("company_name", "").strip()
+        role = request.form.get("role_title", "").strip()
+        status = request.form.get("status", "Applied").strip()
+        app_date = request.form.get("application_date", "").strip()
+        job_url = request.form.get("job_url", "").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not company or not role:
+            flash("Company name and job role are required.", "error")
+            return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+        app_id = f"app-{uuid.uuid4().hex[:12]}"
+        save_job_application(
+            app_id=app_id,
+            student_id=student_id,
+            company_name=company,
+            role_title=role,
+            status=status,
+            application_date=app_date or None,
+            job_url=job_url,
+            notes=notes
+        )
+        flash("Application record saved successfully!", "success")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "count": len(applications),
+            "applications": applications
+        }), 200
+
+    return render_template(
+        "applications.html",
+        applications=applications,
+        student_id=student_id,
+        current_status=status_filter
+    )
+
+
+@app.route("/api/applications/<app_id>/status", methods=["POST"])
+def api_update_application_status(app_id: str):
+    """
+    Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
+    """
+    payload = request.get_json(silent=True) or {}
+    new_status = payload.get("status") or request.form.get("status", "")
+    student_id = payload.get("student_id") or request.form.get("student_id", "default_student")
+
+    if not new_status:
+        return jsonify({"success": False, "error": "New status is required."}), 400
+
+    updated = update_job_application_status(app_id=app_id, student_id=student_id, new_status=new_status)
+    return jsonify({"success": updated}), (200 if updated else 404)
+
+
+@app.route("/api/applications/<app_id>", methods=["DELETE"])
+def api_delete_application(app_id: str):
+    """
+    Deletes an application record owned by student_id.
+    """
+    student_id = request.args.get("student_id") or "default_student"
+    deleted = delete_job_application(app_id=app_id, student_id=student_id)
+    return jsonify({"success": deleted}), (200 if deleted else 404)
 
 
 if __name__ == "__main__":
