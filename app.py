@@ -66,7 +66,7 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
-from utils.report_generator import generate_pdf_report, generate_certificate_pdf
+from utils.report_generator import generate_pdf_report, generate_certificate_pdf, generate_skills_gap_pdf
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -1134,6 +1134,39 @@ def download_pdf_report(analysis_id: str):
     except Exception as e:
         logger.error(f"Failed to generate and serve PDF report: {str(e)}")
         flash(f"Error compiling report file: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/download/skills-gap/<analysis_id>")
+def download_skills_gap_report(analysis_id: str):
+    """
+    Compiles identified candidate skill gaps and upskilling roadmaps into a standalone PDF report (#136).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            flash("Cannot generate Skills Gap report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        pdf_output_name = f"Skills_Gap_Report_{analysis_id}.pdf"
+        pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
+
+        if not os.path.exists(pdf_full_path):
+            generate_skills_gap_pdf(
+                analysis_data=analysis_record,
+                output_path=pdf_full_path
+            )
+
+        company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
+        return send_file(
+            pdf_full_path,
+            as_attachment=True,
+            download_name=f"Skills_Gap_Report_{company}.pdf",
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve Skills Gap report: {str(e)}")
+        flash(f"Error compiling skills gap report: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 

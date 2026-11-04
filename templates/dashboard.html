@@ -672,8 +672,11 @@
             {{ analysis.results.skill_gap|length }} Skills
           </span>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-          <input type="text" id="skillSearchInput" class="form-control form-control-sm rounded-pill px-3" style="max-width: 220px;" placeholder="Search skills..." aria-label="Search missing skills">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a href="/download/skills-gap/{{ analysis.id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" id="btnDownloadSkillsGapReport">
+            <i class="fa-solid fa-file-arrow-down me-1"></i> Download Skills Report (.pdf)
+          </a>
+          <input type="text" id="skillSearchInput" class="form-control form-control-sm rounded-pill px-3" style="max-width: 180px;" placeholder="Search skills..." aria-label="Search missing skills">
           <select id="skillPriorityFilter" class="form-select form-select-sm rounded-pill" style="width: auto;" aria-label="Filter skills by priority">
             <option value="ALL">All Priorities</option>
             <option value="High">High Priority</option>
