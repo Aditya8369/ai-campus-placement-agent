@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Application Tracker - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> Analysis Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-5 fade-in">
+    <div class="card glass-card p-4 p-md-5 mb-4 border-0">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-bold text-uppercase small mb-2 d-inline-block">
+            <i class="fa-solid fa-clipboard-list me-1"></i> Placement Workflow Management
+          </span>
+          <h2 class="fw-bold mt-1 mb-2">Job Application Tracker</h2>
+          <p class="text-secondary mb-0">
+            Track interview rounds, assessment timelines, and company offer statuses with secure, candidate-isolated records.
+          </p>
+        </div>
+        <button class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#newApplicationModal" id="btnOpenNewAppModal">
+          <i class="fa-solid fa-plus me-1"></i> Add Application
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter Toolbar -->
+    <div class="card glass-card p-3 border-0 mb-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="fw-semibold small text-muted">Filter by Status:</span>
+          <div class="btn-group btn-group-sm" role="group">
+            <a href="/applications?student_id={{ student_id }}&status=All" class="btn btn-outline-secondary rounded-start-pill {{ 'active' if current_status == 'All' }}">All</a>
+            <a href="/applications?student_id={{ student_id }}&status=Applied" class="btn btn-outline-secondary {{ 'active' if current_status == 'Applied' }}">Applied</a>
+            <a href="/applications?student_id={{ student_id }}&status=Assessment" class="btn btn-outline-secondary {{ 'active' if current_status == 'Assessment' }}">Assessment</a>
+            <a href="/applications?student_id={{ student_id }}&status=Interview" class="btn btn-outline-secondary {{ 'active' if current_status == 'Interview' }}">Interview</a>
+            <a href="/applications?student_id={{ student_id }}&status=Selected" class="btn btn-outline-success {{ 'active' if current_status == 'Selected' }}">Selected</a>
+            <a href="/applications?student_id={{ student_id }}&status=Rejected" class="btn btn-outline-danger rounded-end-pill {{ 'active' if current_status == 'Rejected' }}">Rejected</a>
+          </div>
+        </div>
+        <span class="badge bg-light text-secondary border rounded-pill px-3 py-2 small">
+          {{ applications|length }} Active Record{{ 's' if applications|length != 1 else '' }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Applications Table -->
+    <div class="card glass-card p-4 border-0 mb-4">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="applicationsTable">
+          <thead class="table-light">
+            <tr>
+              <th>Company</th>
+              <th>Role</th>
+              <th>Date Applied</th>
+              <th>Status</th>
+              <th>Link / Details</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for app in applications %}
+              <tr id="row-{{ app.id }}">
+                <td><b class="text-dark">{{ app.company_name }}</b></td>
+                <td><span class="fw-semibold text-primary">{{ app.role_title }}</span></td>
+                <td><span class="text-secondary small">{{ app.application_date }}</span></td>
+                <td>
+                  <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}" style="width: 140px;">
+                    <option value="Applied" {{ 'selected' if app.status == 'Applied' }}>Applied</option>
+                    <option value="Assessment" {{ 'selected' if app.status == 'Assessment' }}>Assessment</option>
+                    <option value="Interview" {{ 'selected' if app.status == 'Interview' }}>Interview</option>
+                    <option value="Selected" {{ 'selected' if app.status == 'Selected' }}>Selected 🎉</option>
+                    <option value="Rejected" {{ 'selected' if app.status == 'Rejected' }}>Rejected</option>
+                  </select>
+                </td>
+                <td>
+                  {% if app.job_url %}
+                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link text-decoration-none p-0">
+                      View Job <i class="fa-solid fa-arrow-up-right-from-square small"></i>
+                    </a>
+                  {% else %}
+                    <span class="text-muted small">--</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-outline-danger rounded-circle p-2 btn-delete-app" data-app-id="{{ app.id }}" title="Delete record">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="6" class="text-center py-5 text-muted">
+                  <i class="fa-solid fa-clipboard-question fa-3x text-secondary mb-3 d-block"></i>
+                  <h5 class="fw-bold text-dark mb-1">No Applications Found</h5>
+                  <p class="small text-secondary mb-3">You haven't tracked any company applications under this filter yet.</p>
+                  <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#newApplicationModal">
+                    <i class="fa-solid fa-plus me-1"></i> Add Your First Application
+                  </button>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Modal: Add New Application -->
+  <div class="modal fade" id="newApplicationModal" tabindex="-1" aria-labelledby="newApplicationModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <form method="POST" action="/applications" id="newAppForm">
+          <input type="hidden" name="student_id" value="{{ student_id }}">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="newApplicationModalLabel">
+              <i class="fa-solid fa-briefcase text-primary me-2"></i> Track New Application
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label for="companyName" class="form-label small fw-semibold text-secondary">Company Name *</label>
+              <input type="text" class="form-control rounded-pill" id="companyName" name="company_name" required placeholder="e.g. Google, Amazon, TCS">
+            </div>
+            <div class="mb-3">
+              <label for="roleTitle" class="form-label small fw-semibold text-secondary">Role Title *</label>
+              <input type="text" class="form-control rounded-pill" id="roleTitle" name="role_title" required placeholder="e.g. Associate Software Engineer">
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label for="statusSelect" class="form-label small fw-semibold text-secondary">Current Stage</label>
+                <select class="form-select rounded-pill" id="statusSelect" name="status">
+                  <option value="Applied" selected>Applied</option>
+                  <option value="Assessment">Online Assessment</option>
+                  <option value="Interview">Technical Interview</option>
+                  <option value="Selected">Selected / Offer</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="applicationDate" class="form-label small fw-semibold text-secondary">Date Applied</label>
+                <input type="date" class="form-control rounded-pill" id="applicationDate" name="application_date">
+              </div>
+            </div>
+            <div class="mb-3">
+              <label for="jobUrl" class="form-label small fw-semibold text-secondary">Job URL or Portal Link (Optional)</label>
+              <input type="url" class="form-control rounded-pill" id="jobUrl" name="job_url" placeholder="https://careers.company.com/...">
+            </div>
+            <div class="mb-2">
+              <label for="notes" class="form-label small fw-semibold text-secondary">Interview Notes / Referral (Optional)</label>
+              <textarea class="form-control rounded-3" id="notes" name="notes" rows="2" placeholder="Referral contact, HR round prep notes..."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary rounded-pill px-4" id="btnSaveApp">Save Application</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-4 mt-auto">
+    <div class="container text-center text-secondary small">
+      &copy; 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom JS -->
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script>
+    // Live status updates and deletion
+    document.querySelectorAll(".status-dropdown").forEach(sel => {
+      sel.addEventListener("change", async (e) => {
+        const appId = e.target.getAttribute("data-app-id");
+        const newStatus = e.target.value;
+        try {
+          await fetch(`/api/applications/${appId}/status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: newStatus, student_id: "{{ student_id }}" })
+          });
+        } catch (err) {
+          console.error("Status update failed:", err);
+        }
+      });
+    });
+
+    document.querySelectorAll(".btn-delete-app").forEach(btn => {
+      btn.addEventListener("click", async (e) => {
+        const appId = btn.getAttribute("data-app-id");
+        if (!confirm("Are you sure you want to delete this application record?")) return;
+        try {
+          const res = await fetch(`/api/applications/${appId}?student_id={{ student_id }}`, { method: "DELETE" });
+          if (res.ok) {
+            document.getElementById(`row-${appId}`)?.remove();
+          }
+        } catch (err) {
+          console.error("Deletion failed:", err);
+        }
+      });
+    });
+  </script>
+</body>
+</html>
