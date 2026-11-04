@@ -75,6 +75,7 @@ from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
 from agents.star_agent import StarEvaluationAgent
+from agents.linkedin_agent import LinkedInAgent
 
 # Configure structured application logging
 logging.basicConfig(
@@ -156,6 +157,7 @@ coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
 star_evaluation_agent = StarEvaluationAgent()
+linkedin_agent = LinkedInAgent()
 
 def get_available_companies() -> list:
     """
@@ -1464,6 +1466,69 @@ def api_admin_run_retention():
     except Exception as e:
         logger.error(f"Error during retention cycle execution: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/linkedin-analyzer", methods=["GET", "POST"])
+def linkedin_analyzer():
+    """
+    LinkedIn Profile Analyzer View and API endpoint (#146).
+    Reviews headline, summary/about, experience, and skills to provide ATS-style
+    profile strength evaluation, missing keywords, and AI-powered headline rewrites.
+    """
+    analysis_result = None
+    target_role = "Software Engineer"
+    headline = ""
+    about = ""
+    experience = ""
+    skills = ""
+
+    if request.method == "POST":
+        target_role = request.form.get("target_role", "Software Engineer").strip()
+        headline = request.form.get("headline", "").strip()
+        about = request.form.get("about", "").strip()
+        experience = request.form.get("experience", "").strip()
+        skills = request.form.get("skills", "").strip()
+
+        if not headline and not about and not experience and not skills:
+            flash("Please enter at least one profile section (Headline, About, Experience, or Skills).", "error")
+        else:
+            analysis_result = linkedin_agent.analyze_profile(
+                headline=headline,
+                about=about,
+                experience=experience,
+                skills=skills,
+                target_role=target_role
+            )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        if not analysis_result:
+            json_data = request.get_json(silent=True) or {}
+            target_role = json_data.get("target_role", "Software Engineer")
+            headline = json_data.get("headline", "")
+            about = json_data.get("about", "")
+            experience = json_data.get("experience", "")
+            skills = json_data.get("skills", "")
+            analysis_result = linkedin_agent.analyze_profile(
+                headline=headline,
+                about=about,
+                experience=experience,
+                skills=skills,
+                target_role=target_role
+            )
+        return jsonify({
+            "success": True,
+            "analysis": analysis_result
+        }), 200
+
+    return render_template(
+        "linkedin_analyzer.html",
+        result=analysis_result,
+        target_role=target_role,
+        headline=headline,
+        about=about,
+        experience=experience,
+        skills=skills
+    )
 
 
 if __name__ == "__main__":
