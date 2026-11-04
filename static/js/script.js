@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initRoadmapExport();
   initCodingSandbox();
   initOutreachGenerator();
+  initCharacterCounters();
 });
 
 function initThemeToggle() {
@@ -2535,4 +2536,83 @@ function initOutreachGenerator() {
       .replace(/'/g, "&#039;");
   }
 }
+
+/**
+ * Real-time character counter and limit monitor for resume text and job description inputs (#132).
+ */
+function initCharacterCounters() {
+  const resumeInput = document.getElementById("resumeTextInput");
+  const resumeCurrent = document.getElementById("resumeCurrentChars");
+  const resumeLimitWarning = document.getElementById("resumeCharLimitWarning");
+  const resumeMax = 10000;
+
+  const jdInput = document.getElementById("jdInput");
+  const jdCurrent = document.getElementById("jdCurrentChars");
+  const jdLimitWarning = document.getElementById("jdCharLimitWarning");
+  const jdMax = 5000;
+
+  function updateResumeCounter() {
+    if (!resumeInput || !resumeCurrent) return;
+    const len = resumeInput.value.length;
+    resumeCurrent.textContent = len.toLocaleString();
+
+    if (len >= resumeMax) {
+      resumeCurrent.classList.add("text-danger", "fw-bold");
+      resumeCurrent.classList.remove("text-warning");
+      if (resumeLimitWarning) resumeLimitWarning.classList.remove("d-none");
+    } else if (len >= resumeMax * 0.9) {
+      resumeCurrent.classList.add("text-warning", "fw-bold");
+      resumeCurrent.classList.remove("text-danger");
+      if (resumeLimitWarning) resumeLimitWarning.classList.remove("d-none");
+    } else {
+      resumeCurrent.classList.remove("text-danger", "text-warning", "fw-bold");
+      if (resumeLimitWarning) resumeLimitWarning.classList.add("d-none");
+    }
+  }
+
+  function updateJdCounter() {
+    if (!jdInput || !jdCurrent) return;
+    const len = jdInput.value.length;
+    jdCurrent.textContent = len.toLocaleString();
+
+    if (len >= jdMax) {
+      jdCurrent.classList.add("text-danger", "fw-bold");
+      jdCurrent.classList.remove("text-warning");
+      if (jdLimitWarning) jdLimitWarning.classList.remove("d-none");
+    } else if (len >= jdMax * 0.9) {
+      jdCurrent.classList.add("text-warning", "fw-bold");
+      jdCurrent.classList.remove("text-danger");
+      if (jdLimitWarning) jdLimitWarning.classList.remove("d-none");
+    } else {
+      jdCurrent.classList.remove("text-danger", "text-warning", "fw-bold");
+      if (jdLimitWarning) jdLimitWarning.classList.add("d-none");
+    }
+  }
+
+  if (resumeInput) {
+    resumeInput.addEventListener("input", updateResumeCounter);
+    resumeInput.addEventListener("change", updateResumeCounter);
+    resumeInput.addEventListener("paste", () => setTimeout(updateResumeCounter, 0));
+    updateResumeCounter();
+  }
+
+  if (jdInput) {
+    jdInput.addEventListener("input", updateJdCounter);
+    jdInput.addEventListener("change", updateJdCounter);
+    jdInput.addEventListener("paste", () => setTimeout(updateJdCounter, 0));
+    updateJdCounter();
+  }
+
+  // Handle clear or form reset events
+  const form = document.getElementById("analyzeForm");
+  if (form) {
+    form.addEventListener("reset", () => {
+      setTimeout(() => {
+        updateResumeCounter();
+        updateJdCounter();
+      }, 0);
+    });
+  }
+}
+
 
