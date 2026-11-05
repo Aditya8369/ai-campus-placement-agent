@@ -992,3 +992,39 @@ html, body {
   }
 }
 
+/* Smooth Scrolling & Anchor Offset */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 80px;
+}
+
+/* Placement Readiness Summary Card & KPI Tiles */
+.kpi-tile {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+  background-color: #f8f9fa;
+}
+
+.kpi-tile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  border-color: rgba(26, 115, 232, 0.25) !important;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+[data-bs-theme="dark"] .kpi-tile {
+  background-color: #1e2530 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] .kpi-tile:hover {
+  border-color: rgba(56, 139, 253, 0.4) !important;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+
