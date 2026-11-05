@@ -66,3 +66,13 @@ RATE_LIMITS = {
     "star_eval": RATE_LIMIT_STAR,
     "default": RATE_LIMIT_DEFAULT,
 }
+
+# Gemini API Transient Error Retry & Exponential Backoff Configurations (Issue #155)
+# Transient errors (429 rate limit, 500/503 server errors, network timeouts) are retried automatically.
+# Permanent errors (400 bad request, 401/403 invalid credentials) fail fast without retry.
+GEMINI_RETRY_ATTEMPTS = int(os.getenv("GEMINI_RETRY_ATTEMPTS", os.getenv("GEMINI_MAX_RETRIES", "3")))
+GEMINI_MAX_RETRIES = GEMINI_RETRY_ATTEMPTS
+GEMINI_RETRY_INITIAL_DELAY = float(os.getenv("GEMINI_RETRY_INITIAL_DELAY", "1.0"))  # in seconds (e.g. 1s, 2s, 4s)
+GEMINI_RETRY_BACKOFF_FACTOR = float(os.getenv("GEMINI_RETRY_BACKOFF_FACTOR", "2.0"))
+GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "10.0"))  # in seconds
+GEMINI_RETRY_JITTER = os.getenv("GEMINI_RETRY_JITTER", "true").lower() in ("true", "1", "yes")

@@ -215,6 +215,40 @@ RATE_LIMIT_DEFAULT=100/minute
 
 ---
 
+## Gemini API Retry & Resilience
+
+To prevent transient network glitches, 429 rate limits, and temporary 5xx server errors from failing an ongoing analysis or interview session, all outbound Gemini LLM calls in `utils/gemini.py` are protected with an automatic exponential backoff retry mechanism.
+
+### Key Capabilities
+- **Automatic Retry on Transient Errors**: Automatically retries HTTP 429 (rate limits/quota exhaustion), HTTP 500/502/503/504 (server overload/downtime), and socket/connection timeouts.
+- **Fail Fast on Permanent Errors**: Non-transient errors such as HTTP 400 (bad requests), HTTP 401/403 (invalid API key or permissions), and formatting failures fail immediately without waiting or retrying.
+- **Exponential Backoff with Full Jitter**: Delays scale progressively (e.g., 1s, 2s, 4s) up to a configurable maximum cap, with randomized jitter to prevent thundering herd spikes.
+- **Friendly Error Messages**: When all retries are exhausted, the server logs the full error server-side and surfaces a clean, friendly message to the student (e.g., *"The AI service is busy, please try again in a minute."*). Raw tracebacks and API internals are never exposed to the user.
+
+### Retry Configuration
+
+Retry attempts and backoff intervals can be tuned in `config.py` or `.env`:
+
+```env
+# Maximum retry attempts before giving up (default: 3)
+GEMINI_RETRY_ATTEMPTS=3
+
+# Initial delay in seconds before the first retry (default: 1.0)
+GEMINI_RETRY_INITIAL_DELAY=1.0
+
+# Multiplier for subsequent backoff intervals (default: 2.0 -> 1s, 2s, 4s)
+GEMINI_RETRY_BACKOFF_FACTOR=2.0
+
+# Maximum upper bound delay cap in seconds (default: 10.0)
+GEMINI_RETRY_MAX_DELAY=10.0
+
+# Enable randomized jitter to avoid synchronized bursts (default: true)
+GEMINI_RETRY_JITTER=true
+```
+
+
+---
+
 ## Future Scope
 
 The following features are being considered:
