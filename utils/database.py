@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import uuid
 from typing import Optional, List, Dict, Any
 import config
 
@@ -67,7 +68,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 4: Store job application tracking records (#143)
+        # Table 4: Store job application tracking records (#143, #193)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS job_applications (
                 id TEXT PRIMARY KEY,
@@ -79,6 +80,9 @@ def init_db() -> None:
                 job_url TEXT,
                 job_description TEXT,
                 notes TEXT,
+                location TEXT DEFAULT 'Remote',
+                job_type TEXT DEFAULT 'Full-Time',
+                experience_level TEXT DEFAULT 'Entry-Level',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -107,6 +111,33 @@ def init_db() -> None:
                 priority TEXT NOT NULL DEFAULT 'Medium',
                 completed INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        # Table 6: Store company-wise preparation checklist progress (#192)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS company_preparation_checklists (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                company_name TEXT NOT NULL,
+                checklist_json TEXT NOT NULL,
+                completion_percentage REAL NOT NULL DEFAULT 0.0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        # Table 6: Store coding assessment submission history (#194)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS coding_submissions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                analysis_id TEXT,
+                question_title TEXT NOT NULL,
+                company_name TEXT NOT NULL DEFAULT 'General',
+                language TEXT NOT NULL DEFAULT 'python',
+                code TEXT NOT NULL,
+                passed INTEGER NOT NULL DEFAULT 0,
+                score INTEGER NOT NULL DEFAULT 0,
+                tests_passed INTEGER NOT NULL DEFAULT 0,
+                total_tests INTEGER NOT NULL DEFAULT 0,
+                test_results_json TEXT,
+                complexity_analysis TEXT,
+                feedback TEXT,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -127,6 +158,30 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 6: Store technical skills self-assessments
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS technical_self_assessments (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                proficiency_level TEXT NOT NULL,
+                years_experience REAL DEFAULT 0,
+                notes TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, skill_name)
+        # Table 6: Store student and user feedback
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+                category TEXT NOT NULL,
+                comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         
         # Schema migration: check if student_id and version_number exist in analyses
@@ -136,6 +191,16 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE analyses ADD COLUMN student_id TEXT DEFAULT 'default_student'")
         if "version_number" not in existing_cols:
             cursor.execute("ALTER TABLE analyses ADD COLUMN version_number INTEGER DEFAULT 1")
+
+        # Schema migration for job_applications table (#193)
+        cursor.execute("PRAGMA table_info(job_applications)")
+        app_cols = [col[1] for col in cursor.fetchall()]
+        if "location" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN location TEXT DEFAULT 'Remote'")
+        if "job_type" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN job_type TEXT DEFAULT 'Full-Time'")
+        if "experience_level" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -147,6 +212,10 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_date ON preparation_calendar_events (student_id, event_date ASC)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_student_comp ON company_preparation_checklists (student_id, company_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -656,9 +725,12 @@ def save_job_application(
     job_url: Optional[str] = None,
     job_description: Optional[str] = None,
     notes: Optional[str] = None,
+    location: str = "Remote",
+    job_type: str = "Full-Time",
+    experience_level: str = "Entry-Level"
 ) -> None:
     """
-    Saves or updates a candidate job application record (#143).
+    Saves or updates a candidate job application record (#143, #193).
     Ensures per-user data segregation.
     """
     import datetime
@@ -668,8 +740,9 @@ def save_job_application(
         date_str = application_date or datetime.date.today().isoformat()
         cursor.execute("""
             INSERT OR REPLACE INTO job_applications (
-                id, student_id, company_name, role_title, status, application_date, job_url, job_description, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, student_id, company_name, role_title, status, application_date,
+                job_url, job_description, notes, location, job_type, experience_level
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             app_id,
             student_id.strip() if student_id else "default_student",
@@ -680,6 +753,9 @@ def save_job_application(
             (job_url or "").strip(),
             (job_description or "").strip(),
             (notes or "").strip(),
+            (location or "Remote").strip(),
+            (job_type or "Full-Time").strip(),
+            (experience_level or "Entry-Level").strip()
         ))
         conn.commit()
         logger.info(f"Saved job application {app_id} for student {student_id}")
@@ -692,23 +768,55 @@ def save_job_application(
 
 def get_job_applications(
     student_id: str,
-    status_filter: Optional[str] = None
+    status_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    location_filter: Optional[str] = None,
+    job_type_filter: Optional[str] = None,
+    experience_level_filter: Optional[str] = None,
+    sort_by: str = "recent"
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves all job application records for a specific student, with optional status filtering (#143).
+    Retrieves all job application records for a specific student, with advanced search,
+    location, job type, and experience filtering (#143, #193).
     Strictly enforces user data isolation.
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = "SELECT * FROM job_applications WHERE student_id = ?"
+        conditions = ["student_id = ?"]
         params: List[Any] = [student_id.strip() if student_id else "default_student"]
 
         if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
-            query += " AND LOWER(status) = LOWER(?)"
+            conditions.append("LOWER(status) = LOWER(?)")
             params.append(status_filter.strip())
 
-        query += " ORDER BY application_date DESC, created_at DESC"
+        if search_query and search_query.strip():
+            kw = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(job_description) LIKE ?)")
+            params.extend([kw, kw, kw])
+
+        if location_filter and location_filter.strip() and location_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(location) LIKE LOWER(?)")
+            params.append(f"%{location_filter.strip()}%")
+
+        if job_type_filter and job_type_filter.strip() and job_type_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(job_type) = LOWER(?)")
+            params.append(job_type_filter.strip())
+
+        if experience_level_filter and experience_level_filter.strip() and experience_level_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(experience_level) = LOWER(?)")
+            params.append(experience_level_filter.strip())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+
+        if sort_by == "oldest":
+            order_clause = "ORDER BY application_date ASC, created_at ASC"
+        elif sort_by == "company":
+            order_clause = "ORDER BY company_name ASC"
+        else:
+            order_clause = "ORDER BY application_date DESC, created_at DESC"
+
+        query = f"SELECT * FROM job_applications {where_clause} {order_clause}"
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return [dict(r) for r in rows]
@@ -754,6 +862,133 @@ def update_job_application_status(app_id: str, student_id: str, new_status: str)
         return False
     finally:
         conn.close()
+
+
+def export_job_applications_csv(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> str:
+    """
+    Generates standard RFC-4180 CSV export content for a student's job applications (#196).
+    Enforces student data segregation, formats dates and notes safely, and handles empty application states.
+    """
+    import csv
+    import io
+
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+
+    # Header row
+    writer.writerow([
+        "Application ID",
+        "Company Name",
+        "Role Title",
+        "Status",
+        "Application Date",
+        "Job Posting URL",
+        "Job Description / Requirements",
+        "Interview / Follow-up Notes",
+        "Created At"
+    ])
+
+    for app_item in applications:
+        writer.writerow([
+            app_item.get("id", ""),
+            app_item.get("company_name", ""),
+            app_item.get("role_title", ""),
+            app_item.get("status", ""),
+            app_item.get("application_date", ""),
+            app_item.get("job_url", ""),
+            app_item.get("job_description", ""),
+            app_item.get("notes", ""),
+            app_item.get("created_at", "")
+        ])
+
+    return output.getvalue()
+
+
+def export_job_applications_json(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generates structured JSON export payload for a student's job applications (#196).
+    """
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    status_counts = {}
+    for item in applications:
+        st = item.get("status", "Unknown")
+        status_counts[st] = status_counts.get(st, 0) + 1
+
+    return {
+        "export_version": "1.0",
+        "student_id": student_id.strip() if student_id else "default_student",
+        "total_applications": len(applications),
+        "status_distribution": status_counts,
+        "applications": applications
+    }
+
+
+def export_job_applications_markdown(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> str:
+    """
+    Generates a readable Markdown summary table of job applications (#196).
+    """
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    lines = [
+        f"# Job Applications Report - Candidate: {student_id}",
+        "",
+        f"- **Total Applications**: {len(applications)}",
+        f"- **Filter Applied**: {status_filter or 'All'}",
+        "",
+        "| ID | Company | Role | Status | Applied Date | Job Link | Notes |",
+        "|---|---|---|---|---|---|---|"
+    ]
+
+    for item in applications:
+        app_id = item.get("id", "")
+        comp = item.get("company_name", "").replace("|", "\\|")
+        role = item.get("role_title", "").replace("|", "\\|")
+        st = item.get("status", "")
+        dt = item.get("application_date", "") or "-"
+        url = item.get("job_url", "")
+        link_str = f"[Link]({url})" if url else "-"
+        notes = (item.get("notes") or "-").replace("\n", " ").replace("|", "\\|")
+        lines.append(f"| {app_id} | {comp} | {role} | {st} | {dt} | {link_str} | {notes} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def get_job_applications_export_summary(
+    student_id: str
+) -> Dict[str, Any]:
+    """
+    Provides aggregated analytics metadata for candidate job applications export.
+    """
+    applications = get_job_applications(student_id=student_id)
+    stages = {"Applied": 0, "Assessment": 0, "Interview": 0, "Selected": 0, "Rejected": 0}
+    companies = set()
+    for item in applications:
+        st = item.get("status", "Applied")
+        if st in stages:
+            stages[st] += 1
+        else:
+            stages[st] = 1
+        comp = item.get("company_name")
+        if comp:
+            companies.add(comp)
+
+    return {
+        "student_id": student_id,
+        "total_records": len(applications),
+        "unique_companies_count": len(companies),
+        "stage_breakdown": stages,
+        "ready_for_export": True
+    }
 
 
 def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
@@ -1348,6 +1583,127 @@ def save_calendar_event(
     """
     Creates or updates a candidate placement preparation calendar event (#190).
     Enforces per-student data isolation.
+def get_default_company_checklist(company_name: str) -> Dict[str, Any]:
+    """
+    Returns the foundational company checklist tasks structured across
+    Aptitude, Coding, Technical Concepts, and HR rounds (#192).
+    """
+    comp = (company_name or "General").strip()
+
+    return {
+        "Aptitude & Logical Reasoning": [
+            {"id": "apt_01", "task": f"Quantitative Aptitude: Speed, Distance, Work & Time for {comp}", "completed": False},
+            {"id": "apt_02", "task": "Data Interpretation & Logical Puzzles (Seating arrangements & Syllogisms)", "completed": False},
+            {"id": "apt_03", "task": "Verbal Ability & Reading Comprehension Practice", "completed": False}
+        ],
+        "Coding & Data Structures": [
+            {"id": "code_01", "task": f"Top 20 Most Frequent LeetCode Questions asked at {comp}", "completed": False},
+            {"id": "code_02", "task": "Arrays, Strings, HashMaps & Sliding Window problem sets", "completed": False},
+            {"id": "code_03", "task": "Trees, Graphs & Dynamic Programming fundamentals", "completed": False},
+            {"id": "code_04", "task": f"Timed 60-minute Online Assessment Simulation for {comp}", "completed": False}
+        ],
+        "Technical Concepts & CS Fundamentals": [
+            {"id": "tech_01", "task": "DBMS & SQL: Indexing, Transactions, ACID Properties, Normalization", "completed": False},
+            {"id": "tech_02", "task": "Operating Systems: Process vs Thread, Virtual Memory, Concurrency & Deadlocks", "completed": False},
+            {"id": "tech_03", "task": "Computer Networks: TCP/IP vs UDP, DNS, HTTP/HTTPS, WebSockets", "completed": False},
+            {"id": "tech_04", "task": "Object Oriented Programming (OOP) & Clean System Design principles", "completed": False}
+        ],
+        "HR, Culture & Behavioral (STAR)": [
+            {"id": "hr_01", "task": f"Company Deep Dive: Core values, business model, and leadership principles of {comp}", "completed": False},
+            {"id": "hr_02", "task": "Prepare 'Tell Me About Yourself' 90-second elevator pitch", "completed": False},
+            {"id": "hr_03", "task": "Structure 3 impactful project stories using the STAR methodology", "completed": False},
+            {"id": "hr_04", "task": f"Prepare 3 thoughtful questions to ask the interviewer about {comp}", "completed": False}
+        ]
+    }
+
+
+def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
+    """
+    Retrieves or initializes the student's company-specific preparation checklist (#192).
+    Calculates category progress and overall completion percentage.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        comp = (company_name or "Google").strip()
+
+        cursor.execute("""
+            SELECT * FROM company_preparation_checklists
+            WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
+        """, (effective_student_id, comp))
+        row = cursor.fetchone()
+
+        if row:
+            rec = dict(row)
+            try:
+                checklist_data = json.loads(rec.get("checklist_json", "{}"))
+            except Exception:
+                checklist_data = get_default_company_checklist(comp)
+        else:
+            checklist_data = get_default_company_checklist(comp)
+            # Initialize record
+            save_company_checklist(effective_student_id, comp, checklist_data)
+
+        # Compute completion statistics
+        total_tasks = 0
+        completed_tasks = 0
+        category_stats = {}
+
+        for cat_name, task_list in checklist_data.items():
+            cat_total = len(task_list)
+            cat_done = sum(1 for t in task_list if t.get("completed"))
+            total_tasks += cat_total
+            completed_tasks += cat_done
+            category_stats[cat_name] = {
+                "total": cat_total,
+                "completed": cat_done,
+                "percentage": round((cat_done / cat_total * 100), 1) if cat_total else 0.0
+            }
+
+        overall_percentage = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+
+        return {
+            "student_id": effective_student_id,
+            "company_name": comp,
+            "checklist": checklist_data,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "overall_percentage": overall_percentage,
+            "category_stats": category_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching company checklist for {company_name}: {e}")
+        default_data = get_default_company_checklist(company_name)
+        return {
+            "student_id": student_id,
+            "company_name": company_name,
+            "checklist": default_data,
+            "total_tasks": 15,
+            "completed_tasks": 0,
+            "overall_percentage": 0.0,
+            "category_stats": {}
+        }
+def save_coding_submission(
+    sub_id: str,
+    student_id: str,
+    question_title: str,
+    language: str,
+    code: str,
+    passed: bool,
+    score: int,
+    tests_passed: int = 0,
+    total_tests: int = 0,
+    test_results: Optional[List[Dict[str, Any]]] = None,
+    complexity_analysis: Optional[str] = None,
+    feedback: Optional[str] = None,
+    company_name: str = "General",
+    analysis_id: Optional[str] = None
+) -> str:
+    """
+    Persists a coding assessment submission attempt (#194).
+    Enforces per-student isolation.
     """
     conn = get_db_connection()
     try:
@@ -1376,6 +1732,187 @@ def save_calendar_event(
     except Exception as e:
         logger.error(f"Error saving calendar event {event_id}: {e}")
         raise e
+            INSERT INTO coding_submissions (
+                id, student_id, analysis_id, question_title, company_name,
+                language, code, passed, score, tests_passed, total_tests,
+                test_results_json, complexity_analysis, feedback
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            sub_id,
+            effective_student_id,
+            analysis_id,
+            question_title.strip(),
+            company_name.strip(),
+            language.strip().lower(),
+            code,
+            1 if passed else 0,
+            int(score),
+            int(tests_passed),
+            int(total_tests),
+            json.dumps(test_results or []),
+            complexity_analysis or "",
+            feedback or ""
+        ))
+        conn.commit()
+        logger.info(f"Saved coding submission {sub_id} for student {effective_student_id}")
+        return sub_id
+    except Exception as e:
+        logger.error(f"Error saving coding submission {sub_id}: {e}")
+        raise e
+def save_skill_self_assessment(
+    student_id: str,
+    skill_name: str,
+    category: str,
+    proficiency_level: str,
+    years_experience: float = 0.0,
+    notes: str = ""
+) -> Dict[str, Any]:
+    """Saves or updates a student's technical skill self-assessment."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        record_id = str(uuid.uuid4())
+        normalized_student_id = (student_id or "default_student").strip()
+        normalized_skill = skill_name.strip()
+        normalized_category = (category or "General").strip()
+        valid_levels = ["Beginner", "Intermediate", "Advanced", "Expert"]
+        level = proficiency_level if proficiency_level in valid_levels else "Intermediate"
+
+        cursor.execute("""
+            INSERT INTO technical_self_assessments (
+                id, student_id, skill_name, category, proficiency_level, years_experience, notes, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, skill_name) DO UPDATE SET
+                category = excluded.category,
+                proficiency_level = excluded.proficiency_level,
+                years_experience = excluded.years_experience,
+                notes = excluded.notes,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            record_id,
+            normalized_student_id,
+            normalized_skill,
+            normalized_category,
+            level,
+            float(years_experience or 0.0),
+            notes.strip() if notes else ""
+        ))
+        conn.commit()
+
+        cursor.execute(
+            "SELECT * FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, normalized_skill)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+def submit_user_feedback(
+    student_id: str,
+    rating: int,
+    category: str,
+    comment: str,
+    feedback_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Records student experience feedback with rating (1-5), category, and comments (#197).
+    """
+    import uuid
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        f_id = feedback_id or f"fb-{uuid.uuid4().hex[:12]}"
+        normalized_student_id = (student_id or "default_student").strip()
+        clamped_rating = max(1, min(5, int(rating)))
+        norm_category = (category or "General Experience").strip()
+        norm_comment = (comment or "").strip()
+
+        cursor.execute("""
+            INSERT INTO user_feedback (id, student_id, rating, category, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (f_id, normalized_student_id, clamped_rating, norm_category, norm_comment))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM user_feedback WHERE id = ?", (f_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+def save_student_profile(
+    student_id: str,
+    full_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    department: Optional[str] = None,
+    grad_year: Optional[int] = None,
+    cgpa: Optional[float] = None,
+    target_role: Optional[str] = None,
+    target_company: Optional[str] = None,
+    skills: Optional[List[str]] = None,
+    linkedin_url: Optional[str] = None,
+    github_url: Optional[str] = None,
+    has_resume_uploaded: Optional[bool] = None
+) -> Dict[str, Any]:
+    """
+    Saves or updates a candidate's placement profile (#199).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        existing = cursor.fetchone()
+
+        skills_json = json.dumps(skills) if skills is not None else None
+
+        if existing:
+            rec = dict(existing)
+            u_name = full_name if full_name is not None else rec.get("full_name")
+            u_email = email if email is not None else rec.get("email")
+            u_phone = phone if phone is not None else rec.get("phone")
+            u_dept = department if department is not None else rec.get("department")
+            u_year = grad_year if grad_year is not None else rec.get("grad_year")
+            u_cgpa = cgpa if cgpa is not None else rec.get("cgpa")
+            u_role = target_role if target_role is not None else rec.get("target_role")
+            u_comp = target_company if target_company is not None else rec.get("target_company")
+            u_skills = skills_json if skills_json is not None else rec.get("skills_json")
+            u_li = linkedin_url if linkedin_url is not None else rec.get("linkedin_url")
+            u_gh = github_url if github_url is not None else rec.get("github_url")
+            u_resume = int(has_resume_uploaded) if has_resume_uploaded is not None else rec.get("has_resume_uploaded", 0)
+
+            cursor.execute("""
+                UPDATE student_profiles SET
+                    full_name = ?, email = ?, phone = ?, department = ?,
+                    grad_year = ?, cgpa = ?, target_role = ?, target_company = ?,
+                    skills_json = ?, linkedin_url = ?, github_url = ?,
+                    has_resume_uploaded = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE student_id = ?
+            """, (
+                u_name, u_email, u_phone, u_dept,
+                u_year, u_cgpa, u_role, u_comp,
+                u_skills, u_li, u_gh, u_resume, s_id
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO student_profiles (
+                    student_id, full_name, email, phone, department,
+                    grad_year, cgpa, target_role, target_company,
+                    skills_json, linkedin_url, github_url, has_resume_uploaded, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (
+                s_id, full_name, email, phone, department,
+                grad_year, cgpa, target_role, target_company,
+                skills_json, linkedin_url, github_url,
+                int(has_resume_uploaded or 0)
+            ))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        saved = dict(cursor.fetchone())
+        if saved.get("skills_json"):
+            try:
+                saved["skills"] = json.loads(saved["skills_json"])
+            except Exception:
+                saved["skills"] = []
+        else:
+            saved["skills"] = []
+        return saved
     finally:
         conn.close()
 
@@ -1388,6 +1925,40 @@ def get_calendar_events(
     """
     Retrieves all calendar preparation events for a student (#190).
     Allows filtering by YYYY-MM month prefix and event_type (interview, preparation, deadline).
+def save_company_checklist(student_id: str, company_name: str, checklist_data: Dict[str, Any]) -> bool:
+    """
+    Saves candidate progress for a specific target company (#192).
+def get_coding_submissions(
+    student_id: str,
+    question_title: Optional[str] = None,
+    language_filter: Optional[str] = None,
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all coding assessment submission attempts for a student (#194).
+    Supports question matching to compare attempts over time.
+def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all technical skill self-assessments for a student."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT * FROM technical_self_assessments
+            WHERE student_id = ?
+            ORDER BY category ASC, skill_name ASC
+        """, (normalized_student_id,))
+        return [dict(row) for row in cursor.fetchall()]
+def get_user_feedback_list(
+    student_id: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    limit: int = 50
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves recorded user feedback entries, optionally filtered by student or feature category (#197).
+def get_student_profile(student_id: str) -> Dict[str, Any]:
+    """
+    Retrieves student profile record by student_id (#199).
     """
     conn = get_db_connection()
     try:
@@ -1458,6 +2029,135 @@ def update_calendar_event(
     except Exception as e:
         logger.error(f"Error updating calendar event {event_id}: {e}")
         return False
+        comp = (company_name or "Google").strip()
+
+        total_tasks = 0
+        completed_tasks = 0
+        for task_list in checklist_data.values():
+            total_tasks += len(task_list)
+            completed_tasks += sum(1 for t in task_list if t.get("completed"))
+
+        pct = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+        rec_id = f"chk-{effective_student_id}-{comp.lower().replace(' ', '_')}"
+
+        cursor.execute("""
+            INSERT INTO company_preparation_checklists (
+                id, student_id, company_name, checklist_json, completion_percentage, updated_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, company_name) DO UPDATE SET
+                checklist_json = excluded.checklist_json,
+                completion_percentage = excluded.completion_percentage,
+                updated_at = CURRENT_TIMESTAMP
+        """, (rec_id, effective_student_id, comp, json.dumps(checklist_data), pct))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving checklist for {company_name}: {e}")
+        return False
+        conditions = ["student_id = ?"]
+        params: List[Any] = [effective_student_id]
+
+        if question_title and question_title.strip():
+            conditions.append("LOWER(question_title) = LOWER(?)")
+            params.append(question_title.strip())
+
+        if language_filter and language_filter.strip() and language_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(language) = LOWER(?)")
+            params.append(language_filter.strip())
+
+        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
+            if status_filter.strip().lower() == "passed":
+                conditions.append("passed = 1")
+            elif status_filter.strip().lower() == "failed":
+                conditions.append("passed = 0")
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM coding_submissions {where_clause} ORDER BY submitted_at DESC, id DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        submissions = []
+        for r in rows:
+            rec = dict(r)
+            try:
+                rec["test_results"] = json.loads(rec.get("test_results_json", "[]"))
+            except Exception:
+                rec["test_results"] = []
+            rec["passed"] = bool(rec.get("passed", 0))
+            submissions.append(rec)
+
+        return submissions
+    except Exception as e:
+        logger.error(f"Error retrieving coding submissions for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+        query = "SELECT * FROM user_feedback WHERE 1=1"
+        params: List[Any] = []
+
+        if student_id and student_id.strip():
+            query += " AND student_id = ?"
+            params.append(student_id.strip())
+
+        if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(category) = LOWER(?)"
+            params.append(category_filter.strip())
+
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        row = cursor.fetchone()
+        if not row:
+            # Check users table fallback for name/email
+            cursor.execute("SELECT name, email FROM users WHERE id = ?", (s_id,))
+            user_row = cursor.fetchone()
+            return {
+                "student_id": s_id,
+                "full_name": user_row["name"] if user_row else "",
+                "email": user_row["email"] if user_row else "",
+                "phone": "",
+                "department": "",
+                "grad_year": None,
+                "cgpa": None,
+                "target_role": "",
+                "target_company": "",
+                "skills": [],
+                "linkedin_url": "",
+                "github_url": "",
+                "has_resume_uploaded": 0
+            }
+
+        data = dict(row)
+        if data.get("skills_json"):
+            try:
+                data["skills"] = json.loads(data["skills_json"])
+            except Exception:
+                data["skills"] = []
+        else:
+            data["skills"] = []
+        return data
+    finally:
+        conn.close()
+
+
+def delete_skill_self_assessment(student_id: str, skill_name: str) -> bool:
+    """Deletes a student's self-assessment entry for a skill."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, skill_name.strip())
+        )
+        conn.commit()
+        return cursor.rowcount > 0
     finally:
         conn.close()
 
@@ -1465,6 +2165,23 @@ def update_calendar_event(
 def delete_calendar_event(event_id: str, student_id: str) -> bool:
     """
     Deletes a calendar event owned by student_id (#190).
+def reset_company_checklist(student_id: str, company_name: str) -> bool:
+    """
+    Resets all tasks to uncompleted for the target company checklist (#192).
+    """
+    default_data = get_default_company_checklist(company_name)
+    return save_company_checklist(student_id, company_name, default_data)
+def get_default_technical_skills_catalog() -> Dict[str, List[str]]:
+    """Returns curated placement technical skills catalog grouped by category."""
+    return {
+        "Programming Languages": ["Python", "Java", "C++", "JavaScript", "TypeScript", "Go"],
+        "Web & Frameworks": ["React", "Node.js", "Flask", "Django", "Spring Boot", "HTML5/CSS3"],
+        "Data & Databases": ["SQL", "PostgreSQL", "MongoDB", "Redis", "Data Structures & Algorithms"],
+        "Cloud & DevOps": ["Git & GitHub", "Docker", "Kubernetes", "AWS", "CI/CD Pipelines", "Linux"],
+        "Core CS Fundamentals": ["Operating Systems", "DBMS", "Computer Networks", "System Design", "OOP"]
+def get_feedback_metrics_summary() -> Dict[str, Any]:
+    """
+    Calculates aggregated satisfaction scores and category distribution (#197).
     """
     conn = get_db_connection()
     try:
@@ -1481,3 +2198,150 @@ def delete_calendar_event(event_id: str, student_id: str) -> bool:
         return False
     finally:
         conn.close()
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_feedback,
+                COALESCE(AVG(rating), 0) as avg_rating,
+                COALESCE(SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END), 0) as five_star_count,
+                COALESCE(SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END), 0) as four_star_count,
+                COALESCE(SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END), 0) as three_star_count,
+                COALESCE(SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END), 0) as two_star_count,
+                COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) as one_star_count
+            FROM user_feedback
+        """)
+        row = cursor.fetchone()
+        stats = dict(row) if row else {}
+        stats["avg_rating"] = round(float(stats.get("avg_rating", 0.0)), 2)
+
+        cursor.execute("""
+            SELECT category, COUNT(*) as count, AVG(rating) as category_avg
+            FROM user_feedback
+            GROUP BY category
+            ORDER BY count DESC
+        """)
+        stats["category_breakdown"] = [
+            {
+                "category": r["category"],
+                "count": r["count"],
+                "avg_rating": round(float(r["category_avg"] or 0), 1)
+            }
+            for r in cursor.fetchall()
+        ]
+        return stats
+    finally:
+        conn.close()
+def calculate_profile_completion(student_id: str) -> Dict[str, Any]:
+    """
+    Evaluates profile completeness across key placement readiness criteria (#199):
+    - Basic Information (Full Name, Email, Phone): 20%
+    - Academic Background (Department, Grad Year, CGPA): 25%
+    - Career Aspirations (Target Role, Target Company): 20%
+    - Technical Competencies (At least 3 Skills): 15%
+    - Professional Presence & Resume (Resume Upload, LinkedIn, GitHub): 20%
+    """
+    profile = get_student_profile(student_id)
+
+    # Also check if student has analyses uploaded if has_resume_uploaded flag is 0
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id.strip(),))
+        has_analyses = cursor.fetchone()[0] > 0
+    finally:
+        conn.close()
+
+    criteria = []
+
+    # 1. Full name & contact
+    has_name = bool((profile.get("full_name") or "").strip())
+    has_email = bool((profile.get("email") or "").strip())
+    has_phone = bool((profile.get("phone") or "").strip())
+    basic_done = has_name and has_email
+    criteria.append({
+        "category": "Basic Contact Information",
+        "title": "Full Name & Email",
+        "weight": 15,
+        "completed": basic_done,
+        "missing_items": [f for f, ok in [("Full Name", has_name), ("Email Address", has_email)] if not ok]
+    })
+
+    # 2. Phone number
+    criteria.append({
+        "category": "Basic Contact Information",
+        "title": "Contact Phone Number",
+        "weight": 5,
+        "completed": has_phone,
+        "missing_items": [] if has_phone else ["Phone Number"]
+    })
+
+    # 3. Department & Graduation Year
+    has_dept = bool((profile.get("department") or "").strip())
+    has_year = bool(profile.get("grad_year") and int(profile.get("grad_year")) >= 2020)
+    has_cgpa = bool(profile.get("cgpa") and float(profile.get("cgpa")) > 0)
+    criteria.append({
+        "category": "Academic Background",
+        "title": "Department & Graduation Year",
+        "weight": 15,
+        "completed": has_dept and has_year,
+        "missing_items": [f for f, ok in [("Department", has_dept), ("Graduation Year", has_year)] if not ok]
+    })
+
+    # 4. Academic CGPA
+    criteria.append({
+        "category": "Academic Background",
+        "title": "Undergraduate CGPA",
+        "weight": 10,
+        "completed": has_cgpa,
+        "missing_items": [] if has_cgpa else ["CGPA"]
+    })
+
+    # 5. Career Target
+    has_role = bool((profile.get("target_role") or "").strip())
+    has_comp = bool((profile.get("target_company") or "").strip())
+    criteria.append({
+        "category": "Placement Preferences",
+        "title": "Target Role & Dream Company",
+        "weight": 20,
+        "completed": has_role and has_comp,
+        "missing_items": [f for f, ok in [("Target Role", has_role), ("Target Company", has_comp)] if not ok]
+    })
+
+    # 6. Technical Skills
+    skills_list = profile.get("skills", [])
+    has_skills = len(skills_list) >= 3
+    criteria.append({
+        "category": "Technical Competencies",
+        "title": "At least 3 Key Technical Skills",
+        "weight": 15,
+        "completed": has_skills,
+        "missing_items": [] if has_skills else [f"Add at least {3 - len(skills_list)} more skill(s)"]
+    })
+
+    # 7. Resume & Professional Links
+    resume_ready = bool(profile.get("has_resume_uploaded")) or has_analyses
+    has_social = bool((profile.get("linkedin_url") or "").strip()) or bool((profile.get("github_url") or "").strip())
+    criteria.append({
+        "category": "Placement Portfolio",
+        "title": "Resume Upload & Developer Links",
+        "weight": 20,
+        "completed": resume_ready and has_social,
+        "missing_items": [f for f, ok in [("Resume Upload", resume_ready), ("LinkedIn/GitHub URL", has_social)] if not ok]
+    })
+
+    total_weight = sum(c["weight"] for c in criteria)
+    earned_weight = sum(c["weight"] for c in criteria if c["completed"])
+    percentage = round((earned_weight / total_weight) * 100) if total_weight > 0 else 0
+
+    all_missing = []
+    for c in criteria:
+        if not c["completed"]:
+            all_missing.extend(c["missing_items"])
+
+    return {
+        "student_id": student_id,
+        "completion_percentage": percentage,
+        "is_complete": percentage >= 100,
+        "criteria": criteria,
+        "missing_fields": all_missing,
+        "profile": profile
+    }

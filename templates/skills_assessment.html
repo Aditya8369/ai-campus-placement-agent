@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Technical Skills Self-Assessment - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+      <div>
+        <h2 class="h3 fw-bold text-primary mb-1">
+          <i class="fa-solid fa-award me-2"></i>Technical Skills Self-Assessment
+        </h2>
+        <p class="text-muted small mb-0">
+          Log, evaluate, and track your proficiency across programming languages, system design, and placement essentials.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill">
+          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
+        </a>
+        <button class="btn btn-primary btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#addSkillModal">
+          <i class="fa-solid fa-plus-circle me-1"></i> Add / Update Skill
+        </button>
+      </div>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Metrics Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-white">
+          <div class="card-body d-flex align-items-center">
+            <div class="rounded-circle bg-primary bg-opacity-10 p-3 me-3 text-primary">
+              <i class="fa-solid fa-screwdriver-wrench fs-3"></i>
+            </div>
+            <div>
+              <div class="text-muted small fw-semibold text-uppercase">Assessed Skills</div>
+              <div class="h3 fw-bold mb-0 text-dark">{{ total_skills }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-white">
+          <div class="card-body d-flex align-items-center">
+            <div class="rounded-circle bg-success bg-opacity-10 p-3 me-3 text-success">
+              <i class="fa-solid fa-gauge-high fs-3"></i>
+            </div>
+            <div>
+              <div class="text-muted small fw-semibold text-uppercase">Readiness Score</div>
+              <div class="h3 fw-bold mb-0 text-dark">{{ avg_score }}/100</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card border-0 shadow-sm h-100 bg-white">
+          <div class="card-body d-flex align-items-center">
+            <div class="rounded-circle bg-info bg-opacity-10 p-3 me-3 text-info">
+              <i class="fa-solid fa-layer-group fs-3"></i>
+            </div>
+            <div>
+              <div class="text-muted small fw-semibold text-uppercase">Categories Covered</div>
+              <div class="h3 fw-bold mb-0 text-dark">{{ category_summary|length }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skills Table & Overview -->
+    <div class="row g-4">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="card-title fw-bold mb-0">My Evaluated Skills</h5>
+            <span class="badge bg-secondary">{{ assessments|length }} recorded</span>
+          </div>
+          <div class="card-body p-0">
+            {% if assessments %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Skill</th>
+                    <th>Category</th>
+                    <th>Proficiency</th>
+                    <th>Experience</th>
+                    <th>Last Updated</th>
+                    <th class="text-end">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for item in assessments %}
+                  <tr>
+                    <td class="fw-semibold text-dark">{{ item.skill_name }}</td>
+                    <td>
+                      <span class="badge bg-light text-dark border">{{ item.category }}</span>
+                    </td>
+                    <td>
+                      {% if item.proficiency_level == 'Expert' %}
+                        <span class="badge bg-success">Expert (100%)</span>
+                      {% elif item.proficiency_level == 'Advanced' %}
+                        <span class="badge bg-primary">Advanced (80%)</span>
+                      {% elif item.proficiency_level == 'Intermediate' %}
+                        <span class="badge bg-warning text-dark">Intermediate (50%)</span>
+                      {% else %}
+                        <span class="badge bg-secondary">Beginner (25%)</span>
+                      {% endif %}
+                    </td>
+                    <td>{{ item.years_experience }} yrs</td>
+                    <td class="small text-muted">{{ item.updated_at }}</td>
+                    <td class="text-end">
+                      <button class="btn btn-outline-danger btn-sm py-0 px-2"
+                              onclick="deleteSkill('{{ item.skill_name }}')">
+                        <i class="fa-solid fa-trash"></i>
+                      </button>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+              <i class="fa-solid fa-clipboard-check text-muted display-4 mb-3"></i>
+              <h6 class="text-muted fw-semibold">No Technical Skills Assessed Yet</h6>
+              <p class="text-muted small mb-3">Start logging your programming languages and technologies to compute placement readiness.</p>
+              <button class="btn btn-primary btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#addSkillModal">
+                <i class="fa-solid fa-plus-circle me-1"></i> Add Your First Skill
+              </button>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Recommended Skills Catalog -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="card-title fw-bold mb-0">Recommended Placement Skills</h5>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">Click on any core domain skill to quickly prefill your assessment log:</p>
+            <div class="accordion accordion-flush" id="catalogAccordion">
+              {% for cat, skills in catalog.items() %}
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="heading{{ loop.index }}">
+                  <button class="accordion-button collapsed py-2 px-1 fw-semibold small" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}">
+                    {{ cat }} ({{ skills|length }})
+                  </button>
+                </h2>
+                <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#catalogAccordion">
+                  <div class="accordion-body px-1 py-2">
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for s in skills %}
+                      <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2"
+                              onclick="selectQuickSkill('{{ s }}', '{{ cat }}')">
+                        + {{ s }}
+                      </button>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add / Update Skill Assessment -->
+  <div class="modal fade" id="addSkillModal" tabindex="-1" aria-labelledby="addSkillModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form action="/skills-assessment" method="POST">
+          <div class="modal-header">
+            <h5 class="modal-title fw-bold" id="addSkillModalLabel">Record Skill Assessment</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="modalSkillName" class="form-label small fw-semibold">Skill / Technology Name *</label>
+              <input type="text" class="form-control" id="modalSkillName" name="skill_name" required placeholder="e.g. Python, Docker, SQL">
+            </div>
+            <div class="mb-3">
+              <label for="modalCategory" class="form-label small fw-semibold">Domain Category</label>
+              <select class="form-select" id="modalCategory" name="category">
+                {% for cat in catalog.keys() %}
+                <option value="{{ cat }}">{{ cat }}</option>
+                {% endfor %}
+                <option value="General">Other / General</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="modalLevel" class="form-label small fw-semibold">Proficiency Level *</label>
+              <select class="form-select" id="modalLevel" name="proficiency_level" required>
+                <option value="Beginner">Beginner (Basic syntax / coursework)</option>
+                <option value="Intermediate" selected>Intermediate (Built projects / leetcode practice)</option>
+                <option value="Advanced">Advanced (Production projects / strong problem solving)</option>
+                <option value="Expert">Expert (In-depth internals / architecture / mentorship)</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="modalExp" class="form-label small fw-semibold">Years of Practical Experience</label>
+              <input type="number" step="0.5" class="form-control" id="modalExp" name="years_experience" value="1.0" min="0">
+            </div>
+            <div class="mb-3">
+              <label for="modalNotes" class="form-label small fw-semibold">Key Achievements / Projects / Notes</label>
+              <textarea class="form-control" id="modalNotes" name="notes" rows="3" placeholder="e.g. Solved 120 medium problems on LeetCode, built a REST API backend."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm rounded-pill" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary btn-sm rounded-pill">Save Self-Assessment</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  function selectQuickSkill(skillName, category) {
+      document.getElementById('modalSkillName').value = skillName;
+      const catSelect = document.getElementById('modalCategory');
+      for (let i = 0; i < catSelect.options.length; i++) {
+          if (catSelect.options[i].value === category) {
+              catSelect.selectedIndex = i;
+              break;
+          }
+      }
+      const modal = new bootstrap.Modal(document.getElementById('addSkillModal'));
+      modal.show();
+  }
+
+  function deleteSkill(skillName) {
+      if (!confirm(`Are you sure you want to remove '${skillName}' from your assessments?`)) {
+          return;
+      }
+      fetch('/api/skills-assessment', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ skill_name: skillName })
+      })
+      .then(res => res.json())
+      .then(data => {
+          if (data.status === 'success') {
+              window.location.reload();
+          } else {
+              alert(data.message || 'Error deleting skill');
+          }
+      })
+      .catch(err => {
+          console.error(err);
+          alert('Network error while deleting skill.');
+      });
+  }
+  </script>
+</body>
+</html>
