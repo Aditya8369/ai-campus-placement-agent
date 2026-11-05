@@ -226,14 +226,26 @@ function initCompanyExplorer() {
       const data = await res.json();
       if (data.success && data.details) {
         const d = data.details;
+        const eligibilityHtml = d.eligibility
+          ? `<h6 class="fw-bold"><i class="fa-solid fa-user-graduate text-primary me-2"></i>Eligibility Criteria:</h6><p class="small text-muted mb-3">${d.eligibility}</p>`
+          : "";
+        const frequentTopicsHtml = Array.isArray(d.frequent_topics) && d.frequent_topics.length
+          ? `<h6 class="fw-bold"><i class="fa-solid fa-tags text-primary me-2"></i>Frequent Topics:</h6><div class="d-flex flex-wrap gap-1 mb-3">${d.frequent_topics.map(t => `<span class="badge bg-light text-dark border">${t}</span>`).join(" ")}</div>`
+          : "";
+        const requiredSkillsHtml = Array.isArray(d.required_skills) && d.required_skills.length
+          ? `<h6 class="fw-bold"><i class="fa-solid fa-code text-primary me-2"></i>Required Skills:</h6><div class="d-flex flex-wrap gap-1 mb-3">${d.required_skills.map(s => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${s}</span>`).join(" ")}</div>`
+          : "";
         modalBody.innerHTML = `
           <h4 class="fw-bold text-primary mb-3">${data.company}</h4>
           <p class="text-secondary">${d.overview || ""}</p>
           <hr/>
+          ${eligibilityHtml}
           <h6 class="fw-bold"><i class="fa-solid fa-list-check text-primary me-2"></i>Hiring Process:</h6>
           <p class="small text-muted mb-3">${d.hiring_process || "N/A"}</p>
           <h6 class="fw-bold"><i class="fa-solid fa-laptop-code text-primary me-2"></i>Technical Rounds:</h6>
           <p class="small text-muted mb-3">${d.technical_rounds || "N/A"}</p>
+          ${frequentTopicsHtml}
+          ${requiredSkillsHtml}
           <h6 class="fw-bold"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Preparation Tips:</h6>
           <div class="alert alert-light border small text-dark">${d.prep_tips || "N/A"}</div>
         `;

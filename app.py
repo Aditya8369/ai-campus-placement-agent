@@ -181,7 +181,23 @@ def get_available_companies() -> list:
     Loads list of companies dynamically from data/companies.json with fallback defaults.
     """
     companies_file = config.BASE_DIR / "data" / "companies.json"
-    default_companies = ["Google", "Microsoft", "Amazon", "TCS", "Infosys", "Accenture", "Capgemini", "Wipro"]
+    default_companies = [
+        "Accenture",
+        "Adobe",
+        "Amazon",
+        "Capgemini",
+        "Cognizant",
+        "Deloitte",
+        "Flipkart",
+        "Google",
+        "HCLTech",
+        "Infosys",
+        "Microsoft",
+        "TCS",
+        "Tech Mahindra",
+        "Wipro",
+        "Zoho",
+    ]
     try:
         if companies_file.exists():
             with open(companies_file, "r", encoding="utf-8") as f:

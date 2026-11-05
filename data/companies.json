@@ -1,74 +1,314 @@
 {
-  "Google": {
-    "overview": "Google is a global technology leader focusing on search, cloud computing, online advertising technologies, and hardware, renowned for its highly engineering-driven culture.",
-    "hiring_process": "Typically consists of an Online Coding Assessment, followed by 3-4 Technical Rounds focusing on core DSA and System Design, ending with a 'Googleyness' (behavioral) round.",
-    "technical_rounds": "In-depth testing on Data Structures & Algorithms, complex problem solving, space/time complexity optimization, and system design for scale.",
-    "hr_rounds": "Focuses on 'Googleyness'—assessing cognitive ability, leadership, cultural fit, ethics, and collaboration in ambiguous situations.",
-    "frequent_topics": ["Graph Algorithms (BFS/DFS, Dijkstra)", "Dynamic Programming", "Trees & Tries", "Hash Tables", "System Design (Scalability, Caching, Databases)"],
-    "required_skills": ["Python, C++, or Java", "Advanced Data Structures & Algorithms", "Strong Computer Science fundamentals (OS, Networks)", "System Architecture"],
-    "prep_tips": "Practice medium-to-hard LeetCode problems, write clean code on paper/whiteboard, explain your thought process aloud, and study Google's leadership principles."
+  "Accenture": {
+    "overview": "Accenture is a professional services company specializing in digital, cloud, security, and strategy services on a global scale.",
+    "hiring_process": "Consists of a Cognitive & Technical Assessment, followed by a Coding Assessment, a Communication Assessment, and a final Technical + HR Interview.",
+    "technical_rounds": "Focuses on pseudo-codes, MS Office basics, network fundamentals, cloud security concepts, basic programming, and final resume project discussions.",
+    "hr_rounds": "Evaluates candidate adaptability, team synergy, situational judgement, problem-solving mindset, and soft skills.",
+    "frequent_topics": [
+      "Pseudo-code interpretation",
+      "Basic networking & security",
+      "Resume Projects",
+      "Situational/Behavioral Questions"
+    ],
+    "required_skills": [
+      "Basic programming knowledge",
+      "Analytical & Logical reasoning",
+      "Familiarity with cloud & digital services",
+      "Strong communication skills"
+    ],
+    "prep_tips": "Practice solving pseudo-codes quickly, prepare for the automated communication assessment by speaking clearly, and structure your project details chronologically.",
+    "eligibility": "Minimum 60% or 6.5 CGPA in current degree, no active backlogs at the time of application, all branches generally eligible, up to 1 year education gap permitted."
   },
-  "Microsoft": {
-    "overview": "Microsoft is a multinational technology corporation that produces computer software, consumer electronics, personal computers, and cloud services (Azure).",
-    "hiring_process": "Consists of an Online Assessment (OA) with coding questions, followed by 3-4 Technical Interview rounds, and an final interview with a Hiring Manager.",
-    "technical_rounds": "Algorithms, system design, coding correctness, edge case handling, and computer science fundamentals (OS, DB, Threads).",
-    "hr_rounds": "Assesses growth mindset, passion for technology, communication skills, adaptability, and collaboration within diverse teams.",
-    "frequent_topics": ["Binary Trees & BST", "Linked Lists", "Arrays & Strings manipulation", "System Design", "Object-Oriented Programming (OOP)"],
-    "required_skills": ["C#, C++, or Java", "Data Structures & Algorithms", "Cloud Architecture (Azure concepts)", "Object-Oriented Design (OOD)"],
-    "prep_tips": "Focus on solid software design, review basic data structure implementations, practice system design basics, and demonstrate Microsoft's core value: a growth mindset."
+  "Adobe": {
+    "overview": "Adobe is an industry-leading multinational computer software company renowned for digital media creation tools (Creative Cloud, Photoshop), document solutions (Acrobat), and enterprise experience cloud platforms.",
+    "hiring_process": "Typically initiates with an Online Assessment on HackerRank featuring algorithmic coding, quantitative aptitude, and core computer science fundamentals, followed by 3-4 Technical Interview rounds, culminating in an Engineering Director or HR round.",
+    "technical_rounds": "Rigorous focus on advanced Data Structures and Algorithms (Trees, Graphs, Dynamic Programming), Object-Oriented Design, Operating Systems internals (multithreading, memory management), and complex problem-solving trade-offs.",
+    "hr_rounds": "Evaluates intellectual curiosity, innovation, alignment with Adobe core values (Genuine, Exceptional, Innovative, Involved), teamwork, and past project ownership.",
+    "frequent_topics": [
+      "Binary Trees, BST & Tries",
+      "Dynamic Programming & Memoization",
+      "Graph Traversals & Algorithms",
+      "Operating Systems (Virtual Memory, Semaphores, Multithreading)",
+      "Object-Oriented Design & Design Patterns"
+    ],
+    "required_skills": [
+      "C++, Java, or Python",
+      "Data Structures & Algorithmic Analysis",
+      "Core Computer Science Fundamentals (OS, DBMS, Networks)",
+      "Object-Oriented Design & Clean Code"
+    ],
+    "prep_tips": "Emphasize tree and graph data structures alongside dynamic programming. Gain deep familiarity with systems programming concepts like threading and synchronization, and be ready to explain the time/space trade-offs of every code solution.",
+    "eligibility": "Minimum 7.0 CGPA or 70% aggregate in B.E./B.Tech/M.E./M.Tech (CS, IT, ECE, and related circuital streams), with no active backlogs at the time of recruitment."
   },
   "Amazon": {
     "overview": "Amazon is an e-commerce, cloud computing (AWS), digital streaming, and artificial intelligence giant, driven by customer obsession and operational excellence.",
     "hiring_process": "Consists of an Online Assessment (Coding + Work Style Simulation), followed by 3-4 Technical Rounds where Leadership Principles are heavily integrated.",
     "technical_rounds": "Deep dive into DSA, coding efficiency, object-oriented design, and system architecture for large scale systems.",
     "hr_rounds": "Amazon does not have standard HR rounds; instead, every technical round incorporates questions testing the 16 Leadership Principles using the STAR method.",
-    "frequent_topics": ["Arrays & Strings", "Trees & Recursion", "System Design", "System integration & API design", "16 Amazon Leadership Principles"],
-    "required_skills": ["Java, Python, or C++", "Object Oriented Design (OOD)", "Scalable System Design", "SQL & NoSQL Database concepts"],
-    "prep_tips": "Prepare 2-3 detailed behavioral stories for each of Amazon's Leadership Principles using the STAR (Situation, Task, Action, Result) method. Practice coding under time limits."
-  },
-  "TCS": {
-    "overview": "Tata Consultancy Services (TCS) is an Indian multinational information technology services and consulting company, one of the largest IT service brands globally.",
-    "hiring_process": "Typically conducted through TCS NQT (National Qualifier Test) containing Cognitive & Technical sections, followed by Technical, Managerial, and HR interview rounds.",
-    "technical_rounds": "Tests programming basics, database queries (SQL), computer network concepts, software engineering cycles, and simple coding tasks.",
-    "hr_rounds": "Checks willingness to relocate, shift flexibility, communication skills, career aspirations, and background verification details.",
-    "frequent_topics": ["Basic Programming (Loops, Recursion, Arrays)", "SQL Queries (JOINS, Group By)", "OOP Principles", "SDLC Models (Agile, Waterfall)"],
-    "required_skills": ["C, C++, Java, or Python", "Basic DBMS and SQL", "Basic Data Structures", "Good verbal and written communication"],
-    "prep_tips": "Practice TCS NQT mock tests, revise OOP concepts and basic SQL queries, prepare a clear self-introduction, and highlight your college academic projects."
-  },
-  "Infosys": {
-    "overview": "Infosys is a global leader in next-generation digital services and consulting, serving clients in over 50 countries.",
-    "hiring_process": "Conducted through InfyTQ or HackWithInfy, followed by a Technical Interview and an HR Interview.",
-    "technical_rounds": "Covers programming fundamentals, object-oriented programming, data structures, DBMS, and questions on your resume projects.",
-    "hr_rounds": "Assesses soft skills, behavioral traits, work ethic, willingness to learn new technologies, and relocation choices.",
-    "frequent_topics": ["Object-Oriented Programming (Inheritance, Polymorphism)", "SQL Queries", "Data Structures (Stack, Queue, Linked List)", "Web Development basics"],
-    "required_skills": ["Java, Python, or C#", "DBMS & SQL Concepts", "Basic Data Structures", "Project documentation knowledge"],
-    "prep_tips": "Be thorough with your resume projects and the technology stacks used. Revise basic database concepts and be confident in explaining your role in academic projects."
-  },
-  "Accenture": {
-    "overview": "Accenture is a professional services company specializing in digital, cloud, security, and strategy services on a global scale.",
-    "hiring_process": "Consists of an Cognitive & Technical Assessment, followed by a Coding Assessment, a Communication Assessment, and a final Technical + HR Interview.",
-    "technical_rounds": "Focuses on pseudo-codes, MS Office basics, network fundamentals, cloud security concepts, basic programming, and final resume project discussions.",
-    "hr_rounds": "Evaluates candidate adaptability, team synergy, situational judgement, problem-solving mindset, and soft skills.",
-    "frequent_topics": ["Pseudo-code interpretation", "Basic networking & security", "Resume Projects", "Situational/Behavioral Questions"],
-    "required_skills": ["Basic programming knowledge", "Analytical & Logical reasoning", "Familiarity with cloud & digital services", "Strong communication skills"],
-    "prep_tips": "Practice solving pseudo-codes quickly, prepare for the automated communication assessment by speaking clearly, and structure your project details chronologically."
+    "frequent_topics": [
+      "Arrays & Strings",
+      "Trees & Recursion",
+      "System Design",
+      "System integration & API design",
+      "16 Amazon Leadership Principles"
+    ],
+    "required_skills": [
+      "Java, Python, or C++",
+      "Object Oriented Design (OOD)",
+      "Scalable System Design",
+      "SQL & NoSQL Database concepts"
+    ],
+    "prep_tips": "Prepare 2-3 detailed behavioral stories for each of Amazon's Leadership Principles using the STAR (Situation, Task, Action, Result) method. Practice coding under time limits.",
+    "eligibility": "Minimum 6.5 CGPA in B.E./B.Tech/M.E./M.Tech/MCA in Computer Science, IT, or related STEM disciplines, with no current backlogs."
   },
   "Capgemini": {
     "overview": "Capgemini is a French multinational information technology service and consulting company, specializing in engineering services, digital transformation, and cloud.",
     "hiring_process": "Consists of a pseudo-code assessment, English communication assessment, game-based aptitude test, followed by technical and HR interview rounds.",
     "technical_rounds": "Covers core programming, database concepts, data structures, cloud computing basics, and technical questions on academic internships/projects.",
     "hr_rounds": "Assesses cultural fit, confidence, flexibility, work-ethics, and checks academic qualifications.",
-    "frequent_topics": ["OOP Concepts", "Basic SQL (DDL/DML)", "Data Structures (Arrays, Linked Lists)", "Resume-based project technologies"],
-    "required_skills": ["C, C++, Java or Python", "Basic SQL and Database concepts", "Aptitude and problem-solving skills", "Good communication"],
-    "prep_tips": "Prepare for the game-based aptitude test (which tests memory, concentration, and logical reasoning) and practice interpreting C/Java code snippets."
+    "frequent_topics": [
+      "OOP Concepts",
+      "Basic SQL (DDL/DML)",
+      "Data Structures (Arrays, Linked Lists)",
+      "Resume-based project technologies"
+    ],
+    "required_skills": [
+      "C, C++, Java or Python",
+      "Basic SQL and Database concepts",
+      "Aptitude and problem-solving skills",
+      "Good communication"
+    ],
+    "prep_tips": "Prepare for the game-based aptitude test (which tests memory, concentration, and logical reasoning) and practice interpreting C/Java code snippets.",
+    "eligibility": "Minimum 60% or 6.0 CGPA throughout 10th, 12th, and Graduation (B.E./B.Tech/MCA), no active backlogs, up to 1-2 years education gap permissible."
+  },
+  "Cognizant": {
+    "overview": "Cognizant is a leading American multinational information technology services and consulting enterprise, operating high-volume campus hiring across GenC, GenC Elevate, and GenC Next career tracks.",
+    "hiring_process": "Typically comprises an Online Assessment (Quantitative Aptitude, Logical Reasoning, Verbal Ability, and Automata Fix / Coding), followed by a Technical Interview round and an HR / Managerial discussion.",
+    "technical_rounds": "Tests fundamental computer programming (Java/Python/C++), Object-Oriented Programming (OOP) paradigms, basic Data Structures (Arrays, Linked Lists, Stacks), Relational Databases (SQL queries, normalization), and detailed walk-through of undergraduate academic projects.",
+    "hr_rounds": "Assesses English communication fluency, cultural adaptability, readiness for rotational shifts, relocation preferences across PAN-India office locations, and behavioral situational questions.",
+    "frequent_topics": [
+      "OOP Principles (Inheritance, Polymorphism, Abstraction)",
+      "SQL Queries (JOINs, Aggregate Functions, Indexing)",
+      "Data Structures (Arrays, Strings, Linked Lists)",
+      "Automata Fix / Code Debugging",
+      "Web Fundamentals (HTML, CSS, JavaScript)"
+    ],
+    "required_skills": [
+      "Java, Python, or C++",
+      "Relational Database Management (RDBMS & SQL)",
+      "Basic Data Structures & Algorithms",
+      "Strong verbal and written English communication"
+    ],
+    "prep_tips": "Practice timed debugging and pseudo-code tracing (Automata Fix). Review standard SQL joins and group-by clauses, and prepare a concise, structured walk-through of your academic or capstone projects.",
+    "eligibility": "Minimum 60% or 6.0 CGPA in 10th, 12th, Diploma, and UG/PG degrees (B.E./B.Tech/MCA/M.Tech) with no standing backlogs at the time of recruitment; maximum 1-year education gap permissible."
+  },
+  "Deloitte": {
+    "overview": "Deloitte is one of the world's leading professional services networks (Big Four), recruiting campus graduates for advisory, enterprise technology transformation, cloud analytics, and cyber risk consulting practices.",
+    "hiring_process": "Begins with an Online Assessment covering Quantitative Aptitude, Logical Reasoning, Verbal Ability, and Computer Science Fundamentals / Coding, followed by a Case Study or Group Discussion round for select roles, a Technical Interview, and a Partner / HR round.",
+    "technical_rounds": "Evaluates candidate analytical problem solving, data modeling, SQL query craftsmanship, software development lifecycle (SDLC), cloud concepts, and the ability to articulate technology solutions for real-world enterprise problems.",
+    "hr_rounds": "Focuses on consulting aptitude, executive presence, business ethics, leadership initiative, adaptability, and structured communication using the STAR methodology.",
+    "frequent_topics": [
+      "Analytical Aptitude & Business Reasoning",
+      "SQL Queries & Data Modeling",
+      "Object-Oriented Programming (OOP)",
+      "Cloud & Cyber Security Fundamentals",
+      "Consulting Case Studies & Problem Solving"
+    ],
+    "required_skills": [
+      "Java, Python, or C++",
+      "Relational Databases & SQL",
+      "Analytical and structured problem-solving",
+      "Professional presentation and business communication"
+    ],
+    "prep_tips": "Cultivate structured problem-solving skills (MECE framework) for case study scenarios. Practice business-oriented SQL queries and ensure your verbal communication demonstrates confidence, adaptability, and clear business acumen.",
+    "eligibility": "Minimum 60% or 6.5 CGPA in 10th, 12th, and B.E./B.Tech/MCA/M.Tech (open to all engineering and tech branches), no active backlogs at the time of recruitment, education gap not exceeding 1 year."
+  },
+  "Flipkart": {
+    "overview": "Flipkart is India's leading e-commerce marketplace and technology innovator (a subsidiary of Walmart Inc.), known for engineering large-scale distributed architectures handling hundreds of millions of customers.",
+    "hiring_process": "Typically consists of an Online Coding Assessment (2-3 DSA problems on HackerEarth/Unstop), a 90-minute Machine Coding Round (writing modular, extensible, runnable object-oriented code), 1-2 Problem Solving & Data Structures (PS/DS) technical interviews, and an Engineering Manager (EM) cultural round.",
+    "technical_rounds": "Rigorous testing of advanced Data Structures and Algorithms (Dynamic Programming, Graph algorithms, Trees, Heaps), clean code architecture, modular design patterns, Low-Level Design (LLD), concurrency handling, and unit testability.",
+    "hr_rounds": "Conducted by an Engineering Manager or Director to evaluate extreme ownership, bias for action, handling ambiguity, customer centricity, and ability to thrive in high-paced sprint cycles.",
+    "frequent_topics": [
+      "Dynamic Programming & Greedy Algorithms",
+      "Graph Traversal & Shortest Path (BFS/DFS, Dijkstra)",
+      "Machine Coding / Low-Level Design (LLD)",
+      "Object-Oriented Design Patterns",
+      "Concurrency & Thread Safety Basics",
+      "Hash Tables & Heaps"
+    ],
+    "required_skills": [
+      "Java, C++, or Go",
+      "Advanced Data Structures & Algorithms",
+      "Clean Coding & Low-Level Design (SOLID principles)",
+      "System Design fundamentals & Multithreading"
+    ],
+    "prep_tips": "Master Low-Level Design and time-boxed Machine Coding: practice writing runnable, object-oriented, modular code with interfaces and error handling in under 90 minutes. Solve medium-to-hard LeetCode DP and Graph challenges.",
+    "eligibility": "Minimum 6.5 or 7.0 CGPA in B.E./B.Tech/M.E./M.Tech/Dual Degree (CS/IT/ECE or related branches), no standing backlogs at the time of graduation."
+  },
+  "Google": {
+    "overview": "Google is a global technology leader focusing on search, cloud computing, online advertising technologies, and hardware, renowned for its highly engineering-driven culture.",
+    "hiring_process": "Typically consists of an Online Coding Assessment, followed by 3-4 Technical Rounds focusing on core DSA and System Design, ending with a 'Googleyness' (behavioral) round.",
+    "technical_rounds": "In-depth testing on Data Structures & Algorithms, complex problem solving, space/time complexity optimization, and system design for scale.",
+    "hr_rounds": "Focuses on 'Googleyness'—assessing cognitive ability, leadership, cultural fit, ethics, and collaboration in ambiguous situations.",
+    "frequent_topics": [
+      "Graph Algorithms (BFS/DFS, Dijkstra)",
+      "Dynamic Programming",
+      "Trees & Tries",
+      "Hash Tables",
+      "System Design (Scalability, Caching, Databases)"
+    ],
+    "required_skills": [
+      "Python, C++, or Java",
+      "Advanced Data Structures & Algorithms",
+      "Strong Computer Science fundamentals (OS, Networks)",
+      "System Architecture"
+    ],
+    "prep_tips": "Practice medium-to-hard LeetCode problems, write clean code on paper/whiteboard, explain your thought process aloud, and study Google's leadership principles.",
+    "eligibility": "Minimum 6.5 or 7.0+ CGPA in B.E./B.Tech/M.E./M.Tech/MCA/MS in Computer Science or related STEM disciplines, no active backlogs during onboarding."
+  },
+  "HCLTech": {
+    "overview": "HCLTech is a global technology company providing digital, engineering, and cloud solutions, recruiting fresh engineering graduates through its First Careers and Graduate Engineer Trainee (GET) programs.",
+    "hiring_process": "Commences with an Online Assessment (Quantitative Aptitude, Logical Reasoning, English Comprehension, and Technical MCQs / Coding), followed by a Technical Interview round and an HR / Managerial discussion.",
+    "technical_rounds": "Tests fundamental computer science concepts including OOPs, basic data structures (Arrays, Stacks, Queues), operating system principles, computer networks, database management systems, and resume project implementations.",
+    "hr_rounds": "Assesses communication clarity, flexibility regarding work location and project domain assignments, shift adaptability, and candidate career goals.",
+    "frequent_topics": [
+      "Core Java / Python / C++ Syntax",
+      "Database Concepts & SQL Queries",
+      "Operating Systems (Process, Threads, Memory)",
+      "Networking Fundamentals (OSI Model, TCP/IP)",
+      "Resume Project Discussions"
+    ],
+    "required_skills": [
+      "C++, Java, or Python",
+      "Basic DBMS & SQL Knowledge",
+      "Foundational Data Structures",
+      "Effective communication and interpersonal skills"
+    ],
+    "prep_tips": "Focus on foundational programming syntax and error-spotting. Brush up on core computer science subjects (OS, DBMS, CN) and be prepared to articulate the architectural choices of your college projects.",
+    "eligibility": "Minimum 60% or 6.0 CGPA in 10th, 12th, and B.E./B.Tech/M.E./M.Tech/MCA degrees, with no active backlogs at the time of joining; maximum 1-year education gap allowed."
+  },
+  "Infosys": {
+    "overview": "Infosys is a global leader in next-generation digital services and consulting, serving clients in over 50 countries.",
+    "hiring_process": "Conducted through InfyTQ or HackWithInfy, followed by a Technical Interview and an HR Interview.",
+    "technical_rounds": "Covers programming fundamentals, object-oriented programming, data structures, DBMS, and questions on your resume projects.",
+    "hr_rounds": "Assesses soft skills, behavioral traits, work ethic, willingness to learn new technologies, and relocation choices.",
+    "frequent_topics": [
+      "Object-Oriented Programming (Inheritance, Polymorphism)",
+      "SQL Queries",
+      "Data Structures (Stack, Queue, Linked List)",
+      "Web Development basics"
+    ],
+    "required_skills": [
+      "Java, Python, or C#",
+      "DBMS & SQL Concepts",
+      "Basic Data Structures",
+      "Project documentation knowledge"
+    ],
+    "prep_tips": "Be thorough with your resume projects and the technology stacks used. Revise basic database concepts and be confident in explaining your role in academic projects.",
+    "eligibility": "Minimum 60% or 6.0 CGPA in 10th, 12th, and Diploma/Degree (B.E./B.Tech/MCA/M.Tech), no standing backlogs at the time of selection, up to 2 years education gap allowed."
+  },
+  "Microsoft": {
+    "overview": "Microsoft is a multinational technology corporation that produces computer software, consumer electronics, personal computers, and cloud services (Azure).",
+    "hiring_process": "Consists of an Online Assessment (OA) with coding questions, followed by 3-4 Technical Interview rounds, and an final interview with a Hiring Manager.",
+    "technical_rounds": "Algorithms, system design, coding correctness, edge case handling, and computer science fundamentals (OS, DB, Threads).",
+    "hr_rounds": "Assesses growth mindset, passion for technology, communication skills, adaptability, and collaboration within diverse teams.",
+    "frequent_topics": [
+      "Binary Trees & BST",
+      "Linked Lists",
+      "Arrays & Strings manipulation",
+      "System Design",
+      "Object-Oriented Programming (OOP)"
+    ],
+    "required_skills": [
+      "C#, C++, or Java",
+      "Data Structures & Algorithms",
+      "Cloud Architecture (Azure concepts)",
+      "Object-Oriented Design (OOD)"
+    ],
+    "prep_tips": "Focus on solid software design, review basic data structure implementations, practice system design basics, and demonstrate Microsoft's core value: a growth mindset.",
+    "eligibility": "Minimum 7.0 CGPA or equivalent throughout undergraduate/postgraduate degrees in CS, IT, ECE, EE or related STEM branches, with no active backlogs."
+  },
+  "TCS": {
+    "overview": "Tata Consultancy Services (TCS) is an Indian multinational information technology services and consulting company, one of the largest IT service brands globally.",
+    "hiring_process": "Typically conducted through TCS NQT (National Qualifier Test) containing Cognitive & Technical sections, followed by Technical, Managerial, and HR interview rounds.",
+    "technical_rounds": "Tests programming basics, database queries (SQL), computer network concepts, software engineering cycles, and simple coding tasks.",
+    "hr_rounds": "Checks willingness to relocate, shift flexibility, communication skills, career aspirations, and background verification details.",
+    "frequent_topics": [
+      "Basic Programming (Loops, Recursion, Arrays)",
+      "SQL Queries (JOINS, Group By)",
+      "OOP Principles",
+      "SDLC Models (Agile, Waterfall)"
+    ],
+    "required_skills": [
+      "C, C++, Java, or Python",
+      "Basic DBMS and SQL",
+      "Basic Data Structures",
+      "Good verbal and written communication"
+    ],
+    "prep_tips": "Practice TCS NQT mock tests, revise OOP concepts and basic SQL queries, prepare a clear self-introduction, and highlight your college academic projects.",
+    "eligibility": "Minimum 60% or 6.0 CGPA throughout 10th, 12th, and Undergraduate/Postgraduate degrees, maximum 1 active backlog permitted at the time of test, up to 24 months of overall education gap allowed."
+  },
+  "Tech Mahindra": {
+    "overview": "Tech Mahindra is a major multinational IT services and consulting enterprise, part of the Mahindra Group, specializing in digital transformation, telecommunications software, and enterprise business solutions.",
+    "hiring_process": "Comprises an Online Aptitude Assessment (Logical, Quantitative, Verbal), followed by an English Conversational / Communication Test, a Technical Assessment / Coding Round, a Technical Interview, and an HR Interview.",
+    "technical_rounds": "Focuses on core programming logic, debugging code snippets, basic data structures, relational database concepts, software development lifecycle (SDLC), and capstone project review.",
+    "hr_rounds": "Focuses on communication effectiveness, candidate background, willingness to relocate to different delivery centers, shift flexibility, and situational judgment questions.",
+    "frequent_topics": [
+      "Aptitude & Logical Sequences",
+      "Conversational English Proficiency",
+      "C/Java Code Debugging",
+      "Basic SQL (Select, Group By, Join)",
+      "Software Engineering & SDLC"
+    ],
+    "required_skills": [
+      "C, C++, Java, or Python",
+      "Basic Relational Databases (SQL)",
+      "Aptitude and logical deduction",
+      "Strong English conversational proficiency"
+    ],
+    "prep_tips": "Practice conversational English and speech clarity for the automated audio evaluation round. Review fundamental data structure operations and basic SQL queries, and ensure complete familiarity with all technologies listed on your resume.",
+    "eligibility": "Minimum 60% or 6.0 CGPA in 10th, 12th, Diploma, and Graduation (B.E./B.Tech in CS/IT/ECE/EE or MCA), with no active backlogs at the time of interview; maximum 1-year education gap permissible."
   },
   "Wipro": {
     "overview": "Wipro Limited is a leading technology services and consulting company focused on building innovative solutions that address clients' most complex digital transformation needs.",
     "hiring_process": "Conducted via Wipro Elite NLTH (National Level Talent Hunt) comprising Aptitude, Technical MCQs, and Coding, followed by Technical and HR interview rounds.",
     "technical_rounds": "Covers basic data structures, OOPs, database management systems (DBMS), operating systems (OS), and simple programming problems.",
     "hr_rounds": "Evaluates communication, adaptability, availability for shifts, relocation, and career commitment.",
-    "frequent_topics": ["String & Array Manipulation", "SQL Queries", "OOPs principles", "Computer networks basics"],
-    "required_skills": ["Java, C++, or Python", "SQL and DBMS", "Basic OS and Computer Networks", "Good English communication"],
-    "prep_tips": "Focus on coding basics like string operations and arrays. Ensure your fundamentals in DBMS, OS, and computer networks are clear, and highlight team achievements in your resume."
+    "frequent_topics": [
+      "String & Array Manipulation",
+      "SQL Queries",
+      "OOPs principles",
+      "Computer networks basics"
+    ],
+    "required_skills": [
+      "Java, C++, or Python",
+      "SQL and DBMS",
+      "Basic OS and Computer Networks",
+      "Good English communication"
+    ],
+    "prep_tips": "Focus on coding basics like string operations and arrays. Ensure your fundamentals in DBMS, OS, and computer networks are clear, and highlight team achievements in your resume.",
+    "eligibility": "Minimum 60% or 6.0 CGPA in 10th, 12th, and Graduation (B.E./B.Tech/M.E./M.Tech/MCA), maximum 1 backlog allowed at the time of assessment, up to 3 years gap permitted."
+  },
+  "Zoho": {
+    "overview": "Zoho Corporation is an Indian multinational technology corporation that makes computer software and web-based business tools, celebrated for its unique hands-on engineering culture and language-agnostic development.",
+    "hiring_process": "Consists of 5 hiring rounds: Round 1 (General Aptitude & C/Java Output Tracing MCQs), Round 2 (Basic Programming & Pattern Printing), Round 3 (Advanced Programming & Algorithmic Problem Solving), Round 4 (Basic Application / Low-Level System Design), and Round 5 (HR & Cultural Fit Interview).",
+    "technical_rounds": "Heavy emphasis on writing clean algorithms from scratch without relying on built-in language library helpers (often using C, C++, or Java). Involves pattern printing, string manipulation, recursion, data modeling, and designing small functional console applications (e.g., Railway Reservation or Taxi Booking System).",
+    "hr_rounds": "Assesses passion for product engineering, problem-solving curiosity, continuous learning capacity, long-term stability, and alignment with Zoho's hands-on engineering ethos.",
+    "frequent_topics": [
+      "Matrix & Pattern Generation",
+      "String Parsing & Tokenization",
+      "Recursion & Backtracking",
+      "Object-Oriented Design (OOD / LLD)",
+      "Console Application Architecture",
+      "Pointers & Memory in C/C++"
+    ],
+    "required_skills": [
+      "Proficiency in C, C++, or Java",
+      "Raw algorithmic thinking without standard library crutches",
+      "Low-Level System Design (LLD)",
+      "Object-Oriented Programming (OOP)"
+    ],
+    "prep_tips": "Avoid relying heavily on Python built-ins or STL shortcuts during practice; implement algorithms and data structures manually. Practice pattern printing, recursion, string manipulation, and design real-world console applications like parking lot or lift management systems.",
+    "eligibility": "Open to all engineering branches and degrees (B.E./B.Tech, B.Sc/BCA, MCA, M.Tech); no rigid percentage cutoff is mandated, though no active backlogs are preferred during joining."
   }
 }

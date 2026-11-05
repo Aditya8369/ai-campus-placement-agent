@@ -9,11 +9,11 @@ TIER_1_COMPANIES = {
 }
 TIER_2_COMPANIES = {
     "flipkart", "swiggy", "zomato", "razorpay", "oracle", "cisco", "paypal",
-    "intuit", "morgan stanley", "walmart", "paytm", "jpmorgan", "target"
+    "intuit", "morgan stanley", "walmart", "paytm", "jpmorgan", "target", "zoho"
 }
 TIER_3_COMPANIES = {
     "tcs", "infosys", "wipro", "cognizant", "accenture", "capgemini",
-    "hcl", "tech mahindra", "l&t", "mindtree", "deloitte"
+    "hcl", "hcltech", "tech mahindra", "l&t", "mindtree", "deloitte"
 }
 
 def determine_company_tier(company_name: str) -> Dict[str, Any]:
