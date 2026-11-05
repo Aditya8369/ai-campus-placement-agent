@@ -49,6 +49,10 @@ from utils.database import (
     get_job_applications,
     delete_job_application,
     update_job_application_status,
+    save_skill_self_assessment,
+    get_student_skill_self_assessments,
+    delete_skill_self_assessment,
+    get_default_technical_skills_catalog,
     export_job_applications_csv,
     export_job_applications_json,
     export_job_applications_markdown,
@@ -1400,6 +1404,66 @@ def api_evaluate_code(analysis_id: str = None):
         }), 500
 
 
+@app.route("/skills-assessment", methods=["GET", "POST"])
+def skills_assessment_view():
+    """
+    Renders and manages candidate technical skills self-assessment module.
+    Allows students to log and review competencies across languages, frameworks, and CS fundamentals.
+    """
+    student_id = (flask_session.get("user", {}).get("id") or flask_session.get("user_id") or flask_session.get("student_id") or "default_student")
+    catalog = get_default_technical_skills_catalog()
+
+    if request.method == "POST":
+        skill_name = request.form.get("skill_name", "").strip()
+        category = request.form.get("category", "General").strip()
+        proficiency_level = request.form.get("proficiency_level", "Intermediate").strip()
+        years_experience = request.form.get("years_experience", "0").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not skill_name:
+            flash("Skill name is required.", "danger")
+        else:
+            try:
+                exp_val = float(years_experience) if years_experience else 0.0
+            except ValueError:
+                exp_val = 0.0
+
+            save_skill_self_assessment(
+                student_id=student_id,
+                skill_name=skill_name,
+                category=category,
+                proficiency_level=proficiency_level,
+                years_experience=exp_val,
+                notes=notes
+            )
+            flash(f"Self-assessment for '{skill_name}' recorded successfully!", "success")
+        return redirect("/skills-assessment")
+
+    # GET request - gather assessments and compute metrics
+    assessments = get_student_skill_self_assessments(student_id)
+    level_weights = {"Beginner": 25, "Intermediate": 50, "Advanced": 80, "Expert": 100}
+    category_summary = {}
+    total_score = 0
+
+    for item in assessments:
+        cat = item.get("category", "General")
+        level = item.get("proficiency_level", "Intermediate")
+        pts = level_weights.get(level, 50)
+        total_score += pts
+        if cat not in category_summary:
+            category_summary[cat] = {"count": 0, "total_pts": 0}
+        category_summary[cat]["count"] += 1
+        category_summary[cat]["total_pts"] += pts
+
+    avg_score = round(total_score / len(assessments)) if assessments else 0
+
+    return render_template(
+        "skills_assessment.html",
+        catalog=catalog,
+        assessments=assessments,
+        category_summary=category_summary,
+        avg_score=avg_score,
+        total_skills=len(assessments),
 @app.route("/feedback", methods=["GET", "POST"])
 def feedback_view():
     """
@@ -1457,6 +1521,10 @@ def feedback_view():
     )
 
 
+@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
+def api_skills_assessment():
+    """
+    REST API endpoint for managing student technical skill self-assessments.
 @app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
     """
@@ -1471,6 +1539,12 @@ def api_feedback():
     )
 
     if request.method == "GET":
+        items = get_student_skill_self_assessments(student_id)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(items),
+            "skills": items
         cat = request.args.get("category")
         limit = request.args.get("limit", 50)
         try:
@@ -1488,6 +1562,45 @@ def api_feedback():
 
     if request.method == "POST":
         payload = request.get_json(silent=True) or request.form
+        skill_name = payload.get("skill_name", "").strip()
+        category = payload.get("category", "General").strip()
+        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
+        years_experience = payload.get("years_experience", 0.0)
+        notes = payload.get("notes", "").strip()
+
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+
+        try:
+            exp_val = float(years_experience)
+        except (ValueError, TypeError):
+            exp_val = 0.0
+
+        saved = save_skill_self_assessment(
+            student_id=student_id,
+            skill_name=skill_name,
+            category=category,
+            proficiency_level=proficiency_level,
+            years_experience=exp_val,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Skill '{skill_name}' assessment saved",
+            "skill": saved
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        skill_name = (payload.get("skill_name") or "").strip()
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
+        deleted = delete_skill_self_assessment(student_id, skill_name)
+        return jsonify({
+            "status": "success" if deleted else "not_found",
+            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
+        }), 200 if deleted else 404
+
         rating_raw = payload.get("rating", 5)
         category = payload.get("category", "General Experience")
         comment = payload.get("comment", "").strip()
