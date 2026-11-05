@@ -88,6 +88,7 @@ from agents.github_agent import GitHubAnalyzerAgent
 from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
+from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
 
 # Configure structured application logging
 logging.basicConfig(
@@ -674,6 +675,20 @@ def dashboard(analysis_id: str) -> str:
         logger.error(f"Error fetching initial recommended campus drives: {job_err}")
         initial_recommended_jobs = []
 
+    # Prepare initial Role-Based Preparation Mode data
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    initial_role_prep = role_prep_agent.generate_role_preparation(
+        target_role="Software Engineer",
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        company_name=analysis_record.get("company_name", "General"),
+        resume_text=analysis_record.get("resume_text", "")
+    )
     # Prepare verified Placement Readiness Summary data
     results = analysis_record.get("results") or {}
     resume_analysis = results.get("resume_analysis") or {}
@@ -821,6 +836,9 @@ def dashboard(analysis_id: str) -> str:
         trend_series_json=json.dumps(trend_series),
         initial_outreach=initial_outreach,
         initial_outreach_json=json.dumps(initial_outreach),
+        initial_role_prep=initial_role_prep,
+        initial_role_prep_json=json.dumps(initial_role_prep),
+        supported_roles=SUPPORTED_ROLES
         readiness_summary=readiness_summary
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison)
@@ -2053,6 +2071,143 @@ def api_user_placement_analyses():
         "success": True,
         "data": history_data
     }), 200
+
+
+# ==============================================================================
+# Role-Based Preparation Mode Routes (#154)
+# ==============================================================================
+
+@app.route("/api/role-prep/roles")
+def api_role_prep_roles():
+    """
+    Returns the list of supported placement roles with descriptions and icons.
+    """
+    return jsonify({
+        "success": True,
+        "roles": SUPPORTED_ROLES
+    }), 200
+
+
+@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
+def api_role_prep_for_analysis(analysis_id: str):
+    """
+    Generates role-based preparation curriculum and recommendations for a student analysis.
+    Supports switching target roles dynamically (Python Developer, Data Analyst, Data Scientist, Software Engineer).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record:
+        return jsonify({"success": False, "error": "Analysis record not found"}), 404
+
+    target_role = request.args.get("role")
+    if not target_role and request.is_json:
+        target_role = (request.get_json() or {}).get("role")
+    if not target_role and request.form:
+        target_role = request.form.get("role")
+    target_role = (target_role or "Software Engineer").strip()
+
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=target_role,
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        company_name=analysis_record.get("company_name", "General"),
+        resume_text=analysis_record.get("resume_text", "")
+    )
+    return jsonify(prep_data), 200
+
+
+@app.route("/api/role-prep/generate", methods=["POST"])
+def api_role_prep_generate():
+    """
+    Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
+    """
+    body = request.get_json() or {}
+    target_role = body.get("role") or request.form.get("role") or "Software Engineer"
+    skills = body.get("skills") or []
+    if isinstance(skills, str):
+        skills = [s.strip() for s in re.split(r"[,;\n]+", skills) if s.strip()]
+    skill_gaps = body.get("skill_gaps") or []
+    if isinstance(skill_gaps, str):
+        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", skill_gaps) if s.strip()]
+    company = body.get("company") or request.form.get("company") or "General"
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=target_role,
+        existing_skills=skills,
+        skill_gaps=skill_gaps,
+        company_name=company
+    )
+    return jsonify(prep_data), 200
+
+
+@app.route("/role-preparation", methods=["GET", "POST"])
+def role_preparation_view():
+    """
+    Role-Based Preparation Mode View (#154).
+    Enables students to explore tailored learning tracks for Python Developer, Data Analyst,
+    Data Scientist, and Software Engineer roles with personalized skill gap bridging.
+    """
+    analysis_id = request.args.get("analysis_id", "").strip()
+    selected_role = request.args.get("role", "Software Engineer").strip()
+    company = request.args.get("company", "").strip()
+    raw_skills = request.args.get("skills", "").strip()
+    raw_gaps = request.args.get("skill_gaps", "").strip()
+
+    if request.method == "POST":
+        selected_role = request.form.get("role", selected_role).strip()
+        company = request.form.get("company", company).strip()
+        raw_skills = request.form.get("skills", raw_skills).strip()
+        raw_gaps = request.form.get("skill_gaps", raw_gaps).strip()
+
+    analysis_record = None
+    existing_skills = []
+    skill_gaps = []
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record:
+            results = analysis_record.get("results") or {}
+            job_match = results.get("job_match") or {}
+            skill_gap_items = results.get("skill_gap") or []
+            existing_skills = job_match.get("matched_skills") or []
+            skill_gaps = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+            if not company:
+                company = analysis_record.get("company_name", "General")
+
+    if not existing_skills and raw_skills:
+        existing_skills = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+    if not skill_gaps and raw_gaps:
+        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_gaps) if s.strip()]
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=selected_role,
+        existing_skills=existing_skills,
+        skill_gaps=skill_gaps,
+        company_name=company or "General Campus Recruitment",
+        resume_text=analysis_record.get("resume_text", "") if analysis_record else None
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(prep_data), 200
+
+    return render_template(
+        "role_preparation.html",
+        prep=prep_data,
+        prep_json=json.dumps(prep_data),
+        analysis=analysis_record,
+        analysis_id=analysis_id,
+        available_roles=SUPPORTED_ROLES,
+        selected_role=prep_data["target_role"],
+        company=company,
+        skills_input=", ".join(existing_skills),
+        gaps_input=", ".join(skill_gaps)
+    )
 
 
 if __name__ == "__main__":

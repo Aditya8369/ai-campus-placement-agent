@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   initOutreachGenerator();
   initCopySuggestions();
+  initRoleBasedPrep();
   initSkillsComparisonChart();
   initBackToTop();
 });
@@ -2943,6 +2944,221 @@ function initCopySuggestions() {
 }
 
 /**
+ * Role-Based Preparation Mode: Dynamic Role Switcher (#154)
+ * Allows candidates to toggle between Python Developer, Data Analyst,
+ * Data Scientist, and Software Engineer to update preparation content in real time.
+ */
+function initRoleBasedPrep() {
+  const container = document.getElementById("roleBasedPrepSection");
+  if (!container) return;
+
+  const dashboardContainer = document.getElementById("dashboardContainer");
+  const analysisId = dashboardContainer ? dashboardContainer.getAttribute("data-analysis-id") : "";
+  if (!analysisId) return;
+
+  const roleBtns = container.querySelectorAll(".dashboard-role-btn");
+  const spinner = document.getElementById("rolePrepLoadingSpinner");
+  const mainContent = document.getElementById("rolePrepMainContentArea");
+
+  roleBtns.forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const selectedRole = btn.getAttribute("data-role");
+      if (!selectedRole) return;
+
+      // Update button visual states
+      roleBtns.forEach((b) => {
+        b.classList.remove("btn-primary", "shadow-sm", "active");
+        b.classList.add("btn-outline-secondary", "border-0");
+      });
+      btn.classList.remove("btn-outline-secondary", "border-0");
+      btn.classList.add("btn-primary", "shadow-sm", "active");
+
+      // Show loader
+      if (spinner) spinner.classList.remove("d-none");
+      if (mainContent) mainContent.style.opacity = "0.4";
+
+      try {
+        const response = await fetch(`/api/role-prep/${encodeURIComponent(analysisId)}?role=${encodeURIComponent(selectedRole)}`);
+        const data = await response.json();
+
+        if (data && data.success) {
+          updateRolePreparationUI(data);
+        }
+      } catch (err) {
+        console.error("Failed to load role preparation mode data:", err);
+      } finally {
+        if (spinner) spinner.classList.add("d-none");
+        if (mainContent) mainContent.style.opacity = "1";
+      }
+    });
+  });
+
+  function updateRolePreparationUI(data) {
+    // 1. Badge & Header
+    const badge = document.getElementById("dashRoleBadge");
+    if (badge) {
+      badge.className = `badge bg-${data.color_class}-subtle text-${data.color_class} border border-${data.color_class}-subtle px-3 py-1 rounded-pill fw-bold`;
+      badge.innerHTML = `<i class="${data.icon} me-1"></i> ${escapeHtml(data.role_title)}`;
+    }
+
+    const tagline = document.getElementById("dashRoleTagline");
+    if (tagline) tagline.innerText = data.tagline;
+
+    const titleDisplay = document.getElementById("dashRoleTitleDisplay");
+    if (titleDisplay) titleDisplay.innerText = `${data.role_title} Preparation Track`;
+
+    const guidance = document.getElementById("dashRoleGuidanceText");
+    if (guidance) guidance.innerText = data.personalized_guidance;
+
+    // 2. Alignment Gauge
+    const scoreText = document.getElementById("dashAlignmentScoreText");
+    if (scoreText) scoreText.innerText = `${data.alignment_score}%`;
+
+    const bar = document.getElementById("dashAlignmentProgressBar");
+    if (bar) bar.style.width = `${data.alignment_score}%`;
+
+    // 3. Leveraged Skills & Bridged Gaps
+    const levCont = document.getElementById("dashLeveragedSkillsContainer");
+    if (levCont) {
+      levCont.innerHTML = data.leveraged_skills && data.leveraged_skills.length
+        ? data.leveraged_skills.map((s) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">${escapeHtml(s)}</span>`).join(" ")
+        : `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">Core CS</span>`;
+    }
+
+    const gapCont = document.getElementById("dashBridgedGapsContainer");
+    if (gapCont) {
+      gapCont.innerHTML = data.bridged_skill_gaps && data.bridged_skill_gaps.length
+        ? data.bridged_skill_gaps.map((g) => `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">${escapeHtml(g)}</span>`).join(" ")
+        : `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">Role Skills</span>`;
+    }
+
+    // 4. Technical Topics Grid
+    const topicsGrid = document.getElementById("dashTechnicalTopicsGrid");
+    if (topicsGrid && data.technical_topics) {
+      topicsGrid.innerHTML = data.technical_topics.map((top) => `
+        <div class="col-md-6 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+            <div>
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <h6 class="fw-bold mb-0 text-dark">${escapeHtml(top.topic)}</h6>
+                <span class="badge ${top.importance === 'High' ? 'bg-danger-subtle text-danger border-danger-subtle' : 'bg-primary-subtle text-primary border-primary-subtle'} rounded-pill small">
+                  ${escapeHtml(top.importance)}
+                </span>
+              </div>
+              <p class="text-secondary small mb-3">${escapeHtml(top.summary)}</p>
+            </div>
+            <div class="d-flex flex-wrap gap-1 align-items-center justify-content-between pt-2 border-top">
+              <div class="d-flex flex-wrap gap-1">
+                ${top.skills.map((sk) => `<span class="badge bg-white text-secondary border rounded-pill small">${escapeHtml(sk)}</span>`).join(" ")}
+              </div>
+              <span class="small text-muted"><i class="fa-solid fa-clock me-1"></i>~${top.estimated_hours}h</span>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // 5. Coding Questions Grid
+    const codingGrid = document.getElementById("dashCodingQuestionsGrid");
+    if (codingGrid && data.coding_questions) {
+      codingGrid.innerHTML = data.coding_questions.map((q) => `
+        <div class="col-md-6 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+            <div>
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div>
+                  <span class="badge bg-white text-secondary border rounded-pill small mb-1">${escapeHtml(q.platform)}</span>
+                  <h6 class="fw-bold mb-0 text-dark">${escapeHtml(q.title)}</h6>
+                </div>
+                <span class="badge ${q.difficulty === 'Easy' ? 'bg-success-subtle text-success border-success-subtle' : (q.difficulty === 'Medium' ? 'bg-warning-subtle text-warning border-warning-subtle' : 'bg-danger-subtle text-danger border-danger-subtle')} rounded-pill small">
+                  ${escapeHtml(q.difficulty)}
+                </span>
+              </div>
+              <p class="text-secondary small mb-3">${escapeHtml(q.description)}</p>
+              ${q.hints && q.hints.length ? `
+                <div class="p-2 px-3 bg-white rounded-3 border small mb-3 text-muted">
+                  <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                  <strong>Hint:</strong> ${escapeHtml(q.hints[0])}
+                </div>
+              ` : ''}
+            </div>
+            <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top gap-2">
+              <div class="d-flex flex-wrap gap-1">
+                ${q.skills_targeted.map((sk) => `<span class="badge bg-white text-primary border rounded-pill small">${escapeHtml(sk)}</span>`).join(" ")}
+              </div>
+              <a href="${escapeHtml(q.practice_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                Solve <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // 6. Core Tech Grid
+    const techGrid = document.getElementById("dashCoreTechGrid");
+    if (techGrid && data.core_technologies) {
+      techGrid.innerHTML = data.core_technologies.map((tech) => `
+        <div class="col-md-4 col-sm-6 col-12">
+          <div class="p-3 bg-white rounded-3 border h-100">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <strong class="text-dark small">${escapeHtml(tech.name)}</strong>
+              <span class="badge bg-light text-primary border rounded-pill small">${escapeHtml(tech.badge)}</span>
+            </div>
+            <small class="text-secondary d-block">${escapeHtml(tech.description)}</small>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // 7. Concepts Grid
+    const concGrid = document.getElementById("dashConceptsGrid");
+    if (concGrid && data.important_concepts) {
+      concGrid.innerHTML = data.important_concepts.map((c) => `
+        <div class="col-md-6 col-12">
+          <div class="p-3 bg-white rounded-3 border h-100">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <i class="fa-solid fa-check-circle text-success"></i>
+              <strong class="text-dark small">${escapeHtml(c.concept)}</strong>
+            </div>
+            <small class="text-secondary d-block">${escapeHtml(c.details)}</small>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    // 8. Role Roadmap Timeline
+    const roadTimeline = document.getElementById("dashRoleRoadmapTimeline");
+    if (roadTimeline && data.roadmap) {
+      roadTimeline.innerHTML = data.roadmap.map((w) => `
+        <div class="timeline-node mb-3">
+          <div class="card border-0 bg-light p-4 rounded-4 shadow-sm">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+              <div>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small mb-1">${escapeHtml(w.week)}</span>
+                <h6 class="fw-bold mb-0 text-dark">${escapeHtml(w.focus)}</h6>
+              </div>
+              <span class="badge bg-primary text-white rounded-pill py-2 px-3">${escapeHtml(w.estimated_hours)} Hours</span>
+            </div>
+            <div class="row g-3 mt-1">
+              <div class="col-md-6">
+                <small class="fw-semibold text-secondary d-block mb-1"><i class="fa-solid fa-book-open me-1 text-primary"></i>Topics:</small>
+                <ul class="mb-2 small list-unstyled">
+                  ${w.topics.map((t) => `<li class="mb-1"><i class="fa-solid fa-angle-right text-primary me-1"></i>${escapeHtml(t)}</li>`).join("")}
+                </ul>
+              </div>
+              <div class="col-md-6">
+                <small class="fw-semibold text-secondary d-block mb-1"><i class="fa-solid fa-code me-1 text-primary"></i>Coding Practice:</small>
+                <ul class="mb-2 small list-unstyled">
+                  ${w.coding_practice.map((c) => `<li class="mb-1"><i class="fa-solid fa-check text-success me-1"></i>${escapeHtml(c)}</li>`).join("")}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join("");
+    }
+  }
  * Visual Skills Comparison Chart (Chart.js)
  * Visualizes Matching Skills vs. Missing Skills from the Job Matching Agent.
  * Responsive on desktop and mobile, supports theme switching (light/dark mode).
