@@ -27,6 +27,8 @@ document.addEventListener("DOMContentLoaded", () => {
   initOutreachGenerator();
   initCopySuggestions();
   initRoleBasedPrep();
+  initSkillsComparisonChart();
+  initBackToTop();
 });
 
 function initThemeToggle() {
@@ -123,6 +125,7 @@ function initSkillGapFilter() {
 /**
  * Tracks interactive checklist tasks on the 6-Week Learning Roadmap
  * and persists completed task IDs in localStorage per analysis session.
+ * Displays overall Preparation Progress Overview with total, completed, pending, and percentage.
  */
 function initRoadmapTracker() {
   const container = document.getElementById("dashboardContainer");
@@ -146,9 +149,18 @@ function initRoadmapTracker() {
   const weekCards = document.querySelectorAll(".week-card");
   const overallLabel = document.getElementById("overallRoadmapProgressLabel");
   const overallBar = document.getElementById("overallRoadmapProgressBar");
+  const totalTasksEl = document.getElementById("totalRoadmapTasks");
+  const completedTasksEl = document.getElementById("completedRoadmapTasks");
+  const pendingTasksEl = document.getElementById("pendingRoadmapTasks");
+  const completionPercentageEl = document.getElementById("roadmapCompletionPercentage");
+  const completedInline = document.getElementById("completedTasksInline");
+  const totalInline = document.getElementById("totalTasksInline");
+  const percentInline = document.getElementById("progressPercentInline");
+  const statusBadge = document.getElementById("roadmapProgressStatusBadge");
+  const btnReset = document.getElementById("btnResetRoadmapProgress");
 
   function updateVisuals() {
-    let totalAll = allCheckboxes.length;
+    const totalAll = allCheckboxes.length;
     let checkedAll = 0;
 
     weekCards.forEach((card) => {
@@ -167,9 +179,43 @@ function initRoadmapTracker() {
       checkedAll += checkedInWeek;
     });
 
+    const pendingAll = Math.max(0, totalAll - checkedAll);
     const overallPct = totalAll > 0 ? Math.round((checkedAll / totalAll) * 100) : 0;
+
+    if (totalTasksEl) totalTasksEl.innerText = totalAll;
+    if (completedTasksEl) completedTasksEl.innerText = checkedAll;
+    if (pendingTasksEl) pendingTasksEl.innerText = pendingAll;
+
     if (overallLabel) overallLabel.innerText = `${overallPct}%`;
-    if (overallBar) overallBar.style.width = `${overallPct}%`;
+    if (completionPercentageEl) completionPercentageEl.innerText = `${overallPct}% Completed`;
+
+    if (overallBar) {
+      overallBar.style.width = `${overallPct}%`;
+      overallBar.setAttribute("aria-valuenow", overallPct);
+    }
+
+    if (completedInline) completedInline.innerText = checkedAll;
+    if (totalInline) totalInline.innerText = totalAll;
+    if (percentInline) percentInline.innerText = `${overallPct}%`;
+
+    if (statusBadge) {
+      if (totalAll === 0) {
+        statusBadge.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle-info me-1"></i> No Tasks';
+      } else if (overallPct === 100) {
+        statusBadge.className = "badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Completed (100%)';
+      } else if (overallPct >= 50) {
+        statusBadge.className = "badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = `<i class="fa-solid fa-chart-line me-1"></i> Over Halfway (${overallPct}%)`;
+      } else if (overallPct > 0) {
+        statusBadge.className = "badge bg-info-subtle text-info border border-info-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = `<i class="fa-solid fa-play me-1"></i> In Progress (${overallPct}%)`;
+      } else {
+        statusBadge.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-clock me-1"></i> Not Started (0%)';
+      }
+    }
   }
 
   allCheckboxes.forEach((cb) => {
@@ -199,6 +245,23 @@ function initRoadmapTracker() {
       updateVisuals();
     });
   });
+
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      completedTasks.clear();
+      try {
+        localStorage.removeItem(storageKey);
+      } catch (e) {
+        console.warn("Failed saving roadmap task progress to localStorage:", e);
+      }
+      allCheckboxes.forEach((cb) => {
+        cb.checked = false;
+        const span = cb.parentElement?.querySelector("span");
+        if (span) span.style.textDecoration = "none";
+      });
+      updateVisuals();
+    });
+  }
 
   updateVisuals();
 }
@@ -3096,6 +3159,149 @@ function initRoleBasedPrep() {
       `).join("");
     }
   }
+ * Visual Skills Comparison Chart (Chart.js)
+ * Visualizes Matching Skills vs. Missing Skills from the Job Matching Agent.
+ * Responsive on desktop and mobile, supports theme switching (light/dark mode).
+ */
+function initSkillsComparisonChart() {
+  const card = document.getElementById("skillsComparisonCard");
+  const canvas = document.getElementById("skillsComparisonChart");
+  if (!card || !canvas || !window.Chart) return;
+
+  let skillsData = null;
+  const rawData = card.getAttribute("data-skills");
+  if (rawData) {
+    try {
+      skillsData = JSON.parse(rawData);
+    } catch (err) {
+      console.warn("Could not parse data-skills JSON for Chart.js:", err);
+    }
+  }
+
+  const matchedCount = skillsData && typeof skillsData.matched_count === "number" ? skillsData.matched_count : 0;
+  const missingCount = skillsData && typeof skillsData.missing_count === "number" ? skillsData.missing_count : 0;
+  const totalCount = matchedCount + missingCount;
+
+  // If no skills evaluated at all, display a clean fallback state
+  if (totalCount === 0) {
+    const wrapper = canvas.parentElement;
+    if (wrapper) {
+      wrapper.innerHTML = `
+        <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted p-3">
+          <i class="fa-solid fa-chart-pie fa-2x mb-2 text-secondary opacity-50"></i>
+          <span class="small">No skills comparison data available for this report.</span>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+
+  const matchPct = totalCount > 0 ? Math.round((matchedCount / totalCount) * 100) : (skillsData.match_percentage || 0);
+  const missingPct = 100 - matchPct;
+
+  const ctx = canvas.getContext("2d");
+  const chartInstance = new window.Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Matching Skills", "Missing Skills"],
+      datasets: [
+        {
+          data: [matchedCount, missingCount],
+          backgroundColor: [
+            isDark ? "#2ea043" : "#198754", // Green / Success
+            isDark ? "#f85149" : "#dc3545"  // Red / Danger
+          ],
+          borderColor: isDark ? "#161b22" : "#ffffff",
+          borderWidth: 3,
+          hoverOffset: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "70%",
+      plugins: {
+        legend: {
+          display: false // We render custom interactive badges and tooltips
+        },
+        tooltip: {
+          backgroundColor: isDark ? "rgba(22, 27, 34, 0.95)" : "rgba(33, 37, 41, 0.95)",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: function (context) {
+              const count = context.raw || 0;
+              const pct = context.dataIndex === 0 ? matchPct : missingPct;
+              return ` ${context.label}: ${count} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Ensure center value text is updated
+  const centerVal = document.getElementById("skillsChartCenterVal");
+  if (centerVal) {
+    centerVal.innerText = `${matchPct}%`;
+  }
+ * Back-to-Top Floating Action Button
+ * Shows when scrolled down (> 300px), smoothly scrolls to top on click.
+ * Ensures cross-browser compatibility and avoids interfering with touch devices.
+ */
+function initBackToTop() {
+  let btn = document.getElementById("backToTopBtn");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "backToTopBtn";
+    btn.className = "back-to-top-btn";
+    btn.setAttribute("aria-label", "Back to top");
+    btn.setAttribute("title", "Back to top");
+    btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+    document.body.appendChild(btn);
+  }
+
+  const scrollThreshold = 300;
+  let ticking = false;
+
+  function updateBackToTopVisibility() {
+    const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    if (currentScroll > scrollThreshold) {
+      btn.classList.add("show");
+    } else {
+      btn.classList.remove("show");
+    }
+    ticking = false;
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateBackToTopVisibility);
+        ticking = true;
+      }
+    },
+    { passive: true }
+  );
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+    btn.blur();
+  });
+
+  // Check initial scroll offset in case page was reloaded when scrolled
+  updateBackToTopVisibility();
 }
 
 

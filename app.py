@@ -689,6 +689,140 @@ def dashboard(analysis_id: str) -> str:
         company_name=analysis_record.get("company_name", "General"),
         resume_text=analysis_record.get("resume_text", "")
     )
+    # Prepare verified Placement Readiness Summary data
+    results = analysis_record.get("results") or {}
+    resume_analysis = results.get("resume_analysis") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+    skill_gap = results.get("skill_gap") or []
+
+    ats_score = int(resume_analysis.get("ats_score", 0))
+    match_percentage = int(job_match.get("match_percentage", 0))
+    skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
+
+    raw_jd = analysis_record.get("job_description", "") or ""
+    has_custom_jd = bool(raw_jd.strip() and raw_jd.strip().lower() != "none provided. assume general software development engineer role.")
+
+    company_benchmark = job_match.get("company_benchmark")
+    if not isinstance(company_benchmark, dict):
+        company_benchmark = None
+
+    target_ats = company_benchmark.get("target_ats", 75) if company_benchmark else 75
+    target_match = company_benchmark.get("target_match", 65) if company_benchmark else 65
+
+    if ats_score >= target_ats and match_percentage >= target_match:
+        readiness_status = "Placement Ready"
+        readiness_badge = "success"
+        readiness_icon = "fa-circle-check"
+    elif ats_score >= (target_ats - 8) and match_percentage >= (target_match - 8):
+        readiness_status = "Targeted Prep Needed"
+        readiness_badge = "primary"
+        readiness_icon = "fa-chart-line"
+    else:
+        readiness_status = "Foundation Building Required"
+        readiness_badge = "warning"
+        readiness_icon = "fa-triangle-exclamation"
+
+    if company_benchmark and company_benchmark.get("assessment"):
+        status_summary = company_benchmark["assessment"]
+    else:
+        status_summary = f"Profile evaluated against typical campus recruitment benchmarks for {analysis_record.get('company_name', 'General')}."
+
+    top_recommendations = []
+    if results.get("overall_recommendation_summary"):
+        top_recommendations.append({
+            "category": "Overall Assessment",
+            "text": results["overall_recommendation_summary"],
+            "icon": "fa-quote-left text-primary"
+        })
+    if company_benchmark and company_benchmark.get("guidance"):
+        top_recommendations.append({
+            "category": "Preparation Guidance",
+            "text": company_benchmark["guidance"],
+            "icon": "fa-lightbulb text-warning"
+        })
+    if job_match.get("top_5_resume_changes") and len(job_match["top_5_resume_changes"]) > 0:
+        top_recommendations.append({
+            "category": "Priority Action Item",
+            "text": job_match["top_5_resume_changes"][0],
+            "icon": "fa-wand-magic-sparkles text-info"
+        })
+
+    readiness_summary = {
+        "ats_score": ats_score,
+        "match_percentage": match_percentage,
+        "has_custom_jd": has_custom_jd,
+        "skill_gaps_count": skill_gaps_count,
+        "readiness_status": readiness_status,
+        "readiness_badge": readiness_badge,
+        "readiness_icon": readiness_icon,
+        "status_summary": status_summary,
+        "target_ats": target_ats,
+        "target_match": target_match,
+        "top_recommendations": top_recommendations
+    # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+
+    raw_matched = job_match.get("matched_skills") or job_match.get("matching_skills") or []
+    if isinstance(raw_matched, str):
+        raw_matched = [s.strip() for s in raw_matched.split(",") if s.strip()]
+    elif not isinstance(raw_matched, list):
+        raw_matched = []
+
+    raw_missing = job_match.get("missing_skills") or []
+    if not raw_missing and results.get("skill_gap"):
+        for gap in results["skill_gap"]:
+            if isinstance(gap, dict) and gap.get("skill"):
+                raw_missing.append(gap["skill"])
+            elif isinstance(gap, str) and gap.strip():
+                raw_missing.append(gap.strip())
+    if isinstance(raw_missing, str):
+        raw_missing = [s.strip() for s in raw_missing.split(",") if s.strip()]
+    elif not isinstance(raw_missing, list):
+        raw_missing = []
+
+    clean_matched = []
+    seen_matched = set()
+    for s in raw_matched:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_matched:
+            clean_matched.append(s_clean)
+            seen_matched.add(s_clean.lower())
+
+    clean_missing = []
+    seen_missing = set()
+    for s in raw_missing:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
+            clean_missing.append(s_clean)
+            seen_missing.add(s_clean.lower())
+
+    matched_count = len(clean_matched)
+    missing_count = len(clean_missing)
+    total_skills = matched_count + missing_count
+
+    if total_skills > 0:
+        match_pct = round((matched_count / total_skills) * 100)
+        missing_pct = 100 - match_pct
+    else:
+        match_pct = int(job_match.get("match_percentage", 0))
+        missing_pct = 100 - match_pct if match_pct > 0 else 0
+
+    target_match = 65
+    company_bench = job_match.get("company_benchmark")
+    if isinstance(company_bench, dict) and company_bench.get("target_match"):
+        target_match = company_bench["target_match"]
+
+    skills_comparison = {
+        "matched_skills": clean_matched,
+        "missing_skills": clean_missing,
+        "matched_count": matched_count,
+        "missing_count": missing_count,
+        "total_skills": total_skills,
+        "match_percentage": match_pct,
+        "missing_percentage": missing_pct,
+        "target_match": target_match
+    }
 
     return render_template(
         "dashboard.html",
@@ -705,6 +839,9 @@ def dashboard(analysis_id: str) -> str:
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
         supported_roles=SUPPORTED_ROLES
+        readiness_summary=readiness_summary
+        skills_comparison=skills_comparison,
+        skills_comparison_json=json.dumps(skills_comparison)
     )
     return jsonify({
         "success": True,
@@ -1822,6 +1959,8 @@ def linkedin_analyzer():
         experience=experience,
         skills=skills
     )
+
+
 @app.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """
