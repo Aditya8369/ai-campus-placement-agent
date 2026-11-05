@@ -47,6 +47,32 @@
           <span class="badge bg-light text-primary border border-primary-subtle p-2 px-3 rounded-pill">
             <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
           </span>
+        <div class="d-flex align-items-center gap-2">
+          <div class="dropdown">
+            <button class="btn btn-outline-success rounded-pill px-3 shadow-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fa-solid fa-file-export me-1"></i> Export Data
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end shadow">
+              <li>
+                <a class="dropdown-item" href="/applications/export?student_id={{ student_id }}&status={{ current_status }}&format=csv">
+                  <i class="fa-solid fa-file-csv me-2 text-success"></i> Download as CSV (Spreadsheet)
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="/applications/export?student_id={{ student_id }}&status={{ current_status }}&format=json">
+                  <i class="fa-solid fa-file-code me-2 text-primary"></i> Download as JSON (Data Backup)
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="/applications/export?student_id={{ student_id }}&status={{ current_status }}&format=md">
+                  <i class="fa-brands fa-markdown me-2 text-info"></i> Download as Markdown (.md)
+                </a>
+              </li>
+            </ul>
+          </div>
+          <button class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#newApplicationModal" id="btnOpenNewAppModal">
+            <i class="fa-solid fa-plus me-1"></i> Add Application
+          </button>
         </div>
       </div>
     </div>
