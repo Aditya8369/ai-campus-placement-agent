@@ -2,6 +2,10 @@
 Shared pytest fixtures and Gemini API client mocking utilities for agent test suite.
 """
 
+import os
+os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key-12345")
+os.environ.setdefault("GEMINI_API_KEY", "")
+
 import json
 import pytest
 from google.genai.errors import APIError

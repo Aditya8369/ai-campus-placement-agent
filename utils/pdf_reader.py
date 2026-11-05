@@ -11,9 +11,9 @@ import logging
 import os
 import re
 from typing import List, Optional, Tuple, Union, Dict, Any
-from typing import Dict, List, Optional, Tuple, Union
 from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError
+import config
 
 try:
     import docx
@@ -31,6 +31,158 @@ MAX_RESUME_TEXT_CHARS = 25000
 MIN_RESUME_TEXT_CHARS = 50
 MIN_RESUME_WORD_COUNT = 10
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx"}
+
+# File size and signature constants (Issue #153)
+MAX_UPLOAD_SIZE_MB = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+MAX_RESUME_FILE_SIZE_BYTES = getattr(
+    config, "MAX_RESUME_FILE_SIZE_BYTES", MAX_UPLOAD_SIZE_MB * 1024 * 1024
+)
+PDF_MAGIC_BYTES = b"%PDF-"
+DOCX_MAGIC_BYTES = b"PK\x03\x04"
+
+
+def validate_pdf_content(file_input: Union[str, bytes, io.BytesIO, Any]) -> Tuple[bool, str]:
+    """
+    Verifies that the provided input is genuine PDF content by inspecting the magic byte signature.
+    Per PDF specifications, the '%PDF-' header must appear within the first 1024 bytes.
+    Returns (is_valid, error_message).
+    """
+    header = b""
+    try:
+        if isinstance(file_input, (str, os.PathLike)):
+            if not os.path.exists(file_input):
+                return False, f"Resume file was not found at path: {file_input}"
+            with open(file_input, "rb") as f:
+                header = f.read(1024)
+        elif isinstance(file_input, (bytes, bytearray)):
+            header = bytes(file_input[:1024])
+        elif hasattr(file_input, "read") and hasattr(file_input, "seek"):
+            pos = file_input.tell()
+            header = file_input.read(1024)
+            file_input.seek(pos)
+        else:
+            return False, "Unsupported file input type for PDF content verification."
+
+        if PDF_MAGIC_BYTES in header:
+            return True, ""
+        return False, "The uploaded file is not a valid PDF document. Please upload a genuine PDF resume (.pdf)."
+    except Exception as exc:
+        logger.error(f"Error checking PDF magic bytes: {exc}")
+        return False, f"Failed to verify PDF document signature: {str(exc)}"
+
+
+def validate_docx_content(file_input: Union[str, bytes, io.BytesIO, Any]) -> Tuple[bool, str]:
+    """
+    Verifies that the provided input is a genuine Word (.docx) document (ZIP archive format).
+    Returns (is_valid, error_message).
+    """
+    header = b""
+    try:
+        if isinstance(file_input, (str, os.PathLike)):
+            if not os.path.exists(file_input):
+                return False, f"Resume file was not found at path: {file_input}"
+            with open(file_input, "rb") as f:
+                header = f.read(4)
+        elif isinstance(file_input, (bytes, bytearray)):
+            header = bytes(file_input[:4])
+        elif hasattr(file_input, "read") and hasattr(file_input, "seek"):
+            pos = file_input.tell()
+            header = file_input.read(4)
+            file_input.seek(pos)
+        else:
+            return False, "Unsupported file input type for DOCX verification."
+
+        if header.startswith(DOCX_MAGIC_BYTES):
+            return True, ""
+        return False, "The uploaded file is not a valid Word document (.docx). Please upload a genuine .docx resume."
+    except Exception as exc:
+        logger.error(f"Error checking DOCX magic bytes: {exc}")
+        return False, f"Failed to verify DOCX document signature: {str(exc)}"
+
+
+def validate_file_size(
+    file_input: Union[str, bytes, io.BytesIO, Any],
+    max_bytes: Optional[int] = None
+) -> Tuple[bool, str]:
+    """
+    Validates whether the resume file size is non-empty and does not exceed the allowed maximum limit.
+    Returns (is_valid, error_message).
+    """
+    effective_max_bytes = max_bytes if max_bytes is not None else getattr(
+        config, "MAX_RESUME_FILE_SIZE_BYTES", getattr(config, "MAX_UPLOAD_SIZE_MB", 5) * 1024 * 1024
+    )
+    max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", effective_max_bytes // (1024 * 1024))
+
+    size = 0
+    try:
+        if isinstance(file_input, (str, os.PathLike)):
+            if not os.path.exists(file_input):
+                return False, f"Resume file was not found at path: {file_input}"
+            size = os.path.getsize(file_input)
+        elif isinstance(file_input, (bytes, bytearray)):
+            size = len(file_input)
+        elif hasattr(file_input, "seek") and hasattr(file_input, "tell"):
+            pos = file_input.tell()
+            file_input.seek(0, os.SEEK_END)
+            size = file_input.tell()
+            file_input.seek(pos)
+        else:
+            return False, "Unsupported file input type for size calculation."
+
+        if size == 0:
+            return False, "The uploaded file is empty. Please upload a valid resume."
+
+        if size > effective_max_bytes:
+            return False, f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+
+        return True, ""
+    except Exception as exc:
+        logger.error(f"Error checking resume file size: {exc}")
+        return False, f"Failed to check resume file size: {str(exc)}"
+
+
+def validate_resume_file(
+    file_input: Union[str, bytes, io.BytesIO, Any],
+    filename: str = "",
+    max_bytes: Optional[int] = None
+) -> Tuple[bool, str]:
+    """
+    Performs comprehensive pre-parsing validation on an uploaded resume:
+    1. Validates file extension against ALLOWED_RESUME_EXTENSIONS (.pdf, .docx).
+    2. Validates file size against configured maximum threshold.
+    3. Verifies true file content type using magic bytes (e.g. %PDF- for PDF).
+
+    Returns (is_valid, error_message).
+    """
+    name_to_check = filename or (file_input if isinstance(file_input, str) else "")
+    if name_to_check:
+        ext = os.path.splitext(name_to_check)[1].lower()
+        if ext not in ALLOWED_RESUME_EXTENSIONS:
+            return False, f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported."
+    else:
+        ext = ""
+
+    # Size validation
+    is_valid_size, size_err = validate_file_size(file_input, max_bytes=max_bytes)
+    if not is_valid_size:
+        return False, size_err
+
+    # Magic byte signature check
+    if ext == ".pdf":
+        is_valid_pdf, pdf_err = validate_pdf_content(file_input)
+        if not is_valid_pdf:
+            return False, pdf_err
+    elif ext == ".docx":
+        is_valid_docx, docx_err = validate_docx_content(file_input)
+        if not is_valid_docx:
+            return False, docx_err
+    else:
+        is_pdf, _ = validate_pdf_content(file_input)
+        is_docx, _ = validate_docx_content(file_input)
+        if not (is_pdf or is_docx):
+            return False, "The uploaded file is not a valid PDF or Word document. Please upload a genuine resume."
+
+    return True, ""
 
 
 def validate_resume_text(text: str) -> Tuple[bool, str]:
@@ -55,8 +207,25 @@ def validate_resume_text(text: str) -> Tuple[bool, str]:
 def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extracts and returns text content from a PDF file using PyPDF2.
-    Enforces maximum page limits, verifies encryption status, and validates extracted text.
+    Enforces file size limits, verifies genuine PDF content signature, enforces maximum page limits,
+    verifies encryption status, and validates extracted text.
     """
+    if not os.path.exists(pdf_path):
+        logger.error(f"File not found: {pdf_path}")
+        raise FileNotFoundError(f"Resume file was not found at path: {pdf_path}")
+
+    # Enforce file size limit before parsing
+    is_valid_size, size_err = validate_file_size(pdf_path)
+    if not is_valid_size:
+        logger.warning(f"PDF size validation failed for {pdf_path}: {size_err}")
+        raise ValueError(size_err)
+
+    # Enforce genuine PDF content signature (magic bytes) before parsing
+    is_valid_type, type_err = validate_pdf_content(pdf_path)
+    if not is_valid_type:
+        logger.warning(f"PDF content validation failed for {pdf_path}: {type_err}")
+        raise ValueError(type_err)
+
     text_content = ""
     try:
         logger.info(f"Initiating text extraction from PDF: {pdf_path}")
@@ -128,10 +297,10 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         raise ve
     except PdfReadError as pre:
         logger.error(f"PyPDF2 ReadError encountered: {str(pre)}")
-        raise ValueError(f"Could not read PDF file (corrupted or malformed): {str(pre)}")
+        raise ValueError("The uploaded PDF is corrupted or unreadable. Please check the file and try again.")
     except Exception as e:
         logger.error(f"Unexpected error reading PDF: {str(e)}")
-        raise RuntimeError(f"Failed to parse PDF file: {str(e)}")
+        raise ValueError(f"Unable to read PDF file: {str(e)}")
 
 
 def extract_text_with_ocr_fallback(pdf_path: str) -> str:
@@ -436,6 +605,11 @@ def extract_text_from_file(file_path: str, standardize: bool = True) -> str:
         FileNotFoundError: If the file does not exist.
         RuntimeError: For parsing failures.
     """
+    # Pre-validate file type, size, and content signature before any parsing occurs
+    is_valid_file, file_err = validate_resume_file(file_path, filename=file_path)
+    if not is_valid_file:
+        raise ValueError(file_err)
+
     lower_path = file_path.lower()
     if lower_path.endswith(".pdf"):
         raw_text = extract_text_from_pdf(file_path)

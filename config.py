@@ -38,8 +38,11 @@ if not FLASK_SECRET_KEY:
 # Centralized model setting
 GEMINI_MODEL = "gemini-2.5-flash"
 
-# Upload file size limit (16MB)
-MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+# Upload file size limit (default: 5MB, configurable via MAX_UPLOAD_SIZE_MB or MAX_RESUME_SIZE_MB) (Issue #153)
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", os.getenv("MAX_RESUME_SIZE_MB", "5")))
+MAX_RESUME_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
+MAX_FILE_SIZE_BYTES = MAX_RESUME_FILE_SIZE_BYTES
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(MAX_RESUME_FILE_SIZE_BYTES)))
 
 # Rate Limiting & Abuse Prevention Configurations (Issue #160)
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
