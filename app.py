@@ -48,6 +48,9 @@ from utils.database import (
     save_job_application,
     get_job_applications,
     delete_job_application,
+    get_company_checklist,
+    save_company_checklist,
+    reset_company_checklist,
     update_job_application_status,
 )
 from utils.batch_analyzer import run_batch_company_comparison
@@ -2606,6 +2609,89 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
+
+
+@app.route("/company-checklist", methods=["GET", "POST"])
+def company_checklist_view():
+    """
+    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
+    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    target_company = request.args.get("company", "Google").strip()
+
+    available_companies = get_available_companies()
+    if not available_companies:
+        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
+
+    if target_company not in available_companies and target_company != "Google":
+        available_companies.insert(0, target_company)
+
+    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "data": checklist_info
+        }), 200
+
+    return render_template(
+        "company_checklist.html",
+        data=checklist_info,
+        target_company=target_company,
+        available_companies=available_companies,
+        student_id=student_id
+    )
+
+
+@app.route("/api/company-checklist/toggle-task", methods=["POST"])
+def api_toggle_checklist_task():
+    """
+    Toggles a checklist task completed status and updates overall progress (#192).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_name = payload.get("company_name", "Google").strip()
+    category = payload.get("category", "").strip()
+    task_id = payload.get("task_id", "").strip()
+    completed = bool(payload.get("completed", False))
+
+    current_data = get_company_checklist(student_id, company_name)
+    checklist = current_data["checklist"]
+
+    if category in checklist:
+        for t in checklist[category]:
+            if t["id"] == task_id:
+                t["completed"] = completed
+                break
+
+    save_company_checklist(student_id, company_name, checklist)
+    updated_info = get_company_checklist(student_id, company_name)
+
+    return jsonify({
+        "success": True,
+        "overall_percentage": updated_info["overall_percentage"],
+        "completed_tasks": updated_info["completed_tasks"],
+        "category_percentage": updated_info["category_stats"].get(category, {}).get("percentage", 0.0)
+    }), 200
+
+
+@app.route("/api/company-checklist/reset", methods=["POST"])
+def api_reset_checklist():
+    """
+    Resets the checklist tasks for a specific target company (#192).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_name = payload.get("company_name", "Google").strip()
+
+    reset_company_checklist(student_id, company_name)
+    refreshed = get_company_checklist(student_id, company_name)
+    return jsonify({
+        "success": True,
+        "message": f"Checklist for {company_name} reset successfully.",
+        "data": refreshed
+    }), 200
 
 
 if __name__ == "__main__":
