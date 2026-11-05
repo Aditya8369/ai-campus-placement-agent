@@ -26,6 +26,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   initOutreachGenerator();
   initCopySuggestions();
+  initSkillsComparisonChart();
+  initBackToTop();
 });
 
 function initThemeToggle() {
@@ -2878,5 +2880,152 @@ function initCopySuggestions() {
     }
   });
 }
+
+/**
+ * Visual Skills Comparison Chart (Chart.js)
+ * Visualizes Matching Skills vs. Missing Skills from the Job Matching Agent.
+ * Responsive on desktop and mobile, supports theme switching (light/dark mode).
+ */
+function initSkillsComparisonChart() {
+  const card = document.getElementById("skillsComparisonCard");
+  const canvas = document.getElementById("skillsComparisonChart");
+  if (!card || !canvas || !window.Chart) return;
+
+  let skillsData = null;
+  const rawData = card.getAttribute("data-skills");
+  if (rawData) {
+    try {
+      skillsData = JSON.parse(rawData);
+    } catch (err) {
+      console.warn("Could not parse data-skills JSON for Chart.js:", err);
+    }
+  }
+
+  const matchedCount = skillsData && typeof skillsData.matched_count === "number" ? skillsData.matched_count : 0;
+  const missingCount = skillsData && typeof skillsData.missing_count === "number" ? skillsData.missing_count : 0;
+  const totalCount = matchedCount + missingCount;
+
+  // If no skills evaluated at all, display a clean fallback state
+  if (totalCount === 0) {
+    const wrapper = canvas.parentElement;
+    if (wrapper) {
+      wrapper.innerHTML = `
+        <div class="d-flex flex-column align-items-center justify-content-center h-100 text-muted p-3">
+          <i class="fa-solid fa-chart-pie fa-2x mb-2 text-secondary opacity-50"></i>
+          <span class="small">No skills comparison data available for this report.</span>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+
+  const matchPct = totalCount > 0 ? Math.round((matchedCount / totalCount) * 100) : (skillsData.match_percentage || 0);
+  const missingPct = 100 - matchPct;
+
+  const ctx = canvas.getContext("2d");
+  const chartInstance = new window.Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: ["Matching Skills", "Missing Skills"],
+      datasets: [
+        {
+          data: [matchedCount, missingCount],
+          backgroundColor: [
+            isDark ? "#2ea043" : "#198754", // Green / Success
+            isDark ? "#f85149" : "#dc3545"  // Red / Danger
+          ],
+          borderColor: isDark ? "#161b22" : "#ffffff",
+          borderWidth: 3,
+          hoverOffset: 6
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "70%",
+      plugins: {
+        legend: {
+          display: false // We render custom interactive badges and tooltips
+        },
+        tooltip: {
+          backgroundColor: isDark ? "rgba(22, 27, 34, 0.95)" : "rgba(33, 37, 41, 0.95)",
+          titleColor: "#ffffff",
+          bodyColor: "#ffffff",
+          padding: 10,
+          cornerRadius: 8,
+          callbacks: {
+            label: function (context) {
+              const count = context.raw || 0;
+              const pct = context.dataIndex === 0 ? matchPct : missingPct;
+              return ` ${context.label}: ${count} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // Ensure center value text is updated
+  const centerVal = document.getElementById("skillsChartCenterVal");
+  if (centerVal) {
+    centerVal.innerText = `${matchPct}%`;
+  }
+ * Back-to-Top Floating Action Button
+ * Shows when scrolled down (> 300px), smoothly scrolls to top on click.
+ * Ensures cross-browser compatibility and avoids interfering with touch devices.
+ */
+function initBackToTop() {
+  let btn = document.getElementById("backToTopBtn");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "backToTopBtn";
+    btn.className = "back-to-top-btn";
+    btn.setAttribute("aria-label", "Back to top");
+    btn.setAttribute("title", "Back to top");
+    btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+    document.body.appendChild(btn);
+  }
+
+  const scrollThreshold = 300;
+  let ticking = false;
+
+  function updateBackToTopVisibility() {
+    const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    if (currentScroll > scrollThreshold) {
+      btn.classList.add("show");
+    } else {
+      btn.classList.remove("show");
+    }
+    ticking = false;
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateBackToTopVisibility);
+        ticking = true;
+      }
+    },
+    { passive: true }
+  );
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+    btn.blur();
+  });
+
+  // Check initial scroll offset in case page was reloaded when scrolled
+  updateBackToTopVisibility();
+}
+
 
 

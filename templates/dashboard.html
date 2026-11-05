@@ -911,6 +911,155 @@
 
     </div>
 
+    <!-- Visual Skills Comparison Chart Card -->
+    {% set sc = skills_comparison if skills_comparison is defined and skills_comparison else none %}
+    {% if not sc %}
+      {% set raw_jm = analysis.results.job_match if analysis.results.job_match is mapping else (analysis.results.job_compatibility if analysis.results.job_compatibility is mapping else {}) %}
+      {% set m_skills = raw_jm.matched_skills if raw_jm.matched_skills is defined and raw_jm.matched_skills else (raw_jm.matching_skills|default([])) %}
+      {% set miss_skills = raw_jm.missing_skills if raw_jm.missing_skills is defined and raw_jm.missing_skills else [] %}
+      {% set sc = {
+        'matched_skills': m_skills,
+        'missing_skills': miss_skills,
+        'matched_count': m_skills|length,
+        'missing_count': miss_skills|length,
+        'total_skills': (m_skills|length + miss_skills|length),
+        'match_percentage': raw_jm.match_percentage|default(0),
+        'missing_percentage': (100 - raw_jm.match_percentage|default(0)) if raw_jm.match_percentage|default(0) > 0 else 0
+      } %}
+    {% endif %}
+
+    <div class="card glass-card p-4 border-0 mb-4" id="skillsComparisonCard" data-skills='{{ (skills_comparison_json if skills_comparison_json is defined else sc|tojson)|safe }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Job Requirements Alignment</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-chart-pie text-primary me-2"></i> Visual Skills Comparison: Matched vs. Missing Skills
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold" id="scMatchedSummaryBadge">
+            <i class="fa-solid fa-circle-check me-1"></i> {{ sc.matched_count }} Matched ({{ sc.match_percentage }}%)
+          </span>
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fw-semibold" id="scMissingSummaryBadge">
+            <i class="fa-solid fa-circle-xmark me-1"></i> {{ sc.missing_count }} Missing ({{ sc.missing_percentage }}%)
+          </span>
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-3">
+        Direct comparative breakdown of your identified competencies against requirements for <b>{{ analysis.company_name }}</b>.
+      </p>
+
+      <!-- Visual Distribution Ratio Bar -->
+      <div class="mb-4">
+        <div class="d-flex justify-content-between small text-secondary mb-1 fw-semibold">
+          <span class="text-success"><i class="fa-solid fa-square-check me-1"></i> Matching Skills Coverage: {{ sc.match_percentage }}%</span>
+          <span class="text-danger"><i class="fa-solid fa-square-xmark me-1"></i> Missing Skills Gap: {{ sc.missing_percentage }}%</span>
+        </div>
+        <div class="progress rounded-pill shadow-xs" style="height: 12px;">
+          <div class="progress-bar bg-success" role="progressbar" style="width: {{ sc.match_percentage }}%" aria-valuenow="{{ sc.match_percentage }}" aria-valuemin="0" aria-valuemax="100" title="Matching Skills: {{ sc.match_percentage }}%"></div>
+          <div class="progress-bar bg-danger" role="progressbar" style="width: {{ sc.missing_percentage }}%" aria-valuenow="{{ sc.missing_percentage }}" aria-valuemin="0" aria-valuemax="100" title="Missing Skills: {{ sc.missing_percentage }}%"></div>
+        </div>
+      </div>
+
+      <!-- Main Visual Grid: Chart on Left, Categorized Skill Badges on Right -->
+      <div class="row g-4 align-items-center">
+        <!-- Chart Canvas Column -->
+        <div class="col-lg-5 col-12 text-center">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column align-items-center justify-content-center position-relative">
+            <div class="d-flex justify-content-between w-100 small text-secondary mb-2 px-2">
+              <span class="fw-bold"><i class="fa-solid fa-chart-pie me-1 text-primary"></i> Skills Proportion</span>
+              <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills }} Total Evaluated</span>
+            </div>
+
+            <!-- Chart.js Canvas Container -->
+            <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
+              <canvas id="skillsComparisonChart"></canvas>
+              <!-- Center Metric Overlay -->
+              <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
+                <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
+                <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+              </div>
+            </div>
+
+            <!-- Chart Legend Badges -->
+            <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
+              <div class="d-flex align-items-center gap-1">
+                <span class="legend-indicator bg-success rounded-circle" style="width: 10px; height: 10px; display: inline-block;"></span>
+                <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }})</span>
+              </div>
+              <div class="d-flex align-items-center gap-1">
+                <span class="legend-indicator bg-danger rounded-circle" style="width: 10px; height: 10px; display: inline-block;"></span>
+                <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }})</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categorized Skills Column (Matching vs Missing) -->
+        <div class="col-lg-7 col-12">
+          <div class="row g-3">
+            <!-- Matching Skills Card -->
+            <div class="col-12">
+              <div class="p-3 bg-light rounded-4 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="fw-bold text-success mb-0 d-flex align-items-center">
+                    <i class="fa-solid fa-circle-check me-2"></i> Matching Skills in Resume
+                    <span class="badge bg-success text-white rounded-pill ms-2 small">{{ sc.matched_count }}</span>
+                  </h6>
+                  <small class="text-muted">{{ sc.match_percentage }}% of requirements</small>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2" id="matchedSkillsBadgeContainer">
+                  {% for skill in sc.matched_skills %}
+                    <span class="badge bg-white text-success border border-success-subtle py-2 px-3 rounded-pill d-inline-flex align-items-center gap-1 shadow-xs skill-badge-pill">
+                      <i class="fa-solid fa-check small"></i>
+                      <span>{{ skill }}</span>
+                      <button type="button" class="btn btn-sm btn-link p-0 text-success ms-1 btn-copy-suggestion" data-copy-text="{{ skill|e }}" title="Copy skill">
+                        <i class="fa-regular fa-copy small"></i>
+                      </button>
+                    </span>
+                  {% else %}
+                    <div class="p-3 bg-white rounded-3 border text-center w-100 text-muted small">
+                      <i class="fa-solid fa-circle-info text-secondary me-1"></i> No exact matching technical skills detected for this specific job description.
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Missing Skills Card -->
+            <div class="col-12">
+              <div class="p-3 bg-light rounded-4 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="fw-bold text-danger mb-0 d-flex align-items-center">
+                    <i class="fa-solid fa-circle-xmark me-2"></i> Missing Skills to Acquire
+                    <span class="badge bg-danger text-white rounded-pill ms-2 small">{{ sc.missing_count }}</span>
+                  </h6>
+                  <small class="text-muted">{{ sc.missing_percentage }}% gap</small>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2" id="missingSkillsBadgeContainer">
+                  {% for skill in sc.missing_skills %}
+                    <span class="badge bg-white text-danger border border-danger-subtle py-2 px-3 rounded-pill d-inline-flex align-items-center gap-1 shadow-xs skill-badge-pill">
+                      <i class="fa-solid fa-xmark small"></i>
+                      <span>{{ skill }}</span>
+                      <button type="button" class="btn btn-sm btn-link p-0 text-danger ms-1 btn-copy-suggestion" data-copy-text="{{ skill|e }}" title="Copy missing skill">
+                        <i class="fa-regular fa-copy small"></i>
+                      </button>
+                    </span>
+                  {% else %}
+                    <div class="p-3 bg-white rounded-3 border text-center w-100 text-success small">
+                      <i class="fa-solid fa-circle-check text-success me-1"></i> All required technical skills are present in your resume!
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Skill Gap Analysis Table -->
     <div class="card glass-card p-4 border-0 mb-4" id="skillGapSection">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
@@ -1301,6 +1450,11 @@
 
   <!-- Global Toast Notification Container for Suggestions -->
   <div id="copyToastContainer" class="copy-toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Back-to-Top Floating Button -->
+  <button type="button" id="backToTopBtn" class="back-to-top-btn" aria-label="Back to top" title="Back to top">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
 
   <!-- Footer -->
   <footer class="bg-white border-top py-4">
