@@ -49,6 +49,10 @@ from utils.database import (
     get_job_applications,
     delete_job_application,
     update_job_application_status,
+    export_job_applications_csv,
+    export_job_applications_json,
+    export_job_applications_markdown,
+    get_job_applications_export_summary,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -2222,6 +2226,77 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@app.route("/applications/export", methods=["GET"])
+@app.route("/api/applications/export", methods=["GET"])
+def export_job_applications():
+    """
+    Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
+    Supports format selection via ?format=csv (default) or ?format=json.
+    Respects active ?status= filter and candidate data segregation.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    status_filter = request.args.get("status", "All")
+    export_format = request.args.get("format", "csv").strip().lower()
+
+    if export_format == "json":
+        data = export_job_applications_json(student_id=student_id, status_filter=status_filter)
+        res = jsonify(data)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        res.headers["Content-Disposition"] = f"attachment; filename=job_applications_{safe_student}.json"
+        return res
+
+    if export_format in ("md", "markdown"):
+        md_content = export_job_applications_markdown(student_id=student_id, status_filter=status_filter)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            md_content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.md",
+                "Content-Type": "text/markdown; charset=utf-8"
+            }
+        )
+
+    # Default CSV
+    csv_content = export_job_applications_csv(student_id=student_id, status_filter=status_filter)
+    safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+    response = Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.csv",
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
+    return response
+
+
+@app.route("/api/applications/export-summary", methods=["GET"])
+def api_applications_export_summary():
+    """
+    Returns application export summary and readiness stats for candidate (#196).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    summary = get_job_applications_export_summary(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "export_metadata": summary
+    }), 200
+
 @app.route("/interview-history")
 def interview_history_view():
     """

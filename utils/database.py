@@ -739,6 +739,133 @@ def update_job_application_status(app_id: str, student_id: str, new_status: str)
         conn.close()
 
 
+def export_job_applications_csv(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> str:
+    """
+    Generates standard RFC-4180 CSV export content for a student's job applications (#196).
+    Enforces student data segregation, formats dates and notes safely, and handles empty application states.
+    """
+    import csv
+    import io
+
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+
+    # Header row
+    writer.writerow([
+        "Application ID",
+        "Company Name",
+        "Role Title",
+        "Status",
+        "Application Date",
+        "Job Posting URL",
+        "Job Description / Requirements",
+        "Interview / Follow-up Notes",
+        "Created At"
+    ])
+
+    for app_item in applications:
+        writer.writerow([
+            app_item.get("id", ""),
+            app_item.get("company_name", ""),
+            app_item.get("role_title", ""),
+            app_item.get("status", ""),
+            app_item.get("application_date", ""),
+            app_item.get("job_url", ""),
+            app_item.get("job_description", ""),
+            app_item.get("notes", ""),
+            app_item.get("created_at", "")
+        ])
+
+    return output.getvalue()
+
+
+def export_job_applications_json(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Generates structured JSON export payload for a student's job applications (#196).
+    """
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    status_counts = {}
+    for item in applications:
+        st = item.get("status", "Unknown")
+        status_counts[st] = status_counts.get(st, 0) + 1
+
+    return {
+        "export_version": "1.0",
+        "student_id": student_id.strip() if student_id else "default_student",
+        "total_applications": len(applications),
+        "status_distribution": status_counts,
+        "applications": applications
+    }
+
+
+def export_job_applications_markdown(
+    student_id: str,
+    status_filter: Optional[str] = None
+) -> str:
+    """
+    Generates a readable Markdown summary table of job applications (#196).
+    """
+    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    lines = [
+        f"# Job Applications Report - Candidate: {student_id}",
+        "",
+        f"- **Total Applications**: {len(applications)}",
+        f"- **Filter Applied**: {status_filter or 'All'}",
+        "",
+        "| ID | Company | Role | Status | Applied Date | Job Link | Notes |",
+        "|---|---|---|---|---|---|---|"
+    ]
+
+    for item in applications:
+        app_id = item.get("id", "")
+        comp = item.get("company_name", "").replace("|", "\\|")
+        role = item.get("role_title", "").replace("|", "\\|")
+        st = item.get("status", "")
+        dt = item.get("application_date", "") or "-"
+        url = item.get("job_url", "")
+        link_str = f"[Link]({url})" if url else "-"
+        notes = (item.get("notes") or "-").replace("\n", " ").replace("|", "\\|")
+        lines.append(f"| {app_id} | {comp} | {role} | {st} | {dt} | {link_str} | {notes} |")
+
+    lines.append("")
+    return "\n".join(lines)
+
+
+def get_job_applications_export_summary(
+    student_id: str
+) -> Dict[str, Any]:
+    """
+    Provides aggregated analytics metadata for candidate job applications export.
+    """
+    applications = get_job_applications(student_id=student_id)
+    stages = {"Applied": 0, "Assessment": 0, "Interview": 0, "Selected": 0, "Rejected": 0}
+    companies = set()
+    for item in applications:
+        st = item.get("status", "Applied")
+        if st in stages:
+            stages[st] += 1
+        else:
+            stages[st] = 1
+        comp = item.get("company_name")
+        if comp:
+            companies.add(comp)
+
+    return {
+        "student_id": student_id,
+        "total_records": len(applications),
+        "unique_companies_count": len(companies),
+        "stage_breakdown": stages,
+        "ready_for_export": True
+    }
+
+
 def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
     """
     Populates default cohort records representing diverse university branch peers.
