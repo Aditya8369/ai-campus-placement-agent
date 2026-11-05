@@ -66,7 +66,13 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
-from utils.report_generator import generate_pdf_report, generate_certificate_pdf, generate_skills_gap_pdf
+from utils.report_generator import (
+    generate_pdf_report,
+    generate_certificate_pdf,
+    generate_skills_gap_pdf,
+    generate_interview_transcript_pdf,
+    generate_interview_transcript_markdown,
+)
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -1057,6 +1063,92 @@ def export_interview_json(analysis_id: str):
         f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
     )
     return response
+
+
+@app.route("/interview/<analysis_id>/transcript")
+@app.route("/download/interview-transcript/<analysis_id>")
+def download_interview_transcript(analysis_id: str):
+    """
+    Exports the mock interview transcript, per-question scores, AI feedback,
+    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
+    Works after at least one question has been answered.
+    """
+    try:
+        session_id = (
+            request.args.get("session_id")
+            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
+            or analysis_id
+        )
+        session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
+        if not session:
+            flash("Interview session not found.", "error")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        answers_recorded = session.get("answers", [])
+        if not answers_recorded:
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
+            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        analysis_record = get_analysis(analysis_id)
+        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
+        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
+
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
+        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
+        export_format = request.args.get("format", "pdf").strip().lower()
+
+        if export_format in ("md", "markdown"):
+            md_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                md_content,
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
+            )
+        elif export_format in ("txt", "text"):
+            txt_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                txt_content,
+                mimetype="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
+            )
+        elif export_format == "json":
+            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
+        else:
+            # Default PDF
+            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+            pdf_filename = f"{filename_base}_{session_id}.pdf"
+            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
+
+            generate_interview_transcript_pdf(
+                session_data=session,
+                output_path=pdf_full_path,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return send_file(
+                pdf_full_path,
+                as_attachment=True,
+                download_name=f"{filename_base}.pdf",
+                mimetype="application/pdf",
+            )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
+        flash(f"Error compiling interview transcript: {str(e)}", "error")
+        return redirect(url_for("interview", analysis_id=analysis_id))
 
 
 @app.route("/certificate/<analysis_id>")

@@ -1796,6 +1796,30 @@ function initMockInterview() {
     const progressBarEl = document.getElementById("interviewProgressBar");
     if (progressTextEl) progressTextEl.innerText = `${totalAnswered}/${totalQuestions} Questions Answered (${progPercent}%)`;
     if (progressBarEl) progressBarEl.style.width = `${progPercent}%`;
+
+    // Enable Download Transcript buttons after at least one answer has been submitted (#161)
+    if (totalAnswered > 0) {
+      enableDownloadTranscriptButtons();
+    }
+  }
+
+  function enableDownloadTranscriptButtons() {
+    const btnDownload = document.getElementById("btnDownloadTranscript");
+    if (btnDownload) {
+      btnDownload.classList.remove("disabled");
+      btnDownload.removeAttribute("aria-disabled");
+      btnDownload.removeAttribute("tabindex");
+    }
+    const btnDropdown = document.getElementById("btnDownloadTranscriptDropdown");
+    if (btnDropdown) {
+      btnDropdown.classList.remove("disabled");
+      btnDropdown.removeAttribute("disabled");
+      btnDropdown.removeAttribute("aria-disabled");
+    }
+    const sideBtn = document.getElementById("sideBtnDownloadTranscript");
+    if (sideBtn) {
+      sideBtn.classList.remove("d-none");
+    }
   }
 
   function showCompletionModal(summary) {

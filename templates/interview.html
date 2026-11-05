@@ -23,7 +23,50 @@
         <button type="button" id="btnResetSession" class="btn btn-outline-danger btn-sm rounded-pill px-2 px-sm-3" title="Reset this round and restart from Question 1">
           <i class="fa-solid fa-rotate-left me-1"></i> <span class="d-none d-sm-inline">Restart</span> Round
         </button>
-        <a href="/interview/{{ analysis_id }}/export" id="btnExportTranscript" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3" title="Download interview questions and feedback as JSON">
+        {% set has_answers = interview.answers and interview.answers|length > 0 %}
+        <!-- Download Transcript Split Button -->
+        <div class="btn-group btn-group-sm" id="transcriptButtonGroup" role="group">
+          <a href="/interview/{{ analysis_id }}/transcript?format=pdf{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}"
+             id="btnDownloadTranscript"
+             class="btn btn-outline-primary rounded-pill rounded-end-0 px-2 px-sm-3 {% if not has_answers %}disabled{% endif %}"
+             title="Download interview transcript with scores and AI feedback (PDF)"
+             {% if not has_answers %}aria-disabled="true" tabindex="-1"{% endif %}>
+            <i class="fa-solid fa-file-arrow-down me-1"></i> <span class="d-none d-sm-inline">Download</span> Transcript
+          </a>
+          <button type="button"
+                  class="btn btn-outline-primary rounded-pill rounded-start-0 px-2 dropdown-toggle dropdown-toggle-split {% if not has_answers %}disabled{% endif %}"
+                  data-bs-toggle="dropdown"
+                  aria-expanded="false"
+                  id="btnDownloadTranscriptDropdown"
+                  title="Choose transcript format"
+                  {% if not has_answers %}disabled aria-disabled="true"{% endif %}>
+            <span class="visually-hidden">Toggle Dropdown</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="btnDownloadTranscriptDropdown">
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" id="linkDownloadTranscriptPdf" href="/interview/{{ analysis_id }}/transcript?format=pdf{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}">
+                <i class="fa-solid fa-file-pdf text-danger"></i> PDF Transcript (.pdf)
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" id="linkDownloadTranscriptMd" href="/interview/{{ analysis_id }}/transcript?format=markdown{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}">
+                <i class="fa-brands fa-markdown text-primary"></i> Markdown Format (.md)
+              </a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" id="linkDownloadTranscriptTxt" href="/interview/{{ analysis_id }}/transcript?format=txt{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}">
+                <i class="fa-solid fa-file-lines text-secondary"></i> Plain Text (.txt)
+              </a>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" id="linkDownloadTranscriptJson" href="/interview/{{ analysis_id }}/export{% if session_id and session_id != analysis_id %}?session_id={{ session_id }}{% endif %}">
+                <i class="fa-solid fa-file-code text-info"></i> JSON Format (.json)
+              </a>
+            </li>
+          </ul>
+        </div>
+        <a href="/interview/{{ analysis_id }}/export" id="btnExportTranscript" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3 d-none d-xl-inline-block" title="Download interview questions and feedback as JSON">
           <i class="fa-solid fa-file-export me-1"></i> <span class="d-none d-sm-inline">Export</span> JSON
         </a>
         <a href="/leaderboard?analysis_id={{ analysis_id }}" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Campus Placement Leaderboard">
@@ -410,6 +453,9 @@
               <span class="fw-bold text-secondary">{{ total_q - ans_len if total_q >= ans_len else 0 }} Questions</span>
             </div>
           </div>
+          <a href="/interview/{{ analysis_id }}/transcript?format=pdf{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}" id="sideBtnDownloadTranscript" class="btn btn-sm btn-outline-primary w-100 rounded-pill mt-3 {% if not has_answers %}d-none{% endif %}">
+            <i class="fa-solid fa-file-arrow-down me-1"></i> Download Transcript (PDF)
+          </a>
         </div>
 
         <!-- Latest response evaluation card -->
@@ -806,8 +852,14 @@
           </div>
 
           <div class="d-flex flex-wrap justify-content-center gap-2 pt-2 border-top">
-            <a href="/interview/{{ analysis_id }}/export" class="btn btn-outline-primary rounded-pill px-4">
-              <i class="fa-solid fa-download me-1"></i> Download Q&A JSON
+            <a href="/interview/{{ analysis_id }}/transcript?format=pdf{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}" id="modalBtnDownloadTranscriptPdf" class="btn btn-outline-primary rounded-pill px-4">
+              <i class="fa-solid fa-file-arrow-down me-1"></i> Download Transcript (PDF)
+            </a>
+            <a href="/interview/{{ analysis_id }}/transcript?format=markdown{% if session_id and session_id != analysis_id %}&session_id={{ session_id }}{% endif %}" id="modalBtnDownloadTranscriptMd" class="btn btn-outline-secondary rounded-pill px-3">
+              <i class="fa-brands fa-markdown me-1"></i> Markdown
+            </a>
+            <a href="/interview/{{ analysis_id }}/export{% if session_id and session_id != analysis_id %}?session_id={{ session_id }}{% endif %}" class="btn btn-outline-secondary rounded-pill px-3">
+              <i class="fa-solid fa-file-code me-1"></i> JSON
             </a>
             <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-success rounded-pill px-4">
               <i class="fa-solid fa-award me-1"></i> View Certificate
