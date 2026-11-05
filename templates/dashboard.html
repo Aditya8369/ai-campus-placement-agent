@@ -85,6 +85,11 @@
             <span class="badge bg-{{ r_sum.readiness_badge }}-subtle text-{{ r_sum.readiness_badge }} border border-{{ r_sum.readiness_badge }}-subtle px-3 py-1 rounded-pill fw-bold" id="summaryReadinessBadge">
               <i class="fa-solid {{ r_sum.readiness_icon }} me-1"></i> {{ r_sum.readiness_status }}
             </span>
+            {% if analysis.results.section_status is mapping and 'unavailable' in analysis.results.section_status.values() %}
+              <span class="badge bg-warning-subtle text-warning border border-warning-subtle px-3 py-1 rounded-pill fw-bold" id="partialAnalysisBadge" title="Some sections could not be validated from AI response">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i> Partial Analysis
+              </span>
+            {% endif %}
             {% if peer_benchmark %}
               <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill fw-bold" title="Candidate Peer Percentile">
                 <i class="fa-solid fa-trophy text-warning me-1"></i> {{ peer_benchmark.percentile_badge }}
@@ -758,6 +763,16 @@
       <div class="col-lg-8">
         <div class="card glass-card p-4 border-0 h-100">
           <h4 class="fw-bold mb-4"><i class="fa-solid fa-file-pen text-primary me-2"></i> Resume Feedback Details</h4>
+          {% if (analysis.results.section_status is mapping and analysis.results.section_status.resume_analysis == 'unavailable') or (analysis.results.resume_analysis is mapping and analysis.results.resume_analysis.status == 'unavailable') %}
+            <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 section-unavailable-alert" role="alert">
+              <div class="d-flex align-items-center">
+                <i class="fa-solid fa-triangle-exclamation me-2 fs-5 text-warning"></i>
+                <div class="small">
+                  <strong>Section Unavailable:</strong> Resume analysis details could not be validated from the AI response. Fallback data is displayed.
+                </div>
+              </div>
+            </div>
+          {% endif %}
           
           <div class="accordion" id="resumeFeedbackAccordion">
             
@@ -882,6 +897,16 @@
       <div class="col-lg-4" id="matchImprovementsSection">
         <div class="card glass-card p-4 border-0 h-100">
           <h4 class="fw-bold mb-4"><i class="fa-solid fa-code-merge text-primary me-2"></i> Match Improvements</h4>
+          {% if (analysis.results.section_status is mapping and analysis.results.section_status.job_match == 'unavailable') or (analysis.results.job_match is mapping and analysis.results.job_match.status == 'unavailable') %}
+            <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 section-unavailable-alert" role="alert">
+              <div class="d-flex align-items-center">
+                <i class="fa-solid fa-triangle-exclamation me-2 fs-5 text-warning"></i>
+                <div class="small">
+                  <strong>Section Unavailable:</strong> Job matching details could not be validated from the AI response. Fallback data is displayed.
+                </div>
+              </div>
+            </div>
+          {% endif %}
           <h6 class="fw-bold text-secondary mb-3">Top 5 Resume Changes Required:</h6>
           <ol class="list-group list-group-numbered list-group-flush mb-4">
             {% for change in analysis.results.job_match.top_5_resume_changes %}
@@ -1088,6 +1113,16 @@
           </select>
         </div>
       </div>
+      {% if analysis.results.section_status is mapping and analysis.results.section_status.skill_gap == 'unavailable' %}
+        <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 section-unavailable-alert" role="alert">
+          <div class="d-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation me-2 fs-5 text-warning"></i>
+            <div class="small">
+              <strong>Section Unavailable:</strong> Skill gap details could not be validated from the AI response.
+            </div>
+          </div>
+        </div>
+      {% endif %}
       <div class="table-responsive">
         <table class="table table-hover align-middle" id="skillGapTable">
           <thead class="table-light">
@@ -1165,6 +1200,16 @@
           <i class="fa-solid fa-download me-1"></i> Export Study Plan (.md)
         </button>
       </div>
+      {% if analysis.results.section_status is mapping and analysis.results.section_status.learning_roadmap == 'unavailable' %}
+        <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 section-unavailable-alert" role="alert">
+          <div class="d-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation me-2 fs-5 text-warning"></i>
+            <div class="small">
+              <strong>Section Unavailable:</strong> Personalized learning roadmap could not be validated from the AI response. A standard baseline curriculum is displayed below.
+            </div>
+          </div>
+        </div>
+      {% endif %}
 
       <!-- Preparation Progress Overview -->
       {% set ns_roadmap = namespace(total_tasks=0) %}
