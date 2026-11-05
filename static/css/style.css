@@ -992,3 +992,32 @@ html, body {
   }
 }
 
+/* Preparation Progress Overview Panel */
+#preparationProgressOverview {
+  transition: all 0.3s ease;
+}
+
+#preparationProgressOverview .progress-bar-animated {
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-bs-theme="dark"] #preparationProgressOverview {
+  background-color: #1e2530 !important;
+  border-color: #30363d !important;
+}
+
+[data-bs-theme="dark"] #preparationProgressOverview .bg-white {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+  color: #f1f5f9 !important;
+}
+
+[data-bs-theme="dark"] #preparationProgressOverview .text-dark {
+  color: #f1f5f9 !important;
+}
+
+[data-bs-theme="dark"] #preparationProgressOverview .text-secondary {
+  color: #94a3b8 !important;
+}
+
+

@@ -122,6 +122,7 @@ function initSkillGapFilter() {
 /**
  * Tracks interactive checklist tasks on the 6-Week Learning Roadmap
  * and persists completed task IDs in localStorage per analysis session.
+ * Displays overall Preparation Progress Overview with total, completed, pending, and percentage.
  */
 function initRoadmapTracker() {
   const container = document.getElementById("dashboardContainer");
@@ -145,9 +146,18 @@ function initRoadmapTracker() {
   const weekCards = document.querySelectorAll(".week-card");
   const overallLabel = document.getElementById("overallRoadmapProgressLabel");
   const overallBar = document.getElementById("overallRoadmapProgressBar");
+  const totalTasksEl = document.getElementById("totalRoadmapTasks");
+  const completedTasksEl = document.getElementById("completedRoadmapTasks");
+  const pendingTasksEl = document.getElementById("pendingRoadmapTasks");
+  const completionPercentageEl = document.getElementById("roadmapCompletionPercentage");
+  const completedInline = document.getElementById("completedTasksInline");
+  const totalInline = document.getElementById("totalTasksInline");
+  const percentInline = document.getElementById("progressPercentInline");
+  const statusBadge = document.getElementById("roadmapProgressStatusBadge");
+  const btnReset = document.getElementById("btnResetRoadmapProgress");
 
   function updateVisuals() {
-    let totalAll = allCheckboxes.length;
+    const totalAll = allCheckboxes.length;
     let checkedAll = 0;
 
     weekCards.forEach((card) => {
@@ -166,9 +176,43 @@ function initRoadmapTracker() {
       checkedAll += checkedInWeek;
     });
 
+    const pendingAll = Math.max(0, totalAll - checkedAll);
     const overallPct = totalAll > 0 ? Math.round((checkedAll / totalAll) * 100) : 0;
+
+    if (totalTasksEl) totalTasksEl.innerText = totalAll;
+    if (completedTasksEl) completedTasksEl.innerText = checkedAll;
+    if (pendingTasksEl) pendingTasksEl.innerText = pendingAll;
+
     if (overallLabel) overallLabel.innerText = `${overallPct}%`;
-    if (overallBar) overallBar.style.width = `${overallPct}%`;
+    if (completionPercentageEl) completionPercentageEl.innerText = `${overallPct}% Completed`;
+
+    if (overallBar) {
+      overallBar.style.width = `${overallPct}%`;
+      overallBar.setAttribute("aria-valuenow", overallPct);
+    }
+
+    if (completedInline) completedInline.innerText = checkedAll;
+    if (totalInline) totalInline.innerText = totalAll;
+    if (percentInline) percentInline.innerText = `${overallPct}%`;
+
+    if (statusBadge) {
+      if (totalAll === 0) {
+        statusBadge.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle-info me-1"></i> No Tasks';
+      } else if (overallPct === 100) {
+        statusBadge.className = "badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Completed (100%)';
+      } else if (overallPct >= 50) {
+        statusBadge.className = "badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = `<i class="fa-solid fa-chart-line me-1"></i> Over Halfway (${overallPct}%)`;
+      } else if (overallPct > 0) {
+        statusBadge.className = "badge bg-info-subtle text-info border border-info-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = `<i class="fa-solid fa-play me-1"></i> In Progress (${overallPct}%)`;
+      } else {
+        statusBadge.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-bold";
+        statusBadge.innerHTML = '<i class="fa-solid fa-clock me-1"></i> Not Started (0%)';
+      }
+    }
   }
 
   allCheckboxes.forEach((cb) => {
@@ -198,6 +242,23 @@ function initRoadmapTracker() {
       updateVisuals();
     });
   });
+
+  if (btnReset) {
+    btnReset.addEventListener("click", () => {
+      completedTasks.clear();
+      try {
+        localStorage.removeItem(storageKey);
+      } catch (e) {
+        console.warn("Failed saving roadmap task progress to localStorage:", e);
+      }
+      allCheckboxes.forEach((cb) => {
+        cb.checked = false;
+        const span = cb.parentElement?.querySelector("span");
+        if (span) span.style.textDecoration = "none";
+      });
+      updateVisuals();
+    });
+  }
 
   updateVisuals();
 }
