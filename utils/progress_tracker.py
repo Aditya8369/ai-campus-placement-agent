@@ -251,6 +251,83 @@ def generate_side_by_side_diff(
     }
 
 
+def compare_two_resume_texts(
+    text_v1: str,
+    text_v2: str,
+    filename_v1: str = "Resume_v1.pdf",
+    filename_v2: str = "Resume_v2.pdf",
+) -> Dict[str, Any]:
+    """
+    Compares two raw resume text versions directly without requiring pre-existing database records (#140).
+    Identifies newly added keywords, removed items, section changes (education, skills, projects, experience),
+    and builds an automated summary delta.
+    """
+    import re
+    from collections import Counter
+
+    def _extract_tokens(txt: str) -> Set[str]:
+        words = re.findall(r"\b[A-Za-z0-9#\+\.\-]{2,25}\b", txt.lower())
+        stopwords = {
+            "the", "and", "for", "with", "from", "this", "that", "have", "were", "been",
+            "will", "about", "into", "then", "them", "some", "what", "when", "where",
+            "your", "which", "there", "their", "more", "such", "than", "other"
+        }
+        return {w for w in words if w not in stopwords and not w.isdigit()}
+
+    tokens_v1 = _extract_tokens(text_v1)
+    tokens_v2 = _extract_tokens(text_v2)
+
+    added_tokens = sorted(list(tokens_v2 - tokens_v1))
+    removed_tokens = sorted(list(tokens_v1 - tokens_v2))
+    retained_tokens = sorted(list(tokens_v1 & tokens_v2))
+
+    # Detect common resume section presence
+    sections = ["skills", "education", "experience", "projects", "certifications", "achievements"]
+    section_comparison = {}
+    for sec in sections:
+        in_v1 = bool(re.search(rf"\b{sec}\b", text_v1, re.IGNORECASE))
+        in_v2 = bool(re.search(rf"\b{sec}\b", text_v2, re.IGNORECASE))
+        section_comparison[sec] = {
+            "in_v1": in_v1,
+            "in_v2": in_v2,
+            "status": "added" if (in_v2 and not in_v1) else ("removed" if (in_v1 and not in_v2) else "retained")
+        }
+
+    # Word and length counts
+    len_v1 = len(text_v1.split())
+    len_v2 = len(text_v2.split())
+    len_diff = len_v2 - len_v1
+
+    # Heuristic scoring improvements
+    est_ats_v1 = min(95, max(40, int(len(set(retained_tokens) | (tokens_v1 - tokens_v2)) * 0.45 + (15 if len_v1 > 150 else 5))))
+    est_ats_v2 = min(98, max(45, int(len(set(retained_tokens) | (tokens_v2 - tokens_v1)) * 0.48 + (20 if len_v2 > 180 else 8))))
+    ats_delta = est_ats_v2 - est_ats_v1
+
+    # Summary analysis message
+    if ats_delta > 0:
+        summary_msg = f"Version 2 shows strong positive iteration (+{ats_delta} estimated ATS points) with {len(added_tokens)} newly introduced keywords."
+    elif ats_delta == 0:
+        summary_msg = "Both resume versions demonstrate comparable keyword density and structural depth."
+    else:
+        summary_msg = f"Version 2 removed key terms (-{abs(ats_delta)} estimated ATS points). Review whether vital technical proficiencies were omitted."
+
+    return {
+        "filename_v1": filename_v1,
+        "filename_v2": filename_v2,
+        "word_count_v1": len_v1,
+        "word_count_v2": len_v2,
+        "word_count_delta": len_diff,
+        "estimated_ats_v1": est_ats_v1,
+        "estimated_ats_v2": est_ats_v2,
+        "ats_delta": ats_delta,
+        "added_keywords": added_tokens[:30],
+        "removed_keywords": removed_tokens[:30],
+        "retained_keywords_count": len(retained_tokens),
+        "sections": section_comparison,
+        "summary": summary_msg
+    }
+
+
 def _sanitize_list(val: Any) -> List[str]:
     if isinstance(val, list):
         return [str(x).strip() for x in val if x and str(x).strip()]

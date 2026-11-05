@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock Interview Performance History - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1"><i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Mock Interview Performance History</h2>
+        <p class="text-muted mb-0">Track your interview preparation trajectory, performance across rounds, and score progression trends over time.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-primary fs-3 mb-1"><i class="fa-solid fa-microphone-lines"></i></div>
+          <div class="fs-4 fw-bold">{{ analytics.total_sessions }}</div>
+          <div class="text-muted small">Total Sessions</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-success fs-3 mb-1"><i class="fa-solid fa-circle-check"></i></div>
+          <div class="fs-4 fw-bold">{{ analytics.completed_sessions }}</div>
+          <div class="text-muted small">Completed Sessions</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-info fs-3 mb-1"><i class="fa-solid fa-clipboard-question"></i></div>
+          <div class="fs-4 fw-bold">{{ analytics.total_questions_answered }}</div>
+          <div class="text-muted small">Questions Answered</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 h-100 text-center p-3">
+          <div class="text-warning fs-3 mb-1"><i class="fa-solid fa-chart-line"></i></div>
+          <div class="fs-4 fw-bold">{{ analytics.overall_average_score }}<span class="fs-6 text-muted">/100</span></div>
+          <div class="text-muted small">Average Score</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Performance Trend & Domain Breakdown -->
+    <div class="row g-4 mb-4">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-arrow-trend-up text-primary me-2"></i>Performance Score Progression</h5>
+          {% if analytics.score_trend %}
+          <div style="position: relative; height: 260px;">
+            <canvas id="scoreTrendChart"></canvas>
+          </div>
+          {% else %}
+          <div class="text-center py-5 text-muted">
+            <i class="fa-solid fa-chart-area fa-3x mb-3 text-secondary opacity-50"></i>
+            <p class="mb-0">No historical interview scores recorded yet. Complete mock interview sessions to unlock trend insights!</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-chart-pie text-success me-2"></i>Rounds Breakdown</h5>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small fw-semibold"><i class="fa-solid fa-code text-primary me-1"></i>Technical Round</span>
+              <span class="small fw-bold">{{ analytics.technical_average }}/100</span>
+            </div>
+            <div class="progress" style="height: 8px;">
+              <div class="progress-bar bg-primary" role="progressbar" style="width: {{ analytics.technical_average }}%"></div>
+            </div>
+          </div>
+          <div class="mb-3">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small fw-semibold"><i class="fa-solid fa-users text-info me-1"></i>HR &amp; Culture Round</span>
+              <span class="small fw-bold">{{ analytics.hr_average }}/100</span>
+            </div>
+            <div class="progress" style="height: 8px;">
+              <div class="progress-bar bg-info" role="progressbar" style="width: {{ analytics.hr_average }}%"></div>
+            </div>
+          </div>
+          <div class="mb-4">
+            <div class="d-flex justify-content-between mb-1">
+              <span class="small fw-semibold"><i class="fa-solid fa-star text-warning me-1"></i>Behavioral &amp; STAR</span>
+              <span class="small fw-bold">{{ analytics.behavioral_average }}/100</span>
+            </div>
+            <div class="progress" style="height: 8px;">
+              <div class="progress-bar bg-warning" role="progressbar" style="width: {{ analytics.behavioral_average }}%"></div>
+            </div>
+          </div>
+
+          <h6 class="fw-bold mb-2 small text-uppercase text-muted">Identified Strengths</h6>
+          <ul class="list-unstyled small mb-3">
+            {% for s in analytics.strengths %}
+            <li class="mb-1 text-success"><i class="fa-solid fa-check-circle me-1"></i>{{ s }}</li>
+            {% endfor %}
+          </ul>
+
+          <h6 class="fw-bold mb-2 small text-uppercase text-muted">Areas for Growth</h6>
+          <ul class="list-unstyled small mb-0">
+            {% for w in analytics.weaknesses %}
+            <li class="mb-1 text-danger"><i class="fa-solid fa-circle-exclamation me-1"></i>{{ w }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Historical Sessions List -->
+    <div class="card border-0 shadow-sm rounded-4 p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="fa-solid fa-list-check text-primary me-2"></i>Past Interview Attempts</h5>
+        <span class="badge bg-secondary rounded-pill">{{ analytics.sessions|length }} records</span>
+      </div>
+
+      {% if analytics.sessions %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Target Company</th>
+              <th>Date</th>
+              <th>Progress</th>
+              <th>Avg Score</th>
+              <th>Technical</th>
+              <th>HR</th>
+              <th>Behavioral</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in analytics.sessions %}
+            <tr>
+              <td class="fw-semibold text-truncate" style="max-width: 150px;">
+                <i class="fa-solid fa-building text-secondary me-1"></i> {{ s.company_name }}
+              </td>
+              <td class="small text-muted">{{ s.date[:10] if s.date else 'N/A' }}</td>
+              <td>
+                <span class="small">{{ s.answered_questions }}/{{ s.total_questions }}</span>
+              </td>
+              <td>
+                <span class="badge {{ 'bg-success' if s.average_score >= 75 else ('bg-warning text-dark' if s.average_score >= 50 else 'bg-secondary') }} rounded-pill">
+                  {{ s.average_score }}/100
+                </span>
+              </td>
+              <td class="small">{{ s.technical_score or '-' }}</td>
+              <td class="small">{{ s.hr_score or '-' }}</td>
+              <td class="small">{{ s.behavioral_score or '-' }}</td>
+              <td>
+                {% if s.completed %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Completed</span>
+                {% else %}
+                <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill">In Progress</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="/interview/{{ s.analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Practice
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <i class="fa-solid fa-comments fa-3x text-secondary opacity-50 mb-3"></i>
+        <p class="text-muted mb-3">You haven't participated in any mock interviews yet.</p>
+        <a href="/" class="btn btn-primary rounded-pill px-4">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Start a Placement Analysis &amp; Interview
+        </a>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  {% if analytics.score_trend %}
+  <script>
+    const trendData = {{ analytics.score_trend|tojson }};
+    const ctx = document.getElementById('scoreTrendChart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trendData.map(d => `${d.company} (${d.date})`),
+        datasets: [{
+          label: 'Interview Score',
+          data: trendData.map(d => d.score),
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79, 70, 229, 0.1)',
+          fill: true,
+          tension: 0.35,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+          pointBackgroundColor: '#4f46e5'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 100,
+            ticks: { stepSize: 20 }
+          }
+        },
+        plugins: {
+          legend: { display: false }
+        }
+      }
+    });
+  </script>
+  {% endif %}
+</body>
+
+</html>
