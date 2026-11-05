@@ -49,6 +49,9 @@ from utils.database import (
     get_job_applications,
     delete_job_application,
     update_job_application_status,
+    save_student_profile,
+    get_student_profile,
+    calculate_profile_completion,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1391,6 +1394,93 @@ def api_evaluate_code(analysis_id: str = None):
             "status": "error",
             "message": f"Code evaluation failed: {str(e)}"
         }), 500
+
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile_view():
+    """
+    Renders and manages candidate student profile and completion tracker (#199).
+    Calculates weighted placement readiness score and missing fields checklist.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        department = request.form.get("department", "").strip()
+        grad_year_raw = request.form.get("grad_year", "").strip()
+        cgpa_raw = request.form.get("cgpa", "").strip()
+        target_role = request.form.get("target_role", "").strip()
+        target_company = request.form.get("target_company", "").strip()
+        skills_raw = request.form.get("skills", "").strip()
+        linkedin_url = request.form.get("linkedin_url", "").strip()
+        github_url = request.form.get("github_url", "").strip()
+
+        try:
+            grad_year = int(grad_year_raw) if grad_year_raw else None
+        except ValueError:
+            grad_year = None
+
+        try:
+            cgpa = float(cgpa_raw) if cgpa_raw else None
+        except ValueError:
+            cgpa = None
+
+        skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else []
+
+        save_student_profile(
+            student_id=student_id,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            department=department,
+            grad_year=grad_year,
+            cgpa=cgpa,
+            target_role=target_role,
+            target_company=target_company,
+            skills=skills,
+            linkedin_url=linkedin_url,
+            github_url=github_url
+        )
+        flash("Profile information updated successfully!", "success")
+        return redirect("/profile")
+
+    completion_info = calculate_profile_completion(student_id=student_id)
+    skills_csv = ", ".join(completion_info["profile"].get("skills", []))
+
+    return render_template(
+        "profile.html",
+        completion=completion_info,
+        profile=completion_info["profile"],
+        skills_csv=skills_csv,
+        student_id=student_id
+    )
+
+
+@app.route("/api/profile/completion", methods=["GET"])
+def api_profile_completion():
+    """
+    REST API endpoint returning candidate profile completion percentage and checklist (#199).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    data = calculate_profile_completion(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "data": data
+    }), 200
+
 
 
 @app.route("/interview/<analysis_id>/export")
