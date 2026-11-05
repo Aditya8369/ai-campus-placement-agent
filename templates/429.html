@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Exceeded (429) - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .rate-limit-card {
+      max-width: 650px;
+      margin: 4rem auto;
+      border-radius: 1rem;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+    }
+    .cooldown-badge {
+      font-size: 1.1rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 2rem;
+    }
+  </style>
+</head>
+
+<body class="bg-light min-vh-100 d-flex flex-column">
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex align-items-center justify-content-between">
+      <a class="navbar-brand navbar-brand-custom fs-5" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <a href="/" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+        <i class="fa-solid fa-house me-1"></i> Home
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container flex-grow-1 d-flex align-items-center justify-content-center py-4">
+    <div class="card rate-limit-card bg-white p-4 p-md-5 text-center">
+      <div class="mb-3">
+        <div class="d-inline-flex align-items-center justify-content-center bg-warning bg-opacity-10 text-warning rounded-circle p-3 mb-2" style="width: 80px; height: 80px;">
+          <i class="fa-solid fa-hourglass-half fa-2x"></i>
+        </div>
+      </div>
+
+      <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-1 rounded-pill mx-auto mb-3">
+        HTTP 429 Too Many Requests
+      </span>
+
+      <h2 class="fw-bold mb-3">Rate Limit Exceeded</h2>
+
+      <p class="text-secondary fs-5 mb-4" id="rateLimitMessage">
+        {{ message|default("You have temporarily exceeded the request rate limit for this action.") }}
+      </p>
+
+      {% if retry_hint %}
+      <div class="alert alert-warning border-warning-subtle d-inline-flex align-items-center gap-2 justify-content-center py-2 px-4 mb-4 mx-auto">
+        <i class="fa-regular fa-clock"></i>
+        <strong id="retryHintDisplay">{{ retry_hint }}</strong>
+      </div>
+      {% endif %}
+
+      <div class="card bg-light border-0 p-3 mb-4 text-start">
+        <div class="d-flex align-items-start gap-2">
+          <i class="fa-solid fa-circle-info text-primary mt-1"></i>
+          <small class="text-muted">
+            To prevent Gemini quota exhaustion and ensure reliable access for every student, 
+            AI-backed endpoints (such as resume analysis and mock interviews) enforce hourly request quotas. 
+            Your quota resets automatically once the cooldown period expires.
+          </small>
+        </div>
+      </div>
+
+      <div class="d-flex flex-wrap justify-content-center gap-3">
+        <a href="/" class="btn btn-primary rounded-pill px-4 py-2">
+          <i class="fa-solid fa-house me-1"></i> Return to Home
+        </a>
+        <button type="button" class="btn btn-outline-secondary rounded-pill px-4 py-2" onclick="window.history.back()">
+          <i class="fa-solid fa-arrow-left me-1"></i> Go Back
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <footer class="bg-white border-top py-3 text-center text-muted small">
+    <div class="container">
+      &copy; AI Campus Placement Agent &bull; Powered by Gemini AI
+    </div>
+  </footer>
+
+  {% if retry_after_seconds %}
+  <script>
+    let remainingSeconds = {{ retry_after_seconds }};
+    const hintElem = document.getElementById("retryHintDisplay");
+    if (hintElem && remainingSeconds > 0) {
+      const timer = setInterval(() => {
+        remainingSeconds--;
+        if (remainingSeconds <= 0) {
+          clearInterval(timer);
+          hintElem.textContent = "Cooldown expired. You may try again now.";
+        } else if (remainingSeconds < 60) {
+          hintElem.textContent = `try again in ${remainingSeconds} ${remainingSeconds === 1 ? 'second' : 'seconds'}`;
+        } else {
+          const mins = Math.ceil(remainingSeconds / 60);
+          hintElem.textContent = `try again in ${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+        }
+      }, 1000);
+    }
+  </script>
+  {% endif %}
+</body>
+
+</html>
