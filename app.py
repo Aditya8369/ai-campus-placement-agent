@@ -674,6 +674,71 @@ def dashboard(analysis_id: str) -> str:
         logger.error(f"Error fetching initial recommended campus drives: {job_err}")
         initial_recommended_jobs = []
 
+    # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+
+    raw_matched = job_match.get("matched_skills") or job_match.get("matching_skills") or []
+    if isinstance(raw_matched, str):
+        raw_matched = [s.strip() for s in raw_matched.split(",") if s.strip()]
+    elif not isinstance(raw_matched, list):
+        raw_matched = []
+
+    raw_missing = job_match.get("missing_skills") or []
+    if not raw_missing and results.get("skill_gap"):
+        for gap in results["skill_gap"]:
+            if isinstance(gap, dict) and gap.get("skill"):
+                raw_missing.append(gap["skill"])
+            elif isinstance(gap, str) and gap.strip():
+                raw_missing.append(gap.strip())
+    if isinstance(raw_missing, str):
+        raw_missing = [s.strip() for s in raw_missing.split(",") if s.strip()]
+    elif not isinstance(raw_missing, list):
+        raw_missing = []
+
+    clean_matched = []
+    seen_matched = set()
+    for s in raw_matched:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_matched:
+            clean_matched.append(s_clean)
+            seen_matched.add(s_clean.lower())
+
+    clean_missing = []
+    seen_missing = set()
+    for s in raw_missing:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
+            clean_missing.append(s_clean)
+            seen_missing.add(s_clean.lower())
+
+    matched_count = len(clean_matched)
+    missing_count = len(clean_missing)
+    total_skills = matched_count + missing_count
+
+    if total_skills > 0:
+        match_pct = round((matched_count / total_skills) * 100)
+        missing_pct = 100 - match_pct
+    else:
+        match_pct = int(job_match.get("match_percentage", 0))
+        missing_pct = 100 - match_pct if match_pct > 0 else 0
+
+    target_match = 65
+    company_bench = job_match.get("company_benchmark")
+    if isinstance(company_bench, dict) and company_bench.get("target_match"):
+        target_match = company_bench["target_match"]
+
+    skills_comparison = {
+        "matched_skills": clean_matched,
+        "missing_skills": clean_missing,
+        "matched_count": matched_count,
+        "missing_count": missing_count,
+        "total_skills": total_skills,
+        "match_percentage": match_pct,
+        "missing_percentage": missing_pct,
+        "target_match": target_match
+    }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -685,7 +750,9 @@ def dashboard(analysis_id: str) -> str:
         trend_series=trend_series,
         trend_series_json=json.dumps(trend_series),
         initial_outreach=initial_outreach,
-        initial_outreach_json=json.dumps(initial_outreach)
+        initial_outreach_json=json.dumps(initial_outreach),
+        skills_comparison=skills_comparison,
+        skills_comparison_json=json.dumps(skills_comparison)
     )
     return jsonify({
         "success": True,
@@ -1739,6 +1806,9 @@ def api_interview_history():
         "success": True,
         "student_id": student_id,
         "analytics": analytics
+    })
+
+
 @app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """
@@ -1800,6 +1870,8 @@ def linkedin_analyzer():
         experience=experience,
         skills=skills
     )
+
+
 @app.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """
@@ -1822,20 +1894,6 @@ def coding_practice_view():
         target_company=target_company,
         difficulty_preference=difficulty,
         limit=8
-@app.route("/my-reports")
-def user_placement_history_view():
-    """
-    Save and Retrieve Previous Placement Analysis History View (#149).
-    Enforces per-student isolation and allows searching, filtering by company, and retrieving past reports.
-    """
-    student_id = request.args.get("student_id", "default_student").strip()
-    company_filter = request.args.get("company", "").strip()
-    sort_by = request.args.get("sort", "date_desc").strip()
-
-    history_data = get_user_placement_history(
-        student_id=student_id,
-        company_filter=company_filter,
-        sort_by=sort_by
     )
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -1872,8 +1930,24 @@ def api_coding_practice_recommendations():
     return jsonify({
         "success": True,
         "data": recommendations_data
-            "data": history_data
-        }), 200
+    }), 200
+
+
+@app.route("/my-reports")
+def user_placement_history_view():
+    """
+    Save and Retrieve Previous Placement Analysis History View (#149).
+    Enforces per-student isolation and allows searching, filtering by company, and retrieving past reports.
+    """
+    student_id = request.args.get("student_id", "default_student").strip()
+    company_filter = request.args.get("company", "").strip()
+    sort_by = request.args.get("sort", "date_desc").strip()
+
+    history_data = get_user_placement_history(
+        student_id=student_id,
+        company_filter=company_filter,
+        sort_by=sort_by
+    )
 
     return render_template(
         "my_reports.html",

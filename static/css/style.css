@@ -992,3 +992,55 @@ html, body {
   }
 }
 
+/* ==============================================================================
+   Visual Skills Comparison Chart & Skill Badges
+   ============================================================================== */
+.skills-chart-wrapper {
+  margin: 0 auto;
+}
+
+.skills-chart-center-metric {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+}
+
+[data-bs-theme="dark"] .skills-chart-center-metric .text-dark {
+  color: #f0f6fc !important;
+}
+
+.skill-badge-pill {
+  transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  font-size: 0.85rem;
+}
+
+.skill-badge-pill:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-bs-theme="dark"] .skill-badge-pill {
+  background-color: #161b22 !important;
+}
+
+[data-bs-theme="dark"] .skill-badge-pill.text-success {
+  color: #3fb950 !important;
+  border-color: rgba(63, 185, 80, 0.3) !important;
+}
+
+[data-bs-theme="dark"] .skill-badge-pill.text-danger {
+  color: #f85149 !important;
+  border-color: rgba(248, 81, 73, 0.3) !important;
+}
+
+@media (max-width: 991.98px) {
+  .skills-chart-wrapper {
+    max-width: 260px;
+    height: 220px !important;
+  }
+}
+
+
