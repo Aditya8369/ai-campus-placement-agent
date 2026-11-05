@@ -1,5 +1,16 @@
 // Frontend interactions - AI Campus Placement Agent
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  if (typeof str !== "string") str = String(str);
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
   initFormUpload();
@@ -8,8 +19,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initCompanyExplorer();
   initSkillGapFilter();
   initRoadmapExport();
-  initCodingSandbox();
+  initRoadmapTracker();
+  initProgressTracker();
+  if (typeof initCodingSandbox === "function") {
+    initCodingSandbox();
+  }
   initOutreachGenerator();
+  initCopySuggestions();
 });
 
 function initThemeToggle() {
@@ -247,6 +263,15 @@ function initFormUpload() {
   const uploadPromptText = document.getElementById("uploadPromptText");
   const uploadSubText = document.getElementById("uploadSubText");
 
+  const previewCard = document.getElementById("resumePreviewCard");
+  const previewFileName = document.getElementById("previewFileName");
+  const previewFileSize = document.getElementById("previewFileSize");
+  const previewFileType = document.getElementById("previewFileType");
+  const previewFileIcon = document.getElementById("previewFileIcon");
+  const resumeEmptyNotice = document.getElementById("resumeEmptyNotice");
+  const btnChangeResumeFile = document.getElementById("btnChangeResumeFile");
+  const btnDiscardResumePreview = document.getElementById("btnDiscardResumePreview");
+
   // Format file size nicely
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
@@ -258,7 +283,10 @@ function initFormUpload() {
 
   // Helper to validate and display feedback for chosen resume file
   const handleSelectedFile = (file) => {
-    if (!file) return;
+    if (!file) {
+      resetUploadArea();
+      return;
+    }
 
     const fileName = file.name || "";
     const lowerName = fileName.toLowerCase();
@@ -281,6 +309,8 @@ function initFormUpload() {
       // Clear input
       if (fileInput) fileInput.value = "";
       if (fileFeedbackBadge) fileFeedbackBadge.classList.add("d-none");
+      if (previewCard) previewCard.classList.add("d-none");
+      if (resumeEmptyNotice) resumeEmptyNotice.classList.remove("d-none");
       return false;
     }
 
@@ -305,6 +335,18 @@ function initFormUpload() {
     if (fileFeedbackBadge && fileFeedbackBadgeText) {
       fileFeedbackBadgeText.innerHTML = `<i class="fa-solid ${iconClass} me-1"></i> ${fileName} (${formatFileSize(file.size)})`;
       fileFeedbackBadge.classList.remove("d-none");
+    }
+
+    // Populate Resume Preview Card (#133)
+    if (previewCard) {
+      if (previewFileName) previewFileName.textContent = fileName;
+      if (previewFileSize) previewFileSize.textContent = formatFileSize(file.size);
+      if (previewFileType) previewFileType.textContent = isDocx ? "Word Document (.docx)" : "PDF Document (.pdf)";
+      if (previewFileIcon) previewFileIcon.className = `fa-solid ${iconClass}`;
+      previewCard.classList.remove("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.add("d-none");
     }
 
     return true;
@@ -333,6 +375,12 @@ function initFormUpload() {
     if (uploadTypeErrorAlert) {
       uploadTypeErrorAlert.classList.add("d-none");
     }
+    if (previewCard) {
+      previewCard.classList.add("d-none");
+    }
+    if (resumeEmptyNotice) {
+      resumeEmptyNotice.classList.remove("d-none");
+    }
   };
 
   // Highlight upload area on drag events and file change
@@ -352,15 +400,23 @@ function initFormUpload() {
 
     fileInput.addEventListener("change", () => {
       if (fileInput.files.length > 0) {
-        const file = fileInput.files[0];
-        const lowerName = file.name.toLowerCase();
-        const isDocx = lowerName.endsWith(".docx");
-        const iconClass = isDocx ? "fa-file-word text-primary" : "fa-file-pdf text-danger";
-        uploadArea.querySelector("p").innerHTML = `<i class="fa-solid ${iconClass} me-2"></i>Selected File: <b>${file.name}</b>`;
-        uploadArea.style.borderColor = "var(--primary-blue)";
-        uploadArea.style.backgroundColor = "var(--secondary-light)";
+        handleSelectedFile(fileInput.files[0]);
+      } else {
+        resetUploadArea();
       }
     });
+
+    if (btnChangeResumeFile) {
+      btnChangeResumeFile.addEventListener("click", () => {
+        fileInput.click();
+      });
+    }
+
+    if (btnDiscardResumePreview) {
+      btnDiscardResumePreview.addEventListener("click", () => {
+        resetUploadArea();
+      });
+    }
 
     ["dragenter", "dragover"].forEach(eventName => {
       uploadArea.addEventListener(eventName, (e) => {
@@ -552,6 +608,89 @@ function initFormUpload() {
           pill.classList.remove("active");
         }
       });
+    });
+  }
+
+  // -------------------------------------------------------------
+  // Handle Clear All option for the Analysis Form
+  // -------------------------------------------------------------
+  const btnClearForm = document.getElementById("btnClearForm");
+  const formResetAlert = document.getElementById("formResetAlert");
+  const formResetAlertMessage = document.getElementById("formResetAlertMessage");
+  const btnCloseResetAlert = document.getElementById("btnCloseResetAlert");
+
+  if (btnCloseResetAlert && formResetAlert) {
+    btnCloseResetAlert.addEventListener("click", () => {
+      formResetAlert.classList.add("d-none");
+    });
+  }
+
+  if (btnClearForm) {
+    btnClearForm.addEventListener("click", (e) => {
+      // Ensure the button does not accidentally submit the form
+      e.preventDefault();
+      e.stopPropagation();
+
+      // 1. Clear the pasted resume text
+      const resumeTextInput = document.getElementById("resumeTextInput");
+      if (resumeTextInput) {
+        resumeTextInput.value = "";
+      }
+
+      // 2. Remove the currently selected PDF/DOCX file and reset upload dropzone
+      resetUploadArea();
+
+      // 3. Clear the job description field
+      const jdInput = document.getElementById("jdInput");
+      if (jdInput) {
+        jdInput.value = "";
+      }
+
+      // 4. Reset the selected company to General Placement Preparation
+      const companySelect = document.getElementById("companySelect");
+      if (companySelect) {
+        companySelect.value = "General";
+      }
+
+      // Reset candidate profile identifier if present
+      const studentIdInput = document.getElementById("studentIdInput");
+      if (studentIdInput) {
+        studentIdInput.value = "";
+      }
+
+      // Reset batch matrix mode switch if active
+      if (batchModeSwitch && batchModeSwitch.checked) {
+        batchModeSwitch.checked = false;
+        batchModeSwitch.dispatchEvent(new Event("change"));
+      }
+
+      // Switch back to the primary Upload PDF / DOCX tab
+      const pdfTab = document.getElementById("pdf-tab");
+      if (pdfTab) {
+        if (window.bootstrap && window.bootstrap.Tab) {
+          const tabInstance = window.bootstrap.Tab.getOrCreateInstance(pdfTab);
+          tabInstance.show();
+        } else {
+          pdfTab.click();
+        }
+      }
+
+      // 5. Display a confirmation message after clearing the form
+      if (formResetAlert) {
+        if (formResetAlertMessage) {
+          formResetAlertMessage.textContent = "Form cleared successfully. All inputs have been reset.";
+        }
+        formResetAlert.classList.remove("d-none");
+
+        // Scroll confirmation alert into view smoothly if not visible
+        formResetAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        // Auto-dismiss after 4 seconds
+        clearTimeout(window._formResetAlertTimeout);
+        window._formResetAlertTimeout = setTimeout(() => {
+          formResetAlert.classList.add("d-none");
+        }, 4000);
+      }
     });
   }
 
@@ -1445,7 +1584,12 @@ function initMockInterview() {
       }
 
       const feedbackText = `
-        <b>Feedback:</b> ${evalData.feedback}<br/>
+        <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+            <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
+          </span>
+        </div>
+        <div class="mb-2 lh-base"><b>Feedback:</b> ${evalData.feedback}</div>
         <div class="row g-2 mt-2 mb-2">
           <div class="col-sm-4"><span class="badge bg-primary-subtle text-primary border border-primary-subtle w-100 py-1">Tech: ${evalData.technical_accuracy}/100</span></div>
           <div class="col-sm-4"><span class="badge bg-success-subtle text-success border border-success-subtle w-100 py-1">Comm: ${evalData.communication_score}/100</span></div>
@@ -1454,11 +1598,18 @@ function initMockInterview() {
         ${fillersHtml}
         ${starHtml}
         <b>Suggestions:</b><br/>
-        <ul class="mb-0 mt-1">
-          ${(evalData.suggestions || []).map(s => `<li>${s}</li>`).join("")}
+        <ul class="mb-0 mt-1 list-unstyled">
+          ${(evalData.suggestions || []).map(s => `
+            <li class="mb-1 p-2 bg-white rounded-3 border d-flex justify-content-between align-items-center gap-2">
+              <span class="small text-dark">${escapeHtml(s)}</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="${escapeHtml(s)}" title="Copy suggestion">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </li>
+          `).join("")}
         </ul>
       `;
-      appendChatBubble(feedbackText, "agent");
+      appendChatBubble(feedbackText, "evaluation");
 
       if (result.completed) {
         appendChatBubble("<b>Congratulations! You have completed all mock interview questions.</b><br/>Please review your performance summary and export your transcript.", "agent");
@@ -1474,15 +1625,17 @@ function initMockInterview() {
         const nextQ = result.next_question;
         setTimeout(() => {
           const nextBubbleHtml = `
-            <div class="d-flex justify-content-between align-items-start mb-1">
-              <span>[<b>Question ${nextQ.index + 1} - ${nextQ.type}</b>]</span>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+              <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
+                <i class="fa-solid fa-play me-1"></i> Active Question ${nextQ.index + 1} &bull; ${nextQ.type}
+              </span>
               <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="${nextQ.question.replace(/"/g, '&quot;')}">
                 <i class="fa-solid fa-volume-high me-1"></i> Listen
               </button>
             </div>
-            <div>${nextQ.question}</div>
+            <div class="fw-semibold text-dark fs-6 lh-base">${nextQ.question}</div>
           `;
-          const newBubble = appendChatBubble(nextBubbleHtml, "agent");
+          const newBubble = appendChatBubble(nextBubbleHtml, "question");
           chatForm.setAttribute("data-question-index", nextQ.index);
           resetInputs();
 
@@ -2535,4 +2688,195 @@ function initOutreachGenerator() {
       .replace(/'/g, "&#039;");
   }
 }
+
+/**
+ * Universal Clipboard Copy Helper for AI-Generated Suggestions & Recommendations
+ * Supports modern Clipboard API with fallback to document.execCommand('copy').
+ * Fully responsive and cross-browser compatible (Chrome, Safari, iOS WebKit, Firefox, Edge).
+ * Displays instant inline button state feedback and non-intrusive floating toast notifications.
+ */
+function initCopySuggestions() {
+  function getOrCreateToastContainer() {
+    let container = document.getElementById("copyToastContainer");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "copyToastContainer";
+      container.className = "copy-toast-container";
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("aria-atomic", "true");
+      document.body.appendChild(container);
+    }
+    return container;
+  }
+
+  function showCopyToast(message, isSuccess = true) {
+    const container = getOrCreateToastContainer();
+    const toast = document.createElement("div");
+    toast.className = "copy-toast";
+    toast.setAttribute("role", "status");
+
+    const iconClass = isSuccess
+      ? "fa-solid fa-circle-check text-success"
+      : "fa-solid fa-triangle-exclamation text-danger";
+
+    toast.innerHTML = `
+      <i class="${iconClass} flex-shrink-0"></i>
+      <span class="flex-grow-1">${escapeHtml(message)}</span>
+    `;
+
+    container.appendChild(toast);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
+      });
+    });
+
+    setTimeout(() => {
+      toast.classList.remove("show");
+      toast.classList.add("fade-out");
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, 2400);
+  }
+
+  async function copyTextToClipboard(text) {
+    if (!text || typeof text !== "string") return false;
+    const cleanText = text.trim();
+    if (!cleanText) return false;
+
+    // 1. Try modern navigator.clipboard API if available and permitted
+    if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(cleanText);
+        return true;
+      } catch (err) {
+        console.warn("navigator.clipboard.writeText failed, trying execCommand fallback:", err);
+      }
+    }
+
+    // 2. Fallback using document.execCommand('copy') for older browsers, iOS Safari, HTTP, and iframes
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = cleanText;
+      // Prevent mobile keyboard popping up and viewport scrolling
+      textarea.style.position = "fixed";
+      textarea.style.top = "0";
+      textarea.style.left = "-9999px";
+      textarea.style.width = "2em";
+      textarea.style.height = "2em";
+      textarea.style.padding = "0";
+      textarea.style.border = "none";
+      textarea.style.outline = "none";
+      textarea.style.boxShadow = "none";
+      textarea.style.background = "transparent";
+      textarea.style.fontSize = "16px";
+      textarea.setAttribute("readonly", "");
+      textarea.setAttribute("aria-hidden", "true");
+
+      document.body.appendChild(textarea);
+
+      // Handle iOS Safari selection range
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+
+      if (!successful) {
+        throw new Error("execCommand('copy') returned false");
+      }
+      return true;
+    } catch (fallbackErr) {
+      console.error("Clipboard copy failed across all methods:", fallbackErr);
+      return false;
+    }
+  }
+
+  function triggerButtonFeedback(btn, isSuccess) {
+    if (!btn) return;
+    if (btn.dataset.copyingInProgress === "true") return;
+    btn.dataset.copyingInProgress = "true";
+
+    const originalHtml = btn.innerHTML;
+    const originalTitle = btn.getAttribute("title") || "";
+    const hasText = btn.textContent.trim().length > 0;
+
+    if (isSuccess) {
+      btn.classList.add("copied");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-check text-success me-1"></i> Copied!'
+        : '<i class="fa-solid fa-check text-success"></i>';
+      btn.setAttribute("title", "Copied to clipboard!");
+    } else {
+      btn.classList.add("copy-error");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> Failed'
+        : '<i class="fa-solid fa-triangle-exclamation text-danger"></i>';
+      btn.setAttribute("title", "Failed to copy");
+    }
+
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.classList.remove("copied", "copy-error");
+      if (originalTitle) {
+        btn.setAttribute("title", originalTitle);
+      } else {
+        btn.removeAttribute("title");
+      }
+      delete btn.dataset.copyingInProgress;
+    }, 2000);
+  }
+
+  // Event delegation to catch clicks on any .btn-copy-suggestion or .btn-copy-text
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-copy-suggestion, .btn-copy-text");
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 1. Check data-copy-text or data-copy-value
+    let textToCopy = btn.dataset.copyText || btn.dataset.copyValue;
+
+    // 2. Check data-copy-target (id of element containing text)
+    if (!textToCopy && btn.dataset.copyTarget) {
+      const targetEl = document.getElementById(btn.dataset.copyTarget);
+      if (targetEl) {
+        textToCopy = targetEl.value !== undefined ? targetEl.value : targetEl.innerText || targetEl.textContent;
+      }
+    }
+
+    // 3. Fallback: Search parent or sibling container
+    if (!textToCopy) {
+      const parentContainer = btn.closest("li, .list-group-item, .alert, .p-3, .chat-bubble");
+      if (parentContainer) {
+        const textEl = parentContainer.querySelector(".resume-bullet-text, .suggestion-text, span, p");
+        if (textEl) {
+          textToCopy = textEl.innerText || textEl.textContent;
+        }
+      }
+    }
+
+    if (!textToCopy || !textToCopy.trim()) {
+      showCopyToast("No recommendation text found to copy.", false);
+      triggerButtonFeedback(btn, false);
+      return;
+    }
+
+    const success = await copyTextToClipboard(textToCopy);
+
+    if (success) {
+      triggerButtonFeedback(btn, true);
+      const customMsg = btn.dataset.copySuccessMsg || "Recommendation copied to clipboard!";
+      showCopyToast(customMsg, true);
+    } else {
+      triggerButtonFeedback(btn, false);
+      showCopyToast("Could not access clipboard. Please copy manually.", false);
+    }
+  });
+}
+
 

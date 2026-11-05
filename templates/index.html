@@ -23,24 +23,23 @@
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
         {% if session.get('user_id') %}
-    <span class="text-primary fw-semibold">
-        Hi, {{ session.get('user_name') }}
-    </span>
-    <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
-        <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">
-            Logout
-        </button>
-    </form>
+  <span class="text-primary fw-semibold">Hi, {{ session.get('user_name') }}</span>
+  <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
+    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">Logout</button>
+  </form>
 {% else %}
-    <a href="{{ url_for('login') }}"
-       class="btn btn-outline-primary btn-sm rounded-pill px-3">
-        Login
-    </a>
-    <a href="{{ url_for('register') }}"
-       class="btn btn-primary btn-sm rounded-pill px-3">
-        Register
-    </a>
+  <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">Login</a>
+  <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">Register</a>
 {% endif %}
+
+<a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Compare Versions</a>
+<a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">GitHub Audit</a>
+<a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Find Internships</a>
+<a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Applications</a>
+<a href="/interview-history" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Interview History</a>
+<a href="/linkedin-analyzer" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">LinkedIn Analyzer</a>
+<a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">Practice DSA</a>
+<a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">My Reports</a>
         <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-trophy me-1"></i> Leaderboard
         </a>
@@ -86,6 +85,15 @@
         <div class="col-lg-6">
           <div class="card glass-card p-4">
             <h4 class="fw-bold mb-4 text-center">Placement Analysis Workspace</h4>
+
+            <!-- Form Reset Confirmation Alert -->
+            <div id="formResetAlert" class="alert alert-success alert-dismissible fade show d-none p-2 px-3 small d-flex align-items-center justify-content-between rounded-3 mb-3" role="alert">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-circle-check text-success"></i>
+                <span id="formResetAlertMessage">Form cleared successfully. All inputs have been reset to defaults.</span>
+              </div>
+              <button type="button" class="btn-close p-2" id="btnCloseResetAlert" aria-label="Close"></button>
+            </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
@@ -144,6 +152,41 @@
                       </span>
                     </div>
 
+                    <!-- Enhanced Resume File Preview Card (#133) -->
+                    <div id="resumePreviewCard" class="card border rounded-3 p-3 mt-3 d-none shadow-sm bg-body">
+                      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-3">
+                          <div class="p-3 bg-primary-subtle text-primary rounded-3 fs-3" id="previewFileIconBox">
+                            <i class="fa-solid fa-file-pdf" id="previewFileIcon"></i>
+                          </div>
+                          <div>
+                            <h6 class="fw-bold mb-1 text-truncate text-dark" id="previewFileName" style="max-width: 320px;">resume.pdf</h6>
+                            <div class="d-flex align-items-center gap-2 text-muted small">
+                              <span id="previewFileSize">0 KB</span>
+                              <span>&bull;</span>
+                              <span id="previewFileType" class="text-uppercase">PDF Document</span>
+                              <span>&bull;</span>
+                              <span class="text-success fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>Ready for Analysis</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2">
+                          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnChangeResumeFile">
+                            <i class="fa-solid fa-arrow-rotate-right me-1"></i> Choose Another
+                          </button>
+                          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnDiscardResumePreview">
+                            <i class="fa-solid fa-trash-can me-1"></i> Discard
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Empty File Selection Notice (#133) -->
+                    <div id="resumeEmptyNotice" class="text-muted small mt-2 d-flex align-items-center gap-2 px-1">
+                      <i class="fa-regular fa-circle-question text-secondary"></i>
+                      <span>No resume file chosen yet. Upload your PDF or DOCX to verify before initiating AI analysis.</span>
+                    </div>
+
                     <!-- Unsupported File Type Error Alert -->
                     <div id="uploadTypeErrorAlert"
                       class="alert alert-danger d-none mt-2 p-2 small d-flex align-items-center gap-2 rounded-3"
@@ -155,6 +198,17 @@
                   <div class="tab-pane fade" id="text-pane" role="tabpanel">
                     <textarea name="resume_text" id="resumeTextInput" rows="5" class="form-control rounded-3"
                       placeholder="Paste your complete resume text here (education, skills, projects, experience)..."></textarea>
+                    <div class="d-flex justify-content-between align-items-center mt-1 px-1">
+                      <span id="resumeTextFeedback" class="small text-muted">
+                        <i class="fa-solid fa-align-left me-1"></i> Paste details for ATS analysis
+                      </span>
+                      <div id="resumeTextCharCounter" class="small text-muted font-monospace">
+                        <span id="resumeCurrentChars">0</span> / <span id="resumeMaxChars">10000</span> chars
+                      </div>
+                    </div>
+                    <div id="resumeCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
+                      <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for resume analysis. Extra content might be truncated.
+                    </div>
                   </div>
                 </div>
               </div>
@@ -165,6 +219,17 @@
                   (Optional)</label>
                 <textarea name="job_description" id="jdInput" rows="4" class="form-control rounded-3"
                   placeholder="Paste the job post description here to check your matching compatibility..."></textarea>
+                <div class="d-flex justify-content-between align-items-center mt-1 px-1">
+                  <span id="jdFeedback" class="small text-muted">
+                    <i class="fa-solid fa-briefcase me-1"></i> Paste role requirements to evaluate skill match
+                  </span>
+                  <div id="jdCharCounter" class="small text-muted font-monospace">
+                    <span id="jdCurrentChars">0</span> / <span id="jdMaxChars">5000</span> chars
+                  </div>
+                </div>
+                <div id="jdCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
+                  <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for job descriptions.
+                </div>
               </div>
 
               <!-- Target Company & Multi-Company Matrix Mode Selector -->
@@ -239,11 +304,18 @@
                   longitudinal ATS improvements.</div>
               </div>
 
-              <!-- Submit button -->
-              <button type="submit"
-                class="btn btn-custom-primary w-100 py-3 mt-2 fs-5 d-flex align-items-center justify-content-center">
-                <i class="fa-solid fa-wand-magic-sparkles me-2"></i> <span>Analyze Readiness</span>
-              </button>
+              <!-- Action Buttons: Analyze Readiness & Clear All -->
+              <div class="d-flex flex-column flex-sm-row gap-2 mt-3">
+                <button type="submit" id="btnSubmitAnalysis"
+                  class="btn btn-custom-primary flex-grow-1 py-3 fs-5 d-flex align-items-center justify-content-center">
+                  <i class="fa-solid fa-wand-magic-sparkles me-2" id="submitBtnIcon"></i> <span id="submitBtnSpan">Analyze Readiness</span>
+                </button>
+                <button type="button" id="btnClearForm"
+                  class="btn btn-outline-secondary py-3 px-4 rounded-pill d-flex align-items-center justify-content-center fw-semibold text-nowrap"
+                  title="Clear all inputs and reset form without refreshing">
+                  <i class="fa-solid fa-rotate-left me-2"></i> <span>Clear All</span>
+                </button>
+              </div>
             </form>
           </div>
         </div>

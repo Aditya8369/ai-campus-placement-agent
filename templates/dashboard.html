@@ -32,6 +32,9 @@
         <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-award me-1"></i> Certificate
         </a>
+        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3 btn-print-report" id="btnPrintReportTop" onclick="window.print()" title="Print placement readiness report">
+          <i class="fa-solid fa-print me-1"></i> <span class="d-none d-sm-inline">Print</span> Report
+        </button>
         <button type="button" class="btn btn-outline-success btn-sm rounded-pill px-2 px-sm-3" id="btnShareProfileModal" data-bs-toggle="modal" data-bs-target="#shareProfileModal">
           <i class="fa-solid fa-share-nodes me-1"></i> Share
         </button>
@@ -67,8 +70,13 @@
           <p class="text-secondary mb-0">
             Uploaded Resume: <b>{{ analysis.resume_filename }}</b> | Evaluated on: {{ analysis.created_at }}
           </p>
-          <div class="alert alert-light border mt-3 mb-0 text-dark">
-            <i class="fa-solid fa-quote-left text-primary me-2"></i> {{ analysis.results.overall_recommendation_summary }}
+          <div class="alert alert-light border mt-3 mb-0 text-dark d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="me-2 flex-grow-1">
+              <i class="fa-solid fa-quote-left text-primary me-2"></i> {{ analysis.results.overall_recommendation_summary }}
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 btn-copy-suggestion flex-shrink-0" data-copy-text="{{ analysis.results.overall_recommendation_summary|e }}" title="Copy recommendation summary">
+              <i class="fa-regular fa-copy me-1"></i> Copy
+            </button>
           </div>
         </div>
         
@@ -159,12 +167,17 @@
           <p class="text-secondary mb-3 small">
             {{ benchmark.assessment if benchmark else 'Evaluation against typical campus recruitment benchmarks for ' ~ analysis.company_name ~ '.' }}
           </p>
-          <div class="p-3 rounded-3 bg-light-subtle border small">
-            <i class="fa-solid fa-lightbulb text-warning me-2"></i>
-            <strong>Preparation Guidance:</strong>
-            <span class="text-secondary d-block mt-1">
-              {{ benchmark.guidance if benchmark else 'Focus on strengthening identified missing technical skills and quantifying project impacts on your resume.' }}
-            </span>
+          <div class="p-3 rounded-3 bg-light-subtle border small d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <i class="fa-solid fa-lightbulb text-warning me-2"></i>
+              <strong>Preparation Guidance:</strong>
+              <span class="text-secondary d-block mt-1">
+                {{ benchmark.guidance if benchmark else 'Focus on strengthening identified missing technical skills and quantifying project impacts on your resume.' }}
+              </span>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ (benchmark.guidance if benchmark else 'Focus on strengthening identified missing technical skills and quantifying project impacts on your resume.')|e }}" title="Copy preparation guidance">
+              <i class="fa-regular fa-copy"></i>
+            </button>
           </div>
         </div>
 
@@ -525,9 +538,14 @@
             <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-award text-success me-2"></i> Elevator Pitch Bullet Points</h6>
             <ul class="list-unstyled mb-0" id="keyHighlightsContainer">
               {% for hl in initial_outreach.key_highlights %}
-                <li class="p-2 bg-white rounded-3 border mb-2 small text-secondary d-flex align-items-start">
-                  <i class="fa-solid fa-check-circle text-success me-2 mt-1"></i>
-                  <span>{{ hl }}</span>
+                <li class="p-2 bg-white rounded-3 border mb-2 small text-secondary d-flex justify-content-between align-items-center gap-2">
+                  <div class="d-flex align-items-start">
+                    <i class="fa-solid fa-check-circle text-success me-2 mt-1"></i>
+                    <span>{{ hl }}</span>
+                  </div>
+                  <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ hl|e }}" title="Copy pitch bullet">
+                    <i class="fa-regular fa-copy"></i>
+                  </button>
                 </li>
               {% endfor %}
             </ul>
@@ -558,9 +576,14 @@
                     {% for strength in analysis.results.resume_analysis.strengths %}
                       <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
                         <span class="resume-bullet-text small text-dark"><i class="fa-solid fa-check text-success me-1"></i>{{ strength }}</span>
-                        <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ strength|e }}" title="Optimize this bullet with AI">
-                          <i class="fa-solid fa-wand-magic-sparkles me-1 small"></i> Rewrite
-                        </button>
+                        <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-suggestion" data-copy-text="{{ strength|e }}" title="Copy recommendation">
+                            <i class="fa-regular fa-copy"></i>
+                          </button>
+                          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ strength|e }}" title="Optimize this bullet with AI">
+                            <i class="fa-solid fa-wand-magic-sparkles me-1 small"></i> Rewrite
+                          </button>
+                        </div>
                       </li>
                     {% endfor %}
                   </ul>
@@ -576,9 +599,14 @@
               </h2>
               <div id="collapseWeaknesses" class="accordion-collapse collapse" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
-                  <ul class="mb-0">
+                  <ul class="mb-0 list-unstyled">
                     {% for weakness in analysis.results.resume_analysis.weaknesses %}
-                      <li class="mb-2 text-danger">{{ weakness }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="small text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ weakness }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ weakness|e }}" title="Copy recommendation">
+                          <i class="fa-regular fa-copy"></i>
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -594,15 +622,25 @@
               <div id="collapseSuggestions" class="accordion-collapse collapse" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
                   <h6 class="fw-bold text-secondary">Formatting Feedback:</h6>
-                  <ul>
+                  <ul class="list-unstyled mb-3">
                     {% for suggestion in analysis.results.resume_analysis.formatting_suggestions %}
-                      <li class="mb-2">{{ suggestion }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="small text-dark">{{ suggestion }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ suggestion|e }}" title="Copy suggestion">
+                          <i class="fa-regular fa-copy"></i>
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                   <h6 class="fw-bold text-secondary mt-3">Grammar & Structure Suggestions:</h6>
-                  <ul>
+                  <ul class="list-unstyled mb-0">
                     {% for suggestion in analysis.results.resume_analysis.grammar_suggestions %}
-                      <li class="mb-2">{{ suggestion }}</li>
+                      <li class="mb-2 p-2 rounded-3 bg-white border d-flex justify-content-between align-items-center gap-2">
+                        <span class="small text-dark">{{ suggestion }}</span>
+                        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ suggestion|e }}" title="Copy suggestion">
+                          <i class="fa-regular fa-copy"></i>
+                        </button>
+                      </li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -617,13 +655,23 @@
               </h2>
               <div id="collapseProjectExp" class="accordion-collapse collapse" data-bs-parent="#resumeFeedbackAccordion">
                 <div class="accordion-body bg-light-subtle">
-                  <div class="mb-3">
-                    <h6 class="fw-bold text-secondary">Project Details Rating:</h6>
-                    <p class="mb-0">{{ analysis.results.resume_analysis.project_feedback }}</p>
+                  <div class="mb-3 p-3 bg-white rounded-3 border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <h6 class="fw-bold text-secondary mb-0">Project Details Rating:</h6>
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ analysis.results.resume_analysis.project_feedback|e }}" title="Copy feedback">
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                    </div>
+                    <p class="mb-0 small text-dark">{{ analysis.results.resume_analysis.project_feedback }}</p>
                   </div>
-                  <div>
-                    <h6 class="fw-bold text-secondary">Professional Experience Rating:</h6>
-                    <p class="mb-0">{{ analysis.results.resume_analysis.experience_feedback }}</p>
+                  <div class="p-3 bg-white rounded-3 border">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <h6 class="fw-bold text-secondary mb-0">Professional Experience Rating:</h6>
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ analysis.results.resume_analysis.experience_feedback|e }}" title="Copy feedback">
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                    </div>
+                    <p class="mb-0 small text-dark">{{ analysis.results.resume_analysis.experience_feedback }}</p>
                   </div>
                 </div>
               </div>
@@ -642,10 +690,20 @@
             {% for change in analysis.results.job_match.top_5_resume_changes %}
               <li class="list-group-item d-flex justify-content-between align-items-center border-0 bg-transparent px-0 py-2 gap-2">
                 <span class="ms-2 me-auto small fw-medium resume-bullet-text">{{ change }}</span>
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ change|e }}" title="Optimize this bullet with AI">
-                  <i class="fa-solid fa-wand-magic-sparkles small"></i>
-                </button>
+                <div class="d-flex align-items-center gap-1 flex-shrink-0">
+                  <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ change|e }}" title="Copy change suggestion">
+                    <i class="fa-regular fa-copy"></i>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 flex-shrink-0 btn-rewrite-line" data-bullet="{{ change|e }}" title="Optimize this bullet with AI">
+                    <i class="fa-solid fa-wand-magic-sparkles small"></i>
+                  </button>
+                </div>
               </li>
+            {% else %}
+              <div class="p-3 bg-light rounded-3 text-center my-2 text-muted">
+                <i class="fa-solid fa-wand-magic-sparkles text-secondary mb-2 d-block"></i>
+                <span class="small">No urgent resume bullet revisions suggested.</span>
+              </div>
             {% endfor %}
           </ol>
           <hr/>
@@ -653,6 +711,8 @@
           <div class="d-flex flex-wrap gap-2">
             {% for cert in analysis.results.job_match.required_certifications %}
               <span class="badge bg-secondary-subtle text-primary border py-2 px-3 rounded-pill small">{{ cert }}</span>
+            {% else %}
+              <span class="text-muted small fst-italic">No additional mandatory certifications required for this role.</span>
             {% endfor %}
           </div>
         </div>
@@ -669,8 +729,11 @@
             {{ analysis.results.skill_gap|length }} Skills
           </span>
         </div>
-        <div class="d-flex flex-wrap gap-2">
-          <input type="text" id="skillSearchInput" class="form-control form-control-sm rounded-pill px-3" style="max-width: 220px;" placeholder="Search skills..." aria-label="Search missing skills">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a href="/download/skills-gap/{{ analysis.id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 shadow-sm" id="btnDownloadSkillsGapReport">
+            <i class="fa-solid fa-file-arrow-down me-1"></i> Download Skills Report (.pdf)
+          </a>
+          <input type="text" id="skillSearchInput" class="form-control form-control-sm rounded-pill px-3" style="max-width: 180px;" placeholder="Search skills..." aria-label="Search missing skills">
           <select id="skillPriorityFilter" class="form-select form-select-sm rounded-pill" style="width: auto;" aria-label="Filter skills by priority">
             <option value="ALL">All Priorities</option>
             <option value="High">High Priority</option>
@@ -698,18 +761,46 @@
                 <td><span class="badge bg-light text-dark border">{{ gap.importance }}</span></td>
                 <td>{{ gap.learning_time }}</td>
                 <td><span class="text-secondary small">{{ gap.learning_resource }}</span></td>
-                <td><span class="small text-muted">{{ gap.project_suggestion }}</span></td>
+                <td>
+                  <div class="d-flex align-items-center justify-content-between gap-1">
+                    <span class="small text-muted">{{ gap.project_suggestion }}</span>
+                    {% if gap.project_suggestion %}
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ gap.project_suggestion|e }}" title="Copy mini project suggestion">
+                        <i class="fa-regular fa-copy small"></i>
+                      </button>
+                    {% endif %}
+                  </div>
+                </td>
                 <td>
                   <span class="badge badge-pill-priority priority-{{ gap.priority|lower }}">
                     {{ gap.priority }}
                   </span>
                 </td>
               </tr>
+            {% else %}
+              <tr id="skillGapNoItemsInitial">
+                <td colspan="6" class="text-center py-5">
+                  <div class="empty-state-container p-4">
+                    <i class="fa-solid fa-circle-check fa-3x text-success mb-3 d-block"></i>
+                    <h5 class="fw-bold text-dark mb-1">No Skill Gaps Identified</h5>
+                    <p class="text-secondary small mb-3">Your resume matches all required competencies for this target role! Explore the interview prep or practice DSA coding problems below.</p>
+                    <a href="/interview/{{ analysis.id }}" class="btn btn-sm btn-outline-primary rounded-pill px-4">
+                      <i class="fa-solid fa-comments me-1"></i> Start Practice Interview
+                    </a>
+                  </div>
+                </td>
+              </tr>
             {% endfor %}
             <tr id="skillGapEmptyState" class="d-none">
-              <td colspan="6" class="text-center py-4 text-muted">
-                <i class="fa-solid fa-filter-circle-xmark fa-2x mb-2 text-secondary d-block"></i>
-                <span>No missing skills match the selected filter criteria.</span>
+              <td colspan="6" class="text-center py-5">
+                <div class="empty-state-container p-4">
+                  <i class="fa-solid fa-filter-circle-xmark fa-3x mb-3 text-secondary d-block"></i>
+                  <h5 class="fw-bold text-dark mb-1">No Matching Skills Found</h5>
+                  <p class="text-secondary small mb-3">No identified missing skills matched your current keyword search or priority filter.</p>
+                  <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" onclick="document.getElementById('skillSearchInput').value=''; document.getElementById('skillPriorityFilter').value='ALL'; document.getElementById('skillSearchInput').dispatchEvent(new Event('input'));">
+                    <i class="fa-solid fa-rotate-left me-1"></i> Clear Filters
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -1016,6 +1107,9 @@
     </div>
 
   </main>
+
+  <!-- Global Toast Notification Container for Suggestions -->
+  <div id="copyToastContainer" class="copy-toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <!-- Footer -->
   <footer class="bg-white border-top py-4">
