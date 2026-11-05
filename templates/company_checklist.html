@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Company-Wise Placement Preparation Checklist - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1"><i class="fa-solid fa-list-check text-primary me-2"></i>Company Preparation Checklist</h2>
+        <p class="text-muted mb-0">Follow structured preparation roadmaps across Aptitude, Coding, Technical Concepts, and HR rounds tailored to your dream company.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Company Selector Toolbar -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <form method="GET" action="/company-checklist" class="row g-3 align-items-center">
+        <div class="col-md-7">
+          <label for="companySelect" class="form-label fw-semibold">Select Target Placement Company</label>
+          <div class="input-group">
+            <span class="input-group-text bg-white"><i class="fa-solid fa-building text-primary"></i></span>
+            <select class="form-select rounded-end-3" id="companySelect" name="company" onchange="this.form.submit()">
+              {% for comp in available_companies %}
+              <option value="{{ comp }}" {% if comp.lower() == target_company.lower() %}selected{% endif %}>{{ comp }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="col-md-5 text-md-end mt-3 mt-md-4">
+          <button type="button" id="btnResetChecklist" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-2">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset Checklist
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Overall Progress Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 text-white" style="background: linear-gradient(135deg, #4f46e5 0%, #3b82f6 100%);">
+      <div class="row align-items-center">
+        <div class="col-md-8">
+          <h4 class="fw-bold mb-1"><i class="fa-solid fa-award me-2"></i>{{ target_company }} Placement Readiness</h4>
+          <p class="opacity-90 mb-0 small">
+            Completed <span id="completedTasksCount" class="fw-bold">{{ data.completed_tasks }}</span> of {{ data.total_tasks }} essential placement tasks.
+          </p>
+        </div>
+        <div class="col-md-4 text-md-end mt-3 mt-md-0">
+          <div class="display-5 fw-bold" id="overallPercentageText">{{ data.overall_percentage }}%</div>
+        </div>
+      </div>
+      <div class="progress mt-3 bg-white bg-opacity-25" style="height: 10px;">
+        <div id="overallProgressBar" class="progress-bar bg-white" role="progressbar" style="width: {{ data.overall_percentage }}%;"></div>
+      </div>
+    </div>
+
+    <!-- Checklist Sections Grid -->
+    <div class="row g-4">
+      {% for category, tasks in data.checklist.items() %}
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="fw-bold mb-0 text-dark">
+              {% if 'Aptitude' in category %}
+              <i class="fa-solid fa-calculator text-primary me-2"></i>
+              {% elif 'Coding' in category %}
+              <i class="fa-solid fa-code text-success me-2"></i>
+              {% elif 'Technical' in category %}
+              <i class="fa-solid fa-microchip text-info me-2"></i>
+              {% else %}
+              <i class="fa-solid fa-handshake text-warning me-2"></i>
+              {% endif %}
+              {{ category }}
+            </h5>
+            <span class="badge bg-light text-dark border rounded-pill category-badge" data-cat="{{ category }}">
+              {{ data.category_stats[category].completed }}/{{ data.category_stats[category].total }}
+            </span>
+          </div>
+
+          <div class="progress mb-3" style="height: 6px;">
+            <div class="progress-bar bg-primary category-progress" data-cat="{{ category }}" role="progressbar" style="width: {{ data.category_stats[category].percentage }}%;"></div>
+          </div>
+
+          <div class="list-group list-group-flush">
+            {% for task in tasks %}
+            <label class="list-group-item d-flex align-items-start px-0 py-2 border-0 bg-transparent cursor-pointer">
+              <input class="form-check-input me-3 mt-1 task-checkbox" type="checkbox"
+                     data-cat="{{ category }}" data-task-id="{{ task.id }}"
+                     {% if task.completed %}checked{% endif %}>
+              <span class="text-secondary {{ 'text-decoration-line-through opacity-50' if task.completed else '' }}">
+                {{ task.task }}
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.querySelectorAll(".task-checkbox").forEach(cb => {
+      cb.addEventListener("change", async (e) => {
+        const cat = cb.getAttribute("data-cat");
+        const taskId = cb.getAttribute("data-task-id");
+        const isChecked = cb.checked;
+        const textSpan = cb.nextElementSibling;
+
+        if (isChecked) {
+          textSpan.classList.add("text-decoration-line-through", "opacity-50");
+        } else {
+          textSpan.classList.remove("text-decoration-line-through", "opacity-50");
+        }
+
+        try {
+          const res = await fetch("/api/company-checklist/toggle-task", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              student_id: "{{ student_id }}",
+              company_name: "{{ target_company }}",
+              category: cat,
+              task_id: taskId,
+              completed: isChecked
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            document.getElementById("overallPercentageText").innerText = data.overall_percentage + "%";
+            document.getElementById("overallProgressBar").style.width = data.overall_percentage + "%";
+            document.getElementById("completedTasksCount").innerText = data.completed_tasks;
+
+            const catBar = document.querySelector(`.category-progress[data-cat="${cat}"]`);
+            if (catBar) catBar.style.width = data.category_percentage + "%";
+          }
+        } catch (err) {
+          console.error("Failed to sync checklist progress", err);
+        }
+      });
+    });
+
+    document.getElementById("btnResetChecklist").addEventListener("click", async () => {
+      if (!confirm("Are you sure you want to reset all progress for {{ target_company }}?")) return;
+      try {
+        const res = await fetch("/api/company-checklist/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            student_id: "{{ student_id }}",
+            company_name: "{{ target_company }}"
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          location.reload();
+        }
+      } catch (err) {
+        alert("Error resetting checklist.");
+      }
+    });
+  </script>
+</body>
+
+</html>

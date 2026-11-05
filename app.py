@@ -51,7 +51,30 @@ from utils.database import (
     delete_job_application,
     get_email_notification_preferences,
     update_email_notification_preferences,
+    save_interview_experience,
+    get_interview_experiences,
+    report_interview_experience,
+    save_calendar_event,
+    get_calendar_events,
+    update_calendar_event,
+    delete_calendar_event,
+    get_company_checklist,
+    save_company_checklist,
+    reset_company_checklist,
+    save_coding_submission,
+    get_coding_submissions,
     update_job_application_status,
+    save_skill_self_assessment,
+    get_student_skill_self_assessments,
+    delete_skill_self_assessment,
+    get_default_technical_skills_catalog,
+    export_job_applications_csv,
+    export_job_applications_json,
+    export_job_applications_markdown,
+    get_job_applications_export_summary,
+    submit_user_feedback,
+    get_user_feedback_list,
+    get_feedback_metrics_summary,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1390,6 +1413,35 @@ def api_evaluate_code(analysis_id: str = None):
             code=code
         )
 
+        # Automatically store coding submission attempt (#194)
+        student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+        sub_id = f"sub-{uuid.uuid4().hex[:12]}"
+        try:
+            score_val = eval_result.get("score") or eval_result.get("correctness_score", 0)
+            tests_passed_val = eval_result.get("tests_passed", 0)
+            total_tests_val = eval_result.get("total_tests", 0)
+            is_passed = bool(eval_result.get("passed", False)) or (int(score_val) >= 70)
+
+            save_coding_submission(
+                sub_id=sub_id,
+                student_id=student_id,
+                question_title=problem.get("title", "Coding Problem"),
+                language=language,
+                code=code,
+                passed=is_passed,
+                score=int(score_val),
+                tests_passed=int(tests_passed_val),
+                total_tests=int(total_tests_val),
+                test_results=eval_result.get("test_results") or eval_result.get("test_cases", []),
+                complexity_analysis=eval_result.get("complexity", ""),
+                feedback=eval_result.get("feedback", ""),
+                company_name=company,
+                analysis_id=analysis_id
+            )
+            eval_result["submission_id"] = sub_id
+        except Exception as sub_err:
+            logger.warning(f"Failed to record coding submission: {sub_err}")
+
         return jsonify({
             "status": "success",
             "evaluation": eval_result,
@@ -1402,6 +1454,232 @@ def api_evaluate_code(analysis_id: str = None):
             "status": "error",
             "message": f"Code evaluation failed: {str(e)}"
         }), 500
+
+
+@app.route("/skills-assessment", methods=["GET", "POST"])
+def skills_assessment_view():
+    """
+    Renders and manages candidate technical skills self-assessment module.
+    Allows students to log and review competencies across languages, frameworks, and CS fundamentals.
+    """
+    student_id = (flask_session.get("user", {}).get("id") or flask_session.get("user_id") or flask_session.get("student_id") or "default_student")
+    catalog = get_default_technical_skills_catalog()
+
+    if request.method == "POST":
+        skill_name = request.form.get("skill_name", "").strip()
+        category = request.form.get("category", "General").strip()
+        proficiency_level = request.form.get("proficiency_level", "Intermediate").strip()
+        years_experience = request.form.get("years_experience", "0").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not skill_name:
+            flash("Skill name is required.", "danger")
+        else:
+            try:
+                exp_val = float(years_experience) if years_experience else 0.0
+            except ValueError:
+                exp_val = 0.0
+
+            save_skill_self_assessment(
+                student_id=student_id,
+                skill_name=skill_name,
+                category=category,
+                proficiency_level=proficiency_level,
+                years_experience=exp_val,
+                notes=notes
+            )
+            flash(f"Self-assessment for '{skill_name}' recorded successfully!", "success")
+        return redirect("/skills-assessment")
+
+    # GET request - gather assessments and compute metrics
+    assessments = get_student_skill_self_assessments(student_id)
+    level_weights = {"Beginner": 25, "Intermediate": 50, "Advanced": 80, "Expert": 100}
+    category_summary = {}
+    total_score = 0
+
+    for item in assessments:
+        cat = item.get("category", "General")
+        level = item.get("proficiency_level", "Intermediate")
+        pts = level_weights.get(level, 50)
+        total_score += pts
+        if cat not in category_summary:
+            category_summary[cat] = {"count": 0, "total_pts": 0}
+        category_summary[cat]["count"] += 1
+        category_summary[cat]["total_pts"] += pts
+
+    avg_score = round(total_score / len(assessments)) if assessments else 0
+
+    return render_template(
+        "skills_assessment.html",
+        catalog=catalog,
+        assessments=assessments,
+        category_summary=category_summary,
+        avg_score=avg_score,
+        total_skills=len(assessments),
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback_view():
+    """
+    Renders and processes candidate platform experience feedback (#197).
+    Allows students to rate features, provide structured reviews, and view satisfaction statistics.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    categories = [
+        "Resume Analysis & ATS Scoring",
+        "Mock Interview Simulator",
+        "Job Application Tracker",
+        "Role Preparation & Roadmaps",
+        "Coding Practice & DSA",
+        "UI & Performance",
+        "General Experience"
+    ]
+
+    if request.method == "POST":
+        rating_raw = request.form.get("rating", "5")
+        category = request.form.get("category", "General Experience").strip()
+        comment = request.form.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            flash("Please enter feedback comments before submitting.", "danger")
+        else:
+            submit_user_feedback(
+                student_id=student_id,
+                rating=rating,
+                category=category,
+                comment=comment
+            )
+            flash("Thank you! Your feedback has been submitted successfully.", "success")
+        return redirect("/feedback")
+
+    feedback_list = get_user_feedback_list(limit=25)
+    metrics = get_feedback_metrics_summary()
+
+    return render_template(
+        "feedback.html",
+        categories=categories,
+        feedback_list=feedback_list,
+        metrics=metrics,
+        student_id=student_id
+    )
+
+
+@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
+def api_skills_assessment():
+    """
+    REST API endpoint for managing student technical skill self-assessments.
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
+    """
+    REST API endpoint for submitting and retrieving feedback (#197).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        items = get_student_skill_self_assessments(student_id)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(items),
+            "skills": items
+        cat = request.args.get("category")
+        limit = request.args.get("limit", 50)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 50
+        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
+        metrics = get_feedback_metrics_summary()
+        return jsonify({
+            "status": "success",
+            "total": len(items),
+            "metrics": metrics,
+            "feedback": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        skill_name = payload.get("skill_name", "").strip()
+        category = payload.get("category", "General").strip()
+        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
+        years_experience = payload.get("years_experience", 0.0)
+        notes = payload.get("notes", "").strip()
+
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+
+        try:
+            exp_val = float(years_experience)
+        except (ValueError, TypeError):
+            exp_val = 0.0
+
+        saved = save_skill_self_assessment(
+            student_id=student_id,
+            skill_name=skill_name,
+            category=category,
+            proficiency_level=proficiency_level,
+            years_experience=exp_val,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Skill '{skill_name}' assessment saved",
+            "skill": saved
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        skill_name = (payload.get("skill_name") or "").strip()
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
+        deleted = delete_skill_self_assessment(student_id, skill_name)
+        return jsonify({
+            "status": "success" if deleted else "not_found",
+            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
+        }), 200 if deleted else 404
+
+        rating_raw = payload.get("rating", 5)
+        category = payload.get("category", "General Experience")
+        comment = payload.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            return jsonify({
+                "status": "error",
+                "message": "comment is required and cannot be empty."
+            }), 400
+
+        record = submit_user_feedback(
+            student_id=student_id,
+            rating=rating,
+            category=category,
+            comment=comment
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Feedback recorded successfully",
+            "feedback": record
+        }), 201
+
 
 
 @app.route("/interview/<analysis_id>/export")
@@ -2159,11 +2437,16 @@ def internships_view():
 @app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
-    Candidate Job Application Tracker view and management handler (#143).
-    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    Candidate Job Application Tracker view and management handler (#143, #193).
+    Enforces per-student data segregation and provides advanced multi-parameter search & filtering.
     """
     student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
     status_filter = request.args.get("status", "All")
+    search_query = request.args.get("search", "").strip()
+    location_filter = request.args.get("location", "All").strip()
+    job_type_filter = request.args.get("job_type", "All").strip()
+    exp_filter = request.args.get("experience_level", "All").strip()
+    sort_by = request.args.get("sort", "recent").strip()
 
     if request.method == "POST":
         company = request.form.get("company_name", "").strip()
@@ -2172,6 +2455,9 @@ def job_applications_tracker():
         app_date = request.form.get("application_date", "").strip()
         job_url = request.form.get("job_url", "").strip()
         notes = request.form.get("notes", "").strip()
+        location = request.form.get("location", "Remote").strip()
+        job_type = request.form.get("job_type", "Full-Time").strip()
+        exp_level = request.form.get("experience_level", "Entry-Level").strip()
 
         if not company or not role:
             flash("Company name and job role are required.", "error")
@@ -2186,7 +2472,10 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
-            notes=notes
+            notes=notes,
+            location=location,
+            job_type=job_type,
+            experience_level=exp_level
         )
 
         # Notify candidate via email if preference enabled (#186)
@@ -2207,7 +2496,17 @@ def job_applications_tracker():
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
 
-    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    applications = get_job_applications(
+        student_id=student_id,
+        status_filter=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        experience_level_filter=exp_filter,
+        sort_by=sort_by
+    )
+
+    all_user_apps = get_job_applications(student_id=student_id)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -2220,8 +2519,14 @@ def job_applications_tracker():
     return render_template(
         "applications.html",
         applications=applications,
+        all_count=len(all_user_apps),
         student_id=student_id,
-        current_status=status_filter
+        current_status=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        exp_filter=exp_filter,
+        sort_by=sort_by
     )
 
 
@@ -2272,6 +2577,77 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@app.route("/applications/export", methods=["GET"])
+@app.route("/api/applications/export", methods=["GET"])
+def export_job_applications():
+    """
+    Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
+    Supports format selection via ?format=csv (default) or ?format=json.
+    Respects active ?status= filter and candidate data segregation.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    status_filter = request.args.get("status", "All")
+    export_format = request.args.get("format", "csv").strip().lower()
+
+    if export_format == "json":
+        data = export_job_applications_json(student_id=student_id, status_filter=status_filter)
+        res = jsonify(data)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        res.headers["Content-Disposition"] = f"attachment; filename=job_applications_{safe_student}.json"
+        return res
+
+    if export_format in ("md", "markdown"):
+        md_content = export_job_applications_markdown(student_id=student_id, status_filter=status_filter)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            md_content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.md",
+                "Content-Type": "text/markdown; charset=utf-8"
+            }
+        )
+
+    # Default CSV
+    csv_content = export_job_applications_csv(student_id=student_id, status_filter=status_filter)
+    safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+    response = Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.csv",
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
+    return response
+
+
+@app.route("/api/applications/export-summary", methods=["GET"])
+def api_applications_export_summary():
+    """
+    Returns application export summary and readiness stats for candidate (#196).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    summary = get_job_applications_export_summary(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "export_metadata": summary
+    }), 200
+
 @app.route("/interview-history")
 def interview_history_view():
     """
@@ -2687,6 +3063,179 @@ def notification_settings_view():
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
+@app.route("/interview-experiences", methods=["GET", "POST"])
+def interview_experiences_view():
+    """
+    Company-Wise Interview Experiences View and Submission Handler (#189).
+    Enables students to learn from real campus placement interview rounds (Coding, Technical, HR)
+    and submit their own verified candidate experiences anonymously.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_filter = request.args.get("company", "").strip()
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    if request.method == "POST":
+        company_name = request.form.get("company_name", "").strip()
+        role_title = request.form.get("role_title", "").strip()
+        interview_date = request.form.get("interview_date", "").strip()
+        overall_verdict = request.form.get("overall_verdict", "Offer").strip()
+        difficulty_level = request.form.get("difficulty_level", "Medium").strip()
+        tips = request.form.get("tips_and_preparation", "").strip()
+        candidate_name = request.form.get("candidate_name", "").strip() or "Anonymous Candidate"
+
+        if not company_name or not role_title or not interview_date:
+            flash("Company name, job role, and interview date are required.", "error")
+            return redirect(url_for("interview_experiences_view"))
+
+        # Parse submitted rounds (Coding, Technical, HR)
+        round_categories = request.form.getlist("round_category[]")
+        round_descriptions = request.form.getlist("round_description[]")
+        round_questions = request.form.getlist("round_questions[]")
+
+        rounds = []
+        for idx in range(len(round_categories)):
+            cat = round_categories[idx].strip() if idx < len(round_categories) else "Technical"
+            desc = round_descriptions[idx].strip() if idx < len(round_descriptions) else ""
+            q_text = round_questions[idx].strip() if idx < len(round_questions) else ""
+            if cat or desc or q_text:
+                rounds.append({
+                    "round_number": idx + 1,
+                    "category": cat or "Technical",
+                    "description": desc,
+                    "questions": [q.strip() for q in q_text.split("\n") if q.strip()]
+                })
+
+        if not rounds:
+            # Fallback default round if omitted
+            rounds.append({
+                "round_number": 1,
+                "category": "Technical",
+                "description": "Standard placement interview round.",
+                "questions": []
+            })
+
+        exp_id = f"exp-{uuid.uuid4().hex[:12]}"
+        save_interview_experience(
+            exp_id=exp_id,
+            student_id=student_id,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title,
+            interview_date=interview_date,
+            rounds=rounds,
+            overall_verdict=overall_verdict,
+            difficulty_level=difficulty_level,
+            tips_and_preparation=tips
+        )
+        flash("Thank you! Your interview experience was shared successfully.", "success")
+        return redirect(url_for("interview_experiences_view", company=company_name))
+
+    experiences = get_interview_experiences(
+        company_name=company_filter,
+        category_filter=category_filter,
+        search_query=search_query
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(experiences),
+            "experiences": experiences
+        }), 200
+
+    return render_template(
+        "interview_experiences.html",
+        experiences=experiences,
+        company_filter=company_filter,
+        category_filter=category_filter,
+        search_query=search_query,
+@app.route("/calendar", methods=["GET", "POST"])
+def placement_calendar_view():
+    """
+    Placement Preparation Calendar View and Event Handler (#190).
+    Manages student interview dates, preparation sessions, and application deadlines on a calendar.
+    """
+    import datetime
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    month_filter = request.args.get("month") or datetime.date.today().strftime("%Y-%m")
+    type_filter = request.args.get("type", "All").strip()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        event_type = request.form.get("event_type", "preparation").strip().lower()
+        event_date = request.form.get("event_date", "").strip()
+        event_time = request.form.get("event_time", "").strip()
+        company_name = request.form.get("company_name", "").strip()
+        description = request.form.get("description", "").strip()
+        priority = request.form.get("priority", "Medium").strip()
+
+        if not title or not event_date:
+            flash("Event title and scheduled date are required.", "error")
+            return redirect(url_for("placement_calendar_view", month=month_filter))
+
+        event_id = f"evt-{uuid.uuid4().hex[:12]}"
+        save_calendar_event(
+            event_id=event_id,
+            student_id=student_id,
+            title=title,
+            event_type=event_type,
+            event_date=event_date,
+            event_time=event_time or None,
+            company_name=company_name or None,
+            description=description or None,
+            priority=priority,
+            completed=False
+        )
+        flash("Placement preparation activity added to your calendar!", "success")
+        return redirect(url_for("placement_calendar_view", month=event_date[:7]))
+
+    events = get_calendar_events(student_id=student_id, month=month_filter, event_type=type_filter)
+    all_events = get_calendar_events(student_id=student_id)
+
+    # Calculate summary counts
+    interviews_count = sum(1 for e in all_events if e.get("event_type") == "interview")
+    tasks_count = sum(1 for e in all_events if e.get("event_type") == "preparation")
+    deadlines_count = sum(1 for e in all_events if e.get("event_type") == "deadline")
+@app.route("/company-checklist", methods=["GET", "POST"])
+def company_checklist_view():
+    """
+    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
+    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    target_company = request.args.get("company", "Google").strip()
+
+    available_companies = get_available_companies()
+    if not available_companies:
+        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
+
+    if target_company not in available_companies and target_company != "Google":
+        available_companies.insert(0, target_company)
+
+    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
+@app.route("/coding-submissions")
+def coding_submissions_view():
+    """
+    Coding Assessment Submission History View (#194).
+    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    language_filter = request.args.get("language", "All").strip()
+    status_filter = request.args.get("status", "All").strip()
+
+    submissions = get_coding_submissions(
+        student_id=student_id,
+        question_title=question_filter or None,
+        language_filter=language_filter,
+        status_filter=status_filter
+    )
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -2727,6 +3276,165 @@ def api_send_interview_reminder():
     )
 
     return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+            "month": month_filter,
+            "count": len(events),
+            "events": events
+        }), 200
+
+    return render_template(
+        "calendar.html",
+        events=events,
+        all_events=all_events,
+        student_id=student_id,
+        current_month=month_filter,
+        current_type=type_filter,
+        interviews_count=interviews_count,
+        tasks_count=tasks_count,
+        deadlines_count=deadlines_count,
+        today_date=datetime.date.today().isoformat()
+    )
+
+
+@app.route("/api/calendar/<event_id>", methods=["PUT", "POST", "DELETE"])
+def api_manage_calendar_event(event_id: str):
+    """
+    API endpoint to update or delete a calendar preparation event (#190).
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = delete_calendar_event(event_id=event_id, student_id=student_id)
+        return jsonify({"success": deleted}), (200 if deleted else 404)
+
+    payload = request.get_json(silent=True) or {}
+    title = payload.get("title") or request.form.get("title", "")
+    event_type = payload.get("event_type") or request.form.get("event_type", "preparation")
+    event_date = payload.get("event_date") or request.form.get("event_date", "")
+    event_time = payload.get("event_time") or request.form.get("event_time", "")
+    company_name = payload.get("company_name") or request.form.get("company_name", "")
+    description = payload.get("description") or request.form.get("description", "")
+    priority = payload.get("priority") or request.form.get("priority", "Medium")
+    completed = bool(payload.get("completed", False))
+
+    if not title or not event_date:
+        return jsonify({"success": False, "error": "Title and date are required."}), 400
+
+    updated = update_calendar_event(
+        event_id=event_id,
+        student_id=student_id,
+        title=title,
+        event_type=event_type,
+        event_date=event_date,
+        event_time=event_time or None,
+        company_name=company_name or None,
+        description=description or None,
+        priority=priority,
+        completed=completed
+    )
+    return jsonify({"success": updated}), (200 if updated else 404)
+            "data": checklist_info
+        }), 200
+
+    return render_template(
+        "company_checklist.html",
+        data=checklist_info,
+        target_company=target_company,
+        available_companies=available_companies,
+        student_id=student_id
+    )
+
+
+@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
+def api_report_interview_experience(exp_id: str):
+    """
+    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
+    """
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
+    reported = report_interview_experience(exp_id=exp_id, reason=reason)
+    return jsonify({
+        "success": reported,
+        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
+    }), (200 if reported else 404)
+@app.route("/api/company-checklist/toggle-task", methods=["POST"])
+def api_toggle_checklist_task():
+    """
+    Toggles a checklist task completed status and updates overall progress (#192).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_name = payload.get("company_name", "Google").strip()
+    category = payload.get("category", "").strip()
+    task_id = payload.get("task_id", "").strip()
+    completed = bool(payload.get("completed", False))
+
+    current_data = get_company_checklist(student_id, company_name)
+    checklist = current_data["checklist"]
+
+    if category in checklist:
+        for t in checklist[category]:
+            if t["id"] == task_id:
+                t["completed"] = completed
+                break
+
+    save_company_checklist(student_id, company_name, checklist)
+    updated_info = get_company_checklist(student_id, company_name)
+
+    return jsonify({
+        "success": True,
+        "overall_percentage": updated_info["overall_percentage"],
+        "completed_tasks": updated_info["completed_tasks"],
+        "category_percentage": updated_info["category_stats"].get(category, {}).get("percentage", 0.0)
+    }), 200
+
+
+@app.route("/api/company-checklist/reset", methods=["POST"])
+def api_reset_checklist():
+    """
+    Resets the checklist tasks for a specific target company (#192).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_name = payload.get("company_name", "Google").strip()
+
+    reset_company_checklist(student_id, company_name)
+    refreshed = get_company_checklist(student_id, company_name)
+    return jsonify({
+        "success": True,
+        "message": f"Checklist for {company_name} reset successfully.",
+        "data": refreshed
+            "count": len(submissions),
+            "submissions": submissions
+        }), 200
+
+    return render_template(
+        "coding_submissions.html",
+        submissions=submissions,
+        student_id=student_id,
+        question_filter=question_filter,
+        language_filter=language_filter,
+        status_filter=status_filter,
+        total_count=len(all_user_subs),
+        passed_count=passed_count,
+        failed_count=failed_count,
+        avg_score=avg_score
+    )
+
+
+@app.route("/api/coding-submissions")
+def api_coding_submissions():
+    """
+    API endpoint returning student coding attempts with comparison capability (#194).
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    submissions = get_coding_submissions(student_id=student_id, question_title=question_filter or None)
+
+    return jsonify({
+        "success": True,
+        "count": len(submissions),
+        "submissions": submissions
+    }), 200
 
 
 if __name__ == "__main__":
