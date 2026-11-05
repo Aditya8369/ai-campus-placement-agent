@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Role-Based Preparation Mode - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3 sticky-top">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        {% if analysis_id %}
+          <a href="/dashboard/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+            <i class="fa-solid fa-chart-line me-1"></i> Dashboard
+          </a>
+        {% endif %}
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 py-md-5" id="rolePrepPageContainer" data-analysis-id="{{ analysis_id|default('') }}">
+    <!-- Page Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-lg-8">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-semibold">
+            <i class="fa-solid fa-user-gear me-1"></i> Specialized Career Tracks
+          </span>
+          {% if company %}
+            <span class="badge bg-light text-secondary border rounded-pill small">
+              <i class="fa-solid fa-building me-1"></i> Target: {{ company }}
+            </span>
+          {% endif %}
+        </div>
+        <h2 class="fw-bold mb-1">Role-Based Preparation Mode</h2>
+        <p class="text-secondary mb-0">
+          Tailor your campus placement preparation curriculum, coding challenges, core technologies, and study roadmap to your dream technical role.
+        </p>
+      </div>
+      <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+        {% if analysis_id %}
+          <a href="/dashboard/{{ analysis_id }}" class="btn btn-outline-secondary rounded-pill px-3 py-2 btn-sm">
+            <i class="fa-solid fa-arrow-left me-1"></i> Return to Analysis Report
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Role Selection Bar -->
+    <div class="card glass-card p-3 p-md-4 border-0 mb-4 shadow-sm">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-3">
+        <div>
+          <span class="small fw-bold text-uppercase text-secondary tracking-wide d-block mb-1">
+            <i class="fa-solid fa-crosshairs text-primary me-1"></i> Select Your Target Role
+          </span>
+          <h5 class="fw-bold mb-0 text-dark">Choose a Technical Career Path to Customize Content</h5>
+        </div>
+        <div class="small text-muted">
+          <i class="fa-solid fa-wand-magic-sparkles text-warning me-1"></i> Recommendations dynamically adapt to your background
+        </div>
+      </div>
+
+      <!-- Role Selector Pills -->
+      <div class="d-flex flex-wrap gap-2 p-2 bg-light rounded-4 border align-items-center" id="rolePageSelectorGroup">
+        {% for r in available_roles %}
+          {% set is_selected = (r.name == selected_role) %}
+          <button type="button" class="btn btn-sm rounded-pill px-3 py-2 fw-semibold role-page-btn {{ 'btn-primary shadow-sm active' if is_selected else 'btn-outline-secondary border-0 bg-white' }}" data-role="{{ r.name }}">
+            <i class="{{ r.icon }} me-1"></i> {{ r.name }}
+          </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Personalization Insights Banner -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="rolePersonalizationCard">
+      <div class="row g-4 align-items-center">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-{{ prep.color_class }}-subtle text-{{ prep.color_class }} border border-{{ prep.color_class }}-subtle px-3 py-1 rounded-pill fw-bold" id="roleBadge">
+              <i class="{{ prep.icon }} me-1"></i> {{ prep.role_title }}
+            </span>
+            <span class="text-secondary small" id="roleTagline">{{ prep.tagline }}</span>
+          </div>
+          <h3 class="fw-bold mb-2" id="roleTitleDisplay">{{ prep.role_title }} Preparation Track</h3>
+          <p class="text-secondary small mb-3" id="roleGuidanceText">
+            {{ prep.personalized_guidance }}
+          </p>
+
+          <!-- Skills Leveraged & Gaps Bridged Badges -->
+          <div class="d-flex flex-wrap gap-3 mt-2">
+            <div>
+              <small class="fw-bold text-success d-block mb-1">
+                <i class="fa-solid fa-circle-check me-1"></i> Existing Strengths Leveraged:
+              </small>
+              <div class="d-flex flex-wrap gap-1" id="leveragedSkillsContainer">
+                {% for sk in prep.leveraged_skills %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">
+                    {{ sk }}
+                  </span>
+                {% else %}
+                  <span class="text-muted small fst-italic">Foundational preparation curriculum applied</span>
+                {% endfor %}
+              </div>
+            </div>
+
+            <div>
+              <small class="fw-bold text-warning d-block mb-1">
+                <i class="fa-solid fa-bridge me-1"></i> Skill Gaps Targeted &amp; Bridged:
+              </small>
+              <div class="d-flex flex-wrap gap-1" id="bridgedGapsContainer">
+                {% for gap in prep.bridged_skill_gaps %}
+                  <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">
+                    {{ gap }}
+                  </span>
+                {% else %}
+                  <span class="text-muted small fst-italic">Focusing on core placement proficiencies</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Role Alignment Score Tile -->
+        <div class="col-lg-4 text-center">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-center align-items-center">
+            <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Profile Alignment</small>
+            <div class="d-flex align-items-baseline justify-content-center gap-1 mb-2">
+              <h1 class="fw-bold mb-0 text-primary display-5" id="alignmentScoreText">{{ prep.alignment_score }}%</h1>
+            </div>
+            <div class="w-75 mb-2">
+              <div class="progress rounded-pill" style="height: 8px;">
+                <div class="progress-bar bg-primary" id="alignmentProgressBar" role="progressbar" style="width: {{ prep.alignment_score }}%" aria-valuenow="{{ prep.alignment_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
+            </div>
+            <small class="text-muted" id="alignmentScoreDesc">
+              {% if prep.alignment_score >= 75 %}
+                <span class="text-success"><i class="fa-solid fa-circle-check me-1"></i> Strong alignment with {{ prep.role_title }} requirements</span>
+              {% elif prep.alignment_score >= 50 %}
+                <span class="text-primary"><i class="fa-solid fa-chart-line me-1"></i> Good foundation; bridge target skill gaps below</span>
+              {% else %}
+                <span class="text-warning"><i class="fa-solid fa-clock me-1"></i> Follow the 6-week curriculum to bridge foundational gaps</span>
+              {% endif %}
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Role Content Navigation Tabs -->
+    <ul class="nav nav-pills mb-4 gap-2" id="roleContentTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active rounded-pill px-4 py-2 fw-semibold" id="tab-topics-btn" data-bs-toggle="pill" data-bs-target="#tab-topics" type="button" role="tab">
+          <i class="fa-solid fa-book-bookmark me-1"></i> Technical Topics
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 py-2 fw-semibold" id="tab-coding-btn" data-bs-toggle="pill" data-bs-target="#tab-coding" type="button" role="tab">
+          <i class="fa-solid fa-code me-1"></i> Coding Questions
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 py-2 fw-semibold" id="tab-tech-btn" data-bs-toggle="pill" data-bs-target="#tab-tech" type="button" role="tab">
+          <i class="fa-solid fa-microchip me-1"></i> Core Tech &amp; Concepts
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link rounded-pill px-4 py-2 fw-semibold" id="tab-roadmap-btn" data-bs-toggle="pill" data-bs-target="#tab-roadmap" type="button" role="tab">
+          <i class="fa-solid fa-route me-1"></i> 6-Week Role Roadmap
+        </button>
+      </li>
+    </ul>
+
+    <!-- Tab Content Panes -->
+    <div class="tab-content" id="roleContentTabPanes">
+      <!-- Tab 1: Technical Topics -->
+      <div class="tab-pane fade show active" id="tab-topics" role="tabpanel">
+        <div class="card glass-card p-4 border-0 mb-4 shadow-sm">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+            <div>
+              <span class="text-primary fw-semibold text-uppercase small">Curated Technical Curriculum</span>
+              <h4 class="fw-bold mb-0">Role-Specific Technical Topics</h4>
+            </div>
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-1 small" id="topicsCountBadge">
+              {{ prep.technical_topics|length }} Core Modules
+            </span>
+          </div>
+
+          <div class="row g-3" id="technicalTopicsContainer">
+            {% for top in prep.technical_topics %}
+              <div class="col-md-6 col-12">
+                <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                  <div>
+                    <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                      <h6 class="fw-bold mb-0 text-dark">{{ top.topic }}</h6>
+                      <span class="badge {{ 'bg-danger-subtle text-danger border-danger-subtle' if top.importance == 'High' else 'bg-primary-subtle text-primary border-primary-subtle' }} rounded-pill small">
+                        {{ top.importance }} Priority
+                      </span>
+                    </div>
+                    <p class="text-secondary small mb-3">{{ top.summary }}</p>
+                  </div>
+                  <div>
+                    <div class="d-flex flex-wrap gap-1 align-items-center justify-content-between pt-2 border-top">
+                      <div class="d-flex flex-wrap gap-1">
+                        {% for sk in top.skills %}
+                          <span class="badge bg-white text-secondary border rounded-pill small">{{ sk }}</span>
+                        {% endfor %}
+                      </div>
+                      <span class="small text-muted"><i class="fa-solid fa-clock me-1"></i>~{{ top.estimated_hours }}h</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Coding Questions -->
+      <div class="tab-pane fade" id="tab-coding" role="tabpanel">
+        <div class="card glass-card p-4 border-0 mb-4 shadow-sm">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+            <div>
+              <span class="text-primary fw-semibold text-uppercase small">Hand-Picked Practice Problems</span>
+              <h4 class="fw-bold mb-0">Relevant Coding &amp; Query Challenges</h4>
+            </div>
+            <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-1 small" id="codingCountBadge">
+              {{ prep.coding_questions|length }} Practice Problems
+            </span>
+          </div>
+
+          <div class="row g-3" id="codingQuestionsContainer">
+            {% for q in prep.coding_questions %}
+              <div class="col-md-6 col-12">
+                <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                  <div>
+                    <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                      <div>
+                        <span class="badge bg-white text-secondary border rounded-pill small mb-1">{{ q.platform }}</span>
+                        <h6 class="fw-bold mb-0 text-dark">{{ q.title }}</h6>
+                      </div>
+                      <span class="badge {{ 'bg-success-subtle text-success border-success-subtle' if q.difficulty == 'Easy' else ('bg-warning-subtle text-warning border-warning-subtle' if q.difficulty == 'Medium' else 'bg-danger-subtle text-danger border-danger-subtle') }} rounded-pill small">
+                        {{ q.difficulty }}
+                      </span>
+                    </div>
+                    <p class="text-secondary small mb-3">{{ q.description }}</p>
+                    {% if q.hints %}
+                      <div class="p-2 px-3 bg-white rounded-3 border small mb-3 text-muted">
+                        <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                        <strong>Approach Hint:</strong> {{ q.hints[0] }}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top gap-2">
+                    <div class="d-flex flex-wrap gap-1">
+                      {% for sk in q.skills_targeted %}
+                        <span class="badge bg-white text-primary border rounded-pill small">{{ sk }}</span>
+                      {% endfor %}
+                    </div>
+                    <a href="{{ q.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                      Solve <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Core Tech & Concepts -->
+      <div class="tab-pane fade" id="tab-tech" role="tabpanel">
+        <div class="card glass-card p-4 border-0 mb-4 shadow-sm">
+          <div class="mb-4">
+            <span class="text-primary fw-semibold text-uppercase small">Tech Stack &amp; Concepts to Study</span>
+            <h4 class="fw-bold mb-0">Core Technologies &amp; Foundational Architecture</h4>
+          </div>
+
+          <!-- Technologies Grid -->
+          <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-layer-group text-primary me-2"></i>Essential Technology Stack</h6>
+          <div class="row g-3 mb-4" id="coreTechContainer">
+            {% for tech in prep.core_technologies %}
+              <div class="col-md-4 col-sm-6 col-12">
+                <div class="p-3 bg-light rounded-3 border h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <strong class="text-dark small">{{ tech.name }}</strong>
+                    <span class="badge bg-white text-primary border rounded-pill small">{{ tech.badge }}</span>
+                  </div>
+                  <small class="text-secondary d-block">{{ tech.description }}</small>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <!-- Important Concepts -->
+          <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-brain text-success me-2"></i>Critical Theoretical Concepts to Study</h6>
+          <div class="row g-3" id="importantConceptsContainer">
+            {% for c in prep.important_concepts %}
+              <div class="col-md-6 col-12">
+                <div class="p-3 bg-light rounded-3 border h-100">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <i class="fa-solid fa-check-circle text-success"></i>
+                    <strong class="text-dark small">{{ c.concept }}</strong>
+                  </div>
+                  <small class="text-secondary d-block">{{ c.details }}</small>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 4: 6-Week Role Roadmap -->
+      <div class="tab-pane fade" id="tab-roadmap" role="tabpanel">
+        <div class="card glass-card p-4 border-0 mb-4 shadow-sm">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+            <div>
+              <span class="text-primary fw-semibold text-uppercase small">Personalised Role Learning Journey</span>
+              <h4 class="fw-bold mb-0">6-Week {{ prep.role_title }} Preparation Roadmap</h4>
+            </div>
+            <span class="badge bg-primary text-white rounded-pill px-3 py-1">
+              6 Weeks &bull; {{ prep.total_roadmap_tasks }} Activities
+            </span>
+          </div>
+
+          <div class="timeline-wrapper" id="roleRoadmapContainer">
+            {% for w in prep.roadmap %}
+              <div class="timeline-node mb-4">
+                <div class="card border-0 bg-light p-4 rounded-4 shadow-sm">
+                  <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                    <div>
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small mb-1">{{ w.week }}</span>
+                      <h5 class="fw-bold mb-0 text-dark">{{ w.focus }}</h5>
+                    </div>
+                    <span class="badge bg-primary text-white rounded-pill py-2 px-3">{{ w.estimated_hours }} Hours Recommended</span>
+                  </div>
+
+                  <div class="row g-3 mt-1">
+                    <div class="col-md-6">
+                      <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-book-open me-2 text-primary"></i>Topics to Learn</h6>
+                      <ul class="mb-3 small list-unstyled">
+                        {% for top in w.topics %}
+                          <li class="mb-1"><i class="fa-solid fa-angle-right text-primary me-2"></i>{{ top }}</li>
+                        {% endfor %}
+                      </ul>
+
+                      <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-code me-2 text-primary"></i>Coding / Query Practice</h6>
+                      <ul class="mb-0 small list-unstyled">
+                        {% for code in w.coding_practice %}
+                          <li class="mb-1"><i class="fa-solid fa-check text-success me-2"></i>{{ code }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+
+                    <div class="col-md-6">
+                      <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-laptop-code me-2 text-primary"></i>Micro Projects</h6>
+                      <ul class="mb-3 small list-unstyled">
+                        {% for proj in w.mini_projects %}
+                          <li class="mb-1"><i class="fa-solid fa-rocket text-warning me-2"></i>{{ proj }}</li>
+                        {% endfor %}
+                      </ul>
+
+                      <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-circle-question me-2 text-primary"></i>Interview Questions</h6>
+                      <ul class="mb-0 small list-unstyled">
+                        {% for q in w.interview_questions %}
+                          <li class="mb-1 text-dark"><i class="fa-solid fa-comment-dots text-info me-2"></i>{{ q }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script>
+    // Initialize interactive role switching on dedicated role preparation page
+    document.addEventListener("DOMContentLoaded", () => {
+      const container = document.getElementById("rolePrepPageContainer");
+      const analysisId = container?.getAttribute("data-analysis-id") || "";
+      const roleBtns = document.querySelectorAll(".role-page-btn");
+
+      roleBtns.forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const selectedRole = btn.getAttribute("data-role");
+          if (!selectedRole) return;
+
+          roleBtns.forEach(b => {
+            b.classList.remove("btn-primary", "shadow-sm", "active");
+            b.classList.add("btn-outline-secondary", "bg-white");
+          });
+          btn.classList.remove("btn-outline-secondary", "bg-white");
+          btn.classList.add("btn-primary", "shadow-sm", "active");
+
+          try {
+            const url = analysisId
+              ? `/api/role-prep/${analysisId}?role=${encodeURIComponent(selectedRole)}`
+              : `/api/role-prep/generate`;
+            
+            let res;
+            if (analysisId) {
+              res = await fetch(url);
+            } else {
+              res = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ role: selectedRole })
+              });
+            }
+
+            const data = await res.json();
+            if (data && data.success) {
+              updateRolePageView(data);
+            }
+          } catch (err) {
+            console.error("Error switching role:", err);
+          }
+        });
+      });
+
+      function updateRolePageView(data) {
+        // Update header & guidance
+        const roleBadge = document.getElementById("roleBadge");
+        if (roleBadge) {
+          roleBadge.className = `badge bg-${data.color_class}-subtle text-${data.color_class} border border-${data.color_class}-subtle px-3 py-1 rounded-pill fw-bold`;
+          roleBadge.innerHTML = `<i class="${data.icon} me-1"></i> ${data.role_title}`;
+        }
+        const tagline = document.getElementById("roleTagline");
+        if (tagline) tagline.innerText = data.tagline;
+
+        const titleDisplay = document.getElementById("roleTitleDisplay");
+        if (titleDisplay) titleDisplay.innerText = `${data.role_title} Preparation Track`;
+
+        const guidance = document.getElementById("roleGuidanceText");
+        if (guidance) guidance.innerText = data.personalized_guidance;
+
+        // Update score
+        const scoreText = document.getElementById("alignmentScoreText");
+        if (scoreText) scoreText.innerText = `${data.alignment_score}%`;
+        const bar = document.getElementById("alignmentProgressBar");
+        if (bar) bar.style.width = `${data.alignment_score}%`;
+
+        // Update leveraged skills
+        const levContainer = document.getElementById("leveragedSkillsContainer");
+        if (levContainer) {
+          levContainer.innerHTML = data.leveraged_skills.length
+            ? data.leveraged_skills.map(s => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">${s}</span>`).join(" ")
+            : `<span class="text-muted small fst-italic">Foundational preparation curriculum applied</span>`;
+        }
+
+        // Update bridged gaps
+        const gapContainer = document.getElementById("bridgedGapsContainer");
+        if (gapContainer) {
+          gapContainer.innerHTML = data.bridged_skill_gaps.length
+            ? data.bridged_skill_gaps.map(g => `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">${g}</span>`).join(" ")
+            : `<span class="text-muted small fst-italic">Focusing on core placement proficiencies</span>`;
+        }
+
+        // Update topics
+        const topicsContainer = document.getElementById("technicalTopicsContainer");
+        if (topicsContainer) {
+          topicsContainer.innerHTML = data.technical_topics.map(top => `
+            <div class="col-md-6 col-12">
+              <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                <div>
+                  <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                    <h6 class="fw-bold mb-0 text-dark">${top.topic}</h6>
+                    <span class="badge ${top.importance === 'High' ? 'bg-danger-subtle text-danger border-danger-subtle' : 'bg-primary-subtle text-primary border-primary-subtle'} rounded-pill small">
+                      ${top.importance} Priority
+                    </span>
+                  </div>
+                  <p class="text-secondary small mb-3">${top.summary}</p>
+                </div>
+                <div>
+                  <div class="d-flex flex-wrap gap-1 align-items-center justify-content-between pt-2 border-top">
+                    <div class="d-flex flex-wrap gap-1">
+                      ${top.skills.map(sk => `<span class="badge bg-white text-secondary border rounded-pill small">${sk}</span>`).join(" ")}
+                    </div>
+                    <span class="small text-muted"><i class="fa-solid fa-clock me-1"></i>~${top.estimated_hours}h</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `).join("");
+        }
+
+        // Update coding questions
+        const codingContainer = document.getElementById("codingQuestionsContainer");
+        if (codingContainer) {
+          codingContainer.innerHTML = data.coding_questions.map(q => `
+            <div class="col-md-6 col-12">
+              <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                <div>
+                  <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                    <div>
+                      <span class="badge bg-white text-secondary border rounded-pill small mb-1">${q.platform}</span>
+                      <h6 class="fw-bold mb-0 text-dark">${q.title}</h6>
+                    </div>
+                    <span class="badge ${q.difficulty === 'Easy' ? 'bg-success-subtle text-success border-success-subtle' : (q.difficulty === 'Medium' ? 'bg-warning-subtle text-warning border-warning-subtle' : 'bg-danger-subtle text-danger border-danger-subtle')} rounded-pill small">
+                      ${q.difficulty}
+                    </span>
+                  </div>
+                  <p class="text-secondary small mb-3">${q.description}</p>
+                  ${q.hints && q.hints.length ? `
+                    <div class="p-2 px-3 bg-white rounded-3 border small mb-3 text-muted">
+                      <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                      <strong>Approach Hint:</strong> ${q.hints[0]}
+                    </div>
+                  ` : ''}
+                </div>
+                <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top gap-2">
+                  <div class="d-flex flex-wrap gap-1">
+                    ${q.skills_targeted.map(sk => `<span class="badge bg-white text-primary border rounded-pill small">${sk}</span>`).join(" ")}
+                  </div>
+                  <a href="${q.practice_url}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                    Solve <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+                  </a>
+                </div>
+              </div>
+            </div>
+          `).join("");
+        }
+
+        // Update Core Tech
+        const techContainer = document.getElementById("coreTechContainer");
+        if (techContainer) {
+          techContainer.innerHTML = data.core_technologies.map(tech => `
+            <div class="col-md-4 col-sm-6 col-12">
+              <div class="p-3 bg-light rounded-3 border h-100">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong class="text-dark small">${tech.name}</strong>
+                  <span class="badge bg-white text-primary border rounded-pill small">${tech.badge}</span>
+                </div>
+                <small class="text-secondary d-block">${tech.description}</small>
+              </div>
+            </div>
+          `).join("");
+        }
+
+        // Update Concepts
+        const concContainer = document.getElementById("importantConceptsContainer");
+        if (concContainer) {
+          concContainer.innerHTML = data.important_concepts.map(c => `
+            <div class="col-md-6 col-12">
+              <div class="p-3 bg-light rounded-3 border h-100">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <i class="fa-solid fa-check-circle text-success"></i>
+                  <strong class="text-dark small">${c.concept}</strong>
+                </div>
+                <small class="text-secondary d-block">${c.details}</small>
+              </div>
+            </div>
+          `).join("");
+        }
+
+        // Update Roadmap
+        const roadContainer = document.getElementById("roleRoadmapContainer");
+        if (roadContainer) {
+          roadContainer.innerHTML = data.roadmap.map(w => `
+            <div class="timeline-node mb-4">
+              <div class="card border-0 bg-light p-4 rounded-4 shadow-sm">
+                <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                  <div>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small mb-1">${w.week}</span>
+                    <h5 class="fw-bold mb-0 text-dark">${w.focus}</h5>
+                  </div>
+                  <span class="badge bg-primary text-white rounded-pill py-2 px-3">${w.estimated_hours} Hours Recommended</span>
+                </div>
+                <div class="row g-3 mt-1">
+                  <div class="col-md-6">
+                    <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-book-open me-2 text-primary"></i>Topics to Learn</h6>
+                    <ul class="mb-3 small list-unstyled">
+                      ${w.topics.map(t => `<li class="mb-1"><i class="fa-solid fa-angle-right text-primary me-2"></i>${t}</li>`).join("")}
+                    </ul>
+                    <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-code me-2 text-primary"></i>Coding / Query Practice</h6>
+                    <ul class="mb-0 small list-unstyled">
+                      ${w.coding_practice.map(c => `<li class="mb-1"><i class="fa-solid fa-check text-success me-2"></i>${c}</li>`).join("")}
+                    </ul>
+                  </div>
+                  <div class="col-md-6">
+                    <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-laptop-code me-2 text-primary"></i>Micro Projects</h6>
+                    <ul class="mb-3 small list-unstyled">
+                      ${w.mini_projects.map(p => `<li class="mb-1"><i class="fa-solid fa-rocket text-warning me-2"></i>${p}</li>`).join("")}
+                    </ul>
+                    <h6 class="fw-semibold text-secondary small"><i class="fa-solid fa-circle-question me-2 text-primary"></i>Interview Questions</h6>
+                    <ul class="mb-0 small list-unstyled">
+                      ${w.interview_questions.map(q => `<li class="mb-1 text-dark"><i class="fa-solid fa-comment-dots text-info me-2"></i>${q}</li>`).join("")}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `).join("");
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+

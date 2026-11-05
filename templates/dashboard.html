@@ -26,11 +26,17 @@
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-arrow-left me-1"></i> <span class="d-none d-sm-inline">New</span> Analysis
         </a>
+        <a href="/history" class="btn btn-outline-info btn-sm rounded-pill px-2 px-sm-3" title="Past Analysis History">
+          <i class="fa-solid fa-clock-rotate-left me-1"></i> History
+        </a>
         <a href="/leaderboard?analysis_id={{ analysis_id }}" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Campus Placement Leaderboard">
           <i class="fa-solid fa-trophy me-1"></i> Leaderboard
         </a>
         <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-award me-1"></i> Certificate
+        </a>
+        <a href="/role-preparation?analysis_id={{ analysis_id }}" class="btn btn-outline-info btn-sm rounded-pill px-2 px-sm-3" title="Role-Based Preparation Mode">
+          <i class="fa-solid fa-user-gear me-1"></i> Role Prep
         </a>
         <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3 btn-print-report" id="btnPrintReportTop" onclick="window.print()" title="Print placement readiness report">
           <i class="fa-solid fa-print me-1"></i> <span class="d-none d-sm-inline">Print</span> Report
@@ -48,12 +54,37 @@
   <!-- Dashboard Content -->
   <main class="container py-5 fade-in" id="dashboardContainer" data-analysis-id="{{ analysis_id }}" data-company="{{ analysis.company_name }}" data-date="{{ analysis.created_at }}">
     
-    <!-- Top Summary Card -->
-    <div class="card glass-card p-4 mb-4 border-0">
-      <div class="row align-items-center">
-        <div class="col-md-8">
-          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
-            <span class="text-primary fw-semibold text-uppercase small">Placement Readiness Dashboard</span>
+    <!-- Placement Readiness Summary Card -->
+    {% set r_sum = readiness_summary if (readiness_summary is defined and readiness_summary) else {
+      'ats_score': analysis.results.resume_analysis.ats_score|default(0)|int,
+      'match_percentage': analysis.results.job_match.match_percentage|default(0)|int,
+      'has_custom_jd': (analysis.job_description and analysis.job_description|trim and analysis.job_description|trim|lower != 'none provided. assume general software development engineer role.'),
+      'skill_gaps_count': (analysis.results.skill_gap|length) if (analysis.results.skill_gap is iterable and analysis.results.skill_gap is not string) else 0,
+      'readiness_status': ('Placement Ready' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 75 and analysis.results.job_match.match_percentage|default(0)|int >= 65) else ('Targeted Prep Needed' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 67 and analysis.results.job_match.match_percentage|default(0)|int >= 57) else 'Foundation Building Required')),
+      'readiness_badge': ('success' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 75 and analysis.results.job_match.match_percentage|default(0)|int >= 65) else ('primary' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 67 and analysis.results.job_match.match_percentage|default(0)|int >= 57) else 'warning')),
+      'readiness_icon': ('fa-circle-check' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 75 and analysis.results.job_match.match_percentage|default(0)|int >= 65) else ('fa-chart-line' if (analysis.results.resume_analysis.ats_score|default(0)|int >= 67 and analysis.results.job_match.match_percentage|default(0)|int >= 57) else 'fa-triangle-exclamation')),
+      'status_summary': (analysis.results.job_match.company_benchmark.assessment if (analysis.results.job_match is mapping and analysis.results.job_match.company_benchmark is mapping and analysis.results.job_match.company_benchmark.assessment) else ('Profile evaluated against campus recruitment benchmarks for ' ~ analysis.company_name)),
+      'target_ats': (analysis.results.job_match.company_benchmark.target_ats if (analysis.results.job_match is mapping and analysis.results.job_match.company_benchmark is mapping and analysis.results.job_match.company_benchmark.target_ats) else 75),
+      'target_match': (analysis.results.job_match.company_benchmark.target_match if (analysis.results.job_match is mapping and analysis.results.job_match.company_benchmark is mapping and analysis.results.job_match.company_benchmark.target_match) else 65),
+      'top_recommendations': []
+    } %}
+    {% set active_recommendations = r_sum.top_recommendations if (r_sum.top_recommendations and r_sum.top_recommendations|length > 0) else [
+      {'category': 'Overall Assessment', 'text': analysis.results.overall_recommendation_summary, 'icon': 'fa-quote-left text-primary'},
+      {'category': 'Preparation Guidance', 'text': (analysis.results.job_match.company_benchmark.guidance if (analysis.results.job_match is mapping and analysis.results.job_match.company_benchmark is mapping and analysis.results.job_match.company_benchmark.guidance) else 'Focus on bridging identified technical skill gaps and quantifying project achievements.'), 'icon': 'fa-lightbulb text-warning'},
+      {'category': 'Priority Action Item', 'text': (analysis.results.job_match.top_5_resume_changes[0] if (analysis.results.job_match is mapping and analysis.results.job_match.top_5_resume_changes and analysis.results.job_match.top_5_resume_changes|length > 0) else 'Align technical terminology and keywords with target job requirements.'), 'icon': 'fa-wand-magic-sparkles text-info'}
+    ] %}
+
+    <div class="card glass-card p-4 mb-4 border-0 shadow-sm" id="placementReadinessSummaryCard">
+      <!-- Executive Header -->
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2 pb-3 border-bottom">
+        <div>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+            <span class="text-primary fw-semibold text-uppercase small">
+              <i class="fa-solid fa-gauge-high me-1"></i> Executive Summary
+            </span>
+            <span class="badge bg-{{ r_sum.readiness_badge }}-subtle text-{{ r_sum.readiness_badge }} border border-{{ r_sum.readiness_badge }}-subtle px-3 py-1 rounded-pill fw-bold" id="summaryReadinessBadge">
+              <i class="fa-solid {{ r_sum.readiness_icon }} me-1"></i> {{ r_sum.readiness_status }}
+            </span>
             {% if peer_benchmark %}
               <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill fw-bold" title="Candidate Peer Percentile">
                 <i class="fa-solid fa-trophy text-warning me-1"></i> {{ peer_benchmark.percentile_badge }}
@@ -66,44 +97,210 @@
               </span>
             {% endif %}
           </div>
-          <h2 class="fw-bold mt-1 mb-2">Analysis Report: Target Company - {{ analysis.company_name }}</h2>
-          <p class="text-secondary mb-0">
-            Uploaded Resume: <b>{{ analysis.resume_filename }}</b> | Evaluated on: {{ analysis.created_at }}
+          <h2 class="fw-bold mt-1 mb-1">Placement Readiness Summary: {{ analysis.company_name }}</h2>
+          <p class="text-secondary small mb-0">
+            Uploaded Resume: <b>{{ analysis.resume_filename }}</b> &bull; Evaluated: {{ analysis.created_at }}
           </p>
-          <div class="alert alert-light border mt-3 mb-0 text-dark d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div class="me-2 flex-grow-1">
-              <i class="fa-solid fa-quote-left text-primary me-2"></i> {{ analysis.results.overall_recommendation_summary }}
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <a href="/download/{{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+            <i class="fa-solid fa-download me-1"></i> PDF Report
+          </a>
+        </div>
+      </div>
+
+      <!-- KPI Metrics Grid (ATS Score, Job Match %, Skill Gaps, Preparation Verdict) -->
+      <div class="row g-3 mb-4">
+        <!-- Metric 1: ATS Compatibility Score -->
+        <div class="col-xl-3 col-md-6">
+          <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex align-items-center justify-content-between">
+            <div>
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">ATS Compatibility</small>
+              <div class="d-flex align-items-baseline gap-2">
+                <h2 class="fw-bold mb-0 text-dark" id="summaryAtsScore">{{ r_sum.ats_score }}</h2>
+                <span class="text-muted small">/ 100</span>
+              </div>
+              <small class="text-muted d-block mt-1">
+                Target: <strong>{{ r_sum.target_ats }}</strong>
+                {% if r_sum.ats_score >= r_sum.target_ats %}
+                  <span class="text-success ms-1"><i class="fa-solid fa-circle-check"></i> Meets Bar</span>
+                {% else %}
+                  <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up"></i> {{ r_sum.target_ats - r_sum.ats_score }} pts to Target</span>
+                {% endif %}
+              </small>
             </div>
-            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 btn-copy-suggestion flex-shrink-0" data-copy-text="{{ analysis.results.overall_recommendation_summary|e }}" title="Copy recommendation summary">
-              <i class="fa-regular fa-copy me-1"></i> Copy
-            </button>
+            <!-- Circular ATS Gauge -->
+            <div class="circular-progress-container mb-0" style="width: 75px; height: 75px;">
+              <svg class="circular-progress-svg" viewBox="0 0 150 150" style="width: 75px; height: 75px;">
+                <circle class="circular-bg-ring" cx="75" cy="75" r="60"></circle>
+                <circle class="circular-fill-ring" cx="75" cy="75" r="60" data-score="{{ r_sum.ats_score }}"></circle>
+              </svg>
+              <div class="circular-progress-text">
+                <span class="fw-bold" style="font-size: 1.1rem;">{{ r_sum.ats_score }}</span>
+              </div>
+            </div>
           </div>
         </div>
-        
-        <!-- Score Gauges -->
-        <div class="col-md-4 mt-4 mt-md-0 d-flex flex-column align-items-center justify-content-center border-start border-md-none">
-          <!-- Circular ATS score -->
-          <div class="circular-progress-container mb-3">
-            <svg class="circular-progress-svg">
-              <circle class="circular-bg-ring" cx="75" cy="75" r="60"></circle>
-              <circle class="circular-fill-ring" cx="75" cy="75" r="60" data-score="{{ analysis.results.resume_analysis.ats_score }}"></circle>
-            </svg>
-            <div class="circular-progress-text">
-              <span class="fw-bold">{{ analysis.results.resume_analysis.ats_score }}</span>
-              <span class="circular-progress-label">ATS Score</span>
+
+        <!-- Metric 2: Job Description Match -->
+        <div class="col-xl-3 col-md-6">
+          <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex flex-column justify-content-between">
+            <div>
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Job Match Percentage</small>
+              {% if r_sum.has_custom_jd %}
+                <div class="d-flex align-items-baseline gap-2">
+                  <h2 class="fw-bold mb-0 text-primary" id="summaryJobMatchScore">{{ r_sum.match_percentage }}%</h2>
+                  <span class="badge bg-primary-subtle text-primary border rounded-pill small">Custom JD</span>
+                </div>
+                <small class="text-muted d-block mt-1">
+                  Target: <strong>{{ r_sum.target_match }}%</strong>
+                  {% if r_sum.match_percentage >= r_sum.target_match %}
+                    <span class="text-success ms-1"><i class="fa-solid fa-circle-check"></i> Target Met</span>
+                  {% else %}
+                    <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up"></i> {{ r_sum.target_match - r_sum.match_percentage }}% gap</span>
+                  {% endif %}
+                </small>
+              {% else %}
+                <div class="d-flex align-items-baseline gap-2">
+                  <h2 class="fw-bold mb-0 text-secondary" id="summaryJobMatchScore">{{ r_sum.match_percentage }}%</h2>
+                  <span class="badge bg-secondary-subtle text-secondary border rounded-pill small">SDE Baseline</span>
+                </div>
+                <small class="text-muted d-block mt-1">
+                  <i class="fa-solid fa-circle-info text-primary me-1"></i> General Fresher SDE Baseline
+                </small>
+              {% endif %}
+            </div>
+            <div class="mt-2">
+              <div class="progress rounded-pill" style="height: 8px;">
+                <div class="progress-bar {{ 'bg-primary' if r_sum.has_custom_jd else 'bg-secondary' }}" role="progressbar" style="width: {{ r_sum.match_percentage }}%" aria-valuenow="{{ r_sum.match_percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+              </div>
             </div>
           </div>
-          
-          <!-- Job Match score -->
-          <div class="w-75 text-center">
-            <div class="d-flex justify-content-between mb-1 small text-secondary">
-              <span>Job Match percentage:</span>
-              <span class="fw-bold text-primary">{{ analysis.results.job_match.match_percentage }}%</span>
+        </div>
+
+        <!-- Metric 3: Identified Skill Gaps -->
+        <div class="col-xl-3 col-md-6">
+          <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex flex-column justify-content-between">
+            <div>
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Identified Skill Gaps</small>
+              <div class="d-flex align-items-baseline gap-2">
+                <h2 class="fw-bold mb-0 {{ 'text-danger' if r_sum.skill_gaps_count > 4 else ('text-warning' if r_sum.skill_gaps_count > 0 else 'text-success') }}" id="summarySkillGapsCount">
+                  {{ r_sum.skill_gaps_count }}
+                </h2>
+                <span class="text-muted small">Skills Identified</span>
+              </div>
+              <small class="text-muted d-block mt-1">
+                {% if r_sum.skill_gaps_count == 0 %}
+                  <span class="text-success"><i class="fa-solid fa-check me-1"></i> Full technical skill coverage</span>
+                {% elif r_sum.skill_gaps_count <= 3 %}
+                  <span class="text-primary"><i class="fa-solid fa-clock me-1"></i> Manageable 6-week learning curve</span>
+                {% else %}
+                  <span class="text-warning"><i class="fa-solid fa-triangle-exclamation me-1"></i> Focus on high-priority gaps</span>
+                {% endif %}
+              </small>
             </div>
-            <div class="progress rounded-pill" style="height: 10px;">
-              <div class="progress-bar bg-primary" role="progressbar" style="width: {{ analysis.results.job_match.match_percentage }}%" aria-valuenow="{{ analysis.results.job_match.match_percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="mt-2">
+              <a href="#skillGapSection" class="small fw-semibold text-primary text-decoration-none">
+                Inspect Skill Gaps <i class="fa-solid fa-arrow-right small ms-1"></i>
+              </a>
             </div>
           </div>
+        </div>
+
+        <!-- Metric 4: Preparation Status -->
+        <div class="col-xl-3 col-md-6">
+          <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex flex-column justify-content-between">
+            <div>
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Preparation Status</small>
+              <div class="mt-1">
+                <span class="badge bg-{{ r_sum.readiness_badge }}-subtle text-{{ r_sum.readiness_badge }} border border-{{ r_sum.readiness_badge }}-subtle px-3 py-2 rounded-pill fw-bold fs-6">
+                  <i class="fa-solid {{ r_sum.readiness_icon }} me-1"></i> {{ r_sum.readiness_status }}
+                </span>
+              </div>
+              <small class="text-muted d-block mt-2">
+                Hiring bar for <strong>{{ analysis.company_name }}</strong>
+              </small>
+            </div>
+            <div class="mt-2">
+              <a href="#resumeFeedbackSection" class="small fw-semibold text-primary text-decoration-none">
+                View Feedback <i class="fa-solid fa-arrow-right small ms-1"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Preparation Status Short Summary -->
+      <div class="p-3 rounded-4 bg-light-subtle border mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+          <h6 class="fw-bold mb-0 text-dark">
+            <i class="fa-solid fa-compass text-primary me-2"></i> Preparation Status Summary
+          </h6>
+          {% if r_sum.status_summary %}
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-suggestion" data-copy-text="{{ r_sum.status_summary|e }}" title="Copy status summary">
+              <i class="fa-regular fa-copy me-1"></i> Copy Summary
+            </button>
+          {% endif %}
+        </div>
+        <p class="text-secondary small mb-3" id="summaryStatusText">
+          {{ r_sum.status_summary }}
+        </p>
+
+        <!-- Important Recommendations From Analysis -->
+        <h6 class="fw-bold mb-2 text-dark pt-2 border-top">
+          <i class="fa-solid fa-star text-warning me-2"></i> Important Recommendations from Analysis
+        </h6>
+        <div class="row g-2">
+          {% for rec in active_recommendations %}
+            {% if rec.text %}
+              <div class="col-lg-4 col-12">
+                <div class="p-3 bg-white rounded-3 border h-100 d-flex flex-column justify-content-between gap-2 shadow-sm">
+                  <div>
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                      <span class="badge bg-light text-secondary border rounded-pill small">
+                        <i class="fa-solid {{ rec.icon }} me-1"></i> {{ rec.category }}
+                      </span>
+                    </div>
+                    <p class="small text-dark mb-0 line-clamp-3" style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;" title="{{ rec.text|e }}">
+                      {{ rec.text }}
+                    </p>
+                  </div>
+                  <div class="text-end pt-1">
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-suggestion" data-copy-text="{{ rec.text|e }}" title="Copy {{ rec.category }}">
+                      <i class="fa-regular fa-copy me-1"></i> Copy
+                    </button>
+                  </div>
+                </div>
+              </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Quick Section Navigation Toolbar -->
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2 border-top">
+        <span class="small fw-bold text-secondary">
+          <i class="fa-solid fa-signs-post text-primary me-1"></i> Jump to Detailed Report Sections:
+        </span>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="#resumeFeedbackSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-file-pen me-1 text-primary"></i> Resume Feedback
+          </a>
+          <a href="#matchImprovementsSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-code-merge me-1 text-primary"></i> Match Improvements
+          </a>
+          <a href="#skillGapSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-triangle-exclamation me-1 text-warning"></i> Skill Gaps ({{ r_sum.skill_gaps_count }})
+          </a>
+          <a href="#roadmapSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-route me-1 text-success"></i> 6-Week Roadmap
+          </a>
+          <a href="#outreachSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-paper-plane me-1 text-info"></i> Outreach Pitch
+          </a>
+          <a href="/interview/{{ analysis_id }}" class="btn btn-sm btn-custom-primary rounded-pill px-3">
+            <i class="fa-solid fa-comments me-1"></i> Practice Interview
+          </a>
         </div>
       </div>
     </div>
@@ -555,7 +752,7 @@
     </div>
 
     <!-- Resume Feedback Panel -->
-    <div class="row g-4 mb-4">
+    <div class="row g-4 mb-4" id="resumeFeedbackSection">
       
       <!-- Strengths & Weaknesses Accordion -->
       <div class="col-lg-8">
@@ -682,7 +879,7 @@
       </div>
 
       <!-- Job Matching Adjustments -->
-      <div class="col-lg-4">
+      <div class="col-lg-4" id="matchImprovementsSection">
         <div class="card glass-card p-4 border-0 h-100">
           <h4 class="fw-bold mb-4"><i class="fa-solid fa-code-merge text-primary me-2"></i> Match Improvements</h4>
           <h6 class="fw-bold text-secondary mb-3">Top 5 Resume Changes Required:</h6>
@@ -720,8 +917,157 @@
 
     </div>
 
+    <!-- Visual Skills Comparison Chart Card -->
+    {% set sc = skills_comparison if skills_comparison is defined and skills_comparison else none %}
+    {% if not sc %}
+      {% set raw_jm = analysis.results.job_match if analysis.results.job_match is mapping else (analysis.results.job_compatibility if analysis.results.job_compatibility is mapping else {}) %}
+      {% set m_skills = raw_jm.matched_skills if raw_jm.matched_skills is defined and raw_jm.matched_skills else (raw_jm.matching_skills|default([])) %}
+      {% set miss_skills = raw_jm.missing_skills if raw_jm.missing_skills is defined and raw_jm.missing_skills else [] %}
+      {% set sc = {
+        'matched_skills': m_skills,
+        'missing_skills': miss_skills,
+        'matched_count': m_skills|length,
+        'missing_count': miss_skills|length,
+        'total_skills': (m_skills|length + miss_skills|length),
+        'match_percentage': raw_jm.match_percentage|default(0),
+        'missing_percentage': (100 - raw_jm.match_percentage|default(0)) if raw_jm.match_percentage|default(0) > 0 else 0
+      } %}
+    {% endif %}
+
+    <div class="card glass-card p-4 border-0 mb-4" id="skillsComparisonCard" data-skills='{{ (skills_comparison_json if skills_comparison_json is defined else sc|tojson)|safe }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Job Requirements Alignment</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-chart-pie text-primary me-2"></i> Visual Skills Comparison: Matched vs. Missing Skills
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold" id="scMatchedSummaryBadge">
+            <i class="fa-solid fa-circle-check me-1"></i> {{ sc.matched_count }} Matched ({{ sc.match_percentage }}%)
+          </span>
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fw-semibold" id="scMissingSummaryBadge">
+            <i class="fa-solid fa-circle-xmark me-1"></i> {{ sc.missing_count }} Missing ({{ sc.missing_percentage }}%)
+          </span>
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-3">
+        Direct comparative breakdown of your identified competencies against requirements for <b>{{ analysis.company_name }}</b>.
+      </p>
+
+      <!-- Visual Distribution Ratio Bar -->
+      <div class="mb-4">
+        <div class="d-flex justify-content-between small text-secondary mb-1 fw-semibold">
+          <span class="text-success"><i class="fa-solid fa-square-check me-1"></i> Matching Skills Coverage: {{ sc.match_percentage }}%</span>
+          <span class="text-danger"><i class="fa-solid fa-square-xmark me-1"></i> Missing Skills Gap: {{ sc.missing_percentage }}%</span>
+        </div>
+        <div class="progress rounded-pill shadow-xs" style="height: 12px;">
+          <div class="progress-bar bg-success" role="progressbar" style="width: {{ sc.match_percentage }}%" aria-valuenow="{{ sc.match_percentage }}" aria-valuemin="0" aria-valuemax="100" title="Matching Skills: {{ sc.match_percentage }}%"></div>
+          <div class="progress-bar bg-danger" role="progressbar" style="width: {{ sc.missing_percentage }}%" aria-valuenow="{{ sc.missing_percentage }}" aria-valuemin="0" aria-valuemax="100" title="Missing Skills: {{ sc.missing_percentage }}%"></div>
+        </div>
+      </div>
+
+      <!-- Main Visual Grid: Chart on Left, Categorized Skill Badges on Right -->
+      <div class="row g-4 align-items-center">
+        <!-- Chart Canvas Column -->
+        <div class="col-lg-5 col-12 text-center">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column align-items-center justify-content-center position-relative">
+            <div class="d-flex justify-content-between w-100 small text-secondary mb-2 px-2">
+              <span class="fw-bold"><i class="fa-solid fa-chart-pie me-1 text-primary"></i> Skills Proportion</span>
+              <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills }} Total Evaluated</span>
+            </div>
+
+            <!-- Chart.js Canvas Container -->
+            <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
+              <canvas id="skillsComparisonChart"></canvas>
+              <!-- Center Metric Overlay -->
+              <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
+                <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
+                <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+              </div>
+            </div>
+
+            <!-- Chart Legend Badges -->
+            <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
+              <div class="d-flex align-items-center gap-1">
+                <span class="legend-indicator bg-success rounded-circle" style="width: 10px; height: 10px; display: inline-block;"></span>
+                <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }})</span>
+              </div>
+              <div class="d-flex align-items-center gap-1">
+                <span class="legend-indicator bg-danger rounded-circle" style="width: 10px; height: 10px; display: inline-block;"></span>
+                <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }})</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Categorized Skills Column (Matching vs Missing) -->
+        <div class="col-lg-7 col-12">
+          <div class="row g-3">
+            <!-- Matching Skills Card -->
+            <div class="col-12">
+              <div class="p-3 bg-light rounded-4 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="fw-bold text-success mb-0 d-flex align-items-center">
+                    <i class="fa-solid fa-circle-check me-2"></i> Matching Skills in Resume
+                    <span class="badge bg-success text-white rounded-pill ms-2 small">{{ sc.matched_count }}</span>
+                  </h6>
+                  <small class="text-muted">{{ sc.match_percentage }}% of requirements</small>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2" id="matchedSkillsBadgeContainer">
+                  {% for skill in sc.matched_skills %}
+                    <span class="badge bg-white text-success border border-success-subtle py-2 px-3 rounded-pill d-inline-flex align-items-center gap-1 shadow-xs skill-badge-pill">
+                      <i class="fa-solid fa-check small"></i>
+                      <span>{{ skill }}</span>
+                      <button type="button" class="btn btn-sm btn-link p-0 text-success ms-1 btn-copy-suggestion" data-copy-text="{{ skill|e }}" title="Copy skill">
+                        <i class="fa-regular fa-copy small"></i>
+                      </button>
+                    </span>
+                  {% else %}
+                    <div class="p-3 bg-white rounded-3 border text-center w-100 text-muted small">
+                      <i class="fa-solid fa-circle-info text-secondary me-1"></i> No exact matching technical skills detected for this specific job description.
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <!-- Missing Skills Card -->
+            <div class="col-12">
+              <div class="p-3 bg-light rounded-4 border">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h6 class="fw-bold text-danger mb-0 d-flex align-items-center">
+                    <i class="fa-solid fa-circle-xmark me-2"></i> Missing Skills to Acquire
+                    <span class="badge bg-danger text-white rounded-pill ms-2 small">{{ sc.missing_count }}</span>
+                  </h6>
+                  <small class="text-muted">{{ sc.missing_percentage }}% gap</small>
+                </div>
+                <div class="d-flex flex-wrap gap-2 mt-2" id="missingSkillsBadgeContainer">
+                  {% for skill in sc.missing_skills %}
+                    <span class="badge bg-white text-danger border border-danger-subtle py-2 px-3 rounded-pill d-inline-flex align-items-center gap-1 shadow-xs skill-badge-pill">
+                      <i class="fa-solid fa-xmark small"></i>
+                      <span>{{ skill }}</span>
+                      <button type="button" class="btn btn-sm btn-link p-0 text-danger ms-1 btn-copy-suggestion" data-copy-text="{{ skill|e }}" title="Copy missing skill">
+                        <i class="fa-regular fa-copy small"></i>
+                      </button>
+                    </span>
+                  {% else %}
+                    <div class="p-3 bg-white rounded-3 border text-center w-100 text-success small">
+                      <i class="fa-solid fa-circle-check text-success me-1"></i> All required technical skills are present in your resume!
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Skill Gap Analysis Table -->
-    <div class="card glass-card p-4 border-0 mb-4">
+    <div class="card glass-card p-4 border-0 mb-4" id="skillGapSection">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
         <div class="d-flex align-items-center gap-2">
           <h4 class="fw-bold mb-0"><i class="fa-solid fa-triangle-exclamation text-primary me-2"></i> Skill Gap Analysis</h4>
@@ -809,12 +1155,96 @@
     </div>
 
     <!-- Learning Roadmap Timeline -->
-    <div class="card glass-card p-4 border-0 mb-4">
+    <div class="card glass-card p-4 border-0 mb-4" id="roadmapSection">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
-        <h4 class="fw-bold mb-0"><i class="fa-solid fa-route text-primary me-2"></i> 6-Week Learning Roadmap</h4>
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Personalised Preparation Plan</span>
+          <h4 class="fw-bold mb-0"><i class="fa-solid fa-route text-primary me-2"></i> 6-Week Learning Roadmap</h4>
+        </div>
         <button id="btnExportRoadmapMarkdown" class="btn btn-outline-primary btn-sm rounded-pill px-3">
           <i class="fa-solid fa-download me-1"></i> Export Study Plan (.md)
         </button>
+      </div>
+
+      <!-- Preparation Progress Overview -->
+      {% set ns_roadmap = namespace(total_tasks=0) %}
+      {% if analysis.results.learning_roadmap is iterable and analysis.results.learning_roadmap is not string %}
+        {% for w in analysis.results.learning_roadmap %}
+          {% set ns_roadmap.total_tasks = ns_roadmap.total_tasks + (w.topics|length if w.topics is iterable and w.topics is not string else 0) + (w.coding_practice|length if w.coding_practice is iterable and w.coding_practice is not string else 0) + (w.mini_projects|length if w.mini_projects is iterable and w.mini_projects is not string else 0) + (w.interview_questions|length if w.interview_questions is iterable and w.interview_questions is not string else 0) %}
+        {% endfor %}
+      {% endif %}
+
+      <div class="p-3 p-md-4 rounded-4 bg-light border mb-4 shadow-xs" id="preparationProgressOverview">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">
+              <i class="fa-solid fa-list-check me-1"></i> Preparation Progress Overview
+            </span>
+            <h5 class="fw-bold mb-0 text-dark">Roadmap Activity Completion Status</h5>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill fw-bold" id="roadmapProgressStatusBadge">
+              <i class="fa-solid fa-clock me-1"></i> Not Started (0%)
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnResetRoadmapProgress" title="Reset all task checkboxes for this roadmap">
+              <i class="fa-solid fa-rotate-left me-1"></i> Reset
+            </button>
+          </div>
+        </div>
+
+        <!-- Metric Counter Cards: Total, Completed, Pending, Completion % -->
+        <div class="row g-3 mb-3">
+          <!-- Total Tasks -->
+          <div class="col-6 col-md-3">
+            <div class="p-3 bg-white rounded-3 border text-center h-100 shadow-xs">
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Total Tasks</small>
+              <h3 class="fw-bold mb-0 text-dark" id="totalRoadmapTasks">{{ ns_roadmap.total_tasks }}</h3>
+              <small class="text-muted d-block mt-1">Curated Activities</small>
+            </div>
+          </div>
+
+          <!-- Completed Tasks -->
+          <div class="col-6 col-md-3">
+            <div class="p-3 bg-white rounded-3 border text-center h-100 shadow-xs">
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Completed</small>
+              <h3 class="fw-bold mb-0 text-success" id="completedRoadmapTasks">0</h3>
+              <small class="text-success d-block mt-1"><i class="fa-solid fa-circle-check me-1"></i>Finished</small>
+            </div>
+          </div>
+
+          <!-- Pending Tasks -->
+          <div class="col-6 col-md-3">
+            <div class="p-3 bg-white rounded-3 border text-center h-100 shadow-xs">
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Pending</small>
+              <h3 class="fw-bold mb-0 text-warning" id="pendingRoadmapTasks">{{ ns_roadmap.total_tasks }}</h3>
+              <small class="text-muted d-block mt-1"><i class="fa-solid fa-clock me-1"></i>Remaining</small>
+            </div>
+          </div>
+
+          <!-- Completion Percentage -->
+          <div class="col-6 col-md-3">
+            <div class="p-3 bg-white rounded-3 border text-center h-100 shadow-xs">
+              <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Completion</small>
+              <h3 class="fw-bold mb-0 text-primary" id="overallRoadmapProgressLabel">0%</h3>
+              <small class="text-muted d-block mt-1" id="roadmapCompletionPercentage">0% Completed</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Progress Bar -->
+        <div class="bg-white p-3 rounded-3 border">
+          <div class="d-flex justify-content-between align-items-center mb-2 small">
+            <span class="fw-semibold text-secondary">
+              <i class="fa-solid fa-bars-progress text-primary me-1"></i> Overall Roadmap Progress
+            </span>
+            <span class="text-muted" id="roadmapProgressSummaryText">
+              <span id="completedTasksInline">0</span> of <span id="totalTasksInline">{{ ns_roadmap.total_tasks }}</span> activities completed (<span id="progressPercentInline">0%</span>)
+            </span>
+          </div>
+          <div class="progress rounded-pill" style="height: 12px;">
+            <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="overallRoadmapProgressBar" role="progressbar" style="width: 0%; transition: width 0.4s ease;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+        </div>
       </div>
       <div class="timeline-wrapper">
         {% for w in analysis.results.learning_roadmap %}
@@ -879,6 +1309,296 @@
             </div>
           </div>
         {% endfor %}
+      </div>
+    </div>
+
+    <!-- Role-Based Preparation Mode Section -->
+    {% set role_p = initial_role_prep if initial_role_prep is defined and initial_role_prep else none %}
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="roleBasedPrepSection" data-role-prep='{{ initial_role_prep_json|safe if initial_role_prep_json is defined else "{}" }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2 border-bottom pb-3">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">
+            <i class="fa-solid fa-user-gear me-1"></i> Career Track Specialization
+          </span>
+          <h4 class="fw-bold mb-0">Role-Based Preparation Mode</h4>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <a href="/role-preparation?analysis_id={{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnOpenRolePrepStudio">
+            <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Dedicated Role Studio
+          </a>
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-3">
+        Switch target technical roles to dynamically regenerate topics, curated coding questions, core concepts, and structured study plans personalized to your skills and identified gaps.
+      </p>
+
+      <!-- Role Selector Button Pills -->
+      <div class="d-flex flex-wrap gap-2 mb-4 p-2 bg-light rounded-pill border align-items-center" id="dashboardRoleSelectorGroup">
+        <span class="small fw-bold text-secondary ms-2 me-1">
+          <i class="fa-solid fa-crosshairs text-primary me-1"></i> Select Role:
+        </span>
+        <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold dashboard-role-btn btn-primary shadow-sm" data-role="Software Engineer">
+          <i class="fa-solid fa-code me-1"></i> Software Engineer
+        </button>
+        <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold dashboard-role-btn btn-outline-secondary border-0" data-role="Python Developer">
+          <i class="fa-brands fa-python me-1"></i> Python Developer
+        </button>
+        <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold dashboard-role-btn btn-outline-secondary border-0" data-role="Data Analyst">
+          <i class="fa-solid fa-chart-pie me-1"></i> Data Analyst
+        </button>
+        <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold dashboard-role-btn btn-outline-secondary border-0" data-role="Data Scientist">
+          <i class="fa-solid fa-brain me-1"></i> Data Scientist
+        </button>
+      </div>
+
+      <!-- Loading Spinner Indicator (hidden by default) -->
+      <div id="rolePrepLoadingSpinner" class="text-center py-5 d-none">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="small text-muted mt-2">Generating personalized role-specific preparation plan...</div>
+      </div>
+
+      <div id="rolePrepMainContentArea">
+        <!-- Personalization Summary Card -->
+        <div class="p-3 rounded-4 bg-light-subtle border mb-4">
+          <div class="row g-3 align-items-center">
+            <div class="col-lg-8">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-bold" id="dashRoleBadge">
+                  <i class="fa-solid fa-code me-1"></i> Software Engineer
+                </span>
+                <span class="text-secondary small" id="dashRoleTagline">
+                  Data structures, scalable algorithms, system design, and software architecture.
+                </span>
+              </div>
+              <h5 class="fw-bold mb-1" id="dashRoleTitleDisplay">Software Engineer Preparation Track</h5>
+              <p class="text-secondary small mb-2" id="dashRoleGuidanceText">
+                {{ role_p.personalized_guidance if role_p else 'Tailored preparation plan designed to bridge identified skill gaps.' }}
+              </p>
+
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <div>
+                  <small class="fw-bold text-success d-inline-block me-1">
+                    <i class="fa-solid fa-circle-check me-1"></i> Leveraged:
+                  </small>
+                  <span id="dashLeveragedSkillsContainer">
+                    {% if role_p and role_p.leveraged_skills %}
+                      {% for sk in role_p.leveraged_skills %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">{{ sk }}</span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">Core CS</span>
+                    {% endif %}
+                  </span>
+                </div>
+                <div class="ms-lg-3">
+                  <small class="fw-bold text-warning d-inline-block me-1">
+                    <i class="fa-solid fa-bridge me-1"></i> Targeted Gaps:
+                  </small>
+                  <span id="dashBridgedGapsContainer">
+                    {% if role_p and role_p.bridged_skill_gaps %}
+                      {% for gap in role_p.bridged_skill_gaps %}
+                        <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">{{ gap }}</span>
+                      {% endfor %}
+                    {% else %}
+                      <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">System Design</span>
+                    {% endif %}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Alignment Gauge -->
+            <div class="col-lg-4 text-center">
+              <div class="p-3 bg-white rounded-3 border">
+                <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Role Alignment</small>
+                <h2 class="fw-bold mb-0 text-primary" id="dashAlignmentScoreText">{{ role_p.alignment_score if role_p else 75 }}%</h2>
+                <div class="progress rounded-pill my-2" style="height: 6px;">
+                  <div class="progress-bar bg-primary" id="dashAlignmentProgressBar" role="progressbar" style="width: {{ role_p.alignment_score if role_p else 75 }}%"></div>
+                </div>
+                <small class="text-muted small" id="dashAlignmentStatus">Aligned with target role hiring standards</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Role Preparation Tabs -->
+        <ul class="nav nav-pills mb-3 gap-2" id="dashRolePillsTab" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active rounded-pill px-3 py-2 fw-semibold" id="dash-topics-tab" data-bs-toggle="pill" data-bs-target="#dash-topics-pane" type="button" role="tab">
+              <i class="fa-solid fa-book-bookmark me-1"></i> Technical Topics
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-coding-tab" data-bs-toggle="pill" data-bs-target="#dash-coding-pane" type="button" role="tab">
+              <i class="fa-solid fa-code me-1"></i> Coding Challenges
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-tech-tab" data-bs-toggle="pill" data-bs-target="#dash-tech-pane" type="button" role="tab">
+              <i class="fa-solid fa-microchip me-1"></i> Concepts &amp; Tech Stack
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-roadmap-tab" data-bs-toggle="pill" data-bs-target="#dash-roadmap-pane" type="button" role="tab">
+              <i class="fa-solid fa-route me-1"></i> Role Study Roadmap
+            </button>
+          </li>
+        </ul>
+
+        <!-- Tab Panes -->
+        <div class="tab-content" id="dashRolePillsContent">
+          <!-- Pane 1: Technical Topics -->
+          <div class="tab-pane fade show active" id="dash-topics-pane" role="tabpanel">
+            <div class="row g-3" id="dashTechnicalTopicsGrid">
+              {% if role_p %}
+                {% for top in role_p.technical_topics %}
+                  <div class="col-md-6 col-12">
+                    <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                      <div>
+                        <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                          <h6 class="fw-bold mb-0 text-dark">{{ top.topic }}</h6>
+                          <span class="badge {{ 'bg-danger-subtle text-danger border-danger-subtle' if top.importance == 'High' else 'bg-primary-subtle text-primary border-primary-subtle' }} rounded-pill small">
+                            {{ top.importance }}
+                          </span>
+                        </div>
+                        <p class="text-secondary small mb-3">{{ top.summary }}</p>
+                      </div>
+                      <div class="d-flex flex-wrap gap-1 align-items-center justify-content-between pt-2 border-top">
+                        <div class="d-flex flex-wrap gap-1">
+                          {% for sk in top.skills %}
+                            <span class="badge bg-white text-secondary border rounded-pill small">{{ sk }}</span>
+                          {% endfor %}
+                        </div>
+                        <span class="small text-muted"><i class="fa-solid fa-clock me-1"></i>~{{ top.estimated_hours }}h</span>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Pane 2: Coding Challenges -->
+          <div class="tab-pane fade" id="dash-coding-pane" role="tabpanel">
+            <div class="row g-3" id="dashCodingQuestionsGrid">
+              {% if role_p %}
+                {% for q in role_p.coding_questions %}
+                  <div class="col-md-6 col-12">
+                    <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between">
+                      <div>
+                        <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                          <div>
+                            <span class="badge bg-white text-secondary border rounded-pill small mb-1">{{ q.platform }}</span>
+                            <h6 class="fw-bold mb-0 text-dark">{{ q.title }}</h6>
+                          </div>
+                          <span class="badge {{ 'bg-success-subtle text-success border-success-subtle' if q.difficulty == 'Easy' else ('bg-warning-subtle text-warning border-warning-subtle' if q.difficulty == 'Medium' else 'bg-danger-subtle text-danger border-danger-subtle') }} rounded-pill small">
+                            {{ q.difficulty }}
+                          </span>
+                        </div>
+                        <p class="text-secondary small mb-3">{{ q.description }}</p>
+                        {% if q.hints %}
+                          <div class="p-2 px-3 bg-white rounded-3 border small mb-3 text-muted">
+                            <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                            <strong>Hint:</strong> {{ q.hints[0] }}
+                          </div>
+                        {% endif %}
+                      </div>
+                      <div class="d-flex flex-wrap justify-content-between align-items-center pt-2 border-top gap-2">
+                        <div class="d-flex flex-wrap gap-1">
+                          {% for sk in q.skills_targeted %}
+                            <span class="badge bg-white text-primary border rounded-pill small">{{ sk }}</span>
+                          {% endfor %}
+                        </div>
+                        <a href="{{ q.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                          Solve <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Pane 3: Concepts & Tech Stack -->
+          <div class="tab-pane fade" id="dash-tech-pane" role="tabpanel">
+            <div class="p-3 bg-light rounded-4 border">
+              <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-layer-group text-primary me-2"></i>Core Technologies</h6>
+              <div class="row g-3 mb-4" id="dashCoreTechGrid">
+                {% if role_p %}
+                  {% for tech in role_p.core_technologies %}
+                    <div class="col-md-4 col-sm-6 col-12">
+                      <div class="p-3 bg-white rounded-3 border h-100">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                          <strong class="text-dark small">{{ tech.name }}</strong>
+                          <span class="badge bg-light text-primary border rounded-pill small">{{ tech.badge }}</span>
+                        </div>
+                        <small class="text-secondary d-block">{{ tech.description }}</small>
+                      </div>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+
+              <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-brain text-success me-2"></i>Foundational Concepts to Master</h6>
+              <div class="row g-3" id="dashConceptsGrid">
+                {% if role_p %}
+                  {% for c in role_p.important_concepts %}
+                    <div class="col-md-6 col-12">
+                      <div class="p-3 bg-white rounded-3 border h-100">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                          <i class="fa-solid fa-check-circle text-success"></i>
+                          <strong class="text-dark small">{{ c.concept }}</strong>
+                        </div>
+                        <small class="text-secondary d-block">{{ c.details }}</small>
+                      </div>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Pane 4: Role Study Roadmap -->
+          <div class="tab-pane fade" id="dash-roadmap-pane" role="tabpanel">
+            <div class="timeline-wrapper" id="dashRoleRoadmapTimeline">
+              {% if role_p %}
+                {% for w in role_p.roadmap %}
+                  <div class="timeline-node mb-3">
+                    <div class="card border-0 bg-light p-4 rounded-4 shadow-sm">
+                      <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
+                        <div>
+                          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill small mb-1">{{ w.week }}</span>
+                          <h6 class="fw-bold mb-0 text-dark">{{ w.focus }}</h6>
+                        </div>
+                        <span class="badge bg-primary text-white rounded-pill py-2 px-3">{{ w.estimated_hours }} Hours</span>
+                      </div>
+                      <div class="row g-3 mt-1">
+                        <div class="col-md-6">
+                          <small class="fw-semibold text-secondary d-block mb-1"><i class="fa-solid fa-book-open me-1 text-primary"></i>Topics:</small>
+                          <ul class="mb-2 small list-unstyled">
+                            {% for top in w.topics %}
+                              <li class="mb-1"><i class="fa-solid fa-angle-right text-primary me-1"></i>{{ top }}</li>
+                            {% endfor %}
+                          </ul>
+                        </div>
+                        <div class="col-md-6">
+                          <small class="fw-semibold text-secondary d-block mb-1"><i class="fa-solid fa-code me-1 text-primary"></i>Coding Practice:</small>
+                          <ul class="mb-2 small list-unstyled">
+                            {% for code in w.coding_practice %}
+                              <li class="mb-1"><i class="fa-solid fa-check text-success me-1"></i>{{ code }}</li>
+                            {% endfor %}
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1110,6 +1830,11 @@
 
   <!-- Global Toast Notification Container for Suggestions -->
   <div id="copyToastContainer" class="copy-toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Back-to-Top Floating Button -->
+  <button type="button" id="backToTopBtn" class="back-to-top-btn" aria-label="Back to top" title="Back to top">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
 
   <!-- Footer -->
   <footer class="bg-white border-top py-4">

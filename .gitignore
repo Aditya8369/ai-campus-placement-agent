@@ -5,6 +5,8 @@
 
 # SQLite databases
 *.db
+*.db-wal
+*.db-shm
 
 # Python caches
 __pycache__/

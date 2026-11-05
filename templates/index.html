@@ -22,6 +22,24 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        {% if session.get('user_id') %}
+  <span class="text-primary fw-semibold">Hi, {{ session.get('user_name') }}</span>
+  <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
+    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">Logout</button>
+  </form>
+{% else %}
+  <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">Login</a>
+  <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">Register</a>
+{% endif %}
+
+<a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Compare Versions</a>
+<a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">GitHub Audit</a>
+<a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Find Internships</a>
+<a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Applications</a>
+<a href="/interview-history" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Interview History</a>
+<a href="/linkedin-analyzer" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">LinkedIn Analyzer</a>
+<a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">Practice DSA</a>
+<a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">My Reports</a>
         <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare</span> Versions
         <a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
@@ -36,6 +54,12 @@
           <i class="fa-brands fa-linkedin me-1"></i> LinkedIn Analyzer
         <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-code me-1"></i> Practice DSA
+        <a href="/history" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-clock-rotate-left me-1"></i> History
+        </a>
+        <a href="/role-preparation" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-user-gear me-1"></i> Role Prep
+        </a>
         <a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-folder-open me-1"></i> My Reports
         </a>
@@ -473,6 +497,11 @@
       </div>
     </div>
   </div>
+
+  <!-- Back-to-Top Floating Button -->
+  <button type="button" id="backToTopBtn" class="back-to-top-btn" aria-label="Back to top" title="Back to top">
+    <i class="fa-solid fa-arrow-up"></i>
+  </button>
 
   <!-- Footer -->
   <footer class="bg-white border-top py-4 mt-auto">

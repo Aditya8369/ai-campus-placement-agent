@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analysis History - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .history-card {
+      transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .history-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+    }
+  </style>
+</head>
+
+<body class="bg-light min-vh-100 d-flex flex-column">
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/history" class="btn btn-primary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-clock-rotate-left me-1"></i> History
+        </a>
+        <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-code-compare me-1"></i> Compare Versions
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme"
+          aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container py-4 py-md-5 flex-grow-1">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show rounded-4" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Page Header -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Analysis History
+        </h2>
+        <p class="text-muted mb-0">
+          Review saved placement analyses, inspect past ATS scores, and reopen dashboards without new AI calls.
+        </p>
+      </div>
+      <div>
+        <a href="/" class="btn btn-primary rounded-pill px-4 py-2">
+          <i class="fa-solid fa-plus me-1"></i> New Analysis
+        </a>
+      </div>
+    </div>
+
+    {% if analyses and analyses|length > 0 %}
+      <!-- KPI Stats Bar -->
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-4">
+          <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+            <div class="text-primary fs-3 mb-1"><i class="fa-solid fa-folder-open"></i></div>
+            <div class="fs-4 fw-bold" id="totalAnalysesCount">{{ analyses|length }}</div>
+            <div class="text-muted small">Total Saved Analyses</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-4">
+          <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+            <div class="text-success fs-3 mb-1"><i class="fa-solid fa-star"></i></div>
+            {% set scores = analyses|map(attribute='ats_score')|list %}
+            <div class="fs-4 fw-bold">{{ scores|max if scores else 0 }}<span class="fs-6 text-muted">/100</span></div>
+            <div class="text-muted small">Highest ATS Score</div>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div class="card border-0 shadow-sm rounded-4 text-center p-3">
+            <div class="text-info fs-3 mb-1"><i class="fa-solid fa-chart-line"></i></div>
+            {% set avg_score = (scores|sum / scores|length)|round(1) if scores else 0.0 %}
+            <div class="fs-4 fw-bold">{{ avg_score }}<span class="fs-6 text-muted">/100</span></div>
+            <div class="text-muted small">Average ATS Score</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analyses Grid (Newest First) -->
+      <div class="row g-4" id="historyGrid">
+        {% for analysis in analyses %}
+        <div class="col-md-6 col-lg-4 history-item" id="analysis-card-{{ analysis.id }}">
+          <div class="card history-card border-0 shadow-sm rounded-4 h-100 p-4 d-flex flex-column justify-content-between bg-white">
+            <div>
+              <!-- Header: Version & Date -->
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">
+                  v{{ analysis.version_number|default(1) }}
+                </span>
+                <span class="small text-muted" title="{{ analysis.created_at }}">
+                  <i class="fa-regular fa-calendar-days me-1"></i>
+                  {{ analysis.created_at[:10] if analysis.created_at else 'Recent' }}
+                </span>
+              </div>
+
+              <!-- Target Company -->
+              <h5 class="fw-bold mb-1 text-truncate">
+                <i class="fa-solid fa-building text-secondary me-1"></i>
+                <span class="analysis-company">{{ analysis.company_name|default('General') }}</span>
+              </h5>
+
+              <!-- Target Role -->
+              <div class="small text-secondary mb-2 text-truncate">
+                <i class="fa-solid fa-briefcase text-primary me-1"></i>
+                <strong>Role:</strong> <span class="analysis-role">{{ analysis.target_role|default('Software Engineer') }}</span>
+              </div>
+
+              <!-- Resume Filename -->
+              <div class="small text-muted mb-3 text-truncate" title="{{ analysis.resume_filename }}">
+                <i class="fa-solid fa-file-pdf text-danger me-1"></i> {{ analysis.resume_filename }}
+              </div>
+
+              <!-- Scores -->
+              <div class="row g-2 mb-3 text-center">
+                <div class="col-6">
+                  <div class="p-2 bg-light rounded-3 border">
+                    <div class="small text-muted">ATS Score</div>
+                    <div class="fw-bold fs-5 {{ 'text-success' if analysis.ats_score >= 75 else ('text-primary' if analysis.ats_score >= 55 else 'text-warning') }} analysis-ats">
+                      {{ analysis.ats_score }}%
+                    </div>
+                  </div>
+                </div>
+                <div class="col-6">
+                  <div class="p-2 bg-light rounded-3 border">
+                    <div class="small text-muted">Job Match</div>
+                    <div class="fw-bold fs-5 text-info">
+                      {{ analysis.match_percentage|default(0) }}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Actions -->
+            <div class="d-flex gap-2 pt-3 border-top align-items-center">
+              <a href="/dashboard/{{ analysis.id }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1 open-dashboard-btn">
+                <i class="fa-solid fa-chart-pie me-1"></i> Open Dashboard
+              </a>
+              <form method="POST" action="/history/delete/{{ analysis.id }}" class="d-inline m-0" onsubmit="return confirm('Are you sure you want to permanently delete this analysis and all related interview data?');">
+                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill delete-analysis-btn" data-id="{{ analysis.id }}" title="Delete Analysis">
+                  <i class="fa-solid fa-trash-can me-1"></i> Delete
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+    {% else %}
+      <!-- Empty State -->
+      <div class="card border-0 shadow-sm rounded-4 p-5 text-center my-4" id="emptyHistoryState">
+        <div class="mb-3">
+          <div class="d-inline-flex align-items-center justify-content-center bg-light text-secondary rounded-circle p-4" style="width: 80px; height: 80px;">
+            <i class="fa-solid fa-clock-rotate-left fa-3x opacity-50"></i>
+          </div>
+        </div>
+        <h4 class="fw-bold text-dark mb-2">No Analysis History Found</h4>
+        <p class="text-muted mb-4 mx-auto" style="max-width: 500px;">
+          You haven't run any placement evaluations yet. Upload your resume on the homepage to receive personalized ATS scoring, gap analysis, and mock interviews.
+        </p>
+        <a href="/" class="btn btn-primary rounded-pill px-4 py-2">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Start New Analysis
+        </a>
+      </div>
+    {% endif %}
+  </main>
+
+  <footer class="bg-white border-top py-3 text-center text-muted small mt-auto">
+    <div class="container">
+      &copy; AI Campus Placement Agent &bull; Powered by Gemini AI
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Theme toggle initialization
+    const currentTheme = localStorage.getItem("theme") || "light";
+    document.documentElement.setAttribute("data-bs-theme", currentTheme);
+    document.querySelectorAll(".theme-toggle-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const next = document.documentElement.getAttribute("data-bs-theme") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-bs-theme", next);
+        localStorage.setItem("theme", next);
+      });
+    });
+  </script>
+</body>
+
+</html>
+

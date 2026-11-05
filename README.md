@@ -77,6 +77,7 @@ graph TD
 6. **Static Company Profiles**: Contains pre-cached interview processes, hiring guidelines, and preparation advice for major companies: Google, Microsoft, Amazon, TCS, Infosys, Accenture, Capgemini, and Wipro.
 7. **Comprehensive PDF Reports**: Generates and compiles a formatted, multi-page PDF document summarizing placement analysis and roadmaps using ReportLab.
 8. **Dark / Light Theme Toggle**: Seamless single-click switching between light and dark modes with zero page reload, browser persistence (`localStorage`), default system preference detection (`prefers-color-scheme`), and high-contrast readability across dashboards, tables, interview chat, and study roadmaps.
+8. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 
 ---
 
@@ -162,6 +163,55 @@ Launch the Flask development server:
 python app.py
 ```
 The application will be running at `http://127.0.0.1:5000/`. Open this link in your browser to start.
+
+---
+
+## Rate Limiting & Security Quotas
+
+To protect quota-limited AI endpoints (Gemini API calls) from accidental exhaustion or abuse, the application includes a sliding-window in-memory rate limiter with configurable thresholds.
+
+### Endpoint Quotas
+
+| Endpoint / Scope | Default Limit | Purpose |
+|------------------|---------------|---------|
+| `/analyze` & `/api/analysis/start` (`analyze`) | `5/hour` | Resume extraction and multi-agent coordination |
+| `/interview/.../submit` (`interview_eval`) | `30/hour` | Dynamic mock interview evaluations |
+| `/api/interview/evaluate-star` (`star_eval`) | `30/hour` | STAR behavioral response evaluation |
+| `/batch-compare` (`batch_compare`) | `10/hour` | Concurrent multi-company placement evaluation |
+| `/api/generate-outreach` (`generate_outreach`) | `20/hour` | Personalized cover letter & email generation |
+| Default / Other Routes (`default`) | `100/minute` | General API and UI browsing |
+
+### Throttling Behavior
+
+- **HTTP Status 429**: When a user or client exceeds the allowed quota, the server returns an `HTTP 429 Too Many Requests` status code with `Retry-After`, `X-RateLimit-Limit`, and `X-RateLimit-Remaining: 0` headers.
+- **Friendly UI & Hints**: Browser submissions render a dedicated `429.html` cooldown page displaying a clear explanation and dynamic "try again in X minutes" (or seconds) hint with a real-time countdown.
+- **JSON API Responses**: REST/AJAX endpoints return a structured JSON response:
+  ```json
+  {
+    "success": false,
+    "error": "Too Many Requests",
+    "message": "You have temporarily exceeded the request rate limit for this action. Please try again in 59 minutes.",
+    "retry_after_seconds": 3540,
+    "retry_after_hint": "try again in 59 minutes"
+  }
+  ```
+
+### Configuration (Without Modifying Route Code)
+
+Quotas can be adjusted centrally via `.env` or in `config.py` using standard `<count>/<unit>` format strings (`second`, `minute`, `hour`, `day`):
+
+```env
+# Enable or disable rate limiting globally (true / false)
+RATE_LIMIT_ENABLED=true
+
+# Custom quotas
+RATE_LIMIT_ANALYZE=5/hour
+RATE_LIMIT_INTERVIEW=30/hour
+RATE_LIMIT_BATCH=10/hour
+RATE_LIMIT_OUTREACH=20/hour
+RATE_LIMIT_STAR=30/hour
+RATE_LIMIT_DEFAULT=100/minute
+```
 
 ---
 
