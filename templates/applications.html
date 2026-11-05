@@ -11,7 +11,7 @@
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -20,19 +20,19 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
-        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
-          <i class="fa-solid fa-moon"></i>
-        </button>
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
-          <i class="fa-solid fa-arrow-left me-1"></i> Analysis Home
+          <i class="fa-solid fa-house me-1"></i> Home
         </a>
+        <button class="btn btn-primary btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#newApplicationModal" id="btnOpenNewAppModal">
+          <i class="fa-solid fa-plus me-1"></i> Add Application
+        </button>
       </div>
     </div>
   </nav>
 
   <!-- Main Container -->
-  <main class="container py-5 fade-in">
-    <div class="card glass-card p-4 p-md-5 mb-4 border-0">
+  <main class="container py-4 py-md-5">
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
           <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-bold text-uppercase small mb-2 d-inline-block">
@@ -40,87 +40,162 @@
           </span>
           <h2 class="fw-bold mt-1 mb-2">Job Application Tracker</h2>
           <p class="text-secondary mb-0">
-            Track interview rounds, assessment timelines, and company offer statuses with secure, candidate-isolated records.
+            Search, filter, and track interview rounds, assessment timelines, and company offer statuses with candidate isolation.
           </p>
         </div>
-        <button class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#newApplicationModal" id="btnOpenNewAppModal">
-          <i class="fa-solid fa-plus me-1"></i> Add Application
-        </button>
+        <div>
+          <span class="badge bg-light text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+            <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
+          </span>
+        </div>
       </div>
     </div>
 
-    <!-- Filter Toolbar -->
-    <div class="card glass-card p-3 border-0 mb-4">
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex align-items-center gap-2">
-          <span class="fw-semibold small text-muted">Filter by Status:</span>
-          <div class="btn-group btn-group-sm" role="group">
-            <a href="/applications?student_id={{ student_id }}&status=All" class="btn btn-outline-secondary rounded-start-pill {{ 'active' if current_status == 'All' }}">All</a>
-            <a href="/applications?student_id={{ student_id }}&status=Applied" class="btn btn-outline-secondary {{ 'active' if current_status == 'Applied' }}">Applied</a>
-            <a href="/applications?student_id={{ student_id }}&status=Assessment" class="btn btn-outline-secondary {{ 'active' if current_status == 'Assessment' }}">Assessment</a>
-            <a href="/applications?student_id={{ student_id }}&status=Interview" class="btn btn-outline-secondary {{ 'active' if current_status == 'Interview' }}">Interview</a>
-            <a href="/applications?student_id={{ student_id }}&status=Selected" class="btn btn-outline-success {{ 'active' if current_status == 'Selected' }}">Selected</a>
-            <a href="/applications?student_id={{ student_id }}&status=Rejected" class="btn btn-outline-danger rounded-end-pill {{ 'active' if current_status == 'Rejected' }}">Rejected</a>
+    <!-- Advanced Search & Multi-Parameter Filter Toolbar (#193) -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <form method="GET" action="/applications" class="row g-3 align-items-end">
+        <input type="hidden" name="student_id" value="{{ student_id }}">
+        
+        <!-- Search Field -->
+        <div class="col-md-4">
+          <label for="search" class="form-label fw-semibold small">Search Role or Company</label>
+          <div class="input-group">
+            <span class="input-group-text bg-white"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+            <input type="text" class="form-control rounded-end-3" id="search" name="search" value="{{ search_query }}" placeholder="e.g. Google, Software Engineer...">
           </div>
         </div>
-        <span class="badge bg-light text-secondary border rounded-pill px-3 py-2 small">
-          {{ applications|length }} Active Record{{ 's' if applications|length != 1 else '' }}
-        </span>
-      </div>
+
+        <!-- Location Filter -->
+        <div class="col-6 col-md-2">
+          <label for="location" class="form-label fw-semibold small">Location</label>
+          <select class="form-select rounded-3" id="location" name="location">
+            <option value="All" {% if location_filter == 'All' %}selected{% endif %}>All Locations</option>
+            <option value="Remote" {% if location_filter == 'Remote' %}selected{% endif %}>Remote</option>
+            <option value="Bangalore" {% if location_filter == 'Bangalore' %}selected{% endif %}>Bangalore</option>
+            <option value="Hyderabad" {% if location_filter == 'Hyderabad' %}selected{% endif %}>Hyderabad</option>
+            <option value="Pune" {% if location_filter == 'Pune' %}selected{% endif %}>Pune</option>
+            <option value="Delhi NCR" {% if location_filter == 'Delhi NCR' %}selected{% endif %}>Delhi NCR</option>
+          </select>
+        </div>
+
+        <!-- Job Type Filter -->
+        <div class="col-6 col-md-2">
+          <label for="job_type" class="form-label fw-semibold small">Job Type</label>
+          <select class="form-select rounded-3" id="job_type" name="job_type">
+            <option value="All" {% if job_type_filter == 'All' %}selected{% endif %}>All Types</option>
+            <option value="Full-Time" {% if job_type_filter == 'Full-Time' %}selected{% endif %}>Full-Time</option>
+            <option value="Internship" {% if job_type_filter == 'Internship' %}selected{% endif %}>Internship</option>
+            <option value="Contract" {% if job_type_filter == 'Contract' %}selected{% endif %}>Contract</option>
+          </select>
+        </div>
+
+        <!-- Experience Level Filter -->
+        <div class="col-6 col-md-2">
+          <label for="experience_level" class="form-label fw-semibold small">Experience</label>
+          <select class="form-select rounded-3" id="experience_level" name="experience_level">
+            <option value="All" {% if exp_filter == 'All' %}selected{% endif %}>All Levels</option>
+            <option value="Entry-Level" {% if exp_filter == 'Entry-Level' %}selected{% endif %}>Entry-Level (Fresher)</option>
+            <option value="Mid-Level" {% if exp_filter == 'Mid-Level' %}selected{% endif %}>Mid-Level</option>
+          </select>
+        </div>
+
+        <!-- Sort By -->
+        <div class="col-6 col-md-2">
+          <label for="sort" class="form-label fw-semibold small">Sort By</label>
+          <select class="form-select rounded-3" id="sort" name="sort">
+            <option value="recent" {% if sort_by == 'recent' %}selected{% endif %}>Recently Added</option>
+            <option value="oldest" {% if sort_by == 'oldest' %}selected{% endif %}>Oldest First</option>
+            <option value="company" {% if sort_by == 'company' %}selected{% endif %}>Company (A-Z)</option>
+          </select>
+        </div>
+
+        <!-- Status Filter Pills Row -->
+        <div class="col-12 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="d-flex align-items-center flex-wrap gap-1">
+            <span class="small fw-semibold text-muted me-1">Status:</span>
+            <a href="/applications?student_id={{ student_id }}&status=All&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3 {{ 'active' if current_status == 'All' }}">All</a>
+            <a href="/applications?student_id={{ student_id }}&status=Applied&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3 {{ 'active' if current_status == 'Applied' }}">Applied</a>
+            <a href="/applications?student_id={{ student_id }}&status=Assessment&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-warning rounded-pill px-3 {{ 'active' if current_status == 'Assessment' }}">Assessment</a>
+            <a href="/applications?student_id={{ student_id }}&status=Interview&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-primary rounded-pill px-3 {{ 'active' if current_status == 'Interview' }}">Interview</a>
+            <a href="/applications?student_id={{ student_id }}&status=Selected&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-success rounded-pill px-3 {{ 'active' if current_status == 'Selected' }}">Selected / Offer</a>
+            <a href="/applications?student_id={{ student_id }}&status=Rejected&search={{ search_query }}&location={{ location_filter }}&job_type={{ job_type_filter }}&sort={{ sort_by }}" class="btn btn-sm btn-outline-danger rounded-pill px-3 {{ 'active' if current_status == 'Rejected' }}">Rejected</a>
+          </div>
+
+          <div class="d-flex gap-2">
+            <a href="/applications?student_id={{ student_id }}" class="btn btn-sm btn-light border rounded-pill px-3">
+              <i class="fa-solid fa-rotate-left me-1"></i> Clear Filters
+            </a>
+            <button type="submit" class="btn btn-sm btn-primary rounded-pill px-3">
+              <i class="fa-solid fa-filter me-1"></i> Apply Filters
+            </button>
+          </div>
+        </div>
+      </form>
     </div>
 
     <!-- Applications Table -->
-    <div class="card glass-card p-4 border-0 mb-4">
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0 text-dark">Tracked Application Pipeline</h5>
+        <span class="badge bg-secondary rounded-pill">{{ applications|length }} of {{ all_count }} matching</span>
+      </div>
+
+      {% if applications %}
       <div class="table-responsive">
         <table class="table table-hover align-middle mb-0" id="applicationsTable">
           <thead class="table-light">
             <tr>
-              <th>Company</th>
-              <th>Role</th>
+              <th>Company &amp; Location</th>
+              <th>Role &amp; Type</th>
               <th>Date Applied</th>
-              <th>Status</th>
-              <th>Link / Details</th>
+              <th>Current Stage</th>
+              <th>Details &amp; Notes</th>
               <th class="text-end">Actions</th>
             </tr>
           </thead>
           <tbody>
             {% for app in applications %}
               <tr id="row-{{ app.id }}">
-                <td><b class="text-dark">{{ app.company_name }}</b></td>
-                <td><span class="fw-semibold text-primary">{{ app.role_title }}</span></td>
-                <td><span class="text-secondary small">{{ app.application_date }}</span></td>
                 <td>
-                  <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}" style="width: 140px;">
-                    <option value="Applied" {{ 'selected' if app.status == 'Applied' }}>Applied</option>
-                    <option value="Assessment" {{ 'selected' if app.status == 'Assessment' }}>Assessment</option>
-                    <option value="Interview" {{ 'selected' if app.status == 'Interview' }}>Interview</option>
-                    <option value="Selected" {{ 'selected' if app.status == 'Selected' }}>Selected 🎉</option>
-                    <option value="Rejected" {{ 'selected' if app.status == 'Rejected' }}>Rejected</option>
+                  <div class="fw-bold text-dark">{{ app.company_name }}</div>
+                  <span class="badge bg-light text-muted border rounded-pill small">
+                    <i class="fa-solid fa-location-dot me-1"></i>{{ app.location or 'Remote' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="fw-semibold text-secondary">{{ app.role_title }}</div>
+                  <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill small">
+                    {{ app.job_type or 'Full-Time' }}
+                  </span>
+                  <span class="badge bg-secondary-subtle text-secondary rounded-pill small">
+                    {{ app.experience_level or 'Entry-Level' }}
+                  </span>
+                </td>
+                <td class="text-secondary small">{{ app.application_date }}</td>
+                <td>
+                  <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}">
+                    <option value="Applied" {% if app.status == 'Applied' %}selected{% endif %}>Applied</option>
+                    <option value="Assessment" {% if app.status == 'Assessment' %}selected{% endif %}>Assessment</option>
+                    <option value="Interview" {% if app.status == 'Interview' %}selected{% endif %}>Interview</option>
+                    <option value="Selected" {% if app.status == 'Selected' or app.status == 'Offered' %}selected{% endif %}>Selected / Offer</option>
+                    <option value="Rejected" {% if app.status == 'Rejected' %}selected{% endif %}>Rejected</option>
                   </select>
                 </td>
                 <td>
                   {% if app.job_url %}
-                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-link text-decoration-none p-0">
-                      View Job <i class="fa-solid fa-arrow-up-right-from-square small"></i>
+                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 me-1">
+                      <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </a>
-                  {% else %}
-                    <span class="text-muted small">--</span>
+                  {% endif %}
+                  {% if app.notes %}
+                    <span class="small text-muted text-truncate d-inline-block" style="max-width: 140px;" title="{{ app.notes }}">
+                      <i class="fa-solid fa-note-sticky text-warning me-1"></i>{{ app.notes }}
+                    </span>
                   {% endif %}
                 </td>
                 <td class="text-end">
-                  <button type="button" class="btn btn-sm btn-outline-danger rounded-circle p-2 btn-delete-app" data-app-id="{{ app.id }}" title="Delete record">
+                  <button class="btn btn-sm btn-outline-danger rounded-circle p-1 px-2 btn-delete-app" data-app-id="{{ app.id }}" title="Delete">
                     <i class="fa-solid fa-trash-can"></i>
-                  </button>
-                </td>
-              </tr>
-            {% else %}
-              <tr>
-                <td colspan="6" class="text-center py-5 text-muted">
-                  <i class="fa-solid fa-clipboard-question fa-3x text-secondary mb-3 d-block"></i>
-                  <h5 class="fw-bold text-dark mb-1">No Applications Found</h5>
-                  <p class="small text-secondary mb-3">You haven't tracked any company applications under this filter yet.</p>
-                  <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#newApplicationModal">
-                    <i class="fa-solid fa-plus me-1"></i> Add Your First Application
                   </button>
                 </td>
               </tr>
@@ -128,35 +203,65 @@
           </tbody>
         </table>
       </div>
+      {% else %}
+      <div class="text-center py-5">
+        <i class="fa-solid fa-filter-circle-xmark fa-3x text-secondary opacity-50 mb-3"></i>
+        <h5 class="fw-bold text-muted">No Applications Match Your Filters</h5>
+        <p class="text-muted mb-3">Try adjusting your search keywords, location filters, or reset filters to see all applications.</p>
+        <a href="/applications?student_id={{ student_id }}" class="btn btn-outline-primary rounded-pill px-4">
+          <i class="fa-solid fa-rotate-left me-1"></i> View All Applications
+        </a>
+      </div>
+      {% endif %}
     </div>
-
   </main>
 
-  <!-- Modal: Add New Application -->
+  <!-- Add Application Modal -->
   <div class="modal fade" id="newApplicationModal" tabindex="-1" aria-labelledby="newApplicationModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content rounded-4 border-0 shadow">
         <form method="POST" action="/applications" id="newAppForm">
           <input type="hidden" name="student_id" value="{{ student_id }}">
-          <div class="modal-header border-0 pb-0">
+          <div class="modal-header border-bottom">
             <h5 class="modal-title fw-bold" id="newApplicationModalLabel">
-              <i class="fa-solid fa-briefcase text-primary me-2"></i> Track New Application
+              <i class="fa-solid fa-briefcase text-primary me-2"></i> Track New Job Opportunity
             </h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body p-4">
             <div class="mb-3">
-              <label for="companyName" class="form-label small fw-semibold text-secondary">Company Name *</label>
-              <input type="text" class="form-control rounded-pill" id="companyName" name="company_name" required placeholder="e.g. Google, Amazon, TCS">
+              <label for="companyName" class="form-label small fw-semibold">Company Name *</label>
+              <input type="text" class="form-control rounded-3" id="companyName" name="company_name" required placeholder="e.g. Google, Amazon, Microsoft">
             </div>
             <div class="mb-3">
-              <label for="roleTitle" class="form-label small fw-semibold text-secondary">Role Title *</label>
-              <input type="text" class="form-control rounded-pill" id="roleTitle" name="role_title" required placeholder="e.g. Associate Software Engineer">
+              <label for="roleTitle" class="form-label small fw-semibold">Role Title *</label>
+              <input type="text" class="form-control rounded-3" id="roleTitle" name="role_title" required placeholder="e.g. Software Engineer, SDE Intern">
             </div>
             <div class="row g-2 mb-3">
               <div class="col-md-6">
-                <label for="statusSelect" class="form-label small fw-semibold text-secondary">Current Stage</label>
-                <select class="form-select rounded-pill" id="statusSelect" name="status">
+                <label for="locationInput" class="form-label small fw-semibold">Location</label>
+                <input type="text" class="form-control rounded-3" id="locationInput" name="location" placeholder="e.g. Bangalore, Remote" value="Remote">
+              </div>
+              <div class="col-md-6">
+                <label for="jobTypeSelect" class="form-label small fw-semibold">Job Type</label>
+                <select class="form-select rounded-3" id="jobTypeSelect" name="job_type">
+                  <option value="Full-Time" selected>Full-Time</option>
+                  <option value="Internship">Internship</option>
+                  <option value="Contract">Contract</option>
+                </select>
+              </div>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label for="expLevelSelect" class="form-label small fw-semibold">Experience Level</label>
+                <select class="form-select rounded-3" id="expLevelSelect" name="experience_level">
+                  <option value="Entry-Level" selected>Entry-Level (Fresher)</option>
+                  <option value="Mid-Level">Mid-Level</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label for="statusSelect" class="form-label small fw-semibold">Current Stage</label>
+                <select class="form-select rounded-3" id="statusSelect" name="status">
                   <option value="Applied" selected>Applied</option>
                   <option value="Assessment">Online Assessment</option>
                   <option value="Interview">Technical Interview</option>
@@ -164,42 +269,31 @@
                   <option value="Rejected">Rejected</option>
                 </select>
               </div>
-              <div class="col-md-6">
-                <label for="applicationDate" class="form-label small fw-semibold text-secondary">Date Applied</label>
-                <input type="date" class="form-control rounded-pill" id="applicationDate" name="application_date">
-              </div>
             </div>
             <div class="mb-3">
-              <label for="jobUrl" class="form-label small fw-semibold text-secondary">Job URL or Portal Link (Optional)</label>
-              <input type="url" class="form-control rounded-pill" id="jobUrl" name="job_url" placeholder="https://careers.company.com/...">
+              <label for="applicationDate" class="form-label small fw-semibold">Date Applied</label>
+              <input type="date" class="form-control rounded-3" id="applicationDate" name="application_date">
+            </div>
+            <div class="mb-3">
+              <label for="jobUrl" class="form-label small fw-semibold">Job URL (Optional)</label>
+              <input type="url" class="form-control rounded-3" id="jobUrl" name="job_url" placeholder="https://careers.google.com/...">
             </div>
             <div class="mb-2">
-              <label for="notes" class="form-label small fw-semibold text-secondary">Interview Notes / Referral (Optional)</label>
-              <textarea class="form-control rounded-3" id="notes" name="notes" rows="2" placeholder="Referral contact, HR round prep notes..."></textarea>
+              <label for="notes" class="form-label small fw-semibold">Notes / Referral</label>
+              <textarea class="form-control rounded-3" id="notes" name="notes" rows="2" placeholder="Referral contact, recruiter info..."></textarea>
             </div>
           </div>
-          <div class="modal-footer border-0 pt-0">
-            <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-primary rounded-pill px-4" id="btnSaveApp">Save Application</button>
+          <div class="modal-footer border-top">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary rounded-pill px-4">Save Application</button>
           </div>
         </form>
       </div>
     </div>
   </div>
 
-  <!-- Footer -->
-  <footer class="bg-white border-top py-4 mt-auto">
-    <div class="container text-center text-secondary small">
-      &copy; 2026 AI Campus Placement Agent. Built by Deepika Gandla.
-    </div>
-  </footer>
-
-  <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-  <!-- Custom JS -->
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
   <script>
-    // Live status updates and deletion
     document.querySelectorAll(".status-dropdown").forEach(sel => {
       sel.addEventListener("change", async (e) => {
         const appId = e.target.getAttribute("data-app-id");

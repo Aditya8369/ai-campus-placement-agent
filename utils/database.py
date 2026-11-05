@@ -67,7 +67,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 4: Store job application tracking records (#143)
+        # Table 4: Store job application tracking records (#143, #193)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS job_applications (
                 id TEXT PRIMARY KEY,
@@ -79,6 +79,9 @@ def init_db() -> None:
                 job_url TEXT,
                 job_description TEXT,
                 notes TEXT,
+                location TEXT DEFAULT 'Remote',
+                job_type TEXT DEFAULT 'Full-Time',
+                experience_level TEXT DEFAULT 'Entry-Level',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -120,6 +123,16 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE analyses ADD COLUMN student_id TEXT DEFAULT 'default_student'")
         if "version_number" not in existing_cols:
             cursor.execute("ALTER TABLE analyses ADD COLUMN version_number INTEGER DEFAULT 1")
+
+        # Schema migration for job_applications table (#193)
+        cursor.execute("PRAGMA table_info(job_applications)")
+        app_cols = [col[1] for col in cursor.fetchall()]
+        if "location" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN location TEXT DEFAULT 'Remote'")
+        if "job_type" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN job_type TEXT DEFAULT 'Full-Time'")
+        if "experience_level" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -639,9 +652,12 @@ def save_job_application(
     job_url: Optional[str] = None,
     job_description: Optional[str] = None,
     notes: Optional[str] = None,
+    location: str = "Remote",
+    job_type: str = "Full-Time",
+    experience_level: str = "Entry-Level"
 ) -> None:
     """
-    Saves or updates a candidate job application record (#143).
+    Saves or updates a candidate job application record (#143, #193).
     Ensures per-user data segregation.
     """
     import datetime
@@ -651,8 +667,9 @@ def save_job_application(
         date_str = application_date or datetime.date.today().isoformat()
         cursor.execute("""
             INSERT OR REPLACE INTO job_applications (
-                id, student_id, company_name, role_title, status, application_date, job_url, job_description, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, student_id, company_name, role_title, status, application_date,
+                job_url, job_description, notes, location, job_type, experience_level
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             app_id,
             student_id.strip() if student_id else "default_student",
@@ -663,6 +680,9 @@ def save_job_application(
             (job_url or "").strip(),
             (job_description or "").strip(),
             (notes or "").strip(),
+            (location or "Remote").strip(),
+            (job_type or "Full-Time").strip(),
+            (experience_level or "Entry-Level").strip()
         ))
         conn.commit()
         logger.info(f"Saved job application {app_id} for student {student_id}")
@@ -675,23 +695,55 @@ def save_job_application(
 
 def get_job_applications(
     student_id: str,
-    status_filter: Optional[str] = None
+    status_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    location_filter: Optional[str] = None,
+    job_type_filter: Optional[str] = None,
+    experience_level_filter: Optional[str] = None,
+    sort_by: str = "recent"
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves all job application records for a specific student, with optional status filtering (#143).
+    Retrieves all job application records for a specific student, with advanced search,
+    location, job type, and experience filtering (#143, #193).
     Strictly enforces user data isolation.
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = "SELECT * FROM job_applications WHERE student_id = ?"
+        conditions = ["student_id = ?"]
         params: List[Any] = [student_id.strip() if student_id else "default_student"]
 
         if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
-            query += " AND LOWER(status) = LOWER(?)"
+            conditions.append("LOWER(status) = LOWER(?)")
             params.append(status_filter.strip())
 
-        query += " ORDER BY application_date DESC, created_at DESC"
+        if search_query and search_query.strip():
+            kw = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(job_description) LIKE ?)")
+            params.extend([kw, kw, kw])
+
+        if location_filter and location_filter.strip() and location_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(location) LIKE LOWER(?)")
+            params.append(f"%{location_filter.strip()}%")
+
+        if job_type_filter and job_type_filter.strip() and job_type_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(job_type) = LOWER(?)")
+            params.append(job_type_filter.strip())
+
+        if experience_level_filter and experience_level_filter.strip() and experience_level_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(experience_level) = LOWER(?)")
+            params.append(experience_level_filter.strip())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+
+        if sort_by == "oldest":
+            order_clause = "ORDER BY application_date ASC, created_at ASC"
+        elif sort_by == "company":
+            order_clause = "ORDER BY company_name ASC"
+        else:
+            order_clause = "ORDER BY application_date DESC, created_at DESC"
+
+        query = f"SELECT * FROM job_applications {where_clause} {order_clause}"
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return [dict(r) for r in rows]
