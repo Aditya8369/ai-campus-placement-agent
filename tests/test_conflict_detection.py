@@ -333,6 +333,7 @@ def test_coordinator_integration_preserves_keys_and_adds_conflicts(coordinator):
                 "interview_questions",
                 "overall_recommendation_summary",
                 "conflicts",
+                "section_status",
             }
             assert set(result.keys()) == expected_keys
 

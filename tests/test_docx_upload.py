@@ -194,6 +194,8 @@ def test_route_analyze_accepts_docx_upload(monkeypatch, sample_docx_bytes):
 
     app.config["TESTING"] = True
     with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["user_id"] = "test-user-id"
         data = {
             "resume": (sample_docx_bytes, "candidate_cv.docx"),
             "company": "Google",
@@ -208,6 +210,8 @@ def test_route_analyze_rejects_unsupported_extensions():
     """Verify the /analyze Flask endpoint rejects non-pdf and non-docx files with an error flash."""
     app.config["TESTING"] = True
     with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess["user_id"] = "test-user-id"
         fake_exe = io.BytesIO(b"executable dummy content")
         data = {
             "resume": (fake_exe, "malicious_script.exe"),

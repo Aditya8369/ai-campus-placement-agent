@@ -5,10 +5,13 @@ Shared pytest fixtures and Gemini API client mocking utilities for agent test su
 import os
 os.environ.setdefault("FLASK_SECRET_KEY", "test-secret-key-12345")
 os.environ.setdefault("GEMINI_API_KEY", "")
+os.environ.setdefault("GEMINI_RETRY_INITIAL_DELAY", "0.001")
+os.environ.setdefault("GEMINI_RETRY_MAX_DELAY", "10.0")
 
 import json
 import pytest
 from google.genai.errors import APIError
+
 
 
 class MockGeminiResponse:
@@ -19,17 +22,33 @@ class MockGeminiResponse:
 
 class MockGeminiModels:
     """Mock of google.genai.Client.models service."""
-    def __init__(self, response_text: str = "", side_effect: Exception = None):
+    def __init__(self, response_text: str = "", side_effect=None):
         self.response_text = response_text
         self.side_effect = side_effect
         self.last_prompt = None
         self.last_config = None
+        self.call_count = 0
 
     def generate_content(self, model=None, contents=None, config=None):
+        self.call_count += 1
         self.last_prompt = contents
         self.last_config = config
         if self.side_effect:
-            raise self.side_effect
+            if isinstance(self.side_effect, list):
+                if self.side_effect:
+                    item = self.side_effect.pop(0)
+                    if isinstance(item, Exception) or (isinstance(item, type) and issubclass(item, Exception)):
+                        raise item
+                    if isinstance(item, str):
+                        return MockGeminiResponse(item)
+                    return item
+            elif isinstance(self.side_effect, Exception) or (isinstance(self.side_effect, type) and issubclass(self.side_effect, Exception)):
+                raise self.side_effect
+            elif callable(self.side_effect):
+                res = self.side_effect(model=model, contents=contents, config=config)
+                if isinstance(res, Exception):
+                    raise res
+                return res
         return MockGeminiResponse(self.response_text)
 
 

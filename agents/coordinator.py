@@ -5,7 +5,8 @@ from typing import Dict, Any, List, Optional, Callable
 
 import prompts
 import config
-from utils.gemini import generate_json_response
+from utils.gemini import generate_json_response, AIResponseFormatError
+from agents.coordinator_schema import validate_coordinator_payload
 
 # Import specialized agents
 from agents.resume_agent import ResumeAgent
@@ -83,34 +84,59 @@ class CoordinatorAgent:
             resume_text=formatted_resume
         )
 
-        # 4. Call the Gemini API with structured JSON configs
+        # 4. Call the Gemini API with structured JSON configs, with one-time retry for format failures
         logger.info("CoordinatorAgent: Issuing request to Gemini model.")
+        raw_json_response = None
         try:
             raw_json_response = generate_json_response(
                 system_instruction=prompts.ANALYSIS_SYSTEM_INSTRUCTION,
                 prompt=user_prompt
             )
-            if not isinstance(raw_json_response, dict):
-                logger.warning(
-                    f"CoordinatorAgent: Unexpected non-dict root JSON response ({type(raw_json_response)}). "
-                    "Applying resilient defaults."
+        except AIResponseFormatError as fmt_err:
+            logger.warning(
+                f"CoordinatorAgent: Primary AI JSON generation failed ({fmt_err}). "
+                "Retrying once with strict JSON schema reminder prompt."
+            )
+            reminder_prompt = (
+                user_prompt +
+                "\n\nCRITICAL REMINDER: Your previous response was malformed, incomplete, or not valid JSON. "
+                "You MUST return ONLY a single valid JSON object matching the exact schema specified above. "
+                "Do not include markdown tags (```json), explanations, or trailing commas."
+            )
+            try:
+                raw_json_response = generate_json_response(
+                    system_instruction=prompts.ANALYSIS_SYSTEM_INSTRUCTION,
+                    prompt=reminder_prompt
                 )
-                raw_json_response = {}
+            except AIResponseFormatError:
+                logger.error("CoordinatorAgent: Retry also produced malformed/invalid JSON. Re-raising format error.")
+                raise
         except Exception as api_err:
             logger.error(f"CoordinatorAgent: AI call failed ({api_err}). Re-raising for user handling.")
             raise
 
-        # 4. Extract data blocks from the root JSON response
-        logger.info("CoordinatorAgent: Extracting and delegating JSON payload blocks.")
-        resume_block = raw_json_response.get("resume_analysis", {})
-        job_match_block = raw_json_response.get("job_match", {})
-        skill_gap_block = raw_json_response.get("skill_gap", [])
-        roadmap_block = raw_json_response.get("learning_roadmap", [])
-        interview_block = raw_json_response.get("interview_questions", {})
-        overall_summary_block = raw_json_response.get("overall_recommendation_summary", "Overall campus placement analysis successfully compiled.")
+        if not isinstance(raw_json_response, dict):
+            logger.warning(
+                f"CoordinatorAgent: Unexpected non-dict root JSON response ({type(raw_json_response)}). "
+                "Applying resilient defaults."
+            )
+            raw_json_response = {}
 
-        # 5. Hand over subsections to specialized sub-agents for parsing & structural safety
+        # 5. Validate response blocks with Pydantic schema before delegation
+        logger.info("CoordinatorAgent: Validating JSON blocks against Pydantic schema.")
+        validated_blocks, section_status = validate_coordinator_payload(raw_json_response)
+
+        # 6. Extract sanitized blocks and delegate to specialized sub-agents
+        logger.info("CoordinatorAgent: Delegating validated payload blocks to sub-agents.")
+        resume_block = validated_blocks["resume_analysis"]
+        job_match_block = validated_blocks["job_match"]
+        skill_gap_block = validated_blocks["skill_gap"]
+        roadmap_block = validated_blocks["learning_roadmap"]
+        interview_block = validated_blocks["interview_questions"]
+        overall_summary_block = validated_blocks["overall_recommendation_summary"]
+
         processed_resume = self.resume_agent.process(resume_block)
+        processed_resume["status"] = section_status["resume_analysis"]
 
         if on_progress:
             on_progress("step3", "JobMatchAgent", f"Benchmarking technical capabilities against {company_name} hiring criteria...", 50)
@@ -119,6 +145,7 @@ class CoordinatorAgent:
             company_name=company_name,
             ats_score=processed_resume.get("ats_score", 70)
         )
+        processed_job_match["status"] = section_status["job_match"]
 
         if on_progress:
             on_progress("step4", "SkillGapAgent", "Detecting critical skill deficiencies and recommending portfolio projects...", 65)
@@ -131,8 +158,9 @@ class CoordinatorAgent:
         if on_progress:
             on_progress("step6", "InterviewAgent", f"Synthesizing customized Technical, HR, and Behavioral questions for {company_name}...", 90)
         processed_interview = self.interview_agent.process(interview_block)
+        processed_interview["status"] = section_status["interview_questions"]
 
-        # 6. Detect cross-section conflicts deterministically without extra API calls
+        # 7. Detect cross-section conflicts deterministically without extra API calls
         conflicts = self._detect_conflicts(
             job_match=processed_job_match,
             skill_gap=processed_skill_gap,
@@ -147,7 +175,7 @@ class CoordinatorAgent:
         else:
             logger.info("CoordinatorAgent: No cross-section conflicts detected.")
 
-        # 7. Combine validated data into a final coordinated results payload
+        # 8. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
             "job_match": processed_job_match,
@@ -155,7 +183,8 @@ class CoordinatorAgent:
             "learning_roadmap": processed_roadmap,
             "interview_questions": processed_interview,
             "overall_recommendation_summary": overall_summary_block,
-            "conflicts": conflicts
+            "conflicts": conflicts,
+            "section_status": section_status
         }
 
         logger.info("CoordinatorAgent: Multi-agent processing complete.")

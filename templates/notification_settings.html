@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Notification Settings - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-clipboard-list me-1"></i> Job Tracker
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1"><i class="fa-solid fa-envelope-open-text text-primary me-2"></i>Email Notification Settings</h2>
+        <p class="text-muted mb-0">Stay informed about your placement applications, interview rounds, and critical deadlines without checking the portal constantly.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-user-graduate me-1"></i> Student ID: {{ student_id }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show rounded-3" role="alert">
+            <i class="fa-solid {{ 'fa-circle-check text-success' if category == 'success' else 'fa-circle-exclamation text-danger' }} me-2"></i>
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Notification Preferences Card -->
+    <div class="row g-4">
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+          <form method="POST" action="/notification-settings">
+            <input type="hidden" name="student_id" value="{{ student_id }}">
+
+            <div class="mb-4">
+              <label for="email" class="form-label fw-semibold">Destination Email Address</label>
+              <div class="input-group">
+                <span class="input-group-text bg-white"><i class="fa-solid fa-at text-muted"></i></span>
+                <input type="email" class="form-control" id="email" name="email" value="{{ prefs.email }}" placeholder="your.name@university.edu">
+              </div>
+              <div class="form-text">All placement alerts and interview reminders will be delivered to this inbox.</div>
+            </div>
+
+            <hr class="my-4">
+
+            <h5 class="fw-bold mb-3"><i class="fa-solid fa-sliders text-primary me-2"></i>Activity Notification Triggers</h5>
+
+            <!-- Master Toggle -->
+            <div class="form-check form-switch mb-3 p-3 bg-light rounded-3 border">
+              <input class="form-check-input ms-0 me-3" type="checkbox" id="email_enabled" name="email_enabled" {% if prefs.email_enabled %}checked{% endif %}>
+              <label class="form-check-label fw-bold" for="email_enabled">
+                Enable Email Notifications (Master Switch)
+              </label>
+              <div class="text-muted small ps-5">Turn off to suspend all outgoing placement emails temporarily.</div>
+            </div>
+
+            <div class="list-group list-group-flush mb-4">
+              <!-- Welcome Email -->
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                <div>
+                  <div class="fw-semibold">Welcome Registration Confirmation</div>
+                  <div class="text-muted small">Receive onboarding instructions and platform links when you register.</div>
+                </div>
+                <div class="form-switch">
+                  <input class="form-check-input" type="checkbox" id="notify_welcome" name="notify_welcome" {% if prefs.notify_welcome %}checked{% endif %}>
+                </div>
+              </div>
+
+              <!-- Application Logged -->
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                <div>
+                  <div class="fw-semibold">New Job Application Logged</div>
+                  <div class="text-muted small">Confirmations whenever you track a new company or internship role.</div>
+                </div>
+                <div class="form-switch">
+                  <input class="form-check-input" type="checkbox" id="notify_application_created" name="notify_application_created" {% if prefs.notify_application_created %}checked{% endif %}>
+                </div>
+              </div>
+
+              <!-- Status Change -->
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                <div>
+                  <div class="fw-semibold">Application Stage &amp; Status Transitions</div>
+                  <div class="text-muted small">Instant alerts when an application shifts to Shortlisted, Interview, or Offer.</div>
+                </div>
+                <div class="form-switch">
+                  <input class="form-check-input" type="checkbox" id="notify_status_change" name="notify_status_change" {% if prefs.notify_status_change %}checked{% endif %}>
+                </div>
+              </div>
+
+              <!-- Interview Reminders -->
+              <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-3">
+                <div>
+                  <div class="fw-semibold">Upcoming Interview Date Reminders</div>
+                  <div class="text-muted small">Timely reminders before scheduled technical, HR, and behavioral interviews.</div>
+                </div>
+                <div class="form-switch">
+                  <input class="form-check-input" type="checkbox" id="notify_interview_reminder" name="notify_interview_reminder" {% if prefs.notify_interview_reminder %}checked{% endif %}>
+                </div>
+              </div>
+            </div>
+
+            <div class="text-end">
+              <button type="submit" class="btn btn-primary rounded-pill px-4 py-2">
+                <i class="fa-solid fa-floppy-disk me-1"></i> Save Preferences
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Live Test Dispatch Widget -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-paper-plane text-success me-2"></i>Test Interview Reminder</h5>
+          <p class="text-muted small">Send a sample interview reminder email to verify your email template and delivery configuration.</p>
+          
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Target Company</label>
+            <input type="text" id="test_company" class="form-control form-control-sm" value="Google">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Interview Round</label>
+            <input type="text" id="test_round" class="form-control form-control-sm" value="Technical Round (DSA)">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-semibold">Scheduled Date/Time</label>
+            <input type="text" id="test_time" class="form-control form-control-sm" value="Tomorrow at 10:00 AM IST">
+          </div>
+
+          <button type="button" id="btnSendTestReminder" class="btn btn-outline-primary btn-sm rounded-pill w-100 py-2">
+            <i class="fa-solid fa-bell me-1"></i> Send Test Notification
+          </button>
+
+          <div id="testResultAlert" class="alert alert-success mt-3 small d-none" role="alert"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.getElementById("btnSendTestReminder").addEventListener("click", async () => {
+      const company = document.getElementById("test_company").value;
+      const round = document.getElementById("test_round").value;
+      const time = document.getElementById("test_time").value;
+      const alertBox = document.getElementById("testResultAlert");
+
+      try {
+        const res = await fetch("/api/notifications/remind-interview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            student_id: "{{ student_id }}",
+            company_name: company,
+            round_type: round,
+            scheduled_time: time
+          })
+        });
+        const data = await res.json();
+        alertBox.classList.remove("d-none", "alert-danger");
+        alertBox.classList.add("alert-success");
+        alertBox.innerText = data.success ? "Notification dispatched successfully!" : (data.message || "Failed to dispatch notification.");
+      } catch (err) {
+        alertBox.classList.remove("d-none", "alert-success");
+        alertBox.classList.add("alert-danger");
+        alertBox.innerText = "Error contacting notification service.";
+      }
+    });
+  </script>
+</body>
+
+</html>
