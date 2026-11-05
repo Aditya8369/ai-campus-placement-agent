@@ -17,6 +17,8 @@ def client(tmp_path):
         init_db()
         app.config["TESTING"] = True
         with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["user_id"] = "default_student"
             yield client
 
 def test_database_user_placement_history(tmp_path):

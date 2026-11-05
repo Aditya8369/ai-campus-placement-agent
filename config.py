@@ -67,6 +67,13 @@ RATE_LIMITS = {
     "default": RATE_LIMIT_DEFAULT,
 }
 
+# Scanned / Image-Only PDF Detection & OCR Fallback (Issue #154)
+# Detects image-only / scanned PDFs where PyPDF2 extracts fewer than MIN_PDF_TEXT_CHARS.
+# Prevents meaningless analyses and wasted AI quota.
+MIN_PDF_TEXT_CHARS = int(os.getenv("MIN_PDF_TEXT_CHARS", "100"))
+MIN_PDF_EXTRACTED_CHARS = MIN_PDF_TEXT_CHARS
+ENABLE_OCR_FALLBACK = os.getenv("ENABLE_OCR_FALLBACK", "false").lower() in ("true", "1", "yes")
+
 # Gemini API Transient Error Retry & Exponential Backoff Configurations (Issue #155)
 # Transient errors (429 rate limit, 500/503 server errors, network timeouts) are retried automatically.
 # Permanent errors (400 bad request, 401/403 invalid credentials) fail fast without retry.

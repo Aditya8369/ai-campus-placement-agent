@@ -13,6 +13,7 @@ import pytest
 from google.genai.errors import APIError
 
 
+
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""
     def __init__(self, text: str):
