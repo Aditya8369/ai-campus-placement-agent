@@ -15,9 +15,10 @@ from flask import (
     jsonify,
     send_file,
     Response,
+    session as flask_session,
 )
 from werkzeug.utils import secure_filename
-
+from werkzeug.security import generate_password_hash, check_password_hash
 
 import config
 from utils.database import (
@@ -36,6 +37,9 @@ from utils.database import (
     verify_database_integrity,
     get_batch_comparison,
     save_batch_comparison,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -43,7 +47,7 @@ from utils.progress_tracker import (
     build_longitudinal_series,
     generate_side_by_side_diff
 )
-from utils.cohort_analytics import CohortAnalyticsService
+
 from utils.pdf_reader import (
     extract_text_from_pdf,
     extract_text_from_docx,
@@ -87,8 +91,34 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+app.config["PERMANENT_SESSION_LIFETIME"] = 3600
 
+@app.before_request
+def require_login():
+    public_endpoints = {
+        "index",
+        "login",
+        "register",
+        "healthz",
+        "health",
+        "api_health",
+        "static",
+    }
 
+    if request.endpoint in public_endpoints:
+        return None
+
+    if not flask_session.get("user_id"):
+        if request.path.startswith("/api/"):
+            return jsonify({
+                "status": "error",
+                "message": "Authentication required."
+            }), 401
+
+        return redirect(url_for("login"))
 @app.before_request
 def assign_request_id():
     """Assign or extract an X-Request-ID for distributed tracing and structured correlation."""
@@ -237,6 +267,69 @@ def health_check():
         "checks": checks,
     }), http_status
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    flask_session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("index"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("login.html")
+
+        user = get_user_by_email(email)
+
+        if not user or not check_password_hash(user["password_hash"], password):
+            flash("Invalid email or password.", "error")
+            return render_template("login.html")
+
+        flask_session.clear()
+        flask_session["user_id"] = user["id"]
+        flask_session["user_name"] = user["name"]
+        flask_session.permanent = True
+
+        flash("Login successful.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not name or not email or not password:
+            flash("All fields are required.", "error")
+            return render_template("register.html")
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "error")
+            return render_template("register.html")
+
+        password_hash = generate_password_hash(password)
+        user_id = str(uuid.uuid4())
+
+        created = create_user(user_id, name, email, password_hash)
+
+        if not created:
+            flash("An account with this email already exists.", "error")
+            return render_template("register.html")
+
+        flash("Registration successful. Please log in.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
 @app.route("/")
 def index() -> str:
     """
@@ -314,7 +407,7 @@ def analyze():
 
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
-        student_id = request.form.get("student_id", "default_student").strip()
+        student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -426,7 +519,7 @@ def start_analysis_async():
 
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
-        student_id = request.form.get("student_id", "default_student").strip()
+        student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -524,7 +617,7 @@ def api_batch_compare():
             if isinstance(companies, str):
                 companies = [c.strip() for c in companies.split(",") if c.strip()]
             job_description = (json_data.get("job_description") or "").strip()
-            student_id = (json_data.get("student_id") or "default_student").strip()
+            student_id = flask_session["user_id"]
             resume_filename = json_data.get("resume_filename") or "pasted_resume.txt"
             validation_error = None
             if not resume_text:
@@ -540,7 +633,7 @@ def api_batch_compare():
                     sel = request.form.get("company", "Google").strip()
                     companies = [sel] if sel != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
             job_description = request.form.get("job_description", "").strip()
-            student_id = request.form.get("student_id", "default_student").strip()
+            student_id = flask_session["user_id"]
 
         if validation_error:
             if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -589,7 +682,7 @@ def view_batch_compare(batch_id: str):
     Radar charts and hiring probability rankings.
     """
     record = get_batch_comparison(batch_id)
-    if not record:
+    if not record or record.get("student_id") != flask_session["user_id"]:
         flash("Batch comparison record not found.", "error")
         return redirect(url_for("index"))
 
@@ -612,8 +705,8 @@ def api_get_batch_compare(batch_id: str):
     Retrieves stored batch comparison results JSON for a given batch_id.
     """
     record = get_batch_comparison(batch_id)
-    if not record:
-        return jsonify({"success": False, "error": f"Batch '{batch_id}' not found."}), 404
+    if not record or record.get("student_id") != flask_session["user_id"]:
+        return jsonify({"success": False, "error": "Batch not found."}), 404
     return jsonify({
         "success": True,
         "batch_id": batch_id,
@@ -628,7 +721,7 @@ def dashboard(analysis_id: str) -> str:
     progress trends and multi-version delta analysis.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
 
@@ -682,7 +775,7 @@ def interview(analysis_id: str) -> str:
     Supports optional ?round=HR|Technical|Behavioral filter to practice focused rounds.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
         flash("Cannot initialize mock interview. Parent analysis not found.", "error")
         return redirect(url_for("index"))
 
@@ -743,8 +836,12 @@ def submit_interview_answer(analysis_id: str):
             or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
             or analysis_id
         )
-
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+                return jsonify({"success": False, "error": "Interview session not found"}), 404
         session = get_interview_session(session_id)
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+            return jsonify({"error": "Interview session not found."}), 404
         if not session and session_id != analysis_id:
             session_id = analysis_id
             session = get_interview_session(session_id)
@@ -924,9 +1021,16 @@ def api_interview_coding_problem(analysis_id: str = None):
     """
     try:
         company_name = request.args.get("company", "").strip()
-        if not company_name and analysis_id:
+        if analysis_id:
             record = get_analysis(analysis_id)
-            if record:
+
+            if not record or record.get("student_id") != flask_session["user_id"]:
+                 return jsonify({
+                    "status": "error",
+                    "message": "Analysis not found."
+        }), 404
+
+            if not company_name:
                 company_name = record.get("company_name", "General")
         if not company_name:
             company_name = "General"
@@ -970,12 +1074,20 @@ def api_evaluate_code(analysis_id: str = None):
         language = payload.get("language", "python")
         problem = payload.get("problem")
 
-        if not isinstance(problem, dict) or not problem:
+        if analysis_id:
+            rec = get_analysis(analysis_id)
+
+            if not rec or rec.get("student_id") != flask_session["user_id"]:
+                 return jsonify({
+                    "status": "error",
+                    "message": "Analysis not found."
+        }), 404
+
+            company = rec.get("company_name", "General")
+        else:
             company = "General"
-            if analysis_id:
-                rec = get_analysis(analysis_id)
-                if rec:
-                    company = rec.get("company_name", "General")
+
+        if not isinstance(problem, dict) or not problem:
             problem = coding_assessment_agent.get_fallback_problem(company)
 
         eval_result = coding_assessment_agent.evaluate_code(
@@ -1014,6 +1126,10 @@ def export_interview_json(analysis_id: str):
         session = get_interview_session(session_id)
 
     analysis_record = get_analysis(analysis_id)
+
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+        return jsonify({"error": "Interview session not found."}), 404
+
     if not session:
         flash("Interview session not found.", "error")
         return redirect(url_for("index"))
@@ -1046,9 +1162,9 @@ def certificate(analysis_id: str):
     Renders printable placement readiness completion certificate.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
-        flash("The requested placement analysis report could not be found.", "error")
-        return redirect(url_for("index"))
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+            flash("The requested placement analysis report could not be found.", "error")
+            return redirect(url_for("index"))
 
     return render_template(
         "certificate.html",
@@ -1064,7 +1180,7 @@ def download_certificate_pdf(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             flash("Cannot generate certificate. Placement record not found.", "error")
             return redirect(url_for("index"))
 
@@ -1093,7 +1209,7 @@ def download_pdf_report(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
@@ -1130,11 +1246,11 @@ def api_generate_outreach(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             return jsonify({
                 "success": False,
-                "error": f"Analysis '{analysis_id}' not found."
-            }), 404
+                "error": "Analysis not found."
+    }), 404
 
         payload = request.get_json(silent=True) or {}
         tone = payload.get("tone") or request.form.get("tone", "formal")
@@ -1180,6 +1296,14 @@ def api_download_outreach(analysis_id: str = None):
         custom_content = payload.get("content")
 
         analysis_record = get_analysis(aid) if aid else None
+        if aid and (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "success": False,
+                "error": "Analysis not found."
+            }), 404
         company_name = (
             payload.get("company_name")
             or (analysis_record.get("company_name") if analysis_record else None)
@@ -1257,7 +1381,10 @@ def api_recent_analyses():
     """
     try:
         limit = request.args.get("limit", default=10, type=int)
-        analyses = get_recent_analyses(limit=limit)
+        analyses = get_recent_analyses(
+            limit=limit,
+             student_id=flask_session["user_id"]
+        )
         return jsonify({
             "status": "success",
             "count": len(analyses),
@@ -1276,6 +1403,16 @@ def api_delete_analysis(analysis_id: str):
     Deletes an analysis session and related mock interview records.
     """
     try:
+        analysis_record = get_analysis(analysis_id)
+        if (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "status": "error",
+                "message": "Analysis not found."
+            }), 404
+
         deleted = delete_analysis(analysis_id)
         if not deleted:
             return jsonify({
@@ -1299,6 +1436,11 @@ def api_student_progress(student_id: str):
     Returns a candidate's full longitudinal version history and trend metrics.
     """
     try:
+        if student_id != flask_session["user_id"]:
+            return jsonify({
+                "status": "error",
+                "message": "Progress not found."
+            }), 404
         versions = get_student_versions(student_id)
         trend_series = build_longitudinal_series(versions)
         return jsonify({
@@ -1321,8 +1463,16 @@ def api_progress_diff(id_a: str, id_b: str):
     try:
         rec_a = get_analysis(id_a)
         rec_b = get_analysis(id_b)
-        if not rec_a or not rec_b:
-            return jsonify({"status": "error", "message": "One or both analysis records not found."}), 404
+        if (
+            not rec_a
+            or not rec_b
+            or rec_a.get("student_id") != flask_session["user_id"]
+            or rec_b.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "status": "error",
+                "message": "One or both analysis records not found."
+            }), 404
 
         diff = generate_side_by_side_diff(rec_a, rec_b)
         return jsonify({
@@ -1343,7 +1493,10 @@ def api_job_recommendations(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
             return jsonify({
                 "success": False,
                 "error": f"Candidate analysis record '{analysis_id}' not found."

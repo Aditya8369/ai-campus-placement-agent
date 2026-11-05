@@ -28,6 +28,16 @@ def init_db() -> None:
     try:
         cursor = conn.cursor()
         
+         # Table 0: Store registered user accounts
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         # Table 1: Store placement analysis findings with candidate profile & version indexing
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS analyses (
@@ -316,22 +326,38 @@ def update_interview_session(interview_id: str, current_question_index: int, ans
     finally:
         conn.close()
 
-def get_recent_analyses(limit: int = 10) -> list:
+def get_recent_analyses(
+    limit: int = 10,
+    student_id: Optional[str] = None
+) -> list:
     """
-    Retrieves the most recent analysis sessions ordered by created_at DESC.
-    Includes parsed resume ATS score and company match percentage for quick display.
+    Retrieves recent analyses, optionally filtered by student ID.
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, resume_filename, company_name, job_description, results_json, created_at
-            FROM analyses
-            ORDER BY created_at DESC
-            LIMIT ?
-        """, (max(1, min(limit, 50)),))
+
+        if student_id:
+            cursor.execute("""
+                SELECT id, resume_filename, company_name, job_description,
+                       results_json, created_at
+                FROM analyses
+                WHERE student_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (student_id, max(1, min(limit, 50))))
+        else:
+            cursor.execute("""
+                SELECT id, resume_filename, company_name, job_description,
+                       results_json, created_at
+                FROM analyses
+                ORDER BY created_at DESC
+                LIMIT ?
+            """, (max(1, min(limit, 50))))
+
         rows = cursor.fetchall()
         recent = []
+
         for row in rows:
             record = dict(row)
             try:
@@ -343,11 +369,14 @@ def get_recent_analyses(limit: int = 10) -> list:
             except Exception:
                 record["ats_score"] = 0
                 record["match_percentage"] = 0
+
             recent.append(record)
+
         return recent
+
     except Exception as e:
         logger.error(f"Error fetching recent analyses: {str(e)}")
-        raise e
+        raise
     finally:
         conn.close()
 
@@ -502,5 +531,53 @@ def get_batch_comparison(batch_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error fetching batch comparison {batch_id}: {e}")
         raise e
+    finally:
+        conn.close()
+def create_user(user_id: str, name: str, email: str, password_hash: str) -> bool:
+    """Create a new user account."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO users (id, name, email, password_hash)
+            VALUES (?, ?, ?, ?)
+        """, (user_id, name.strip(), email.strip().lower(), password_hash))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except Exception as exc:
+        logger.error(f"Error creating user: {exc}")
+        raise
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user by email address."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email.strip().lower(),)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user by their ID."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
