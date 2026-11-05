@@ -16,9 +16,10 @@ from flask import (
     jsonify,
     send_file,
     Response,
+    session as flask_session,
 )
 from werkzeug.utils import secure_filename
-
+from werkzeug.security import generate_password_hash, check_password_hash
 
 import config
 from utils.database import (
@@ -41,6 +42,9 @@ from utils.database import (
     get_student_interview_performance_analytics,
     get_user_placement_history,
     save_batch_comparison,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
     save_job_application,
     get_job_applications,
     delete_job_application,
@@ -53,7 +57,7 @@ from utils.progress_tracker import (
     generate_side_by_side_diff,
     compare_two_resume_texts
 )
-from utils.cohort_analytics import CohortAnalyticsService
+
 from utils.pdf_reader import (
     extract_text_from_pdf,
     extract_text_from_docx,
@@ -67,7 +71,13 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
-from utils.report_generator import generate_pdf_report, generate_certificate_pdf, generate_skills_gap_pdf
+from utils.report_generator import (
+    generate_pdf_report,
+    generate_certificate_pdf,
+    generate_skills_gap_pdf,
+    generate_interview_transcript_pdf,
+    generate_interview_transcript_markdown,
+)
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -90,6 +100,7 @@ from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
+from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
 
 # Configure structured application logging
 logging.basicConfig(
@@ -102,8 +113,34 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+app.config["PERMANENT_SESSION_LIFETIME"] = 3600
 
+@app.before_request
+def require_login():
+    public_endpoints = {
+        "index",
+        "login",
+        "register",
+        "healthz",
+        "health",
+        "api_health",
+        "static",
+    }
 
+    if request.endpoint in public_endpoints:
+        return None
+
+    if not flask_session.get("user_id"):
+        if request.path.startswith("/api/"):
+            return jsonify({
+                "status": "error",
+                "message": "Authentication required."
+            }), 401
+
+        return redirect(url_for("login"))
 @app.before_request
 def assign_request_id():
     """Assign or extract an X-Request-ID for distributed tracing and structured correlation."""
@@ -128,6 +165,41 @@ def inject_correlation_headers(response):
 def request_entity_too_large(error):
     flash("Uploaded file exceeds the 16MB size limit. Please upload a smaller PDF.", "error")
     return redirect(url_for("index"))
+
+
+@app.errorhandler(429)
+def rate_limit_exceeded(error):
+    """
+    Handles HTTP 429 Too Many Requests errors.
+    Returns JSON for API/AJAX requests and a styled 429 page for browser UI requests (#160).
+    """
+    description = getattr(error, "description", None) or "You have temporarily exceeded the request rate limit for this action."
+    retry_hint = getattr(error, "retry_hint", "try again in a few minutes")
+    retry_after = getattr(error, "retry_after", 60)
+    is_json = (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.headers.get("Accept") == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        response = jsonify({
+            "success": False,
+            "error": "Too Many Requests",
+            "message": description,
+            "retry_after_seconds": retry_after,
+            "retry_after_hint": retry_hint,
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+
+    return render_template(
+        "429.html",
+        message=description,
+        retry_hint=retry_hint,
+        retry_after_seconds=retry_after,
+    ), 429
 
 
 @app.after_request
@@ -257,6 +329,69 @@ def health_check():
         "checks": checks,
     }), http_status
 
+@app.route("/logout", methods=["POST"])
+def logout():
+    flask_session.clear()
+    flash("You have been logged out.", "success")
+    return redirect(url_for("index"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("login.html")
+
+        user = get_user_by_email(email)
+
+        if not user or not check_password_hash(user["password_hash"], password):
+            flash("Invalid email or password.", "error")
+            return render_template("login.html")
+
+        flask_session.clear()
+        flask_session["user_id"] = user["id"]
+        flask_session["user_name"] = user["name"]
+        flask_session.permanent = True
+
+        flash("Login successful.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        email = request.form.get("email", "").strip().lower()
+        password = request.form.get("password", "")
+
+        if not name or not email or not password:
+            flash("All fields are required.", "error")
+            return render_template("register.html")
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "error")
+            return render_template("register.html")
+
+        password_hash = generate_password_hash(password)
+        user_id = str(uuid.uuid4())
+
+        created = create_user(user_id, name, email, password_hash)
+
+        if not created:
+            flash("An account with this email already exists.", "error")
+            return render_template("register.html")
+
+        flash("Registration successful. Please log in.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
 @app.route("/")
 def index() -> str:
     """
@@ -317,7 +452,7 @@ def _extract_and_validate_resume(req):
 
 
 @app.route("/analyze", methods=["POST"])
-@rate_limit(max_requests=15, window_seconds=60, scope="analyze_submission", is_api=False)
+@rate_limit(scope="analyze_submission", is_api=False)
 def analyze():
     """
     Handles PDF resume uploads, processes files, calls coordinator,
@@ -334,7 +469,7 @@ def analyze():
 
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
-        student_id = request.form.get("student_id", "default_student").strip()
+        student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -433,6 +568,7 @@ def analyze():
 
 
 @app.route("/api/analysis/start", methods=["POST"])
+@rate_limit(scope="analyze", is_api=True)
 def start_analysis_async():
     """
     Dedicated REST endpoint initiating asynchronous placement analysis.
@@ -446,7 +582,7 @@ def start_analysis_async():
 
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
-        student_id = request.form.get("student_id", "default_student").strip()
+        student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -529,7 +665,7 @@ def get_analysis_task_status(task_id: str):
 
 @app.route("/api/analysis/batch-compare", methods=["POST"])
 @app.route("/batch-compare", methods=["POST"])
-@rate_limit(max_requests=10, window_seconds=60, scope="batch_compare", is_api=True)
+@rate_limit(scope="batch_compare", is_api=True)
 def api_batch_compare():
     """
     Dedicated endpoint for multi-company batch placement evaluation.
@@ -544,7 +680,7 @@ def api_batch_compare():
             if isinstance(companies, str):
                 companies = [c.strip() for c in companies.split(",") if c.strip()]
             job_description = (json_data.get("job_description") or "").strip()
-            student_id = (json_data.get("student_id") or "default_student").strip()
+            student_id = flask_session["user_id"]
             resume_filename = json_data.get("resume_filename") or "pasted_resume.txt"
             validation_error = None
             if not resume_text:
@@ -560,7 +696,7 @@ def api_batch_compare():
                     sel = request.form.get("company", "Google").strip()
                     companies = [sel] if sel != "General" else ["Google", "Microsoft", "Amazon", "TCS"]
             job_description = request.form.get("job_description", "").strip()
-            student_id = request.form.get("student_id", "default_student").strip()
+            student_id = flask_session["user_id"]
 
         if validation_error:
             if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -609,7 +745,7 @@ def view_batch_compare(batch_id: str):
     Radar charts and hiring probability rankings.
     """
     record = get_batch_comparison(batch_id)
-    if not record:
+    if not record or record.get("student_id") != flask_session["user_id"]:
         flash("Batch comparison record not found.", "error")
         return redirect(url_for("index"))
 
@@ -632,8 +768,8 @@ def api_get_batch_compare(batch_id: str):
     Retrieves stored batch comparison results JSON for a given batch_id.
     """
     record = get_batch_comparison(batch_id)
-    if not record:
-        return jsonify({"success": False, "error": f"Batch '{batch_id}' not found."}), 404
+    if not record or record.get("student_id") != flask_session["user_id"]:
+        return jsonify({"success": False, "error": "Batch not found."}), 404
     return jsonify({
         "success": True,
         "batch_id": batch_id,
@@ -648,7 +784,7 @@ def dashboard(analysis_id: str) -> str:
     progress trends and multi-version delta analysis.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
 
@@ -677,6 +813,155 @@ def dashboard(analysis_id: str) -> str:
         logger.error(f"Error fetching initial recommended campus drives: {job_err}")
         initial_recommended_jobs = []
 
+    # Prepare initial Role-Based Preparation Mode data
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    initial_role_prep = role_prep_agent.generate_role_preparation(
+        target_role="Software Engineer",
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        company_name=analysis_record.get("company_name", "General"),
+        resume_text=analysis_record.get("resume_text", "")
+    )
+    # Prepare verified Placement Readiness Summary data
+    results = analysis_record.get("results") or {}
+    resume_analysis = results.get("resume_analysis") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+    skill_gap = results.get("skill_gap") or []
+
+    ats_score = int(resume_analysis.get("ats_score", 0))
+    match_percentage = int(job_match.get("match_percentage", 0))
+    skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
+
+    raw_jd = analysis_record.get("job_description", "") or ""
+    has_custom_jd = bool(raw_jd.strip() and raw_jd.strip().lower() != "none provided. assume general software development engineer role.")
+
+    company_benchmark = job_match.get("company_benchmark")
+    if not isinstance(company_benchmark, dict):
+        company_benchmark = None
+
+    target_ats = company_benchmark.get("target_ats", 75) if company_benchmark else 75
+    target_match = company_benchmark.get("target_match", 65) if company_benchmark else 65
+
+    if ats_score >= target_ats and match_percentage >= target_match:
+        readiness_status = "Placement Ready"
+        readiness_badge = "success"
+        readiness_icon = "fa-circle-check"
+    elif ats_score >= (target_ats - 8) and match_percentage >= (target_match - 8):
+        readiness_status = "Targeted Prep Needed"
+        readiness_badge = "primary"
+        readiness_icon = "fa-chart-line"
+    else:
+        readiness_status = "Foundation Building Required"
+        readiness_badge = "warning"
+        readiness_icon = "fa-triangle-exclamation"
+
+    if company_benchmark and company_benchmark.get("assessment"):
+        status_summary = company_benchmark["assessment"]
+    else:
+        status_summary = f"Profile evaluated against typical campus recruitment benchmarks for {analysis_record.get('company_name', 'General')}."
+
+    top_recommendations = []
+    if results.get("overall_recommendation_summary"):
+        top_recommendations.append({
+            "category": "Overall Assessment",
+            "text": results["overall_recommendation_summary"],
+            "icon": "fa-quote-left text-primary"
+        })
+    if company_benchmark and company_benchmark.get("guidance"):
+        top_recommendations.append({
+            "category": "Preparation Guidance",
+            "text": company_benchmark["guidance"],
+            "icon": "fa-lightbulb text-warning"
+        })
+    if job_match.get("top_5_resume_changes") and len(job_match["top_5_resume_changes"]) > 0:
+        top_recommendations.append({
+            "category": "Priority Action Item",
+            "text": job_match["top_5_resume_changes"][0],
+            "icon": "fa-wand-magic-sparkles text-info"
+        })
+
+    readiness_summary = {
+        "ats_score": ats_score,
+        "match_percentage": match_percentage,
+        "has_custom_jd": has_custom_jd,
+        "skill_gaps_count": skill_gaps_count,
+        "readiness_status": readiness_status,
+        "readiness_badge": readiness_badge,
+        "readiness_icon": readiness_icon,
+        "status_summary": status_summary,
+        "target_ats": target_ats,
+        "target_match": target_match,
+        "top_recommendations": top_recommendations
+    # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+
+    raw_matched = job_match.get("matched_skills") or job_match.get("matching_skills") or []
+    if isinstance(raw_matched, str):
+        raw_matched = [s.strip() for s in raw_matched.split(",") if s.strip()]
+    elif not isinstance(raw_matched, list):
+        raw_matched = []
+
+    raw_missing = job_match.get("missing_skills") or []
+    if not raw_missing and results.get("skill_gap"):
+        for gap in results["skill_gap"]:
+            if isinstance(gap, dict) and gap.get("skill"):
+                raw_missing.append(gap["skill"])
+            elif isinstance(gap, str) and gap.strip():
+                raw_missing.append(gap.strip())
+    if isinstance(raw_missing, str):
+        raw_missing = [s.strip() for s in raw_missing.split(",") if s.strip()]
+    elif not isinstance(raw_missing, list):
+        raw_missing = []
+
+    clean_matched = []
+    seen_matched = set()
+    for s in raw_matched:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_matched:
+            clean_matched.append(s_clean)
+            seen_matched.add(s_clean.lower())
+
+    clean_missing = []
+    seen_missing = set()
+    for s in raw_missing:
+        s_clean = str(s).strip()
+        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
+            clean_missing.append(s_clean)
+            seen_missing.add(s_clean.lower())
+
+    matched_count = len(clean_matched)
+    missing_count = len(clean_missing)
+    total_skills = matched_count + missing_count
+
+    if total_skills > 0:
+        match_pct = round((matched_count / total_skills) * 100)
+        missing_pct = 100 - match_pct
+    else:
+        match_pct = int(job_match.get("match_percentage", 0))
+        missing_pct = 100 - match_pct if match_pct > 0 else 0
+
+    target_match = 65
+    company_bench = job_match.get("company_benchmark")
+    if isinstance(company_bench, dict) and company_bench.get("target_match"):
+        target_match = company_bench["target_match"]
+
+    skills_comparison = {
+        "matched_skills": clean_matched,
+        "missing_skills": clean_missing,
+        "matched_count": matched_count,
+        "missing_count": missing_count,
+        "total_skills": total_skills,
+        "match_percentage": match_pct,
+        "missing_percentage": missing_pct,
+        "target_match": target_match
+    }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -688,7 +973,13 @@ def dashboard(analysis_id: str) -> str:
         trend_series=trend_series,
         trend_series_json=json.dumps(trend_series),
         initial_outreach=initial_outreach,
-        initial_outreach_json=json.dumps(initial_outreach)
+        initial_outreach_json=json.dumps(initial_outreach),
+        initial_role_prep=initial_role_prep,
+        initial_role_prep_json=json.dumps(initial_role_prep),
+        supported_roles=SUPPORTED_ROLES
+        readiness_summary=readiness_summary
+        skills_comparison=skills_comparison,
+        skills_comparison_json=json.dumps(skills_comparison)
     )
     return jsonify({
         "success": True,
@@ -702,7 +993,7 @@ def interview(analysis_id: str) -> str:
     Supports optional ?round=HR|Technical|Behavioral filter to practice focused rounds.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
         flash("Cannot initialize mock interview. Parent analysis not found.", "error")
         return redirect(url_for("index"))
 
@@ -750,7 +1041,7 @@ def interview(analysis_id: str) -> str:
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
-@rate_limit(max_requests=30, window_seconds=60, scope="interview_eval", is_api=True)
+@rate_limit(scope="interview_eval", is_api=True)
 def submit_interview_answer(analysis_id: str):
     """
     Endpoint that evaluates a candidate response dynamically and updates session progress.
@@ -763,8 +1054,12 @@ def submit_interview_answer(analysis_id: str):
             or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
             or analysis_id
         )
-
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+                return jsonify({"success": False, "error": "Interview session not found"}), 404
         session = get_interview_session(session_id)
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+            return jsonify({"error": "Interview session not found."}), 404
         if not session and session_id != analysis_id:
             session_id = analysis_id
             session = get_interview_session(session_id)
@@ -853,7 +1148,7 @@ def submit_interview_answer(analysis_id: str):
 
 
 @app.route("/api/interview/evaluate-star", methods=["POST"])
-@rate_limit(max_requests=30, window_seconds=60, scope="star_eval", is_api=True)
+@rate_limit(scope="star_eval", is_api=True)
 def api_evaluate_star():
     """
     Evaluates candidate interview responses against the STAR behavioral framework
@@ -944,9 +1239,16 @@ def api_interview_coding_problem(analysis_id: str = None):
     """
     try:
         company_name = request.args.get("company", "").strip()
-        if not company_name and analysis_id:
+        if analysis_id:
             record = get_analysis(analysis_id)
-            if record:
+
+            if not record or record.get("student_id") != flask_session["user_id"]:
+                 return jsonify({
+                    "status": "error",
+                    "message": "Analysis not found."
+        }), 404
+
+            if not company_name:
                 company_name = record.get("company_name", "General")
         if not company_name:
             company_name = "General"
@@ -979,6 +1281,7 @@ def api_interview_coding_problem(analysis_id: str = None):
 
 @app.route("/api/interview/<analysis_id>/evaluate-code", methods=["POST"])
 @app.route("/api/interview/evaluate-code", methods=["POST"])
+@rate_limit(scope="interview_eval", is_api=True)
 def api_evaluate_code(analysis_id: str = None):
     """
     Evaluates candidate code submission against problem statement and test cases.
@@ -990,12 +1293,20 @@ def api_evaluate_code(analysis_id: str = None):
         language = payload.get("language", "python")
         problem = payload.get("problem")
 
-        if not isinstance(problem, dict) or not problem:
+        if analysis_id:
+            rec = get_analysis(analysis_id)
+
+            if not rec or rec.get("student_id") != flask_session["user_id"]:
+                 return jsonify({
+                    "status": "error",
+                    "message": "Analysis not found."
+        }), 404
+
+            company = rec.get("company_name", "General")
+        else:
             company = "General"
-            if analysis_id:
-                rec = get_analysis(analysis_id)
-                if rec:
-                    company = rec.get("company_name", "General")
+
+        if not isinstance(problem, dict) or not problem:
             problem = coding_assessment_agent.get_fallback_problem(company)
 
         eval_result = coding_assessment_agent.evaluate_code(
@@ -1034,6 +1345,10 @@ def export_interview_json(analysis_id: str):
         session = get_interview_session(session_id)
 
     analysis_record = get_analysis(analysis_id)
+
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+        return jsonify({"error": "Interview session not found."}), 404
+
     if not session:
         flash("Interview session not found.", "error")
         return redirect(url_for("index"))
@@ -1060,15 +1375,101 @@ def export_interview_json(analysis_id: str):
     return response
 
 
+@app.route("/interview/<analysis_id>/transcript")
+@app.route("/download/interview-transcript/<analysis_id>")
+def download_interview_transcript(analysis_id: str):
+    """
+    Exports the mock interview transcript, per-question scores, AI feedback,
+    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
+    Works after at least one question has been answered.
+    """
+    try:
+        session_id = (
+            request.args.get("session_id")
+            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
+            or analysis_id
+        )
+        session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
+        if not session:
+            flash("Interview session not found.", "error")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        answers_recorded = session.get("answers", [])
+        if not answers_recorded:
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
+            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        analysis_record = get_analysis(analysis_id)
+        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
+        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
+
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
+        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
+        export_format = request.args.get("format", "pdf").strip().lower()
+
+        if export_format in ("md", "markdown"):
+            md_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                md_content,
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
+            )
+        elif export_format in ("txt", "text"):
+            txt_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                txt_content,
+                mimetype="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
+            )
+        elif export_format == "json":
+            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
+        else:
+            # Default PDF
+            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+            pdf_filename = f"{filename_base}_{session_id}.pdf"
+            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
+
+            generate_interview_transcript_pdf(
+                session_data=session,
+                output_path=pdf_full_path,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return send_file(
+                pdf_full_path,
+                as_attachment=True,
+                download_name=f"{filename_base}.pdf",
+                mimetype="application/pdf",
+            )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
+        flash(f"Error compiling interview transcript: {str(e)}", "error")
+        return redirect(url_for("interview", analysis_id=analysis_id))
+
+
 @app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
-        flash("The requested placement analysis report could not be found.", "error")
-        return redirect(url_for("index"))
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+            flash("The requested placement analysis report could not be found.", "error")
+            return redirect(url_for("index"))
 
     return render_template(
         "certificate.html",
@@ -1084,7 +1485,7 @@ def download_certificate_pdf(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             flash("Cannot generate certificate. Placement record not found.", "error")
             return redirect(url_for("index"))
 
@@ -1113,7 +1514,7 @@ def download_pdf_report(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
@@ -1174,7 +1575,7 @@ def download_skills_gap_report(analysis_id: str):
 
 
 @app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
-@rate_limit(max_requests=20, window_seconds=60, scope="generate_outreach", is_api=True)
+@rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
     Generates tailored application outreach assets (formal cover letter, LinkedIn InMail,
@@ -1183,11 +1584,11 @@ def api_generate_outreach(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
             return jsonify({
                 "success": False,
-                "error": f"Analysis '{analysis_id}' not found."
-            }), 404
+                "error": "Analysis not found."
+    }), 404
 
         payload = request.get_json(silent=True) or {}
         tone = payload.get("tone") or request.form.get("tone", "formal")
@@ -1233,6 +1634,14 @@ def api_download_outreach(analysis_id: str = None):
         custom_content = payload.get("content")
 
         analysis_record = get_analysis(aid) if aid else None
+        if aid and (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "success": False,
+                "error": "Analysis not found."
+            }), 404
         company_name = (
             payload.get("company_name")
             or (analysis_record.get("company_name") if analysis_record else None)
@@ -1310,7 +1719,10 @@ def api_recent_analyses():
     """
     try:
         limit = request.args.get("limit", default=10, type=int)
-        analyses = get_recent_analyses(limit=limit)
+        analyses = get_recent_analyses(
+            limit=limit,
+             student_id=flask_session["user_id"]
+        )
         return jsonify({
             "status": "success",
             "count": len(analyses),
@@ -1329,6 +1741,16 @@ def api_delete_analysis(analysis_id: str):
     Deletes an analysis session and related mock interview records.
     """
     try:
+        analysis_record = get_analysis(analysis_id)
+        if (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "status": "error",
+                "message": "Analysis not found."
+            }), 404
+
         deleted = delete_analysis(analysis_id)
         if not deleted:
             return jsonify({
@@ -1352,6 +1774,11 @@ def api_student_progress(student_id: str):
     Returns a candidate's full longitudinal version history and trend metrics.
     """
     try:
+        if student_id != flask_session["user_id"]:
+            return jsonify({
+                "status": "error",
+                "message": "Progress not found."
+            }), 404
         versions = get_student_versions(student_id)
         trend_series = build_longitudinal_series(versions)
         return jsonify({
@@ -1374,8 +1801,16 @@ def api_progress_diff(id_a: str, id_b: str):
     try:
         rec_a = get_analysis(id_a)
         rec_b = get_analysis(id_b)
-        if not rec_a or not rec_b:
-            return jsonify({"status": "error", "message": "One or both analysis records not found."}), 404
+        if (
+            not rec_a
+            or not rec_b
+            or rec_a.get("student_id") != flask_session["user_id"]
+            or rec_b.get("student_id") != flask_session["user_id"]
+        ):
+            return jsonify({
+                "status": "error",
+                "message": "One or both analysis records not found."
+            }), 404
 
         diff = generate_side_by_side_diff(rec_a, rec_b)
         return jsonify({
@@ -1462,7 +1897,10 @@ def api_job_recommendations(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
-        if not analysis_record:
+        if (
+            not analysis_record
+            or analysis_record.get("student_id") != flask_session["user_id"]
+        ):
             return jsonify({
                 "success": False,
                 "error": f"Candidate analysis record '{analysis_id}' not found."
@@ -1739,10 +2177,15 @@ def api_interview_history():
     student_id = request.args.get("student_id", "default_student").strip()
     analytics = get_student_interview_performance_analytics(student_id=student_id)
     return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "analytics": analytics
+        })
         "success": True,
         "student_id": student_id,
         "analytics": analytics
     })
+
 
 @app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
@@ -1805,6 +2248,8 @@ def linkedin_analyzer():
         experience=experience,
         skills=skills
     )
+
+
 @app.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """
@@ -1966,6 +2411,141 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
+# ==============================================================================
+# Role-Based Preparation Mode Routes (#154)
+# ==============================================================================
+
+@app.route("/api/role-prep/roles")
+def api_role_prep_roles():
+    """
+    Returns the list of supported placement roles with descriptions and icons.
+    """
+    return jsonify({
+        "success": True,
+        "roles": SUPPORTED_ROLES
+    }), 200
+
+
+@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
+def api_role_prep_for_analysis(analysis_id: str):
+    """
+    Generates role-based preparation curriculum and recommendations for a student analysis.
+    Supports switching target roles dynamically (Python Developer, Data Analyst, Data Scientist, Software Engineer).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record:
+        return jsonify({"success": False, "error": "Analysis record not found"}), 404
+
+    target_role = request.args.get("role")
+    if not target_role and request.is_json:
+        target_role = (request.get_json() or {}).get("role")
+    if not target_role and request.form:
+        target_role = request.form.get("role")
+    target_role = (target_role or "Software Engineer").strip()
+
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=target_role,
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        company_name=analysis_record.get("company_name", "General"),
+        resume_text=analysis_record.get("resume_text", "")
+    )
+    return jsonify(prep_data), 200
+
+
+@app.route("/api/role-prep/generate", methods=["POST"])
+def api_role_prep_generate():
+    """
+    Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
+    """
+    body = request.get_json() or {}
+    target_role = body.get("role") or request.form.get("role") or "Software Engineer"
+    skills = body.get("skills") or []
+    if isinstance(skills, str):
+        skills = [s.strip() for s in re.split(r"[,;\n]+", skills) if s.strip()]
+    skill_gaps = body.get("skill_gaps") or []
+    if isinstance(skill_gaps, str):
+        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", skill_gaps) if s.strip()]
+    company = body.get("company") or request.form.get("company") or "General"
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=target_role,
+        existing_skills=skills,
+        skill_gaps=skill_gaps,
+        company_name=company
+    )
+    return jsonify(prep_data), 200
+
+
+@app.route("/role-preparation", methods=["GET", "POST"])
+def role_preparation_view():
+    """
+    Role-Based Preparation Mode View (#154).
+    Enables students to explore tailored learning tracks for Python Developer, Data Analyst,
+    Data Scientist, and Software Engineer roles with personalized skill gap bridging.
+    """
+    analysis_id = request.args.get("analysis_id", "").strip()
+    selected_role = request.args.get("role", "Software Engineer").strip()
+    company = request.args.get("company", "").strip()
+    raw_skills = request.args.get("skills", "").strip()
+    raw_gaps = request.args.get("skill_gaps", "").strip()
+
+    if request.method == "POST":
+        selected_role = request.form.get("role", selected_role).strip()
+        company = request.form.get("company", company).strip()
+        raw_skills = request.form.get("skills", raw_skills).strip()
+        raw_gaps = request.form.get("skill_gaps", raw_gaps).strip()
+
+    analysis_record = None
+    existing_skills = []
+    skill_gaps = []
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record:
+            results = analysis_record.get("results") or {}
+            job_match = results.get("job_match") or {}
+            skill_gap_items = results.get("skill_gap") or []
+            existing_skills = job_match.get("matched_skills") or []
+            skill_gaps = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+            if not company:
+                company = analysis_record.get("company_name", "General")
+
+    if not existing_skills and raw_skills:
+        existing_skills = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
+    if not skill_gaps and raw_gaps:
+        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_gaps) if s.strip()]
+
+    prep_data = role_prep_agent.generate_role_preparation(
+        target_role=selected_role,
+        existing_skills=existing_skills,
+        skill_gaps=skill_gaps,
+        company_name=company or "General Campus Recruitment",
+        resume_text=analysis_record.get("resume_text", "") if analysis_record else None
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify(prep_data), 200
+
+    return render_template(
+        "role_preparation.html",
+        prep=prep_data,
+        prep_json=json.dumps(prep_data),
+        analysis=analysis_record,
+        analysis_id=analysis_id,
+        available_roles=SUPPORTED_ROLES,
+        selected_role=prep_data["target_role"],
+        company=company,
+        skills_input=", ".join(existing_skills),
+        gaps_input=", ".join(skill_gaps)
+    )
 
 
 if __name__ == "__main__":

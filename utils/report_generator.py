@@ -709,3 +709,575 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
         raise RuntimeError(f"Skills gap PDF generation failed: {exc}") from exc
 
 
+def generate_interview_transcript_pdf(
+    session_data: dict,
+    output_path: str,
+    company_name: str = "Placement",
+    summary_data: dict = None,
+) -> str:
+    """
+    Generates a structured, professional PDF transcript of a mock interview session (#161).
+    Exports each question, candidate response, dynamic score evaluations (technical accuracy,
+    communication clarity, confidence, verbal articulation), AI feedback, STAR framework coaching,
+    and aggregate session summary with safe XML escaping.
+    """
+    try:
+        logger.info("Generating Mock Interview Transcript PDF at: %s", output_path)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=letter,
+            rightMargin=45,
+            leftMargin=45,
+            topMargin=45,
+            bottomMargin=45,
+        )
+
+        styles = getSampleStyleSheet()
+
+        primary_blue = colors.HexColor("#1a73e8")
+        accent_light_blue = colors.HexColor("#e8f0fe")
+        dark_text = colors.HexColor("#202124")
+        border_grey = colors.HexColor("#dadce0")
+        light_grey_bg = colors.HexColor("#f8f9fa")
+
+        title_style = ParagraphStyle(
+            "TranscriptTitle",
+            parent=styles["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=22,
+            leading=26,
+            textColor=primary_blue,
+            alignment=TA_CENTER,
+            spaceAfter=4,
+        )
+
+        subtitle_style = ParagraphStyle(
+            "TranscriptSubtitle",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=14,
+            textColor=colors.HexColor("#5f6368"),
+            alignment=TA_CENTER,
+            spaceAfter=14,
+        )
+
+        h1_style = ParagraphStyle(
+            "TranscriptH1",
+            parent=styles["Heading2"],
+            fontName="Helvetica-Bold",
+            fontSize=14,
+            leading=18,
+            textColor=primary_blue,
+            spaceBefore=12,
+            spaceAfter=6,
+            keepWithNext=True,
+        )
+
+        h2_style = ParagraphStyle(
+            "TranscriptH2",
+            parent=styles["Heading3"],
+            fontName="Helvetica-Bold",
+            fontSize=10,
+            leading=14,
+            textColor=dark_text,
+            spaceBefore=6,
+            spaceAfter=3,
+            keepWithNext=True,
+        )
+
+        body_style = ParagraphStyle(
+            "TranscriptBody",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=13,
+            textColor=dark_text,
+        )
+
+        quote_style = ParagraphStyle(
+            "TranscriptQuote",
+            parent=styles["Normal"],
+            fontName="Helvetica-Oblique",
+            fontSize=9,
+            leading=13,
+            textColor=colors.HexColor("#374151"),
+        )
+
+        bullet_style = ParagraphStyle(
+            "TranscriptBullet",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=12,
+            textColor=dark_text,
+            leftIndent=12,
+            firstLineIndent=-8,
+        )
+
+        table_hdr_style = ParagraphStyle(
+            "TranscriptTableHdr",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=8.5,
+            leading=11.5,
+            textColor=colors.white,
+            alignment=TA_CENTER,
+        )
+
+        table_body_center = ParagraphStyle(
+            "TranscriptTableCellCenter",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=11.5,
+            textColor=dark_text,
+            alignment=TA_CENTER,
+        )
+
+        table_body_left = ParagraphStyle(
+            "TranscriptTableCellLeft",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=8.5,
+            leading=11.5,
+            textColor=dark_text,
+        )
+
+        badge_hdr_style = ParagraphStyle(
+            "TranscriptBadgeHdr",
+            parent=styles["Normal"],
+            fontName="Helvetica-Bold",
+            fontSize=9,
+            leading=12,
+            textColor=primary_blue,
+        )
+
+        story = []
+
+        if not isinstance(session_data, dict):
+            session_data = {}
+
+        target_company = escape_xml(company_name or session_data.get("company_name", "Target Company"))
+        answers = session_data.get("answers", [])
+        if not isinstance(answers, list):
+            answers = []
+
+        if summary_data is None:
+            try:
+                from agents.interview_agent import InterviewAgent
+                summary_data = InterviewAgent().calculate_session_summary(answers)
+            except Exception:
+                summary_data = {
+                    "total_answered": len(answers),
+                    "overall_score": 0,
+                    "category_scores": {},
+                    "readiness_verdict": "Completed Session",
+                    "summary_feedback": "Mock interview session record.",
+                }
+
+        overall_score = summary_data.get("overall_score", 0)
+        verdict = escape_xml(summary_data.get("readiness_verdict", "Completed Session"))
+        summary_feedback = escape_xml(summary_data.get("summary_feedback", ""))
+
+        # 1. Header Banner
+        story.append(Paragraph("<b>AI Mock Interview Session Transcript</b>", title_style))
+        story.append(Paragraph(
+            f"Candidate Practice Session for <b>{target_company}</b> &bull; Overall Score: <b>{overall_score}/100</b> ({verdict})",
+            subtitle_style
+        ))
+
+        # 2. Executive Performance Scorecard
+        score_box_data = [
+            [
+                Paragraph("<b>Overall Score</b>", table_hdr_style),
+                Paragraph("<b>Readiness Verdict</b>", table_hdr_style),
+                Paragraph("<b>Questions Answered</b>", table_hdr_style),
+            ],
+            [
+                Paragraph(f"<b><font size=14 color='#1a73e8'>{overall_score}/100</font></b>", table_body_center),
+                Paragraph(f"<b>{verdict}</b>", table_body_center),
+                Paragraph(f"<b>{len(answers)}</b>", table_body_center),
+            ],
+        ]
+        score_table = Table(score_box_data, colWidths=[150, 222, 150])
+        score_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), primary_blue),
+            ("BACKGROUND", (0, 1), (-1, 1), accent_light_blue),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("BOX", (0, 0), (-1, -1), 1, border_grey),
+            ("INNERGRID", (0, 0), (-1, -1), 0.5, border_grey),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ]))
+        story.append(score_table)
+        story.append(Spacer(1, 10))
+
+        if summary_feedback:
+            summary_box = [
+                [
+                    Paragraph(
+                        f"<b>Performance Overview:</b><br/>{summary_feedback}",
+                        body_style
+                    )
+                ]
+            ]
+            summary_table = Table(summary_box, colWidths=[522])
+            summary_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), light_grey_bg),
+                ("BOX", (0, 0), (-1, -1), 0.5, border_grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+            ]))
+            story.append(summary_table)
+            story.append(Spacer(1, 10))
+
+        cat_scores = summary_data.get("category_scores", {})
+        if cat_scores:
+            cat_table_data = [
+                [
+                    Paragraph("<b>Round / Competency</b>", table_hdr_style),
+                    Paragraph("<b>Answered</b>", table_hdr_style),
+                    Paragraph("<b>Technical</b>", table_hdr_style),
+                    Paragraph("<b>Communication</b>", table_hdr_style),
+                    Paragraph("<b>Confidence</b>", table_hdr_style),
+                    Paragraph("<b>Avg Score</b>", table_hdr_style),
+                ]
+            ]
+            for cat_name, c_data in cat_scores.items():
+                cnt = c_data.get("count", 0)
+                tech = c_data.get("technical_accuracy", 0)
+                comm = c_data.get("communication_score", 0)
+                conf = c_data.get("confidence_score", 0)
+                avg = c_data.get("average_score", 0)
+                cat_table_data.append([
+                    Paragraph(f"<b>{escape_xml(cat_name)}</b>", table_body_left),
+                    Paragraph(str(cnt), table_body_center),
+                    Paragraph(f"{tech}%", table_body_center),
+                    Paragraph(f"{comm}%", table_body_center),
+                    Paragraph(f"{conf}%", table_body_center),
+                    Paragraph(f"<b>{avg}%</b>", table_body_center),
+                ])
+            cat_table = Table(cat_table_data, colWidths=[132, 65, 80, 85, 80, 80])
+            cat_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), primary_blue),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BOX", (0, 0), (-1, -1), 1, border_grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, border_grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            story.append(cat_table)
+            story.append(Spacer(1, 12))
+
+        verbal_m = summary_data.get("verbal_metrics")
+        if isinstance(verbal_m, dict) and verbal_m:
+            avg_verbal = verbal_m.get("average_verbal_clarity", "N/A")
+            total_fillers = verbal_m.get("total_filler_words", 0)
+            star_rate = verbal_m.get("star_adherence_rate", "N/A")
+            v_data = [
+                [
+                    Paragraph(f"<b>Verbal Articulation:</b> {avg_verbal}%", table_body_center),
+                    Paragraph(f"<b>Total Filler Words:</b> {total_fillers}", table_body_center),
+                    Paragraph(f"<b>STAR Method Adherence:</b> {star_rate}", table_body_center),
+                ]
+            ]
+            v_table = Table(v_data, colWidths=[174, 174, 174])
+            v_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), light_grey_bg),
+                ("BOX", (0, 0), (-1, -1), 0.5, border_grey),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, border_grey),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(v_table)
+            story.append(Spacer(1, 14))
+
+        # 3. Detailed Questions & Answers Transcript
+        story.append(Paragraph("<b>Detailed Q&A Transcript & AI Evaluation</b>", h1_style))
+        story.append(Spacer(1, 4))
+
+        if not answers:
+            empty_box = [
+                [
+                    Paragraph(
+                        "<b>No interview responses recorded.</b><br/>"
+                        "Start your mock interview session to evaluate answers across technical, HR, and behavioral rounds.",
+                        body_style,
+                    )
+                ]
+            ]
+            empty_table = Table(empty_box, colWidths=[522])
+            empty_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), light_grey_bg),
+                ("BOX", (0, 0), (-1, -1), 1, border_grey),
+                ("PADDING", (0, 0), (-1, -1), 14),
+            ]))
+            story.append(empty_table)
+        else:
+            for idx, item in enumerate(answers, 1):
+                q_num = item.get("question_index", idx - 1) + 1
+                q_type = escape_xml(item.get("type", "General"))
+                q_text = escape_xml(item.get("question", "N/A"))
+                user_answer = escape_xml(item.get("answer", "No response recorded.")).replace("\n", "<br/>")
+
+                eval_data = item.get("evaluation", {}) if isinstance(item.get("evaluation"), dict) else {}
+                tech_score = eval_data.get("technical_accuracy", 50)
+                comm_score = eval_data.get("communication_score", 50)
+                conf_score = eval_data.get("confidence_score", 50)
+                verbal_score = eval_data.get("verbal_clarity_score", comm_score)
+                feedback = escape_xml(eval_data.get("feedback", "Evaluation recorded.")).replace("\n", "<br/>")
+                suggestions = eval_data.get("suggestions", [])
+                if not isinstance(suggestions, list):
+                    suggestions = []
+
+                scores_data = [
+                    [
+                        Paragraph(f"<b>Technical:</b> {tech_score}/100", table_body_center),
+                        Paragraph(f"<b>Communication:</b> {comm_score}/100", table_body_center),
+                        Paragraph(f"<b>Confidence:</b> {conf_score}/100", table_body_center),
+                        Paragraph(f"<b>Verbal Clarity:</b> {verbal_score}/100", table_body_center),
+                    ]
+                ]
+                scores_table = Table(scores_data, colWidths=[130, 130, 130, 132])
+                scores_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), accent_light_blue),
+                    ("BOX", (0, 0), (-1, -1), 0.5, border_grey),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.5, border_grey),
+                    ("TOPPADDING", (0, 0), (-1, -1), 4),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ]))
+
+                q_hdr_table = Table(
+                    [[Paragraph(f"<b>Question {q_num} &bull; {q_type} Round</b>", badge_hdr_style)]],
+                    colWidths=[522]
+                )
+                q_hdr_table.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, -1), light_grey_bg),
+                    ("BOX", (0, 0), (-1, -1), 0.5, border_grey),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ]))
+
+                q_elements = [
+                    q_hdr_table,
+                    Spacer(1, 4),
+                    Paragraph(f"<b>Question:</b> {q_text}", body_style),
+                    Spacer(1, 4),
+                    Paragraph(f"<b>Candidate Response:</b><br/>{user_answer}", quote_style),
+                    Spacer(1, 6),
+                    scores_table,
+                    Spacer(1, 6),
+                    Paragraph(f"<b>AI Feedback:</b> {feedback}", body_style),
+                ]
+
+                if suggestions:
+                    q_elements.append(Spacer(1, 4))
+                    q_elements.append(Paragraph("<b>Improvement Suggestions:</b>", h2_style))
+                    for sug in suggestions:
+                        q_elements.append(Paragraph(f"&bull; {escape_xml(sug)}", bullet_style))
+
+                star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
+                if isinstance(star_data, dict) and star_data.get("feedback"):
+                    q_elements.append(Spacer(1, 4))
+                    q_elements.append(Paragraph(
+                        f"<b>STAR Framework Coaching:</b> {escape_xml(star_data.get('feedback'))}",
+                        body_style
+                    ))
+
+                fillers = eval_data.get("filler_words_detected", [])
+                if fillers and isinstance(fillers, list):
+                    q_elements.append(Spacer(1, 3))
+                    q_elements.append(Paragraph(
+                        f"<b>Filler Words Detected:</b> {escape_xml(', '.join(str(f) for f in fillers))}",
+                        body_style
+                    ))
+
+                q_elements.append(Spacer(1, 14))
+
+                raw_ans_len = len(item.get("answer", ""))
+                if raw_ans_len < 1500:
+                    story.append(KeepTogether(q_elements))
+                else:
+                    story.extend(q_elements)
+
+        # Footer Notice
+        story.append(Spacer(1, 15))
+        footer_p = Paragraph(
+            "<i>Mock Interview Transcript compiled by AI Campus Placement Agent. Designed for student performance review and placement preparation.</i>",
+            subtitle_style
+        )
+        story.append(footer_p)
+
+        doc.build(story)
+        logger.info("Mock Interview Transcript PDF compiled successfully.")
+        return output_path
+
+    except Exception as exc:
+        logger.error("Error generating mock interview transcript PDF: %s", str(exc))
+        raise RuntimeError(f"Mock interview transcript PDF generation failed: {exc}") from exc
+
+
+def generate_interview_transcript_markdown(
+    session_data: dict,
+    company_name: str = "Placement",
+    summary_data: dict = None,
+) -> str:
+    """
+    Generates a structured Markdown / plain-text transcript of a mock interview session (#161).
+    Includes overall session scorecard, category breakdown, and detailed per-question Q&A pairs
+    with scores, feedback, suggestions, and verbal communication indicators.
+    """
+    if not isinstance(session_data, dict):
+        session_data = {}
+
+    target_company = company_name or session_data.get("company_name", "Target Company")
+    answers = session_data.get("answers", [])
+    if not isinstance(answers, list):
+        answers = []
+
+    if summary_data is None:
+        try:
+            from agents.interview_agent import InterviewAgent
+            summary_data = InterviewAgent().calculate_session_summary(answers)
+        except Exception:
+            summary_data = {
+                "total_answered": len(answers),
+                "overall_score": 0,
+                "category_scores": {},
+                "readiness_verdict": "Completed Session",
+                "summary_feedback": "Mock interview session record.",
+            }
+
+    total_ans = len(answers)
+    overall_score = summary_data.get("overall_score", 0)
+    verdict = summary_data.get("readiness_verdict", "Completed Session")
+    summary_feedback = summary_data.get("summary_feedback", "")
+
+    lines = [
+        f"# AI Mock Interview Session Transcript — {target_company}",
+        "",
+        f"- **Target Company:** {target_company}",
+        f"- **Total Questions Answered:** {total_ans}",
+        f"- **Overall Performance Score:** {overall_score}/100",
+        f"- **Readiness Verdict:** {verdict}",
+        "",
+        "## Executive Performance Summary",
+        "",
+        summary_feedback if summary_feedback else "Session completed.",
+        "",
+    ]
+
+    cat_scores = summary_data.get("category_scores", {})
+    if cat_scores:
+        lines.extend([
+            "### Competency Breakdown",
+            "",
+            "| Round / Category | Questions | Technical Accuracy | Communication | Confidence | Average Score |",
+            "| :--- | :---: | :---: | :---: | :---: | :---: |",
+        ])
+        for cat_name, c_data in cat_scores.items():
+            cnt = c_data.get("count", 0)
+            tech = c_data.get("technical_accuracy", 0)
+            comm = c_data.get("communication_score", 0)
+            conf = c_data.get("confidence_score", 0)
+            avg = c_data.get("average_score", 0)
+            lines.append(f"| {cat_name} | {cnt} | {tech}% | {comm}% | {conf}% | **{avg}%** |")
+        lines.append("")
+
+    verbal_m = summary_data.get("verbal_metrics")
+    if isinstance(verbal_m, dict) and verbal_m:
+        lines.extend([
+            "### Verbal & Speech Articulation Telemetry",
+            "",
+            f"- **Average Verbal Clarity:** {verbal_m.get('average_verbal_clarity', 'N/A')}%",
+            f"- **Total Filler Words:** {verbal_m.get('total_filler_words', 0)}",
+            f"- **STAR Method Adherence:** {verbal_m.get('star_adherence_rate', 'N/A')}",
+            "",
+        ])
+
+    lines.extend([
+        "---",
+        "",
+        "## Detailed Questions & Answers Transcript",
+        "",
+    ])
+
+    if not answers:
+        lines.extend([
+            "*No interview responses recorded for this session.*",
+            "",
+        ])
+    else:
+        for idx, item in enumerate(answers, 1):
+            q_num = item.get("question_index", idx - 1) + 1
+            q_type = item.get("type", "General")
+            q_text = item.get("question", "N/A")
+            ans_text = item.get("answer", "No response recorded.")
+            eval_data = item.get("evaluation", {}) if isinstance(item.get("evaluation"), dict) else {}
+
+            tech = eval_data.get("technical_accuracy", 50)
+            comm = eval_data.get("communication_score", 50)
+            conf = eval_data.get("confidence_score", 50)
+            verbal = eval_data.get("verbal_clarity_score", comm)
+
+            lines.extend([
+                f"### Question {q_num} [{q_type} Round]",
+                f"**Question:** {q_text}",
+                "",
+                "**Candidate Response:**",
+                f"> {ans_text}",
+                "",
+                "**Evaluated Scores:**",
+                f"- Technical Accuracy: **{tech}/100**",
+                f"- Communication Score: **{comm}/100**",
+                f"- Confidence Score: **{conf}/100**",
+                f"- Verbal Clarity: **{verbal}/100**",
+                "",
+            ])
+
+            feedback = eval_data.get("feedback")
+            if feedback:
+                lines.extend([
+                    f"**AI Feedback:** {feedback}",
+                    "",
+                ])
+
+            suggestions = eval_data.get("suggestions", [])
+            if suggestions and isinstance(suggestions, list):
+                lines.append("**Improvement Suggestions:**")
+                for s in suggestions:
+                    lines.append(f"- {s}")
+                lines.append("")
+
+            star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
+            if isinstance(star_data, dict) and star_data.get("feedback"):
+                lines.extend([
+                    f"**STAR Framework Coaching:** {star_data.get('feedback')}",
+                    "",
+                ])
+
+            fillers = eval_data.get("filler_words_detected", [])
+            if fillers and isinstance(fillers, list):
+                lines.extend([
+                    f"**Filler Words Detected ({len(fillers)}):** {', '.join(str(f) for f in fillers)}",
+                    "",
+                ])
+
+            lines.extend([
+                "---",
+                "",
+            ])
+
+    return "\n".join(lines)
+
+
+

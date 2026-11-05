@@ -80,6 +80,15 @@ def init_db() -> None:
                 job_description TEXT,
                 notes TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            """)
+                # Table 5: Store registered user accounts
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL COLLATE NOCASE UNIQUE,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -100,6 +109,7 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        
         
         # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -141,10 +151,8 @@ def save_analysis(
     student_id: Optional[str] = None,
     version_number: Optional[int] = None
 ) -> None:
-    """
-    Inserts a newly generated coordinator analysis into the database.
-    Automatically assigns candidate student_id and auto-increments version_number if omitted.
-    """
+    """Inserts a newly generated coordinator analysis into the database.
+    Automatically assigns candidate student_id and auto-increments version_number if omitted."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -993,6 +1001,118 @@ def get_student_interview_history(student_id: str = "default_student") -> List[D
     """
     Retrieves full mock interview session history for a student across all attempts (#144).
     Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
+def get_user_placement_history(
+    student_id: str = "default_student",
+    company_filter: Optional[str] = None,
+    sort_by: str = "date_desc"
+) -> Dict[str, Any]:
+    """
+    Saves and retrieves comprehensive previous placement analysis history for a specific user (#149).
+    Includes per-student data isolation, ATS score tracking, role match percentages,
+    and historical performance metrics.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        query = """
+            SELECT id, resume_filename, company_name, job_description, results_json,
+                   student_id, version_number, created_at
+            FROM analyses
+            WHERE student_id = ?
+        """
+        params: List[Any] = [effective_student_id]
+
+        if company_filter and company_filter.strip() and company_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(company_name) LIKE ?"
+            params.append(f"%{company_filter.strip().lower()}%")
+
+        if sort_by == "score_desc":
+            # Will sort in python after parsing ATS score
+            query += " ORDER BY created_at DESC"
+        elif sort_by == "date_asc":
+            query += " ORDER BY created_at ASC"
+        else:
+            query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        records = []
+        ats_scores = []
+        match_scores = []
+        company_counts: Dict[str, int] = {}
+
+        for row in rows:
+            rec = dict(row)
+            try:
+                raw_json = rec.pop("results_json", "{}")
+                parsed = json.loads(raw_json)
+                rec["results"] = parsed
+
+                # Score resolution
+                ats = parsed.get("ats_score") or parsed.get("resume_analysis", {}).get("ats_score", 0)
+                match = parsed.get("job_match_score") or parsed.get("job_match", {}).get("match_percentage", 0)
+
+                rec["ats_score"] = int(ats)
+                rec["match_percentage"] = int(match)
+                ats_scores.append(rec["ats_score"])
+                match_scores.append(rec["match_percentage"])
+
+                # Extract extracted skills & missing skills count
+                rec["matched_skills_count"] = len(parsed.get("matched_skills") or parsed.get("job_match", {}).get("matched_skills", []))
+                rec["missing_skills_count"] = len(parsed.get("missing_skills") or parsed.get("job_match", {}).get("missing_skills", []))
+
+                comp = rec.get("company_name", "General")
+                company_counts[comp] = company_counts.get(comp, 0) + 1
+
+            except Exception as parse_err:
+                logger.warning(f"Failed to parse analysis payload for record {rec.get('id')}: {parse_err}")
+                rec["results"] = {}
+                rec["ats_score"] = 0
+                rec["match_percentage"] = 0
+                rec["matched_skills_count"] = 0
+                rec["missing_skills_count"] = 0
+
+            records.append(rec)
+
+        if sort_by == "score_desc":
+            records.sort(key=lambda x: x["ats_score"], reverse=True)
+
+        avg_ats = round(sum(ats_scores) / len(ats_scores), 1) if ats_scores else 0.0
+        avg_match = round(sum(match_scores) / len(match_scores), 1) if match_scores else 0.0
+        highest_ats = max(ats_scores) if ats_scores else 0
+
+        return {
+            "student_id": effective_student_id,
+            "total_analyses": len(records),
+            "average_ats_score": avg_ats,
+            "average_match_percentage": avg_match,
+            "highest_ats_score": highest_ats,
+            "company_counts": company_counts,
+            "analyses": records
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching placement analysis history for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "total_analyses": 0,
+            "average_ats_score": 0.0,
+            "average_match_percentage": 0.0,
+            "highest_ats_score": 0,
+            "company_counts": {},
+            "analyses": []
+        }
+    finally:
+        conn.close()
+
+
+def get_student_interview_history(student_id: str = "default_student") -> List[Dict[str, Any]]:
+    """
+    Retrieves full mock interview session history for a student across all attempts (#144).
+    Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
     """
     conn = get_db_connection()
     try:
@@ -1220,34 +1340,54 @@ def get_user_placement_history(
                 rec["missing_skills_count"] = 0
 
             records.append(rec)
+def create_user(user_id: str, name: str, email: str, password_hash: str) -> bool:
+    """Create a new user account."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO users (id, name, email, password_hash)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, name.strip(), email.strip().lower(), password_hash)
+        )
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    except Exception as exc:
+        logger.error(f"Error creating user: {exc}")
+        raise
+    finally:
+        conn.close()
 
-        if sort_by == "score_desc":
-            records.sort(key=lambda x: x["ats_score"], reverse=True)
 
-        avg_ats = round(sum(ats_scores) / len(ats_scores), 1) if ats_scores else 0.0
-        avg_match = round(sum(match_scores) / len(match_scores), 1) if match_scores else 0.0
-        highest_ats = max(ats_scores) if ats_scores else 0
+def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user by email address."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email.strip().lower(),)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
-        return {
-            "student_id": effective_student_id,
-            "total_analyses": len(records),
-            "average_ats_score": avg_ats,
-            "average_match_percentage": avg_match,
-            "highest_ats_score": highest_ats,
-            "company_counts": company_counts,
-            "analyses": records
-        }
 
-    except Exception as e:
-        logger.error(f"Error fetching placement analysis history for {student_id}: {e}")
-        return {
-            "student_id": student_id,
-            "total_analyses": 0,
-            "average_ats_score": 0.0,
-            "average_match_percentage": 0.0,
-            "highest_ats_score": 0,
-            "company_counts": {},
-            "analyses": []
-        }
+def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieve a user by their ID"""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
