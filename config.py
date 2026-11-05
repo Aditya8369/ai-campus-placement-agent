@@ -31,7 +31,9 @@ REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
 
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "dev-secret-key-12345")
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+if not FLASK_SECRET_KEY:
+    raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
 
 # Centralized model setting
 GEMINI_MODEL = "gemini-2.5-flash"
