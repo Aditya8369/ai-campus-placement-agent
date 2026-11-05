@@ -1,5 +1,16 @@
 // Frontend interactions - AI Campus Placement Agent
 
+function escapeHtml(str) {
+  if (str === null || str === undefined) return "";
+  if (typeof str !== "string") str = String(str);
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   initThemeToggle();
   initFormUpload();
@@ -8,10 +19,13 @@ document.addEventListener("DOMContentLoaded", () => {
   initCompanyExplorer();
   initSkillGapFilter();
   initRoadmapExport();
-  initCodingSandbox();
+  initRoadmapTracker();
+  initProgressTracker();
+  if (typeof initCodingSandbox === "function") {
+    initCodingSandbox();
+  }
   initOutreachGenerator();
-  initRecentAnalysesDrawer();
-  initCharacterCounters();
+  initCopySuggestions();
 });
 
 function initThemeToggle() {
@@ -1583,9 +1597,16 @@ function initMockInterview() {
         </div>
         ${fillersHtml}
         ${starHtml}
-        <b>Suggestions:</b>
-        <ul class="mb-0 mt-1 ps-3">
-          ${(evalData.suggestions || []).map(s => `<li class="small text-secondary">${s}</li>`).join("")}
+        <b>Suggestions:</b><br/>
+        <ul class="mb-0 mt-1 list-unstyled">
+          ${(evalData.suggestions || []).map(s => `
+            <li class="mb-1 p-2 bg-white rounded-3 border d-flex justify-content-between align-items-center gap-2">
+              <span class="small text-dark">${escapeHtml(s)}</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="${escapeHtml(s)}" title="Copy suggestion">
+                <i class="fa-regular fa-copy"></i>
+              </button>
+            </li>
+          `).join("")}
         </ul>
       `;
       appendChatBubble(feedbackText, "evaluation");
@@ -2669,186 +2690,193 @@ function initOutreachGenerator() {
 }
 
 /**
- * Loads recent analyses from /api/analyses/recent and renders them inside the offcanvas drawer.
- * Displays helpful, styled empty states when no previous analysis history exists (#130).
+ * Universal Clipboard Copy Helper for AI-Generated Suggestions & Recommendations
+ * Supports modern Clipboard API with fallback to document.execCommand('copy').
+ * Fully responsive and cross-browser compatible (Chrome, Safari, iOS WebKit, Firefox, Edge).
+ * Displays instant inline button state feedback and non-intrusive floating toast notifications.
  */
-function initRecentAnalysesDrawer() {
-  const drawerEl = document.getElementById("offcanvasRecentAnalyses");
-  const listEl = document.getElementById("recentAnalysesList");
-  if (!drawerEl || !listEl) return;
+function initCopySuggestions() {
+  function getOrCreateToastContainer() {
+    let container = document.getElementById("copyToastContainer");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "copyToastContainer";
+      container.className = "copy-toast-container";
+      container.setAttribute("aria-live", "polite");
+      container.setAttribute("aria-atomic", "true");
+      document.body.appendChild(container);
+    }
+    return container;
+  }
 
-  async function loadRecentAnalyses() {
-    listEl.innerHTML = `
-      <div class="text-center py-5 text-muted">
-        <div class="spinner-border text-primary spinner-border-sm mb-2" role="status"></div>
-        <p class="small mb-0">Loading recent evaluations...</p>
-      </div>
+  function showCopyToast(message, isSuccess = true) {
+    const container = getOrCreateToastContainer();
+    const toast = document.createElement("div");
+    toast.className = "copy-toast";
+    toast.setAttribute("role", "status");
+
+    const iconClass = isSuccess
+      ? "fa-solid fa-circle-check text-success"
+      : "fa-solid fa-triangle-exclamation text-danger";
+
+    toast.innerHTML = `
+      <i class="${iconClass} flex-shrink-0"></i>
+      <span class="flex-grow-1">${escapeHtml(message)}</span>
     `;
 
-    try {
-      const response = await fetch("/api/analyses/recent?limit=10");
-      if (!response.ok) throw new Error("Network response was not ok");
-      const data = await response.json();
+    container.appendChild(toast);
 
-      if (!data.analyses || data.analyses.length === 0) {
-        listEl.innerHTML = `
-          <div class="text-center py-5 px-3">
-            <div class="p-4 bg-light rounded-4 border mb-3">
-              <i class="fa-solid fa-folder-open fa-3x text-secondary mb-3 d-block"></i>
-              <h5 class="fw-bold text-dark mb-1">No Analysis History</h5>
-              <p class="small text-secondary mb-3">You haven't analyzed any resumes yet. Upload a PDF or DOCX file on the homepage to generate your first placement readiness evaluation.</p>
-              <a href="/" class="btn btn-sm btn-primary rounded-pill px-4">
-                <i class="fa-solid fa-cloud-arrow-up me-1"></i> Start First Analysis
-              </a>
-            </div>
-          </div>
-        `;
-        return;
-      }
-
-      listEl.innerHTML = "";
-      data.analyses.forEach((a) => {
-        const card = document.createElement("div");
-        card.className = "card border rounded-3 p-3 shadow-sm bg-body";
-        const dateStr = a.created_at ? new Date(a.created_at).toLocaleDateString() : "";
-
-        card.innerHTML = `
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <div>
-              <span class="badge bg-primary-subtle text-primary fw-bold me-1">${escapeHtml(a.company_name)}</span>
-              <span class="badge bg-secondary-subtle text-secondary small">${dateStr}</span>
-            </div>
-            <button class="btn btn-outline-danger btn-sm border-0 rounded-circle delete-analysis-btn" data-id="${a.id}" title="Delete Analysis">
-              <i class="fa-solid fa-trash-can"></i>
-            </button>
-          </div>
-          <div class="small text-truncate fw-semibold mb-2" title="${escapeHtml(a.resume_filename)}">
-            <i class="fa-solid fa-file-pdf text-danger me-1"></i> ${escapeHtml(a.resume_filename)}
-          </div>
-          <div class="d-flex align-items-center gap-2 mb-3 small">
-            <span class="badge bg-success-subtle text-success">ATS: ${a.ats_score}%</span>
-            <span class="badge bg-info-subtle text-info">Match: ${a.match_percentage}%</span>
-          </div>
-          <a href="/dashboard/${a.id}" class="btn btn-sm btn-outline-primary rounded-pill w-100">
-            <i class="fa-solid fa-chart-pie me-1"></i> View Report
-          </a>
-        `;
-        listEl.appendChild(card);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        toast.classList.add("show");
       });
-
-      // Hook up delete buttons
-      listEl.querySelectorAll(".delete-analysis-btn").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-          e.stopPropagation();
-          const analysisId = btn.getAttribute("data-id");
-          if (!confirm("Are you sure you want to delete this placement analysis?")) return;
-
-          try {
-            const delRes = await fetch(`/api/analysis/${analysisId}`, { method: "DELETE" });
-            if (delRes.ok) {
-              loadRecentAnalyses();
-            } else {
-              alert("Failed to delete the analysis record.");
-            }
-          } catch (err) {
-            console.error("Error deleting analysis:", err);
-            alert("Error deleting analysis.");
-          }
-        });
-      });
-    } catch (err) {
-      console.warn("Could not load recent analyses:", err);
-      listEl.innerHTML = `
-        <div class="text-center py-5 px-3">
-          <div class="p-4 bg-light rounded-4 border">
-            <i class="fa-solid fa-triangle-exclamation fa-2x text-warning mb-2 d-block"></i>
-            <h6 class="fw-bold mb-1">Service Unavailable</h6>
-            <p class="small text-muted mb-3">Unable to retrieve recent sessions at this time.</p>
-            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" onclick="location.reload()">
-              <i class="fa-solid fa-rotate-right me-1"></i> Refresh
-            </button>
-          </div>
-        </div>
-      `;
-    }
-  }
-
-  drawerEl.addEventListener("show.bs.offcanvas", loadRecentAnalyses);
- * Real-time character counter and limit monitor for resume text and job description inputs (#132).
- */
-function initCharacterCounters() {
-  const resumeInput = document.getElementById("resumeTextInput");
-  const resumeCurrent = document.getElementById("resumeCurrentChars");
-  const resumeLimitWarning = document.getElementById("resumeCharLimitWarning");
-  const resumeMax = 10000;
-
-  const jdInput = document.getElementById("jdInput");
-  const jdCurrent = document.getElementById("jdCurrentChars");
-  const jdLimitWarning = document.getElementById("jdCharLimitWarning");
-  const jdMax = 5000;
-
-  function updateResumeCounter() {
-    if (!resumeInput || !resumeCurrent) return;
-    const len = resumeInput.value.length;
-    resumeCurrent.textContent = len.toLocaleString();
-
-    if (len >= resumeMax) {
-      resumeCurrent.classList.add("text-danger", "fw-bold");
-      resumeCurrent.classList.remove("text-warning");
-      if (resumeLimitWarning) resumeLimitWarning.classList.remove("d-none");
-    } else if (len >= resumeMax * 0.9) {
-      resumeCurrent.classList.add("text-warning", "fw-bold");
-      resumeCurrent.classList.remove("text-danger");
-      if (resumeLimitWarning) resumeLimitWarning.classList.remove("d-none");
-    } else {
-      resumeCurrent.classList.remove("text-danger", "text-warning", "fw-bold");
-      if (resumeLimitWarning) resumeLimitWarning.classList.add("d-none");
-    }
-  }
-
-  function updateJdCounter() {
-    if (!jdInput || !jdCurrent) return;
-    const len = jdInput.value.length;
-    jdCurrent.textContent = len.toLocaleString();
-
-    if (len >= jdMax) {
-      jdCurrent.classList.add("text-danger", "fw-bold");
-      jdCurrent.classList.remove("text-warning");
-      if (jdLimitWarning) jdLimitWarning.classList.remove("d-none");
-    } else if (len >= jdMax * 0.9) {
-      jdCurrent.classList.add("text-warning", "fw-bold");
-      jdCurrent.classList.remove("text-danger");
-      if (jdLimitWarning) jdLimitWarning.classList.remove("d-none");
-    } else {
-      jdCurrent.classList.remove("text-danger", "text-warning", "fw-bold");
-      if (jdLimitWarning) jdLimitWarning.classList.add("d-none");
-    }
-  }
-
-  if (resumeInput) {
-    resumeInput.addEventListener("input", updateResumeCounter);
-    resumeInput.addEventListener("change", updateResumeCounter);
-    resumeInput.addEventListener("paste", () => setTimeout(updateResumeCounter, 0));
-    updateResumeCounter();
-  }
-
-  if (jdInput) {
-    jdInput.addEventListener("input", updateJdCounter);
-    jdInput.addEventListener("change", updateJdCounter);
-    jdInput.addEventListener("paste", () => setTimeout(updateJdCounter, 0));
-    updateJdCounter();
-  }
-
-  // Handle clear or form reset events
-  const form = document.getElementById("analyzeForm");
-  if (form) {
-    form.addEventListener("reset", () => {
-      setTimeout(() => {
-        updateResumeCounter();
-        updateJdCounter();
-      }, 0);
     });
+
+    setTimeout(() => {
+      toast.classList.remove("show");
+      toast.classList.add("fade-out");
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 300);
+    }, 2400);
   }
+
+  async function copyTextToClipboard(text) {
+    if (!text || typeof text !== "string") return false;
+    const cleanText = text.trim();
+    if (!cleanText) return false;
+
+    // 1. Try modern navigator.clipboard API if available and permitted
+    if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === "function") {
+      try {
+        await navigator.clipboard.writeText(cleanText);
+        return true;
+      } catch (err) {
+        console.warn("navigator.clipboard.writeText failed, trying execCommand fallback:", err);
+      }
+    }
+
+    // 2. Fallback using document.execCommand('copy') for older browsers, iOS Safari, HTTP, and iframes
+    try {
+      const textarea = document.createElement("textarea");
+      textarea.value = cleanText;
+      // Prevent mobile keyboard popping up and viewport scrolling
+      textarea.style.position = "fixed";
+      textarea.style.top = "0";
+      textarea.style.left = "-9999px";
+      textarea.style.width = "2em";
+      textarea.style.height = "2em";
+      textarea.style.padding = "0";
+      textarea.style.border = "none";
+      textarea.style.outline = "none";
+      textarea.style.boxShadow = "none";
+      textarea.style.background = "transparent";
+      textarea.style.fontSize = "16px";
+      textarea.setAttribute("readonly", "");
+      textarea.setAttribute("aria-hidden", "true");
+
+      document.body.appendChild(textarea);
+
+      // Handle iOS Safari selection range
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+
+      const successful = document.execCommand("copy");
+      document.body.removeChild(textarea);
+
+      if (!successful) {
+        throw new Error("execCommand('copy') returned false");
+      }
+      return true;
+    } catch (fallbackErr) {
+      console.error("Clipboard copy failed across all methods:", fallbackErr);
+      return false;
+    }
+  }
+
+  function triggerButtonFeedback(btn, isSuccess) {
+    if (!btn) return;
+    if (btn.dataset.copyingInProgress === "true") return;
+    btn.dataset.copyingInProgress = "true";
+
+    const originalHtml = btn.innerHTML;
+    const originalTitle = btn.getAttribute("title") || "";
+    const hasText = btn.textContent.trim().length > 0;
+
+    if (isSuccess) {
+      btn.classList.add("copied");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-check text-success me-1"></i> Copied!'
+        : '<i class="fa-solid fa-check text-success"></i>';
+      btn.setAttribute("title", "Copied to clipboard!");
+    } else {
+      btn.classList.add("copy-error");
+      btn.innerHTML = hasText
+        ? '<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> Failed'
+        : '<i class="fa-solid fa-triangle-exclamation text-danger"></i>';
+      btn.setAttribute("title", "Failed to copy");
+    }
+
+    setTimeout(() => {
+      btn.innerHTML = originalHtml;
+      btn.classList.remove("copied", "copy-error");
+      if (originalTitle) {
+        btn.setAttribute("title", originalTitle);
+      } else {
+        btn.removeAttribute("title");
+      }
+      delete btn.dataset.copyingInProgress;
+    }, 2000);
+  }
+
+  // Event delegation to catch clicks on any .btn-copy-suggestion or .btn-copy-text
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-copy-suggestion, .btn-copy-text");
+    if (!btn) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    // 1. Check data-copy-text or data-copy-value
+    let textToCopy = btn.dataset.copyText || btn.dataset.copyValue;
+
+    // 2. Check data-copy-target (id of element containing text)
+    if (!textToCopy && btn.dataset.copyTarget) {
+      const targetEl = document.getElementById(btn.dataset.copyTarget);
+      if (targetEl) {
+        textToCopy = targetEl.value !== undefined ? targetEl.value : targetEl.innerText || targetEl.textContent;
+      }
+    }
+
+    // 3. Fallback: Search parent or sibling container
+    if (!textToCopy) {
+      const parentContainer = btn.closest("li, .list-group-item, .alert, .p-3, .chat-bubble");
+      if (parentContainer) {
+        const textEl = parentContainer.querySelector(".resume-bullet-text, .suggestion-text, span, p");
+        if (textEl) {
+          textToCopy = textEl.innerText || textEl.textContent;
+        }
+      }
+    }
+
+    if (!textToCopy || !textToCopy.trim()) {
+      showCopyToast("No recommendation text found to copy.", false);
+      triggerButtonFeedback(btn, false);
+      return;
+    }
+
+    const success = await copyTextToClipboard(textToCopy);
+
+    if (success) {
+      triggerButtonFeedback(btn, true);
+      const customMsg = btn.dataset.copySuccessMsg || "Recommendation copied to clipboard!";
+      showCopyToast(customMsg, true);
+    } else {
+      triggerButtonFeedback(btn, false);
+      showCopyToast("Could not access clipboard. Please copy manually.", false);
+    }
+  });
 }
 
 
