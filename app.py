@@ -51,7 +51,20 @@ from utils.database import (
     get_company_checklist,
     save_company_checklist,
     reset_company_checklist,
+    save_coding_submission,
+    get_coding_submissions,
     update_job_application_status,
+    save_skill_self_assessment,
+    get_student_skill_self_assessments,
+    delete_skill_self_assessment,
+    get_default_technical_skills_catalog,
+    export_job_applications_csv,
+    export_job_applications_json,
+    export_job_applications_markdown,
+    get_job_applications_export_summary,
+    submit_user_feedback,
+    get_user_feedback_list,
+    get_feedback_metrics_summary,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1382,6 +1395,35 @@ def api_evaluate_code(analysis_id: str = None):
             code=code
         )
 
+        # Automatically store coding submission attempt (#194)
+        student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+        sub_id = f"sub-{uuid.uuid4().hex[:12]}"
+        try:
+            score_val = eval_result.get("score") or eval_result.get("correctness_score", 0)
+            tests_passed_val = eval_result.get("tests_passed", 0)
+            total_tests_val = eval_result.get("total_tests", 0)
+            is_passed = bool(eval_result.get("passed", False)) or (int(score_val) >= 70)
+
+            save_coding_submission(
+                sub_id=sub_id,
+                student_id=student_id,
+                question_title=problem.get("title", "Coding Problem"),
+                language=language,
+                code=code,
+                passed=is_passed,
+                score=int(score_val),
+                tests_passed=int(tests_passed_val),
+                total_tests=int(total_tests_val),
+                test_results=eval_result.get("test_results") or eval_result.get("test_cases", []),
+                complexity_analysis=eval_result.get("complexity", ""),
+                feedback=eval_result.get("feedback", ""),
+                company_name=company,
+                analysis_id=analysis_id
+            )
+            eval_result["submission_id"] = sub_id
+        except Exception as sub_err:
+            logger.warning(f"Failed to record coding submission: {sub_err}")
+
         return jsonify({
             "status": "success",
             "evaluation": eval_result,
@@ -1394,6 +1436,232 @@ def api_evaluate_code(analysis_id: str = None):
             "status": "error",
             "message": f"Code evaluation failed: {str(e)}"
         }), 500
+
+
+@app.route("/skills-assessment", methods=["GET", "POST"])
+def skills_assessment_view():
+    """
+    Renders and manages candidate technical skills self-assessment module.
+    Allows students to log and review competencies across languages, frameworks, and CS fundamentals.
+    """
+    student_id = (flask_session.get("user", {}).get("id") or flask_session.get("user_id") or flask_session.get("student_id") or "default_student")
+    catalog = get_default_technical_skills_catalog()
+
+    if request.method == "POST":
+        skill_name = request.form.get("skill_name", "").strip()
+        category = request.form.get("category", "General").strip()
+        proficiency_level = request.form.get("proficiency_level", "Intermediate").strip()
+        years_experience = request.form.get("years_experience", "0").strip()
+        notes = request.form.get("notes", "").strip()
+
+        if not skill_name:
+            flash("Skill name is required.", "danger")
+        else:
+            try:
+                exp_val = float(years_experience) if years_experience else 0.0
+            except ValueError:
+                exp_val = 0.0
+
+            save_skill_self_assessment(
+                student_id=student_id,
+                skill_name=skill_name,
+                category=category,
+                proficiency_level=proficiency_level,
+                years_experience=exp_val,
+                notes=notes
+            )
+            flash(f"Self-assessment for '{skill_name}' recorded successfully!", "success")
+        return redirect("/skills-assessment")
+
+    # GET request - gather assessments and compute metrics
+    assessments = get_student_skill_self_assessments(student_id)
+    level_weights = {"Beginner": 25, "Intermediate": 50, "Advanced": 80, "Expert": 100}
+    category_summary = {}
+    total_score = 0
+
+    for item in assessments:
+        cat = item.get("category", "General")
+        level = item.get("proficiency_level", "Intermediate")
+        pts = level_weights.get(level, 50)
+        total_score += pts
+        if cat not in category_summary:
+            category_summary[cat] = {"count": 0, "total_pts": 0}
+        category_summary[cat]["count"] += 1
+        category_summary[cat]["total_pts"] += pts
+
+    avg_score = round(total_score / len(assessments)) if assessments else 0
+
+    return render_template(
+        "skills_assessment.html",
+        catalog=catalog,
+        assessments=assessments,
+        category_summary=category_summary,
+        avg_score=avg_score,
+        total_skills=len(assessments),
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback_view():
+    """
+    Renders and processes candidate platform experience feedback (#197).
+    Allows students to rate features, provide structured reviews, and view satisfaction statistics.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    categories = [
+        "Resume Analysis & ATS Scoring",
+        "Mock Interview Simulator",
+        "Job Application Tracker",
+        "Role Preparation & Roadmaps",
+        "Coding Practice & DSA",
+        "UI & Performance",
+        "General Experience"
+    ]
+
+    if request.method == "POST":
+        rating_raw = request.form.get("rating", "5")
+        category = request.form.get("category", "General Experience").strip()
+        comment = request.form.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            flash("Please enter feedback comments before submitting.", "danger")
+        else:
+            submit_user_feedback(
+                student_id=student_id,
+                rating=rating,
+                category=category,
+                comment=comment
+            )
+            flash("Thank you! Your feedback has been submitted successfully.", "success")
+        return redirect("/feedback")
+
+    feedback_list = get_user_feedback_list(limit=25)
+    metrics = get_feedback_metrics_summary()
+
+    return render_template(
+        "feedback.html",
+        categories=categories,
+        feedback_list=feedback_list,
+        metrics=metrics,
+        student_id=student_id
+    )
+
+
+@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
+def api_skills_assessment():
+    """
+    REST API endpoint for managing student technical skill self-assessments.
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
+    """
+    REST API endpoint for submitting and retrieving feedback (#197).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        items = get_student_skill_self_assessments(student_id)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(items),
+            "skills": items
+        cat = request.args.get("category")
+        limit = request.args.get("limit", 50)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 50
+        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
+        metrics = get_feedback_metrics_summary()
+        return jsonify({
+            "status": "success",
+            "total": len(items),
+            "metrics": metrics,
+            "feedback": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        skill_name = payload.get("skill_name", "").strip()
+        category = payload.get("category", "General").strip()
+        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
+        years_experience = payload.get("years_experience", 0.0)
+        notes = payload.get("notes", "").strip()
+
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+
+        try:
+            exp_val = float(years_experience)
+        except (ValueError, TypeError):
+            exp_val = 0.0
+
+        saved = save_skill_self_assessment(
+            student_id=student_id,
+            skill_name=skill_name,
+            category=category,
+            proficiency_level=proficiency_level,
+            years_experience=exp_val,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Skill '{skill_name}' assessment saved",
+            "skill": saved
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        skill_name = (payload.get("skill_name") or "").strip()
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
+        deleted = delete_skill_self_assessment(student_id, skill_name)
+        return jsonify({
+            "status": "success" if deleted else "not_found",
+            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
+        }), 200 if deleted else 404
+
+        rating_raw = payload.get("rating", 5)
+        category = payload.get("category", "General Experience")
+        comment = payload.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            return jsonify({
+                "status": "error",
+                "message": "comment is required and cannot be empty."
+            }), 400
+
+        record = submit_user_feedback(
+            student_id=student_id,
+            rating=rating,
+            category=category,
+            comment=comment
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Feedback recorded successfully",
+            "feedback": record
+        }), 201
+
 
 
 @app.route("/interview/<analysis_id>/export")
@@ -2151,11 +2419,16 @@ def internships_view():
 @app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
-    Candidate Job Application Tracker view and management handler (#143).
-    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    Candidate Job Application Tracker view and management handler (#143, #193).
+    Enforces per-student data segregation and provides advanced multi-parameter search & filtering.
     """
     student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
     status_filter = request.args.get("status", "All")
+    search_query = request.args.get("search", "").strip()
+    location_filter = request.args.get("location", "All").strip()
+    job_type_filter = request.args.get("job_type", "All").strip()
+    exp_filter = request.args.get("experience_level", "All").strip()
+    sort_by = request.args.get("sort", "recent").strip()
 
     if request.method == "POST":
         company = request.form.get("company_name", "").strip()
@@ -2164,6 +2437,9 @@ def job_applications_tracker():
         app_date = request.form.get("application_date", "").strip()
         job_url = request.form.get("job_url", "").strip()
         notes = request.form.get("notes", "").strip()
+        location = request.form.get("location", "Remote").strip()
+        job_type = request.form.get("job_type", "Full-Time").strip()
+        exp_level = request.form.get("experience_level", "Entry-Level").strip()
 
         if not company or not role:
             flash("Company name and job role are required.", "error")
@@ -2178,12 +2454,25 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
-            notes=notes
+            notes=notes,
+            location=location,
+            job_type=job_type,
+            experience_level=exp_level
         )
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
 
-    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    applications = get_job_applications(
+        student_id=student_id,
+        status_filter=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        experience_level_filter=exp_filter,
+        sort_by=sort_by
+    )
+
+    all_user_apps = get_job_applications(student_id=student_id)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -2196,8 +2485,14 @@ def job_applications_tracker():
     return render_template(
         "applications.html",
         applications=applications,
+        all_count=len(all_user_apps),
         student_id=student_id,
-        current_status=status_filter
+        current_status=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        exp_filter=exp_filter,
+        sort_by=sort_by
     )
 
 
@@ -2225,6 +2520,77 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@app.route("/applications/export", methods=["GET"])
+@app.route("/api/applications/export", methods=["GET"])
+def export_job_applications():
+    """
+    Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
+    Supports format selection via ?format=csv (default) or ?format=json.
+    Respects active ?status= filter and candidate data segregation.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    status_filter = request.args.get("status", "All")
+    export_format = request.args.get("format", "csv").strip().lower()
+
+    if export_format == "json":
+        data = export_job_applications_json(student_id=student_id, status_filter=status_filter)
+        res = jsonify(data)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        res.headers["Content-Disposition"] = f"attachment; filename=job_applications_{safe_student}.json"
+        return res
+
+    if export_format in ("md", "markdown"):
+        md_content = export_job_applications_markdown(student_id=student_id, status_filter=status_filter)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            md_content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.md",
+                "Content-Type": "text/markdown; charset=utf-8"
+            }
+        )
+
+    # Default CSV
+    csv_content = export_job_applications_csv(student_id=student_id, status_filter=status_filter)
+    safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+    response = Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.csv",
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
+    return response
+
+
+@app.route("/api/applications/export-summary", methods=["GET"])
+def api_applications_export_summary():
+    """
+    Returns application export summary and readiness stats for candidate (#196).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    summary = get_job_applications_export_summary(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "export_metadata": summary
+    }), 200
+
 @app.route("/interview-history")
 def interview_history_view():
     """
@@ -2628,6 +2994,28 @@ def company_checklist_view():
         available_companies.insert(0, target_company)
 
     checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
+@app.route("/coding-submissions")
+def coding_submissions_view():
+    """
+    Coding Assessment Submission History View (#194).
+    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    language_filter = request.args.get("language", "All").strip()
+    status_filter = request.args.get("status", "All").strip()
+
+    submissions = get_coding_submissions(
+        student_id=student_id,
+        question_title=question_filter or None,
+        language_filter=language_filter,
+        status_filter=status_filter
+    )
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -2691,6 +3079,37 @@ def api_reset_checklist():
         "success": True,
         "message": f"Checklist for {company_name} reset successfully.",
         "data": refreshed
+            "count": len(submissions),
+            "submissions": submissions
+        }), 200
+
+    return render_template(
+        "coding_submissions.html",
+        submissions=submissions,
+        student_id=student_id,
+        question_filter=question_filter,
+        language_filter=language_filter,
+        status_filter=status_filter,
+        total_count=len(all_user_subs),
+        passed_count=passed_count,
+        failed_count=failed_count,
+        avg_score=avg_score
+    )
+
+
+@app.route("/api/coding-submissions")
+def api_coding_submissions():
+    """
+    API endpoint returning student coding attempts with comparison capability (#194).
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    submissions = get_coding_submissions(student_id=student_id, question_title=question_filter or None)
+
+    return jsonify({
+        "success": True,
+        "count": len(submissions),
+        "submissions": submissions
     }), 200
 
 
