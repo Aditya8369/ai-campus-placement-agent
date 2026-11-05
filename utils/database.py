@@ -91,6 +91,24 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS cohort_benchmarks (
+                id TEXT PRIMARY KEY,
+                analysis_id TEXT,
+                student_handle TEXT NOT NULL,
+                department TEXT NOT NULL DEFAULT 'Computer Science',
+                grad_year INTEGER NOT NULL DEFAULT 2026,
+                ats_score INTEGER NOT NULL DEFAULT 70,
+                job_match_score INTEGER NOT NULL DEFAULT 65,
+                overall_score REAL NOT NULL DEFAULT 67.5,
+                target_company TEXT NOT NULL DEFAULT 'General',
+                skills_count INTEGER NOT NULL DEFAULT 0,
+                tier TEXT NOT NULL DEFAULT 'Silver',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         
         # Schema migration: check if student_id and version_number exist in analyses
@@ -107,6 +125,14 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+
+        # Seed initial cohort peers if table is currently empty
+        cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
+        if cursor.fetchone()[0] == 0:
+            _seed_cohort_benchmarks(cursor)
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
@@ -902,6 +928,10 @@ def get_cohort_stats(
 
 
 
+def get_student_interview_history(student_id: str = "default_student") -> List[Dict[str, Any]]:
+    """
+    Retrieves full mock interview session history for a student across all attempts (#144).
+    Calculates completion rates, scores per question type (Technical, HR, Behavioral), and overall score.
 def get_user_placement_history(
     student_id: str = "default_student",
     company_filter: Optional[str] = None,
@@ -1164,6 +1194,83 @@ def get_student_interview_performance_analytics(student_id: str = "default_stude
         "weaknesses": weaknesses,
         "sessions": history
     }
+
+
+def get_user_placement_history(
+    student_id: str = "default_student",
+    company_filter: Optional[str] = None,
+    sort_by: str = "date_desc"
+) -> Dict[str, Any]:
+    """
+    Saves and retrieves comprehensive previous placement analysis history for a specific user (#149).
+    Includes per-student data isolation, ATS score tracking, role match percentages,
+    and historical performance metrics.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        query = """
+            SELECT id, resume_filename, company_name, job_description, results_json,
+                   student_id, version_number, created_at
+            FROM analyses
+            WHERE student_id = ?
+        """
+        params: List[Any] = [effective_student_id]
+
+        if company_filter and company_filter.strip() and company_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(company_name) LIKE ?"
+            params.append(f"%{company_filter.strip().lower()}%")
+
+        if sort_by == "score_desc":
+            # Will sort in python after parsing ATS score
+            query += " ORDER BY created_at DESC"
+        elif sort_by == "date_asc":
+            query += " ORDER BY created_at ASC"
+        else:
+            query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        records = []
+        ats_scores = []
+        match_scores = []
+        company_counts: Dict[str, int] = {}
+
+        for row in rows:
+            rec = dict(row)
+            try:
+                raw_json = rec.pop("results_json", "{}")
+                parsed = json.loads(raw_json)
+                rec["results"] = parsed
+
+                # Score resolution
+                ats = parsed.get("ats_score") or parsed.get("resume_analysis", {}).get("ats_score", 0)
+                match = parsed.get("job_match_score") or parsed.get("job_match", {}).get("match_percentage", 0)
+
+                rec["ats_score"] = int(ats)
+                rec["match_percentage"] = int(match)
+                ats_scores.append(rec["ats_score"])
+                match_scores.append(rec["match_percentage"])
+
+                # Extract extracted skills & missing skills count
+                rec["matched_skills_count"] = len(parsed.get("matched_skills") or parsed.get("job_match", {}).get("matched_skills", []))
+                rec["missing_skills_count"] = len(parsed.get("missing_skills") or parsed.get("job_match", {}).get("missing_skills", []))
+
+                comp = rec.get("company_name", "General")
+                company_counts[comp] = company_counts.get(comp, 0) + 1
+
+            except Exception as parse_err:
+                logger.warning(f"Failed to parse analysis payload for record {rec.get('id')}: {parse_err}")
+                rec["results"] = {}
+                rec["ats_score"] = 0
+                rec["match_percentage"] = 0
+                rec["matched_skills_count"] = 0
+                rec["missing_skills_count"] = 0
+
+            records.append(rec)
 def create_user(user_id: str, name: str, email: str, password_hash: str) -> bool:
     """Create a new user account."""
     conn = get_db_connection()
