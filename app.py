@@ -28,6 +28,7 @@ from utils.database import (
     save_analysis,
     get_analysis,
     get_recent_analyses,
+    get_analyses_history,
     delete_analysis,
     create_interview_session,
     get_interview_session,
@@ -2361,6 +2362,55 @@ def api_user_placement_analyses():
     }), 200
 
 
+@app.route("/history", methods=["GET"])
+def history_view():
+    """
+    Renders the dedicated History page listing past placement analyses (#159).
+    Displays date, target role, target company, and ATS score, ordered newest first.
+    Allows reopening any analysis in the existing dashboard view or permanently deleting records.
+    """
+    try:
+        analyses = get_analyses_history()
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "success": True,
+                "analyses": analyses,
+                "total": len(analyses)
+            }), 200
+
+        return render_template("history.html", analyses=analyses)
+    except Exception as e:
+        logger.error(f"Error loading analyses history: {str(e)}")
+        flash("Failed to load analysis history.", "error")
+        return render_template("history.html", analyses=[])
+
+
+@app.route("/history/delete/<analysis_id>", methods=["POST"])
+@app.route("/delete-analysis/<analysis_id>", methods=["POST"])
+def delete_analysis_action(analysis_id: str):
+    """
+    Removes a past analysis record and its associated data (#159).
+    Supports standard form submission redirects and JSON API responses.
+    """
+    try:
+        deleted = delete_analysis(analysis_id)
+        if not deleted:
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": f"Analysis '{analysis_id}' not found."}), 404
+            flash(f"Analysis with ID '{analysis_id}' was not found.", "error")
+            return redirect(url_for("history_view"))
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "message": "Analysis deleted successfully."}), 200
+
+        flash("Analysis and associated data deleted successfully.", "success")
+        return redirect(url_for("history_view"))
+    except Exception as e:
+        logger.error(f"Error deleting analysis {analysis_id}: {str(e)}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
+        flash("An error occurred while deleting the analysis.", "error")
+        return redirect(url_for("history_view"))
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================

@@ -404,13 +404,14 @@ def get_recent_analyses(limit: int = 10) -> list:
 
 def delete_analysis(analysis_id: str) -> bool:
     """
-    Deletes an analysis record and its corresponding interview sessions.
+    Deletes an analysis record and its corresponding interview sessions and benchmark entries.
     Returns True if an analysis was deleted, False if not found.
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM interviews WHERE analysis_id = ?", (analysis_id,))
+        cursor.execute("DELETE FROM cohort_benchmarks WHERE analysis_id = ?", (analysis_id,))
         cursor.execute("DELETE FROM analyses WHERE id = ?", (analysis_id,))
         conn.commit()
         deleted = cursor.rowcount > 0
@@ -419,6 +420,74 @@ def delete_analysis(analysis_id: str) -> bool:
         return deleted
     except Exception as e:
         logger.error(f"Error deleting analysis {analysis_id}: {str(e)}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_analyses_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    Retrieves past placement analysis sessions ordered by created_at DESC (newest first) (#159).
+    Includes formatted date, target role, target company, ATS score, match percentage, and metadata.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = """
+            SELECT id, resume_filename, company_name, job_description, results_json,
+                   student_id, version_number, created_at
+            FROM analyses
+            ORDER BY created_at DESC, rowid DESC
+        """
+        params: List[Any] = []
+        if limit is not None and limit > 0:
+            query += " LIMIT ?"
+            params.append(limit)
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        history = []
+        for row in rows:
+            record = dict(row)
+            try:
+                raw_json = record.pop("results_json", "{}")
+                parsed = json.loads(raw_json) if isinstance(raw_json, str) else (raw_json or {})
+                resume_analysis = parsed.get("resume_analysis", {})
+                job_match = parsed.get("job_match", {})
+
+                # ATS score resolution
+                ats = parsed.get("ats_score") or resume_analysis.get("ats_score", 0)
+                record["ats_score"] = int(ats)
+
+                # Match percentage resolution
+                match = parsed.get("match_percentage") or job_match.get("match_percentage", 0)
+                record["match_percentage"] = int(match)
+
+                # Target role resolution
+                target_role = (
+                    parsed.get("target_role")
+                    or job_match.get("target_role")
+                    or parsed.get("role_title")
+                    or job_match.get("role_title")
+                    or ""
+                )
+                if not target_role and record.get("job_description"):
+                    first_line = record["job_description"].split("\n")[0].strip()
+                    target_role = first_line[:50] if first_line else "Software Engineer"
+                elif not target_role:
+                    target_role = "Software Engineer"
+
+                record["target_role"] = target_role
+            except Exception as parse_err:
+                logger.warning(f"Error parsing analysis {record.get('id')} results: {parse_err}")
+                record["ats_score"] = 0
+                record["match_percentage"] = 0
+                record["target_role"] = "Software Engineer"
+
+            history.append(record)
+        return history
+    except Exception as e:
+        logger.error(f"Error fetching analyses history: {str(e)}")
         raise e
     finally:
         conn.close()
