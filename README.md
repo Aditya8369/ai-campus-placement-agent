@@ -1,6 +1,6 @@
 # AI Campus Placement Agent
 
-> **NSoC Winter Edition**
+# This project is a part of Nexus Spring of Code (NSoC) 2026 - Winter Edition
 > 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Open Source](https://img.shields.io/badge/Open%20Source-Yes-success.svg)](https://github.com/deepikagandla74/ai-campus-placement-agent)
