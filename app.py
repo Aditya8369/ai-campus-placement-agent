@@ -2416,11 +2416,16 @@ def internships_view():
 @app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
-    Candidate Job Application Tracker view and management handler (#143).
-    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    Candidate Job Application Tracker view and management handler (#143, #193).
+    Enforces per-student data segregation and provides advanced multi-parameter search & filtering.
     """
     student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
     status_filter = request.args.get("status", "All")
+    search_query = request.args.get("search", "").strip()
+    location_filter = request.args.get("location", "All").strip()
+    job_type_filter = request.args.get("job_type", "All").strip()
+    exp_filter = request.args.get("experience_level", "All").strip()
+    sort_by = request.args.get("sort", "recent").strip()
 
     if request.method == "POST":
         company = request.form.get("company_name", "").strip()
@@ -2429,6 +2434,9 @@ def job_applications_tracker():
         app_date = request.form.get("application_date", "").strip()
         job_url = request.form.get("job_url", "").strip()
         notes = request.form.get("notes", "").strip()
+        location = request.form.get("location", "Remote").strip()
+        job_type = request.form.get("job_type", "Full-Time").strip()
+        exp_level = request.form.get("experience_level", "Entry-Level").strip()
 
         if not company or not role:
             flash("Company name and job role are required.", "error")
@@ -2443,12 +2451,25 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
-            notes=notes
+            notes=notes,
+            location=location,
+            job_type=job_type,
+            experience_level=exp_level
         )
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
 
-    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    applications = get_job_applications(
+        student_id=student_id,
+        status_filter=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        experience_level_filter=exp_filter,
+        sort_by=sort_by
+    )
+
+    all_user_apps = get_job_applications(student_id=student_id)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
@@ -2461,8 +2482,14 @@ def job_applications_tracker():
     return render_template(
         "applications.html",
         applications=applications,
+        all_count=len(all_user_apps),
         student_id=student_id,
-        current_status=status_filter
+        current_status=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        exp_filter=exp_filter,
+        sort_by=sort_by
     )
 
 
