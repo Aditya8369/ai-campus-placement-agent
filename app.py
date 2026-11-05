@@ -166,6 +166,41 @@ def request_entity_too_large(error):
     return redirect(url_for("index"))
 
 
+@app.errorhandler(429)
+def rate_limit_exceeded(error):
+    """
+    Handles HTTP 429 Too Many Requests errors.
+    Returns JSON for API/AJAX requests and a styled 429 page for browser UI requests (#160).
+    """
+    description = getattr(error, "description", None) or "You have temporarily exceeded the request rate limit for this action."
+    retry_hint = getattr(error, "retry_hint", "try again in a few minutes")
+    retry_after = getattr(error, "retry_after", 60)
+    is_json = (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.headers.get("Accept") == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        response = jsonify({
+            "success": False,
+            "error": "Too Many Requests",
+            "message": description,
+            "retry_after_seconds": retry_after,
+            "retry_after_hint": retry_hint,
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+
+    return render_template(
+        "429.html",
+        message=description,
+        retry_hint=retry_hint,
+        retry_after_seconds=retry_after,
+    ), 429
+
+
 @app.after_request
 def set_security_headers(response):
     """
@@ -416,7 +451,7 @@ def _extract_and_validate_resume(req):
 
 
 @app.route("/analyze", methods=["POST"])
-@rate_limit(max_requests=15, window_seconds=60, scope="analyze_submission", is_api=False)
+@rate_limit(scope="analyze_submission", is_api=False)
 def analyze():
     """
     Handles PDF resume uploads, processes files, calls coordinator,
@@ -532,6 +567,7 @@ def analyze():
 
 
 @app.route("/api/analysis/start", methods=["POST"])
+@rate_limit(scope="analyze", is_api=True)
 def start_analysis_async():
     """
     Dedicated REST endpoint initiating asynchronous placement analysis.
@@ -628,7 +664,7 @@ def get_analysis_task_status(task_id: str):
 
 @app.route("/api/analysis/batch-compare", methods=["POST"])
 @app.route("/batch-compare", methods=["POST"])
-@rate_limit(max_requests=10, window_seconds=60, scope="batch_compare", is_api=True)
+@rate_limit(scope="batch_compare", is_api=True)
 def api_batch_compare():
     """
     Dedicated endpoint for multi-company batch placement evaluation.
@@ -1004,7 +1040,7 @@ def interview(analysis_id: str) -> str:
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
-@rate_limit(max_requests=30, window_seconds=60, scope="interview_eval", is_api=True)
+@rate_limit(scope="interview_eval", is_api=True)
 def submit_interview_answer(analysis_id: str):
     """
     Endpoint that evaluates a candidate response dynamically and updates session progress.
@@ -1111,7 +1147,7 @@ def submit_interview_answer(analysis_id: str):
 
 
 @app.route("/api/interview/evaluate-star", methods=["POST"])
-@rate_limit(max_requests=30, window_seconds=60, scope="star_eval", is_api=True)
+@rate_limit(scope="star_eval", is_api=True)
 def api_evaluate_star():
     """
     Evaluates candidate interview responses against the STAR behavioral framework
@@ -1244,6 +1280,7 @@ def api_interview_coding_problem(analysis_id: str = None):
 
 @app.route("/api/interview/<analysis_id>/evaluate-code", methods=["POST"])
 @app.route("/api/interview/evaluate-code", methods=["POST"])
+@rate_limit(scope="interview_eval", is_api=True)
 def api_evaluate_code(analysis_id: str = None):
     """
     Evaluates candidate code submission against problem statement and test cases.
@@ -1537,7 +1574,7 @@ def download_skills_gap_report(analysis_id: str):
 
 
 @app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
-@rate_limit(max_requests=20, window_seconds=60, scope="generate_outreach", is_api=True)
+@rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
     Generates tailored application outreach assets (formal cover letter, LinkedIn InMail,
