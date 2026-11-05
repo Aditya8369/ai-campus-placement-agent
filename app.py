@@ -2020,6 +2020,12 @@ def user_placement_history_view():
         sort_by=sort_by
     )
 
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "data": history_data
+        }), 200
+
     return render_template(
         "my_reports.html",
         data=history_data,
