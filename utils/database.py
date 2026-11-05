@@ -111,6 +111,26 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 6: Store student detailed profile information
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_profiles (
+                student_id TEXT PRIMARY KEY,
+                full_name TEXT,
+                email TEXT,
+                phone TEXT,
+                department TEXT,
+                grad_year INTEGER,
+                cgpa REAL,
+                target_role TEXT,
+                target_company TEXT,
+                skills_json TEXT,
+                linkedin_url TEXT,
+                github_url TEXT,
+                has_resume_uploaded INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
         
         # Schema migration: check if student_id and version_number exist in analyses
@@ -1314,3 +1334,246 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def save_student_profile(
+    student_id: str,
+    full_name: Optional[str] = None,
+    email: Optional[str] = None,
+    phone: Optional[str] = None,
+    department: Optional[str] = None,
+    grad_year: Optional[int] = None,
+    cgpa: Optional[float] = None,
+    target_role: Optional[str] = None,
+    target_company: Optional[str] = None,
+    skills: Optional[List[str]] = None,
+    linkedin_url: Optional[str] = None,
+    github_url: Optional[str] = None,
+    has_resume_uploaded: Optional[bool] = None
+) -> Dict[str, Any]:
+    """
+    Saves or updates a candidate's placement profile (#199).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        existing = cursor.fetchone()
+
+        skills_json = json.dumps(skills) if skills is not None else None
+
+        if existing:
+            rec = dict(existing)
+            u_name = full_name if full_name is not None else rec.get("full_name")
+            u_email = email if email is not None else rec.get("email")
+            u_phone = phone if phone is not None else rec.get("phone")
+            u_dept = department if department is not None else rec.get("department")
+            u_year = grad_year if grad_year is not None else rec.get("grad_year")
+            u_cgpa = cgpa if cgpa is not None else rec.get("cgpa")
+            u_role = target_role if target_role is not None else rec.get("target_role")
+            u_comp = target_company if target_company is not None else rec.get("target_company")
+            u_skills = skills_json if skills_json is not None else rec.get("skills_json")
+            u_li = linkedin_url if linkedin_url is not None else rec.get("linkedin_url")
+            u_gh = github_url if github_url is not None else rec.get("github_url")
+            u_resume = int(has_resume_uploaded) if has_resume_uploaded is not None else rec.get("has_resume_uploaded", 0)
+
+            cursor.execute("""
+                UPDATE student_profiles SET
+                    full_name = ?, email = ?, phone = ?, department = ?,
+                    grad_year = ?, cgpa = ?, target_role = ?, target_company = ?,
+                    skills_json = ?, linkedin_url = ?, github_url = ?,
+                    has_resume_uploaded = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE student_id = ?
+            """, (
+                u_name, u_email, u_phone, u_dept,
+                u_year, u_cgpa, u_role, u_comp,
+                u_skills, u_li, u_gh, u_resume, s_id
+            ))
+        else:
+            cursor.execute("""
+                INSERT INTO student_profiles (
+                    student_id, full_name, email, phone, department,
+                    grad_year, cgpa, target_role, target_company,
+                    skills_json, linkedin_url, github_url, has_resume_uploaded, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, (
+                s_id, full_name, email, phone, department,
+                grad_year, cgpa, target_role, target_company,
+                skills_json, linkedin_url, github_url,
+                int(has_resume_uploaded or 0)
+            ))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        saved = dict(cursor.fetchone())
+        if saved.get("skills_json"):
+            try:
+                saved["skills"] = json.loads(saved["skills_json"])
+            except Exception:
+                saved["skills"] = []
+        else:
+            saved["skills"] = []
+        return saved
+    finally:
+        conn.close()
+
+
+def get_student_profile(student_id: str) -> Dict[str, Any]:
+    """
+    Retrieves student profile record by student_id (#199).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
+        row = cursor.fetchone()
+        if not row:
+            # Check users table fallback for name/email
+            cursor.execute("SELECT name, email FROM users WHERE id = ?", (s_id,))
+            user_row = cursor.fetchone()
+            return {
+                "student_id": s_id,
+                "full_name": user_row["name"] if user_row else "",
+                "email": user_row["email"] if user_row else "",
+                "phone": "",
+                "department": "",
+                "grad_year": None,
+                "cgpa": None,
+                "target_role": "",
+                "target_company": "",
+                "skills": [],
+                "linkedin_url": "",
+                "github_url": "",
+                "has_resume_uploaded": 0
+            }
+
+        data = dict(row)
+        if data.get("skills_json"):
+            try:
+                data["skills"] = json.loads(data["skills_json"])
+            except Exception:
+                data["skills"] = []
+        else:
+            data["skills"] = []
+        return data
+    finally:
+        conn.close()
+
+
+def calculate_profile_completion(student_id: str) -> Dict[str, Any]:
+    """
+    Evaluates profile completeness across key placement readiness criteria (#199):
+    - Basic Information (Full Name, Email, Phone): 20%
+    - Academic Background (Department, Grad Year, CGPA): 25%
+    - Career Aspirations (Target Role, Target Company): 20%
+    - Technical Competencies (At least 3 Skills): 15%
+    - Professional Presence & Resume (Resume Upload, LinkedIn, GitHub): 20%
+    """
+    profile = get_student_profile(student_id)
+
+    # Also check if student has analyses uploaded if has_resume_uploaded flag is 0
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id.strip(),))
+        has_analyses = cursor.fetchone()[0] > 0
+    finally:
+        conn.close()
+
+    criteria = []
+
+    # 1. Full name & contact
+    has_name = bool((profile.get("full_name") or "").strip())
+    has_email = bool((profile.get("email") or "").strip())
+    has_phone = bool((profile.get("phone") or "").strip())
+    basic_done = has_name and has_email
+    criteria.append({
+        "category": "Basic Contact Information",
+        "title": "Full Name & Email",
+        "weight": 15,
+        "completed": basic_done,
+        "missing_items": [f for f, ok in [("Full Name", has_name), ("Email Address", has_email)] if not ok]
+    })
+
+    # 2. Phone number
+    criteria.append({
+        "category": "Basic Contact Information",
+        "title": "Contact Phone Number",
+        "weight": 5,
+        "completed": has_phone,
+        "missing_items": [] if has_phone else ["Phone Number"]
+    })
+
+    # 3. Department & Graduation Year
+    has_dept = bool((profile.get("department") or "").strip())
+    has_year = bool(profile.get("grad_year") and int(profile.get("grad_year")) >= 2020)
+    has_cgpa = bool(profile.get("cgpa") and float(profile.get("cgpa")) > 0)
+    criteria.append({
+        "category": "Academic Background",
+        "title": "Department & Graduation Year",
+        "weight": 15,
+        "completed": has_dept and has_year,
+        "missing_items": [f for f, ok in [("Department", has_dept), ("Graduation Year", has_year)] if not ok]
+    })
+
+    # 4. Academic CGPA
+    criteria.append({
+        "category": "Academic Background",
+        "title": "Undergraduate CGPA",
+        "weight": 10,
+        "completed": has_cgpa,
+        "missing_items": [] if has_cgpa else ["CGPA"]
+    })
+
+    # 5. Career Target
+    has_role = bool((profile.get("target_role") or "").strip())
+    has_comp = bool((profile.get("target_company") or "").strip())
+    criteria.append({
+        "category": "Placement Preferences",
+        "title": "Target Role & Dream Company",
+        "weight": 20,
+        "completed": has_role and has_comp,
+        "missing_items": [f for f, ok in [("Target Role", has_role), ("Target Company", has_comp)] if not ok]
+    })
+
+    # 6. Technical Skills
+    skills_list = profile.get("skills", [])
+    has_skills = len(skills_list) >= 3
+    criteria.append({
+        "category": "Technical Competencies",
+        "title": "At least 3 Key Technical Skills",
+        "weight": 15,
+        "completed": has_skills,
+        "missing_items": [] if has_skills else [f"Add at least {3 - len(skills_list)} more skill(s)"]
+    })
+
+    # 7. Resume & Professional Links
+    resume_ready = bool(profile.get("has_resume_uploaded")) or has_analyses
+    has_social = bool((profile.get("linkedin_url") or "").strip()) or bool((profile.get("github_url") or "").strip())
+    criteria.append({
+        "category": "Placement Portfolio",
+        "title": "Resume Upload & Developer Links",
+        "weight": 20,
+        "completed": resume_ready and has_social,
+        "missing_items": [f for f, ok in [("Resume Upload", resume_ready), ("LinkedIn/GitHub URL", has_social)] if not ok]
+    })
+
+    total_weight = sum(c["weight"] for c in criteria)
+    earned_weight = sum(c["weight"] for c in criteria if c["completed"])
+    percentage = round((earned_weight / total_weight) * 100) if total_weight > 0 else 0
+
+    all_missing = []
+    for c in criteria:
+        if not c["completed"]:
+            all_missing.extend(c["missing_items"])
+
+    return {
+        "student_id": student_id,
+        "completion_percentage": percentage,
+        "is_complete": percentage >= 100,
+        "criteria": criteria,
+        "missing_fields": all_missing,
+        "profile": profile
+    }
