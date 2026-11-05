@@ -97,6 +97,15 @@ def init_db() -> None:
             )
         """)
 
+        # Table 6: Store company-wise preparation checklist progress (#192)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS company_preparation_checklists (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                company_name TEXT NOT NULL,
+                checklist_json TEXT NOT NULL,
+                completion_percentage REAL NOT NULL DEFAULT 0.0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         # Table 6: Store coding assessment submission history (#194)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS coding_submissions (
@@ -188,6 +197,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_student_comp ON company_preparation_checklists (student_id, company_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
@@ -1543,6 +1553,108 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def get_default_company_checklist(company_name: str) -> Dict[str, Any]:
+    """
+    Returns the foundational company checklist tasks structured across
+    Aptitude, Coding, Technical Concepts, and HR rounds (#192).
+    """
+    comp = (company_name or "General").strip()
+
+    return {
+        "Aptitude & Logical Reasoning": [
+            {"id": "apt_01", "task": f"Quantitative Aptitude: Speed, Distance, Work & Time for {comp}", "completed": False},
+            {"id": "apt_02", "task": "Data Interpretation & Logical Puzzles (Seating arrangements & Syllogisms)", "completed": False},
+            {"id": "apt_03", "task": "Verbal Ability & Reading Comprehension Practice", "completed": False}
+        ],
+        "Coding & Data Structures": [
+            {"id": "code_01", "task": f"Top 20 Most Frequent LeetCode Questions asked at {comp}", "completed": False},
+            {"id": "code_02", "task": "Arrays, Strings, HashMaps & Sliding Window problem sets", "completed": False},
+            {"id": "code_03", "task": "Trees, Graphs & Dynamic Programming fundamentals", "completed": False},
+            {"id": "code_04", "task": f"Timed 60-minute Online Assessment Simulation for {comp}", "completed": False}
+        ],
+        "Technical Concepts & CS Fundamentals": [
+            {"id": "tech_01", "task": "DBMS & SQL: Indexing, Transactions, ACID Properties, Normalization", "completed": False},
+            {"id": "tech_02", "task": "Operating Systems: Process vs Thread, Virtual Memory, Concurrency & Deadlocks", "completed": False},
+            {"id": "tech_03", "task": "Computer Networks: TCP/IP vs UDP, DNS, HTTP/HTTPS, WebSockets", "completed": False},
+            {"id": "tech_04", "task": "Object Oriented Programming (OOP) & Clean System Design principles", "completed": False}
+        ],
+        "HR, Culture & Behavioral (STAR)": [
+            {"id": "hr_01", "task": f"Company Deep Dive: Core values, business model, and leadership principles of {comp}", "completed": False},
+            {"id": "hr_02", "task": "Prepare 'Tell Me About Yourself' 90-second elevator pitch", "completed": False},
+            {"id": "hr_03", "task": "Structure 3 impactful project stories using the STAR methodology", "completed": False},
+            {"id": "hr_04", "task": f"Prepare 3 thoughtful questions to ask the interviewer about {comp}", "completed": False}
+        ]
+    }
+
+
+def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
+    """
+    Retrieves or initializes the student's company-specific preparation checklist (#192).
+    Calculates category progress and overall completion percentage.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        comp = (company_name or "Google").strip()
+
+        cursor.execute("""
+            SELECT * FROM company_preparation_checklists
+            WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
+        """, (effective_student_id, comp))
+        row = cursor.fetchone()
+
+        if row:
+            rec = dict(row)
+            try:
+                checklist_data = json.loads(rec.get("checklist_json", "{}"))
+            except Exception:
+                checklist_data = get_default_company_checklist(comp)
+        else:
+            checklist_data = get_default_company_checklist(comp)
+            # Initialize record
+            save_company_checklist(effective_student_id, comp, checklist_data)
+
+        # Compute completion statistics
+        total_tasks = 0
+        completed_tasks = 0
+        category_stats = {}
+
+        for cat_name, task_list in checklist_data.items():
+            cat_total = len(task_list)
+            cat_done = sum(1 for t in task_list if t.get("completed"))
+            total_tasks += cat_total
+            completed_tasks += cat_done
+            category_stats[cat_name] = {
+                "total": cat_total,
+                "completed": cat_done,
+                "percentage": round((cat_done / cat_total * 100), 1) if cat_total else 0.0
+            }
+
+        overall_percentage = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+
+        return {
+            "student_id": effective_student_id,
+            "company_name": comp,
+            "checklist": checklist_data,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "overall_percentage": overall_percentage,
+            "category_stats": category_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching company checklist for {company_name}: {e}")
+        default_data = get_default_company_checklist(company_name)
+        return {
+            "student_id": student_id,
+            "company_name": company_name,
+            "checklist": default_data,
+            "total_tasks": 15,
+            "completed_tasks": 0,
+            "overall_percentage": 0.0,
+            "category_stats": {}
+        }
 def save_coding_submission(
     sub_id: str,
     student_id: str,
@@ -1753,6 +1865,9 @@ def save_student_profile(
         conn.close()
 
 
+def save_company_checklist(student_id: str, company_name: str, checklist_data: Dict[str, Any]) -> bool:
+    """
+    Saves candidate progress for a specific target company (#192).
 def get_coding_submissions(
     student_id: str,
     question_title: Optional[str] = None,
@@ -1789,6 +1904,31 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
     try:
         cursor = conn.cursor()
         effective_student_id = (student_id or "default_student").strip()
+        comp = (company_name or "Google").strip()
+
+        total_tasks = 0
+        completed_tasks = 0
+        for task_list in checklist_data.values():
+            total_tasks += len(task_list)
+            completed_tasks += sum(1 for t in task_list if t.get("completed"))
+
+        pct = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+        rec_id = f"chk-{effective_student_id}-{comp.lower().replace(' ', '_')}"
+
+        cursor.execute("""
+            INSERT INTO company_preparation_checklists (
+                id, student_id, company_name, checklist_json, completion_percentage, updated_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, company_name) DO UPDATE SET
+                checklist_json = excluded.checklist_json,
+                completion_percentage = excluded.completion_percentage,
+                updated_at = CURRENT_TIMESTAMP
+        """, (rec_id, effective_student_id, comp, json.dumps(checklist_data), pct))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving checklist for {company_name}: {e}")
+        return False
         conditions = ["student_id = ?"]
         params: List[Any] = [effective_student_id]
 
@@ -1897,6 +2037,12 @@ def delete_skill_self_assessment(student_id: str, skill_name: str) -> bool:
         conn.close()
 
 
+def reset_company_checklist(student_id: str, company_name: str) -> bool:
+    """
+    Resets all tasks to uncompleted for the target company checklist (#192).
+    """
+    default_data = get_default_company_checklist(company_name)
+    return save_company_checklist(student_id, company_name, default_data)
 def get_default_technical_skills_catalog() -> Dict[str, List[str]]:
     """Returns curated placement technical skills catalog grouped by category."""
     return {
