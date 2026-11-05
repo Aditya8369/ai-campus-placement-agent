@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import logging
+import uuid
 from typing import Optional, List, Dict, Any
 import config
 
@@ -111,6 +112,21 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 6: Store technical skills self-assessments
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS technical_self_assessments (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                skill_name TEXT NOT NULL,
+                category TEXT NOT NULL,
+                proficiency_level TEXT NOT NULL,
+                years_experience REAL DEFAULT 0,
+                notes TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, skill_name)
+            )
+        """)
         
         
         # Schema migration: check if student_id and version_number exist in analyses
@@ -130,6 +146,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -1314,3 +1331,96 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def save_skill_self_assessment(
+    student_id: str,
+    skill_name: str,
+    category: str,
+    proficiency_level: str,
+    years_experience: float = 0.0,
+    notes: str = ""
+) -> Dict[str, Any]:
+    """Saves or updates a student's technical skill self-assessment."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        record_id = str(uuid.uuid4())
+        normalized_student_id = (student_id or "default_student").strip()
+        normalized_skill = skill_name.strip()
+        normalized_category = (category or "General").strip()
+        valid_levels = ["Beginner", "Intermediate", "Advanced", "Expert"]
+        level = proficiency_level if proficiency_level in valid_levels else "Intermediate"
+
+        cursor.execute("""
+            INSERT INTO technical_self_assessments (
+                id, student_id, skill_name, category, proficiency_level, years_experience, notes, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, skill_name) DO UPDATE SET
+                category = excluded.category,
+                proficiency_level = excluded.proficiency_level,
+                years_experience = excluded.years_experience,
+                notes = excluded.notes,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            record_id,
+            normalized_student_id,
+            normalized_skill,
+            normalized_category,
+            level,
+            float(years_experience or 0.0),
+            notes.strip() if notes else ""
+        ))
+        conn.commit()
+
+        cursor.execute(
+            "SELECT * FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, normalized_skill)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all technical skill self-assessments for a student."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT * FROM technical_self_assessments
+            WHERE student_id = ?
+            ORDER BY category ASC, skill_name ASC
+        """, (normalized_student_id,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_skill_self_assessment(student_id: str, skill_name: str) -> bool:
+    """Deletes a student's self-assessment entry for a skill."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, skill_name.strip())
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_default_technical_skills_catalog() -> Dict[str, List[str]]:
+    """Returns curated placement technical skills catalog grouped by category."""
+    return {
+        "Programming Languages": ["Python", "Java", "C++", "JavaScript", "TypeScript", "Go"],
+        "Web & Frameworks": ["React", "Node.js", "Flask", "Django", "Spring Boot", "HTML5/CSS3"],
+        "Data & Databases": ["SQL", "PostgreSQL", "MongoDB", "Redis", "Data Structures & Algorithms"],
+        "Cloud & DevOps": ["Git & GitHub", "Docker", "Kubernetes", "AWS", "CI/CD Pipelines", "Linux"],
+        "Core CS Fundamentals": ["Operating Systems", "DBMS", "Computer Networks", "System Design", "OOP"]
+    }
