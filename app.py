@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import config
+from utils.email_service import EmailNotificationService
 from utils.database import (
     init_db,
     get_db_connection,
@@ -48,6 +49,8 @@ from utils.database import (
     save_job_application,
     get_job_applications,
     delete_job_application,
+    get_email_notification_preferences,
+    update_email_notification_preferences,
     save_interview_experience,
     get_interview_experiences,
     report_interview_experience,
@@ -305,6 +308,7 @@ except Exception as db_err:
     logger.critical(f"Critical: Database initialization failed: {str(db_err)}")
 
 # Instantiate coordination and specialized interview agents
+email_service = EmailNotificationService()
 coordinator_agent = CoordinatorAgent()
 live_interview_agent = InterviewAgent()
 coding_assessment_agent = CodingAssessmentAgent()
@@ -468,6 +472,13 @@ def register():
         if not created:
             flash("An account with this email already exists.", "error")
             return render_template("register.html")
+
+        # Initialize email preferences and dispatch welcome notification (#186)
+        update_email_notification_preferences(student_id=user_id, email=email, email_enabled=True)
+        try:
+            email_service.send_welcome_email(recipient_email=email, student_name=name)
+        except Exception as mail_err:
+            logger.warning(f"Failed to dispatch welcome email: {mail_err}")
 
         flash("Registration successful. Please log in.", "success")
         return redirect(url_for("login"))
@@ -2466,6 +2477,22 @@ def job_applications_tracker():
             job_type=job_type,
             experience_level=exp_level
         )
+
+        # Notify candidate via email if preference enabled (#186)
+        try:
+            prefs = get_email_notification_preferences(student_id)
+            if prefs.get("email_enabled") and prefs.get("notify_application_created"):
+                user_email = prefs.get("email") or request.form.get("email") or f"{student_id}@student.campus.edu"
+                email_service.send_application_created_email(
+                    recipient_email=user_email,
+                    student_name=student_id,
+                    company_name=company,
+                    role_title=role,
+                    applied_date=app_date or "Today"
+                )
+        except Exception as mail_err:
+            logger.warning(f"Error sending application creation email: {mail_err}")
+
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
 
@@ -2516,6 +2543,29 @@ def api_update_application_status(app_id: str):
         return jsonify({"success": False, "error": "New status is required."}), 400
 
     updated = update_job_application_status(app_id=app_id, student_id=student_id, new_status=new_status)
+    
+    # Notify candidate of application status update via email (#186)
+    if updated:
+        try:
+            prefs = get_email_notification_preferences(student_id)
+            if prefs.get("email_enabled") and prefs.get("notify_status_change"):
+                apps = get_job_applications(student_id=student_id)
+                target_app = next((a for a in apps if a.get("id") == app_id), None)
+                comp = target_app.get("company_name", "Target Company") if target_app else "Target Company"
+                role = target_app.get("role_title", "Candidate Role") if target_app else "Role"
+                user_email = prefs.get("email") or f"{student_id}@student.campus.edu"
+                email_service.send_status_change_email(
+                    recipient_email=user_email,
+                    student_name=student_id,
+                    company_name=comp,
+                    role_title=role,
+                    previous_status="Previous Stage",
+                    new_status=new_status,
+                    notes=payload.get("notes") or request.form.get("notes")
+                )
+        except Exception as mail_err:
+            logger.warning(f"Failed to dispatch application status change email: {mail_err}")
+
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
@@ -2984,6 +3034,35 @@ def role_preparation_view():
     )
 
 
+@app.route("/notification-settings", methods=["GET", "POST"])
+def notification_settings_view():
+    """
+    Candidate Email Notification Settings View and Preference Handler (#186).
+    Allows students to enable/disable transactional emails and schedule interview reminders.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip()
+        email_enabled = request.form.get("email_enabled") == "on"
+        notify_welcome = request.form.get("notify_welcome") == "on"
+        notify_application_created = request.form.get("notify_application_created") == "on"
+        notify_status_change = request.form.get("notify_status_change") == "on"
+        notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
+
+        update_email_notification_preferences(
+            student_id=student_id,
+            email=email or None,
+            email_enabled=email_enabled,
+            notify_welcome=notify_welcome,
+            notify_application_created=notify_application_created,
+            notify_status_change=notify_status_change,
+            notify_interview_reminder=notify_interview_reminder
+        )
+        flash("Email notification preferences updated successfully!", "success")
+        return redirect(url_for("notification_settings_view", student_id=student_id))
+
+    prefs = get_email_notification_preferences(student_id)
 @app.route("/interview-experiences", methods=["GET", "POST"])
 def interview_experiences_view():
     """
@@ -3161,6 +3240,42 @@ def coding_submissions_view():
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
+            "preferences": prefs
+        }), 200
+
+    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
+
+
+@app.route("/api/notifications/remind-interview", methods=["POST"])
+def api_send_interview_reminder():
+    """
+    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or "default_student"
+    company_name = payload.get("company_name", "").strip()
+    round_type = payload.get("round_type", "Technical Round").strip()
+    scheduled_time = payload.get("scheduled_time", "").strip()
+    interview_link = payload.get("interview_link", "").strip()
+
+    if not company_name or not scheduled_time:
+        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
+
+    prefs = get_email_notification_preferences(student_id)
+    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
+        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
+
+    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
+    sent = email_service.send_interview_reminder_email(
+        recipient_email=recipient_email,
+        student_name=student_id,
+        company_name=company_name,
+        interview_round=round_type,
+        scheduled_time=scheduled_time,
+        interview_link=interview_link or None
+    )
+
+    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
             "month": month_filter,
             "count": len(events),
             "events": events

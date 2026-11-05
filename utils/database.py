@@ -97,6 +97,17 @@ def init_db() -> None:
             )
         """)
 
+        # Table 6: Store user email notification preferences (#186)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_notification_preferences (
+                student_id TEXT PRIMARY KEY,
+                email TEXT,
+                email_enabled INTEGER NOT NULL DEFAULT 1,
+                notify_welcome INTEGER NOT NULL DEFAULT 1,
+                notify_application_created INTEGER NOT NULL DEFAULT 1,
+                notify_status_change INTEGER NOT NULL DEFAULT 1,
+                notify_interview_reminder INTEGER NOT NULL DEFAULT 1,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         # Table 6: Store company interview experiences (#189)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_experiences (
@@ -1585,6 +1596,10 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
+    """
+    Retrieves candidate email notification configuration (#186).
+    Defaults to all enabled if no preference record exists yet.
 def save_interview_experience(
     exp_id: str,
     student_id: str,
@@ -1657,6 +1672,43 @@ def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        effective_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "SELECT * FROM email_notification_preferences WHERE student_id = ?",
+            (effective_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            rec = dict(row)
+            return {
+                "student_id": rec["student_id"],
+                "email": rec.get("email") or "",
+                "email_enabled": bool(rec.get("email_enabled", 1)),
+                "notify_welcome": bool(rec.get("notify_welcome", 1)),
+                "notify_application_created": bool(rec.get("notify_application_created", 1)),
+                "notify_status_change": bool(rec.get("notify_status_change", 1)),
+                "notify_interview_reminder": bool(rec.get("notify_interview_reminder", 1))
+            }
+        return {
+            "student_id": effective_id,
+            "email": "",
+            "email_enabled": True,
+            "notify_welcome": True,
+            "notify_application_created": True,
+            "notify_status_change": True,
+            "notify_interview_reminder": True
+        }
+    except Exception as e:
+        logger.error(f"Error fetching email preferences for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "email": "",
+            "email_enabled": True,
+            "notify_welcome": True,
+            "notify_application_created": True,
+            "notify_status_change": True,
+            "notify_interview_reminder": True
+        }
         effective_name = (candidate_name or "").strip() or "Anonymous Candidate"
         # Mask any accidental email or phone in name
         import re
@@ -1979,6 +2031,17 @@ def save_student_profile(
         conn.close()
 
 
+def update_email_notification_preferences(
+    student_id: str,
+    email: Optional[str] = None,
+    email_enabled: bool = True,
+    notify_welcome: bool = True,
+    notify_application_created: bool = True,
+    notify_status_change: bool = True,
+    notify_interview_reminder: bool = True
+) -> bool:
+    """
+    Saves or updates email notification settings for a student (#186).
 def get_interview_experiences(
     company_name: Optional[str] = None,
     category_filter: Optional[str] = None,
@@ -2077,6 +2140,36 @@ def update_calendar_event(
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        effective_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT INTO email_notification_preferences (
+                student_id, email, email_enabled, notify_welcome,
+                notify_application_created, notify_status_change, notify_interview_reminder, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id) DO UPDATE SET
+                email = coalesce(excluded.email, email_notification_preferences.email),
+                email_enabled = excluded.email_enabled,
+                notify_welcome = excluded.notify_welcome,
+                notify_application_created = excluded.notify_application_created,
+                notify_status_change = excluded.notify_status_change,
+                notify_interview_reminder = excluded.notify_interview_reminder,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            effective_id,
+            email.strip() if email else None,
+            1 if email_enabled else 0,
+            1 if notify_welcome else 0,
+            1 if notify_application_created else 0,
+            1 if notify_status_change else 0,
+            1 if notify_interview_reminder else 0
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating email preferences for {student_id}: {e}")
+        return False
+    finally:
+        conn.close()
         conditions = []
         params = []
 
