@@ -53,6 +53,9 @@ from utils.database import (
     export_job_applications_json,
     export_job_applications_markdown,
     get_job_applications_export_summary,
+    submit_user_feedback,
+    get_user_feedback_list,
+    get_feedback_metrics_summary,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1395,6 +1398,123 @@ def api_evaluate_code(analysis_id: str = None):
             "status": "error",
             "message": f"Code evaluation failed: {str(e)}"
         }), 500
+
+
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback_view():
+    """
+    Renders and processes candidate platform experience feedback (#197).
+    Allows students to rate features, provide structured reviews, and view satisfaction statistics.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    categories = [
+        "Resume Analysis & ATS Scoring",
+        "Mock Interview Simulator",
+        "Job Application Tracker",
+        "Role Preparation & Roadmaps",
+        "Coding Practice & DSA",
+        "UI & Performance",
+        "General Experience"
+    ]
+
+    if request.method == "POST":
+        rating_raw = request.form.get("rating", "5")
+        category = request.form.get("category", "General Experience").strip()
+        comment = request.form.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            flash("Please enter feedback comments before submitting.", "danger")
+        else:
+            submit_user_feedback(
+                student_id=student_id,
+                rating=rating,
+                category=category,
+                comment=comment
+            )
+            flash("Thank you! Your feedback has been submitted successfully.", "success")
+        return redirect("/feedback")
+
+    feedback_list = get_user_feedback_list(limit=25)
+    metrics = get_feedback_metrics_summary()
+
+    return render_template(
+        "feedback.html",
+        categories=categories,
+        feedback_list=feedback_list,
+        metrics=metrics,
+        student_id=student_id
+    )
+
+
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
+    """
+    REST API endpoint for submitting and retrieving feedback (#197).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        cat = request.args.get("category")
+        limit = request.args.get("limit", 50)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 50
+        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
+        metrics = get_feedback_metrics_summary()
+        return jsonify({
+            "status": "success",
+            "total": len(items),
+            "metrics": metrics,
+            "feedback": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        rating_raw = payload.get("rating", 5)
+        category = payload.get("category", "General Experience")
+        comment = payload.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            return jsonify({
+                "status": "error",
+                "message": "comment is required and cannot be empty."
+            }), 400
+
+        record = submit_user_feedback(
+            student_id=student_id,
+            rating=rating,
+            category=category,
+            comment=comment
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Feedback recorded successfully",
+            "feedback": record
+        }), 201
+
 
 
 @app.route("/interview/<analysis_id>/export")
