@@ -84,7 +84,6 @@ def init_db() -> None:
             )
         """)
         # Table 5: Store registered user accounts
-                # Table 5: Store registered user accounts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -92,6 +91,27 @@ def init_db() -> None:
                 email TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 password_hash TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table 6: Store coding assessment submission history (#194)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS coding_submissions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                analysis_id TEXT,
+                question_title TEXT NOT NULL,
+                company_name TEXT NOT NULL DEFAULT 'General',
+                language TEXT NOT NULL DEFAULT 'python',
+                code TEXT NOT NULL,
+                passed INTEGER NOT NULL DEFAULT 0,
+                score INTEGER NOT NULL DEFAULT 0,
+                tests_passed INTEGER NOT NULL DEFAULT 0,
+                total_tests INTEGER NOT NULL DEFAULT 0,
+                test_results_json TEXT,
+                complexity_analysis TEXT,
+                feedback TEXT,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -155,6 +175,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
 
@@ -1470,6 +1491,58 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def save_coding_submission(
+    sub_id: str,
+    student_id: str,
+    question_title: str,
+    language: str,
+    code: str,
+    passed: bool,
+    score: int,
+    tests_passed: int = 0,
+    total_tests: int = 0,
+    test_results: Optional[List[Dict[str, Any]]] = None,
+    complexity_analysis: Optional[str] = None,
+    feedback: Optional[str] = None,
+    company_name: str = "General",
+    analysis_id: Optional[str] = None
+) -> str:
+    """
+    Persists a coding assessment submission attempt (#194).
+    Enforces per-student isolation.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT INTO coding_submissions (
+                id, student_id, analysis_id, question_title, company_name,
+                language, code, passed, score, tests_passed, total_tests,
+                test_results_json, complexity_analysis, feedback
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            sub_id,
+            effective_student_id,
+            analysis_id,
+            question_title.strip(),
+            company_name.strip(),
+            language.strip().lower(),
+            code,
+            1 if passed else 0,
+            int(score),
+            int(tests_passed),
+            int(total_tests),
+            json.dumps(test_results or []),
+            complexity_analysis or "",
+            feedback or ""
+        ))
+        conn.commit()
+        logger.info(f"Saved coding submission {sub_id} for student {effective_student_id}")
+        return sub_id
+    except Exception as e:
+        logger.error(f"Error saving coding submission {sub_id}: {e}")
+        raise e
 def save_skill_self_assessment(
     student_id: str,
     skill_name: str,
@@ -1628,6 +1701,15 @@ def save_student_profile(
         conn.close()
 
 
+def get_coding_submissions(
+    student_id: str,
+    question_title: Optional[str] = None,
+    language_filter: Optional[str] = None,
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all coding assessment submission attempts for a student (#194).
+    Supports question matching to compare attempts over time.
 def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
     """Retrieves all technical skill self-assessments for a student."""
     conn = get_db_connection()
@@ -1654,6 +1736,46 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        conditions = ["student_id = ?"]
+        params: List[Any] = [effective_student_id]
+
+        if question_title and question_title.strip():
+            conditions.append("LOWER(question_title) = LOWER(?)")
+            params.append(question_title.strip())
+
+        if language_filter and language_filter.strip() and language_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(language) = LOWER(?)")
+            params.append(language_filter.strip())
+
+        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
+            if status_filter.strip().lower() == "passed":
+                conditions.append("passed = 1")
+            elif status_filter.strip().lower() == "failed":
+                conditions.append("passed = 0")
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM coding_submissions {where_clause} ORDER BY submitted_at DESC, id DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        submissions = []
+        for r in rows:
+            rec = dict(r)
+            try:
+                rec["test_results"] = json.loads(rec.get("test_results_json", "[]"))
+            except Exception:
+                rec["test_results"] = []
+            rec["passed"] = bool(rec.get("passed", 0))
+            submissions.append(rec)
+
+        return submissions
+    except Exception as e:
+        logger.error(f"Error retrieving coding submissions for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
         query = "SELECT * FROM user_feedback WHERE 1=1"
         params: List[Any] = []
 

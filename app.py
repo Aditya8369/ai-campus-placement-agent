@@ -48,6 +48,8 @@ from utils.database import (
     save_job_application,
     get_job_applications,
     delete_job_application,
+    save_coding_submission,
+    get_coding_submissions,
     update_job_application_status,
     save_skill_self_assessment,
     get_student_skill_self_assessments,
@@ -1389,6 +1391,35 @@ def api_evaluate_code(analysis_id: str = None):
             language=language,
             code=code
         )
+
+        # Automatically store coding submission attempt (#194)
+        student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+        sub_id = f"sub-{uuid.uuid4().hex[:12]}"
+        try:
+            score_val = eval_result.get("score") or eval_result.get("correctness_score", 0)
+            tests_passed_val = eval_result.get("tests_passed", 0)
+            total_tests_val = eval_result.get("total_tests", 0)
+            is_passed = bool(eval_result.get("passed", False)) or (int(score_val) >= 70)
+
+            save_coding_submission(
+                sub_id=sub_id,
+                student_id=student_id,
+                question_title=problem.get("title", "Coding Problem"),
+                language=language,
+                code=code,
+                passed=is_passed,
+                score=int(score_val),
+                tests_passed=int(tests_passed_val),
+                total_tests=int(total_tests_val),
+                test_results=eval_result.get("test_results") or eval_result.get("test_cases", []),
+                complexity_analysis=eval_result.get("complexity", ""),
+                feedback=eval_result.get("feedback", ""),
+                company_name=company,
+                analysis_id=analysis_id
+            )
+            eval_result["submission_id"] = sub_id
+        except Exception as sub_err:
+            logger.warning(f"Failed to record coding submission: {sub_err}")
 
         return jsonify({
             "status": "success",
@@ -2914,6 +2945,66 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
+
+
+@app.route("/coding-submissions")
+def coding_submissions_view():
+    """
+    Coding Assessment Submission History View (#194).
+    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    language_filter = request.args.get("language", "All").strip()
+    status_filter = request.args.get("status", "All").strip()
+
+    submissions = get_coding_submissions(
+        student_id=student_id,
+        question_title=question_filter or None,
+        language_filter=language_filter,
+        status_filter=status_filter
+    )
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(submissions),
+            "submissions": submissions
+        }), 200
+
+    return render_template(
+        "coding_submissions.html",
+        submissions=submissions,
+        student_id=student_id,
+        question_filter=question_filter,
+        language_filter=language_filter,
+        status_filter=status_filter,
+        total_count=len(all_user_subs),
+        passed_count=passed_count,
+        failed_count=failed_count,
+        avg_score=avg_score
+    )
+
+
+@app.route("/api/coding-submissions")
+def api_coding_submissions():
+    """
+    API endpoint returning student coding attempts with comparison capability (#194).
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    submissions = get_coding_submissions(student_id=student_id, question_title=question_filter or None)
+
+    return jsonify({
+        "success": True,
+        "count": len(submissions),
+        "submissions": submissions
+    }), 200
 
 
 if __name__ == "__main__":
