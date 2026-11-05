@@ -215,6 +215,24 @@ RATE_LIMIT_DEFAULT=100/minute
 
 ---
 
+## Scanned & Image-Only PDF Detection
+
+To prevent wasted AI quota and misleading evaluations from non-extractable resumes, `utils/pdf_reader.py` detects scanned or image-only PDF documents:
+
+- **Early Halting & Quota Protection**: When an uploaded PDF yields empty text or fewer than the required characters (default: 100 characters), the analysis stops immediately before calling any Gemini LLM endpoints.
+- **Actionable User Guidance**: Displays a clear notification informing the user that the document appears scanned or image-based, prompting them to upload a text-based PDF or paste resume text directly.
+- **Configurable Thresholds**:
+  ```env
+  # Minimum extractable text characters required from a PDF resume (default: 100)
+  MIN_PDF_TEXT_CHARS=100
+
+  # Optional local OCR fallback (pytesseract). Disabled by default to avoid external dependencies.
+  ENABLE_OCR_FALLBACK=false
+  ```
+
+
+---
+
 ## Future Scope
 
 The following features are being considered:

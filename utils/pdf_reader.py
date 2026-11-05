@@ -14,6 +14,7 @@ from typing import List, Optional, Tuple, Union, Dict, Any
 from typing import Dict, List, Optional, Tuple, Union
 from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError
+import config
 
 try:
     import docx
@@ -30,7 +31,40 @@ MAX_DOCX_PARAGRAPHS = 1000
 MAX_RESUME_TEXT_CHARS = 25000
 MIN_RESUME_TEXT_CHARS = 50
 MIN_RESUME_WORD_COUNT = 10
+MIN_PDF_EXTRACTED_CHARS = 100
 ALLOWED_RESUME_EXTENSIONS = {".pdf", ".docx"}
+
+
+class ScannedPDFError(ValueError):
+    """
+    Raised when an uploaded PDF has no extractable text or is image-only/scanned.
+    Inherits from ValueError for seamless backward compatibility.
+    """
+    def __init__(
+        self,
+        message: Optional[str] = None,
+        extracted_length: int = 0,
+        min_required: int = 100,
+    ):
+        if message:
+            user_message = message
+        elif extracted_length == 0:
+            user_message = (
+                "The uploaded PDF appears to be scanned or image-based with no readable text. "
+                "PyPDF2 could not extract text from this document. "
+                "Please upload a text-based PDF resume or paste your resume text directly."
+            )
+        else:
+            user_message = (
+                f"The uploaded PDF appears to be scanned or image-based (found only {extracted_length} "
+                f"readable characters, minimum {min_required} required). "
+                "Please upload a text-based PDF resume or paste your resume text directly."
+            )
+        super().__init__(user_message)
+        self.message = user_message
+        self.extracted_length = extracted_length
+        self.min_required = min_required
+
 
 
 def validate_resume_text(text: str) -> Tuple[bool, str]:
@@ -55,9 +89,11 @@ def validate_resume_text(text: str) -> Tuple[bool, str]:
 def extract_text_from_pdf(pdf_path: str) -> str:
     """
     Extracts and returns text content from a PDF file using PyPDF2.
-    Enforces maximum page limits, verifies encryption status, and validates extracted text.
+    Enforces maximum page limits, verifies encryption status, detects scanned or image-based PDFs,
+    and validates extracted text.
     """
     text_content = ""
+    min_chars = getattr(config, "MIN_PDF_TEXT_CHARS", getattr(config, "MIN_PDF_EXTRACTED_CHARS", MIN_PDF_EXTRACTED_CHARS))
     try:
         logger.info(f"Initiating text extraction from PDF: {pdf_path}")
         reader = PdfReader(pdf_path)
@@ -83,31 +119,41 @@ def extract_text_from_pdf(pdf_path: str) -> str:
                 text_content += page_text + "\n"
 
         cleaned_text = text_content.strip()
-        is_valid, validation_msg = validate_resume_text(cleaned_text)
-        if not is_valid:
-            logger.warning(
-                f"Extracted PDF text validation failed ({validation_msg}). "
-                "Attempting multimodal OCR fallback via Gemini Vision / OCR engine..."
-            )
-            try:
-                ocr_candidate = extract_text_with_ocr_fallback(pdf_path)
-                ocr_valid, ocr_msg = validate_resume_text(ocr_candidate)
-                if ocr_valid:
-                    logger.info(
-                        f"Multimodal OCR fallback succeeded ({len(ocr_candidate)} characters extracted)."
-                    )
-                    cleaned_text = ocr_candidate
-                    is_valid = True
-                else:
-                    logger.warning(f"OCR fallback yielded insufficient text: {ocr_msg}")
-            except Exception as ocr_err:
-                logger.warning(f"Multimodal OCR fallback encountered error: {ocr_err}")
 
+        # Detect empty or scanned/image-only PDFs (< min_chars characters)
+        if len(cleaned_text) < min_chars:
+            logger.warning(
+                f"Extracted PDF text density is low ({len(cleaned_text)} characters extracted, "
+                f"minimum {min_chars} required). PDF appears to be scanned or image-based."
+            )
+
+            # Check if local OCR fallback is explicitly enabled in configuration
+            if getattr(config, "ENABLE_OCR_FALLBACK", False):
+                logger.info("Attempting local OCR fallback as ENABLE_OCR_FALLBACK is enabled...")
+                try:
+                    ocr_candidate = extract_text_with_ocr_fallback(pdf_path)
+                    if len(ocr_candidate.strip()) >= min_chars:
+                        cleaned_text = ocr_candidate.strip()
+                        logger.info(f"Local OCR fallback succeeded ({len(cleaned_text)} characters extracted).")
+                    else:
+                        logger.warning("Local OCR fallback yielded insufficient text.")
+                except Exception as ocr_err:
+                    logger.warning(f"Local OCR fallback encountered error: {ocr_err}")
+
+        # If still below threshold after optional OCR fallback, halt analysis with ScannedPDFError
+        if len(cleaned_text) < min_chars:
+            logger.warning(
+                f"Halting analysis: PDF '{pdf_path}' appears to be scanned or image-based "
+                f"({len(cleaned_text)} chars extracted, minimum {min_chars} required)."
+            )
+            raise ScannedPDFError(extracted_length=len(cleaned_text), min_required=min_chars)
+
+        is_valid, validation_msg = validate_resume_text(cleaned_text)
         if not is_valid:
             logger.warning(f"Extracted PDF text validation failed: {validation_msg}")
             raise ValueError(
                 f"Could not extract sufficient text from PDF: {validation_msg} "
-                "Ensure your document is a readable text-based or scanned PDF resume."
+                "Please upload a readable text-based PDF resume or paste your resume text directly."
             )
 
         # Enforce maximum character boundary to avoid excessive token consumption
@@ -123,7 +169,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     except FileNotFoundError:
         logger.error(f"File not found: {pdf_path}")
         raise FileNotFoundError(f"Resume file was not found at path: {pdf_path}")
-    except ValueError as ve:
+    except (ScannedPDFError, ValueError) as ve:
         logger.error(f"Validation error reading PDF: {str(ve)}")
         raise ve
     except PdfReadError as pre:
@@ -136,43 +182,15 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
 def extract_text_with_ocr_fallback(pdf_path: str) -> str:
     """
-    Multimodal OCR fallback mechanism using Gemini Vision or pytesseract.
-    Activated when embedded PDF text density is below threshold (e.g. scanned, image-based,
-    or graphical Canva resumes).
+    Optional optical character recognition (OCR) fallback using pytesseract.
+    Only triggered when ENABLE_OCR_FALLBACK is enabled in config.
+    Does not trigger any LLM/AI API calls.
     """
-    logger.info(f"Triggering multimodal OCR fallback for PDF: {pdf_path}")
+    if not getattr(config, "ENABLE_OCR_FALLBACK", False):
+        logger.info("OCR fallback is disabled (ENABLE_OCR_FALLBACK=False).")
+        return ""
 
-    # 1. Attempt Gemini Vision multimodal extraction
-    try:
-        from utils.gemini import get_gemini_client
-        import config
-        from google.genai import types
-
-        client = get_gemini_client()
-        with open(pdf_path, "rb") as f:
-            pdf_bytes = f.read()
-
-        logger.info(f"Submitting {len(pdf_bytes)} bytes to Gemini Vision for OCR transcription.")
-        response = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=[
-                types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf"),
-                (
-                    "You are an expert optical character recognition (OCR) and resume parsing engine. "
-                    "Extract and transcribe all readable text from this scanned or graphical resume document. "
-                    "Preserve all headings, sections (Education, Skills, Experience, Projects, Certifications), "
-                    "bullet points, and dates verbatim. Output clean plain text without any introductory commentary."
-                ),
-            ],
-        )
-        ocr_result = getattr(response, "text", "") or ""
-        if ocr_result and ocr_result.strip():
-            logger.info(f"Gemini Vision OCR extraction succeeded ({len(ocr_result.strip())} chars).")
-            return ocr_result.strip()
-    except Exception as gemini_ocr_err:
-        logger.warning(f"Gemini Vision OCR attempt failed: {gemini_ocr_err}")
-
-    # 2. Attempt pytesseract if installed and available
+    logger.info(f"Triggering local OCR fallback for PDF: {pdf_path}")
     try:
         import pytesseract
         from pdf2image import convert_from_path
@@ -189,8 +207,10 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
         if combined_tess:
             logger.info(f"pytesseract OCR extraction succeeded ({len(combined_tess)} chars).")
             return combined_tess
+    except ImportError:
+        logger.warning("pytesseract or pdf2image is not installed. Skipping local OCR fallback.")
     except Exception as tess_err:
-        logger.debug(f"pytesseract OCR attempt skipped or failed: {tess_err}")
+        logger.warning(f"pytesseract OCR attempt failed: {tess_err}")
 
     return ""
 
