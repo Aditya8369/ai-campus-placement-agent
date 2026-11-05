@@ -83,13 +83,29 @@ def init_db() -> None:
             )
         """)
         # Table 5: Store registered user accounts
-                # Table 5: Store registered user accounts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table 6: Store student placement preparation calendar events (#190)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS preparation_calendar_events (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                title TEXT NOT NULL,
+                event_type TEXT NOT NULL DEFAULT 'preparation',
+                event_date TEXT NOT NULL,
+                event_time TEXT,
+                company_name TEXT,
+                description TEXT,
+                priority TEXT NOT NULL DEFAULT 'Medium',
+                completed INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -130,6 +146,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_date ON preparation_calendar_events (student_id, event_date ASC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -1312,5 +1329,155 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def save_calendar_event(
+    event_id: str,
+    student_id: str,
+    title: str,
+    event_type: str,
+    event_date: str,
+    event_time: Optional[str] = None,
+    company_name: Optional[str] = None,
+    description: Optional[str] = None,
+    priority: str = "Medium",
+    completed: bool = False
+) -> str:
+    """
+    Creates or updates a candidate placement preparation calendar event (#190).
+    Enforces per-student data isolation.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT OR REPLACE INTO preparation_calendar_events (
+                id, student_id, title, event_type, event_date, event_time,
+                company_name, description, priority, completed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            event_id,
+            effective_student_id,
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0
+        ))
+        conn.commit()
+        logger.info(f"Saved calendar event {event_id} for student {effective_student_id}")
+        return event_id
+    except Exception as e:
+        logger.error(f"Error saving calendar event {event_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_calendar_events(
+    student_id: str,
+    month: Optional[str] = None,
+    event_type: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all calendar preparation events for a student (#190).
+    Allows filtering by YYYY-MM month prefix and event_type (interview, preparation, deadline).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        conditions = ["student_id = ?"]
+        params = [effective_student_id]
+
+        if month and len(month.strip()) == 7:
+            conditions.append("event_date LIKE ?")
+            params.append(f"{month.strip()}%")
+
+        if event_type and event_type.strip() and event_type.strip().lower() not in ("all", "any"):
+            conditions.append("event_type = ?")
+            params.append(event_type.strip().lower())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM preparation_calendar_events {where_clause} ORDER BY event_date ASC, event_time ASC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving calendar events for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def update_calendar_event(
+    event_id: str,
+    student_id: str,
+    title: str,
+    event_type: str,
+    event_date: str,
+    event_time: Optional[str] = None,
+    company_name: Optional[str] = None,
+    description: Optional[str] = None,
+    priority: str = "Medium",
+    completed: bool = False
+) -> bool:
+    """
+    Updates an existing calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            UPDATE preparation_calendar_events
+            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
+                company_name = ?, description = ?, priority = ?, completed = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0,
+            event_id,
+            effective_student_id
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating calendar event {event_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_calendar_event(event_id: str, student_id: str) -> bool:
+    """
+    Deletes a calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM preparation_calendar_events WHERE id = ? AND student_id = ?",
+            (event_id, effective_student_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting calendar event {event_id}: {e}")
+        return False
     finally:
         conn.close()

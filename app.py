@@ -48,6 +48,10 @@ from utils.database import (
     save_job_application,
     get_job_applications,
     delete_job_application,
+    save_calendar_event,
+    get_calendar_events,
+    update_calendar_event,
+    delete_calendar_event,
     update_job_application_status,
 )
 from utils.batch_analyzer import run_batch_company_comparison
@@ -2606,6 +2610,115 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
+
+
+@app.route("/calendar", methods=["GET", "POST"])
+def placement_calendar_view():
+    """
+    Placement Preparation Calendar View and Event Handler (#190).
+    Manages student interview dates, preparation sessions, and application deadlines on a calendar.
+    """
+    import datetime
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    month_filter = request.args.get("month") or datetime.date.today().strftime("%Y-%m")
+    type_filter = request.args.get("type", "All").strip()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        event_type = request.form.get("event_type", "preparation").strip().lower()
+        event_date = request.form.get("event_date", "").strip()
+        event_time = request.form.get("event_time", "").strip()
+        company_name = request.form.get("company_name", "").strip()
+        description = request.form.get("description", "").strip()
+        priority = request.form.get("priority", "Medium").strip()
+
+        if not title or not event_date:
+            flash("Event title and scheduled date are required.", "error")
+            return redirect(url_for("placement_calendar_view", month=month_filter))
+
+        event_id = f"evt-{uuid.uuid4().hex[:12]}"
+        save_calendar_event(
+            event_id=event_id,
+            student_id=student_id,
+            title=title,
+            event_type=event_type,
+            event_date=event_date,
+            event_time=event_time or None,
+            company_name=company_name or None,
+            description=description or None,
+            priority=priority,
+            completed=False
+        )
+        flash("Placement preparation activity added to your calendar!", "success")
+        return redirect(url_for("placement_calendar_view", month=event_date[:7]))
+
+    events = get_calendar_events(student_id=student_id, month=month_filter, event_type=type_filter)
+    all_events = get_calendar_events(student_id=student_id)
+
+    # Calculate summary counts
+    interviews_count = sum(1 for e in all_events if e.get("event_type") == "interview")
+    tasks_count = sum(1 for e in all_events if e.get("event_type") == "preparation")
+    deadlines_count = sum(1 for e in all_events if e.get("event_type") == "deadline")
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "month": month_filter,
+            "count": len(events),
+            "events": events
+        }), 200
+
+    return render_template(
+        "calendar.html",
+        events=events,
+        all_events=all_events,
+        student_id=student_id,
+        current_month=month_filter,
+        current_type=type_filter,
+        interviews_count=interviews_count,
+        tasks_count=tasks_count,
+        deadlines_count=deadlines_count,
+        today_date=datetime.date.today().isoformat()
+    )
+
+
+@app.route("/api/calendar/<event_id>", methods=["PUT", "POST", "DELETE"])
+def api_manage_calendar_event(event_id: str):
+    """
+    API endpoint to update or delete a calendar preparation event (#190).
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = delete_calendar_event(event_id=event_id, student_id=student_id)
+        return jsonify({"success": deleted}), (200 if deleted else 404)
+
+    payload = request.get_json(silent=True) or {}
+    title = payload.get("title") or request.form.get("title", "")
+    event_type = payload.get("event_type") or request.form.get("event_type", "preparation")
+    event_date = payload.get("event_date") or request.form.get("event_date", "")
+    event_time = payload.get("event_time") or request.form.get("event_time", "")
+    company_name = payload.get("company_name") or request.form.get("company_name", "")
+    description = payload.get("description") or request.form.get("description", "")
+    priority = payload.get("priority") or request.form.get("priority", "Medium")
+    completed = bool(payload.get("completed", False))
+
+    if not title or not event_date:
+        return jsonify({"success": False, "error": "Title and date are required."}), 400
+
+    updated = update_calendar_event(
+        event_id=event_id,
+        student_id=student_id,
+        title=title,
+        event_type=event_type,
+        event_date=event_date,
+        event_time=event_time or None,
+        company_name=company_name or None,
+        description=description or None,
+        priority=priority,
+        completed=completed
+    )
+    return jsonify({"success": updated}), (200 if updated else 404)
 
 
 if __name__ == "__main__":
