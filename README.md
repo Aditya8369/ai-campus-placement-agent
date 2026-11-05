@@ -76,6 +76,7 @@ graph TD
 5. **Interactive Mock Interview Simulator**: Engage in a live, conversational chat with the Interview Agent. Answers are evaluated dynamically on technical accuracy, communication style, and confidence indicators.
 6. **Static Company Profiles**: Contains pre-cached interview processes, hiring guidelines, and preparation advice for major companies: Google, Microsoft, Amazon, TCS, Infosys, Accenture, Capgemini, and Wipro.
 7. **Comprehensive PDF Reports**: Generates and compiles a formatted, multi-page PDF document summarizing placement analysis and roadmaps using ReportLab.
+8. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 
 ---
 
