@@ -11,7 +11,8 @@ import json
 import re
 import socket
 import time
-from typing import Any, Dict, Optional, Tuple
+import random
+from typing import Any, Dict, Optional, Tuple, Callable
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -40,12 +41,12 @@ class AIAnalysisError(Exception):
 
 class AIRateLimitError(AIAnalysisError):
     """Raised when the AI model provider returns HTTP 429 or quota exceeded."""
-    def __init__(self, message: str = "Rate limit exceeded"):
+    def __init__(self, message: str = "Rate limit exceeded", user_friendly_message: Optional[str] = None):
         super().__init__(
             message=message,
-            user_friendly_message=(
-                "The AI service is currently receiving high traffic or your API quota limit has been reached. "
-                "Please wait 30-60 seconds before submitting another placement analysis request."
+            user_friendly_message=user_friendly_message or (
+                "The AI service is busy, please try again in a minute. "
+                "Your API quota limit has been reached or the service is receiving high traffic."
             ),
             retryable=True,
         )
@@ -53,12 +54,12 @@ class AIRateLimitError(AIAnalysisError):
 
 class AINetworkError(AIAnalysisError):
     """Raised when network connectivity, DNS, or socket connection to the AI provider fails."""
-    def __init__(self, message: str = "Network connection failed"):
+    def __init__(self, message: str = "Network connection failed", user_friendly_message: Optional[str] = None):
         super().__init__(
             message=message,
-            user_friendly_message=(
+            user_friendly_message=user_friendly_message or (
                 "Unable to connect to the AI service due to a network connection issue. "
-                "Please check your internet connection and try again."
+                "The AI service is busy, please try again in a minute."
             ),
             retryable=True,
         )
@@ -66,10 +67,10 @@ class AINetworkError(AIAnalysisError):
 
 class AIAuthError(AIAnalysisError):
     """Raised when GEMINI_API_KEY is invalid, missing, or unauthorized."""
-    def __init__(self, message: str = "Authentication failed"):
+    def __init__(self, message: str = "Authentication failed", user_friendly_message: Optional[str] = None):
         super().__init__(
             message=message,
-            user_friendly_message=(
+            user_friendly_message=user_friendly_message or (
                 "Gemini API authentication failed. Please verify that your GEMINI_API_KEY is properly "
                 "configured with valid permissions in your environment."
             ),
@@ -79,10 +80,10 @@ class AIAuthError(AIAnalysisError):
 
 class AIResponseFormatError(AIAnalysisError):
     """Raised when the AI output cannot be parsed into the expected structured JSON format."""
-    def __init__(self, message: str = "Malformed or incomplete AI JSON response"):
+    def __init__(self, message: str = "Malformed or incomplete AI JSON response", user_friendly_message: Optional[str] = None):
         super().__init__(
             message=message,
-            user_friendly_message=(
+            user_friendly_message=user_friendly_message or (
                 "The AI analysis response was incomplete or formatted unexpectedly. "
                 "Our fault-tolerant recovery agent has attempted a repair. If the issue persists, "
                 "please try submitting again."
@@ -93,20 +94,34 @@ class AIResponseFormatError(AIAnalysisError):
 
 class AIServiceUnavailableError(AIAnalysisError):
     """Raised when Gemini returns 500, 503, or temporary backend overload errors."""
-    def __init__(self, message: str = "AI service temporarily unavailable"):
+    def __init__(self, message: str = "AI service temporarily unavailable", user_friendly_message: Optional[str] = None):
         super().__init__(
             message=message,
-            user_friendly_message=(
-                "The AI service is temporarily experiencing downtime or service maintenance. "
-                "Please retry in a moment."
+            user_friendly_message=user_friendly_message or (
+                "The AI service is busy, please try again in a minute. "
+                "The service is temporarily experiencing downtime or service maintenance."
             ),
             retryable=True,
         )
 
 
+class AIBadRequestError(AIAnalysisError):
+    """Raised when the AI service returns HTTP 400 Bad Request or invalid argument (permanent)."""
+    def __init__(self, message: str = "Bad request sent to AI service", user_friendly_message: Optional[str] = None):
+        super().__init__(
+            message=message,
+            user_friendly_message=user_friendly_message or (
+                "The request to the AI service was invalid. Please check your inputs and try again."
+            ),
+            retryable=False,
+        )
+
+
+
 def format_ai_error_for_user(exc: Exception) -> str:
     """
     Translates raw exceptions into friendly, actionable user messages for flash alerts.
+    Guarantees that raw exceptions, internal traces, or stack traces are never exposed to the user.
     """
     if isinstance(exc, AIAnalysisError):
         return exc.user_friendly_message
@@ -114,22 +129,26 @@ def format_ai_error_for_user(exc: Exception) -> str:
     err_str = str(exc).lower()
     if "rate limit" in err_str or "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
         return (
+            "The AI service is busy, please try again in a minute. "
             "API quota or rate limit exceeded. Please wait a few moments and try your analysis again."
         )
     elif "api key" in err_str or "unauthorized" in err_str or "forbidden" in err_str or "permission" in err_str:
         return (
             "AI Authentication issue: Invalid or missing GEMINI_API_KEY. Please verify your API key in settings."
         )
+    elif "503" in err_str or "500" in err_str or "unavailable" in err_str or "overloaded" in err_str:
+        return "The AI service is busy, please try again in a minute."
     elif "timeout" in err_str or "connection" in err_str or "timed out" in err_str or "network" in err_str:
         return (
-            "Network timeout while connecting to AI service. Please check your connection and retry."
+            "The AI service is busy, please try again in a minute. "
+            "Network timeout while connecting to AI service. Please check your connection and retry in a minute."
         )
     elif "json" in err_str or "parse" in err_str:
         return (
             "The AI generated an incomplete response. Please try submitting again with more resume details."
         )
     else:
-        return f"AI Analysis could not be completed: {str(exc)}"
+        return "The AI service is busy, please try again in a minute."
 
 
 def get_gemini_client() -> genai.Client:
@@ -289,75 +308,212 @@ def create_safe_fallback_analysis_payload(company_name: str = "General", error_r
     }
 
 
-def generate_json_response(system_instruction: str, prompt: str) -> dict:
+def calculate_backoff_delay(
+    attempt: int,
+    initial_delay: Optional[float] = None,
+    backoff_factor: Optional[float] = None,
+    max_delay: Optional[float] = None,
+    use_jitter: Optional[bool] = None,
+) -> float:
     """
-    Sends a request to Gemini using the google-genai SDK, enforcing a JSON response.
-    Catches and classifies APIError, rate limits, network timeouts, and malformed outputs.
-    Returns a Python dictionary parsed from the JSON output.
+    Calculates exponential backoff delay with jitter for a retry attempt (1-indexed).
+    Formula: min(max_delay, initial_delay * (backoff_factor ** (attempt - 1))) + jitter
+    Default progression: attempt 1 -> 1s, attempt 2 -> 2s, attempt 3 -> 4s.
     """
-    raw_text = ""
-    try:
-        client = get_gemini_client()
+    init_d = initial_delay if initial_delay is not None else getattr(config, "GEMINI_RETRY_INITIAL_DELAY", 1.0)
+    factor = backoff_factor if backoff_factor is not None else getattr(config, "GEMINI_RETRY_BACKOFF_FACTOR", 2.0)
+    max_d = max_delay if max_delay is not None else getattr(config, "GEMINI_RETRY_MAX_DELAY", 10.0)
+    jitter_flag = use_jitter if use_jitter is not None else getattr(config, "GEMINI_RETRY_JITTER", True)
 
-        # Configure output for structured JSON
-        cfg = types.GenerateContentConfig(
-            system_instruction=system_instruction,
-            response_mime_type="application/json",
-            temperature=0.2,
-        )
+    exponent = max(0, attempt - 1)
+    base_delay = min(max_d, init_d * (factor ** exponent))
 
-        logger.info(f"Invoking Gemini model: {config.GEMINI_MODEL}")
-        response = client.models.generate_content(
-            model=config.GEMINI_MODEL,
-            contents=prompt,
-            config=cfg,
-        )
+    if jitter_flag and base_delay > 0:
+        # Add random uniform jitter up to 25% of base delay (min 0.05s)
+        jitter_val = random.uniform(0.0, max(0.05, 0.25 * base_delay))
+        return base_delay + jitter_val
+    return base_delay
 
-        raw_text = getattr(response, "text", "") or ""
-        if not raw_text or not raw_text.strip():
-            logger.error("Gemini returned an empty or null text response.")
-            raise AIResponseFormatError("Gemini returned an empty response. The model may have truncated output.")
 
-        logger.info("Successfully received Gemini response text. Attempting JSON parsing...")
-        cleaned_json = _extract_json_string(raw_text)
-        parsed_data = json.loads(cleaned_json)
+def classify_gemini_error(exc: Exception) -> AIAnalysisError:
+    """
+    Translates raw Google GenAI APIError or system exceptions into typed AIAnalysisError subclasses.
+    Differentiates transient errors (429, 500, 503, timeouts) from permanent errors (400, 401, 403).
+    """
+    if isinstance(exc, AIAnalysisError):
+        return exc
 
-        if not isinstance(parsed_data, (dict, list)):
-            raise AIResponseFormatError("Parsed AI output is neither a dictionary nor a list.")
+    if isinstance(exc, (socket.timeout, TimeoutError)):
+        return AINetworkError(f"Network timeout contacting Gemini: {str(exc)}")
 
-        return parsed_data
+    if isinstance(exc, (ConnectionError, ConnectionResetError, BrokenPipeError)):
+        return AINetworkError(f"Network connection failed contacting Gemini: {str(exc)}")
 
-    except APIError as e:
-        msg = str(e)
-        logger.error(f"Gemini API Exception occurred: {msg}")
+    if isinstance(exc, APIError):
+        code = getattr(exc, "code", None)
+        msg = str(exc)
         msg_lower = msg.lower()
 
-        if "429" in msg or "resource_exhausted" in msg_lower or "quota" in msg_lower:
-            raise AIRateLimitError(f"Gemini API quota exceeded: {msg}")
-        elif "401" in msg or "403" in msg or "invalid_argument" in msg_lower and "key" in msg_lower:
-            raise AIAuthError(f"Gemini authentication failed: {msg}")
-        elif "503" in msg or "unavailable" in msg_lower or "overloaded" in msg_lower:
-            raise AIServiceUnavailableError(f"Gemini service unavailable: {msg}")
-        else:
-            raise AIAnalysisError(f"Gemini API Error: {msg}", retryable=False)
+        # 429 Rate Limit / Quota Exhaustion (Transient)
+        if code == 429 or "429" in msg or "resource_exhausted" in msg_lower or "quota" in msg_lower:
+            return AIRateLimitError(f"Gemini API quota exceeded: {msg}")
 
-    except (socket.timeout, TimeoutError) as te:
-        logger.error(f"Network timeout contacting Gemini: {te}")
-        raise AINetworkError(f"Network timeout during AI analysis: {str(te)}")
+        # 401 / 403 Authentication / Authorization (Permanent)
+        if (
+            code in (401, 403)
+            or "401" in msg
+            or "403" in msg
+            or ("invalid_argument" in msg_lower and "key" in msg_lower)
+            or "permission_denied" in msg_lower
+            or "unauthenticated" in msg_lower
+        ):
+            return AIAuthError(f"Gemini authentication failed: {msg}")
 
-    except json.JSONDecodeError as jde:
-        logger.error(f"JSON decoding failed. Content was: {raw_text[:500] if raw_text else 'None'}... Error: {jde}")
-        raise AIResponseFormatError(
-            f"Failed to parse Gemini response as valid JSON: {str(jde)}"
-        )
+        # 5xx Service Unavailable / Internal Server Error / Overloaded (Transient)
+        if (
+            code in (500, 502, 503, 504)
+            or any(c in msg for c in ("500", "502", "503", "504"))
+            or "unavailable" in msg_lower
+            or "overloaded" in msg_lower
+            or "internal error" in msg_lower
+        ):
+            return AIServiceUnavailableError(f"Gemini service temporarily unavailable: {msg}")
 
-    except AIAnalysisError:
-        raise
+        # 400 Bad Request / Invalid Argument (Permanent)
+        if code == 400 or "invalid_argument" in msg_lower or "bad request" in msg_lower:
+            return AIBadRequestError(f"Gemini API Bad Request: {msg}")
 
-    except Exception as e:
-        logger.error(f"Unexpected error in Gemini utility: {str(e)}")
-        # Check for socket/network error signatures
-        err_msg = str(e).lower()
-        if "connection" in err_msg or "dns" in err_msg or "network" in err_msg:
-            raise AINetworkError(f"Network error communicating with AI provider: {str(e)}")
-        raise AIAnalysisError(f"Unexpected AI processing error: {str(e)}")
+        # Other API errors
+        return AIAnalysisError(f"Gemini API Error: {msg}", retryable=False)
+
+    err_str = str(exc).lower()
+    if "connection" in err_str or "dns" in err_str or "network" in err_str or "timed out" in err_str:
+        return AINetworkError(f"Network error communicating with AI provider: {str(exc)}")
+
+    return AIAnalysisError(f"Unexpected AI processing error: {str(exc)}", retryable=False)
+
+
+def is_transient_error(exc: Exception) -> bool:
+    """
+    Determines whether an exception is transient (429, 500, 503, timeouts)
+    and should be retried automatically with exponential backoff.
+    Permanent errors (400, 401, 403, invalid key) return False and fail fast.
+    """
+    classified = classify_gemini_error(exc)
+    return bool(classified.retryable)
+
+
+def generate_json_response(
+    system_instruction: str,
+    prompt: str,
+    max_retries: Optional[int] = None,
+    initial_delay: Optional[float] = None,
+    backoff_factor: Optional[float] = None,
+    max_delay: Optional[float] = None,
+    jitter: Optional[bool] = None,
+    _sleep_fn: Callable[[float], None] = time.sleep,
+) -> dict:
+    """
+    Sends a request to Gemini using the google-genai SDK, enforcing a JSON response.
+    Wraps the call with exponential backoff and jitter retry logic for transient errors
+    (429, 500, 503, timeouts), while failing fast on permanent errors (400, 401, 403).
+
+    Configuration defaults are loaded from config.py:
+    - config.GEMINI_RETRY_ATTEMPTS (default 3 retries)
+    - config.GEMINI_RETRY_INITIAL_DELAY (default 1.0s)
+    - config.GEMINI_RETRY_BACKOFF_FACTOR (default 2.0)
+    - config.GEMINI_RETRY_MAX_DELAY (default 10.0s)
+    - config.GEMINI_RETRY_JITTER (default True)
+    """
+    retries = max_retries if max_retries is not None else getattr(config, "GEMINI_RETRY_ATTEMPTS", 3)
+    init_d = initial_delay if initial_delay is not None else getattr(config, "GEMINI_RETRY_INITIAL_DELAY", 1.0)
+    factor = backoff_factor if backoff_factor is not None else getattr(config, "GEMINI_RETRY_BACKOFF_FACTOR", 2.0)
+    if max_delay is not None:
+        max_d = max_delay
+    elif initial_delay is not None:
+        max_d = max(getattr(config, "GEMINI_RETRY_MAX_DELAY", 10.0), init_d * (factor ** retries))
+    else:
+        max_d = getattr(config, "GEMINI_RETRY_MAX_DELAY", 10.0)
+    use_jitter = jitter if jitter is not None else getattr(config, "GEMINI_RETRY_JITTER", True)
+
+    total_attempts = max(1, retries + 1)
+    client = get_gemini_client()
+
+    cfg = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        response_mime_type="application/json",
+        temperature=0.2,
+    )
+
+    for attempt in range(1, total_attempts + 1):
+        raw_text = ""
+        try:
+            logger.info(f"Invoking Gemini model: {config.GEMINI_MODEL} (attempt {attempt}/{total_attempts})")
+            response = client.models.generate_content(
+                model=config.GEMINI_MODEL,
+                contents=prompt,
+                config=cfg,
+            )
+
+            raw_text = getattr(response, "text", "") or ""
+            if not raw_text or not raw_text.strip():
+                logger.error("Gemini returned an empty or null text response.")
+                raise AIResponseFormatError("Gemini returned an empty response. The model may have truncated output.")
+
+            logger.info("Successfully received Gemini response text. Attempting JSON parsing...")
+            cleaned_json = _extract_json_string(raw_text)
+            parsed_data = json.loads(cleaned_json)
+
+            if not isinstance(parsed_data, (dict, list)):
+                raise AIResponseFormatError("Parsed AI output is neither a dictionary nor a list.")
+
+            return parsed_data
+
+        except json.JSONDecodeError as jde:
+            logger.error(f"JSON decoding failed. Content was: {raw_text[:500] if raw_text else 'None'}... Error: {jde}")
+            raise AIResponseFormatError(
+                f"Failed to parse Gemini response as valid JSON: {str(jde)}"
+            )
+
+        except AIResponseFormatError:
+            # Format/truncation errors fail without exponential delay (handled by coordinator schema logic)
+            raise
+
+        except Exception as e:
+            classified = classify_gemini_error(e)
+
+            # Check if this error is transient and we have remaining retry attempts
+            if classified.retryable and attempt < total_attempts:
+                delay = calculate_backoff_delay(
+                    attempt=attempt,
+                    initial_delay=init_d,
+                    backoff_factor=factor,
+                    max_delay=max_d,
+                    use_jitter=use_jitter,
+                )
+                logger.warning(
+                    f"Gemini API transient failure on attempt {attempt}/{total_attempts} "
+                    f"({classified.__class__.__name__}: {str(e)}). "
+                    f"Retrying in {delay:.2f}s with exponential backoff..."
+                )
+                _sleep_fn(delay)
+                continue
+
+            # Permanent error (fails fast without retry)
+            if not classified.retryable:
+                logger.error(
+                    f"Gemini API permanent failure encountered on attempt {attempt} "
+                    f"({classified.__class__.__name__}: {str(e)}). Failing fast without retry."
+                )
+                raise classified from e
+            else:
+                # All transient retry attempts exhausted
+                logger.error(
+                    f"Gemini API request failed after {total_attempts} attempts. "
+                    f"All transient retries exhausted. Real error: {str(e)}",
+                    exc_info=True,
+                )
+                classified.user_friendly_message = (
+                    "The AI service is busy, please try again in a minute."
+                )
+                raise classified from e
