@@ -112,23 +112,15 @@ def init_db() -> None:
             )
         """)
 
-        # Table 6: Store student detailed profile information
+        # Table 6: Store student and user feedback
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS student_profiles (
-                student_id TEXT PRIMARY KEY,
-                full_name TEXT,
-                email TEXT,
-                phone TEXT,
-                department TEXT,
-                grad_year INTEGER,
-                cgpa REAL,
-                target_role TEXT,
-                target_company TEXT,
-                skills_json TEXT,
-                linkedin_url TEXT,
-                github_url TEXT,
-                has_resume_uploaded INTEGER DEFAULT 0,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            CREATE TABLE IF NOT EXISTS user_feedback (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+                category TEXT NOT NULL,
+                comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
         
@@ -150,6 +142,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -1336,6 +1329,35 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def submit_user_feedback(
+    student_id: str,
+    rating: int,
+    category: str,
+    comment: str,
+    feedback_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Records student experience feedback with rating (1-5), category, and comments (#197).
+    """
+    import uuid
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        f_id = feedback_id or f"fb-{uuid.uuid4().hex[:12]}"
+        normalized_student_id = (student_id or "default_student").strip()
+        clamped_rating = max(1, min(5, int(rating)))
+        norm_category = (category or "General Experience").strip()
+        norm_comment = (comment or "").strip()
+
+        cursor.execute("""
+            INSERT INTO user_feedback (id, student_id, rating, category, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (f_id, normalized_student_id, clamped_rating, norm_category, norm_comment))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM user_feedback WHERE id = ?", (f_id,))
+        row = cursor.fetchone()
+        return dict(row) if row else {}
 def save_student_profile(
     student_id: str,
     full_name: Optional[str] = None,
@@ -1419,6 +1441,13 @@ def save_student_profile(
         conn.close()
 
 
+def get_user_feedback_list(
+    student_id: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    limit: int = 50
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves recorded user feedback entries, optionally filtered by student or feature category (#197).
 def get_student_profile(student_id: str) -> Dict[str, Any]:
     """
     Retrieves student profile record by student_id (#199).
@@ -1426,6 +1455,23 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        query = "SELECT * FROM user_feedback WHERE 1=1"
+        params: List[Any] = []
+
+        if student_id and student_id.strip():
+            query += " AND student_id = ?"
+            params.append(student_id.strip())
+
+        if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(category) = LOWER(?)"
+            params.append(category_filter.strip())
+
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
         s_id = (student_id or "default_student").strip()
         cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
         row = cursor.fetchone()
@@ -1462,6 +1508,45 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
         conn.close()
 
 
+def get_feedback_metrics_summary() -> Dict[str, Any]:
+    """
+    Calculates aggregated satisfaction scores and category distribution (#197).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_feedback,
+                COALESCE(AVG(rating), 0) as avg_rating,
+                COALESCE(SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END), 0) as five_star_count,
+                COALESCE(SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END), 0) as four_star_count,
+                COALESCE(SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END), 0) as three_star_count,
+                COALESCE(SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END), 0) as two_star_count,
+                COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) as one_star_count
+            FROM user_feedback
+        """)
+        row = cursor.fetchone()
+        stats = dict(row) if row else {}
+        stats["avg_rating"] = round(float(stats.get("avg_rating", 0.0)), 2)
+
+        cursor.execute("""
+            SELECT category, COUNT(*) as count, AVG(rating) as category_avg
+            FROM user_feedback
+            GROUP BY category
+            ORDER BY count DESC
+        """)
+        stats["category_breakdown"] = [
+            {
+                "category": r["category"],
+                "count": r["count"],
+                "avg_rating": round(float(r["category_avg"] or 0), 1)
+            }
+            for r in cursor.fetchall()
+        ]
+        return stats
+    finally:
+        conn.close()
 def calculate_profile_completion(student_id: str) -> Dict[str, Any]:
     """
     Evaluates profile completeness across key placement readiness criteria (#199):
