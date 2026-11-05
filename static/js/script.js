@@ -1,5 +1,19 @@
 // Frontend interactions - AI Campus Placement Agent
 
+// Early theme resolution to prevent flash of unstyled content (FOUC) (#158)
+try {
+  const initialTheme = (function () {
+    const stored = localStorage.getItem("theme");
+    if (stored === "dark" || stored === "light") return stored;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  })();
+  document.documentElement.setAttribute("data-bs-theme", initialTheme);
+} catch (e) {
+  // Graceful fallback
+}
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
   if (typeof str !== "string") str = String(str);
@@ -30,21 +44,60 @@ document.addEventListener("DOMContentLoaded", () => {
   initCopySuggestions();
 });
 
+/**
+ * Resolves preferred color scheme based on stored user choice,
+ * defaulting to the system preference (prefers-color-scheme) (#158).
+ */
+function getPreferredTheme() {
+  const storedTheme = localStorage.getItem("theme");
+  if (storedTheme === "dark" || storedTheme === "light") {
+    return storedTheme;
+  }
+  if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+}
+
+function setTheme(theme) {
+  document.documentElement.setAttribute("data-bs-theme", theme);
+  const toggleBtns = document.querySelectorAll(".theme-toggle-btn");
+  toggleBtns.forEach((btn) => updateThemeIcon(btn, theme));
+}
+
 function initThemeToggle() {
-  const currentTheme = localStorage.getItem("theme") || "light";
-  document.documentElement.setAttribute("data-bs-theme", currentTheme);
+  const currentTheme = getPreferredTheme();
+  setTheme(currentTheme);
 
   const toggleBtns = document.querySelectorAll(".theme-toggle-btn");
   toggleBtns.forEach((btn) => {
-    updateThemeIcon(btn, currentTheme);
-    btn.addEventListener("click", () => {
-      const activeTheme = document.documentElement.getAttribute("data-bs-theme");
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const activeTheme = document.documentElement.getAttribute("data-bs-theme") || "light";
       const newTheme = activeTheme === "dark" ? "light" : "dark";
-      document.documentElement.setAttribute("data-bs-theme", newTheme);
       localStorage.setItem("theme", newTheme);
-      toggleBtns.forEach((b) => updateThemeIcon(b, newTheme));
+      setTheme(newTheme);
     });
   });
+
+  // Listen to live system preference changes when user hasn't explicitly stored a choice
+  if (window.matchMedia) {
+    try {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleSystemChange = (e) => {
+        if (!localStorage.getItem("theme")) {
+          setTheme(e.matches ? "dark" : "light");
+        }
+      };
+      if (typeof mediaQuery.addEventListener === "function") {
+        mediaQuery.addEventListener("change", handleSystemChange);
+      } else if (typeof mediaQuery.addListener === "function") {
+        mediaQuery.addListener(handleSystemChange);
+      }
+    } catch (mqErr) {
+      console.debug("matchMedia listener not supported:", mqErr);
+    }
+  }
 }
 
 function updateThemeIcon(btn, theme) {
