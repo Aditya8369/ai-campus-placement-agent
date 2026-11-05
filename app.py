@@ -89,6 +89,9 @@ from utils.pdf_reader import (
     extract_text_from_docx,
     extract_text_from_file,
     validate_resume_text,
+    validate_resume_file,
+    validate_file_size,
+    validate_pdf_content,
     ScannedPDFError,
     MAX_RESUME_TEXT_CHARS,
     ALLOWED_RESUME_EXTENSIONS,
@@ -232,7 +235,11 @@ def inject_correlation_headers(response):
 
 @app.errorhandler(413)
 def request_entity_too_large(error):
-    flash("Uploaded file exceeds the 16MB size limit. Please upload a smaller PDF.", "error")
+    max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+    msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+    if request.path.startswith("/api/") or request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"success": False, "error": msg}), 413
+    flash(msg, "error")
     return redirect(url_for("index"))
 
 
@@ -526,13 +533,57 @@ def _extract_and_validate_resume(req):
         return pasted_text[:MAX_RESUME_TEXT_CHARS], "Pasted_Resume.txt", file_uuid, None
     elif uploaded_file and uploaded_file.filename != "":
         filename_lower = uploaded_file.filename.lower()
-        if not any(filename_lower.endswith(ext) for ext in ALLOWED_RESUME_EXTENSIONS):
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        if ext not in ALLOWED_RESUME_EXTENSIONS:
             return (
                 None,
                 None,
                 None,
-                "Invalid file format. Only PDF (.pdf) and Word (.docx) resumes are supported.",
+                f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported.",
             )
+
+        # Enforce maximum upload file size before writing to disk (Issue #153)
+        uploaded_file.seek(0, os.SEEK_END)
+        file_size = uploaded_file.tell()
+        uploaded_file.seek(0)
+
+        max_bytes = getattr(
+            config, "MAX_RESUME_FILE_SIZE_BYTES", getattr(config, "MAX_UPLOAD_SIZE_MB", 5) * 1024 * 1024
+        )
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+
+        if file_size == 0:
+            return None, None, None, "The uploaded file is empty. Please upload a valid resume."
+
+        if file_size > max_bytes:
+            return (
+                None,
+                None,
+                None,
+                f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file.",
+            )
+
+        # Verify real content type (magic bytes) before saving and parsing (Issue #153)
+        header = uploaded_file.read(1024)
+        uploaded_file.seek(0)
+
+        if ext == ".pdf":
+            if b"%PDF-" not in header:
+                return (
+                    None,
+                    None,
+                    None,
+                    "The uploaded file is not a valid PDF document. Please upload a genuine PDF resume (.pdf).",
+                )
+        elif ext == ".docx":
+            if not header.startswith(b"PK\x03\x04"):
+                return (
+                    None,
+                    None,
+                    None,
+                    "The uploaded file is not a valid Word document (.docx). Please upload a genuine .docx resume.",
+                )
+
         resume_filename = uploaded_file.filename
         safe_name = secure_filename(f"{file_uuid}_{uploaded_file.filename}")
         saved_file_path = os.path.join(config.UPLOAD_FOLDER, safe_name)
@@ -1085,6 +1136,7 @@ def dashboard(analysis_id: str) -> str:
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison)
     )
+
 
 @app.route("/interview/<analysis_id>")
 def interview(analysis_id: str) -> str:

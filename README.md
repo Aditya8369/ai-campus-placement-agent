@@ -215,6 +215,18 @@ RATE_LIMIT_DEFAULT=100/minute
 
 ---
 
+## Resume Upload Validation & File Size Limits
+
+To prevent application crashes, denial-of-service, slow requests, and confusing errors from malicious or malformed uploads, strict server-side validation is enforced in `app.py` and `utils/pdf_reader.py` before any parsing occurs:
+
+- **True Content-Type & Signature Verification**: Uploaded files must match allowed extensions (`.pdf`, `.docx`) and pass byte-level magic signature checks (e.g. `%PDF-` signature for PDF documents and `PK\x03\x04` for Word documents). Renamed non-PDF files, fake documents, executables, or images are rejected immediately with user-friendly alerts.
+- **Configurable File Size Boundary**: Uploads exceeding the maximum allowed size (default: **5 MB**) are stopped before saving to disk or calling parsers.
+- **Graceful Error Recovery**: Rejection triggers readable UI notifications and HTTP 400 Bad Request responses instead of unhandled 500 internal server errors or raw stack traces.
+
+### Configuration
+```env
+# Maximum allowed resume upload file size in megabytes (default: 5 MB)
+MAX_UPLOAD_SIZE_MB=5
 ## Scanned & Image-Only PDF Detection
 
 To prevent wasted AI quota and misleading evaluations from non-extractable resumes, `utils/pdf_reader.py` detects scanned or image-only PDF documents:
