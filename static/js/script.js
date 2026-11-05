@@ -26,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   initOutreachGenerator();
   initCopySuggestions();
+  initBackToTop();
 });
 
 function initThemeToggle() {
@@ -2878,5 +2879,61 @@ function initCopySuggestions() {
     }
   });
 }
+
+/**
+ * Back-to-Top Floating Action Button
+ * Shows when scrolled down (> 300px), smoothly scrolls to top on click.
+ * Ensures cross-browser compatibility and avoids interfering with touch devices.
+ */
+function initBackToTop() {
+  let btn = document.getElementById("backToTopBtn");
+  if (!btn) {
+    btn = document.createElement("button");
+    btn.type = "button";
+    btn.id = "backToTopBtn";
+    btn.className = "back-to-top-btn";
+    btn.setAttribute("aria-label", "Back to top");
+    btn.setAttribute("title", "Back to top");
+    btn.innerHTML = '<i class="fa-solid fa-arrow-up"></i>';
+    document.body.appendChild(btn);
+  }
+
+  const scrollThreshold = 300;
+  let ticking = false;
+
+  function updateBackToTopVisibility() {
+    const currentScroll = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    if (currentScroll > scrollThreshold) {
+      btn.classList.add("show");
+    } else {
+      btn.classList.remove("show");
+    }
+    ticking = false;
+  }
+
+  window.addEventListener(
+    "scroll",
+    () => {
+      if (!ticking) {
+        window.requestAnimationFrame(updateBackToTopVisibility);
+        ticking = true;
+      }
+    },
+    { passive: true }
+  );
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
+    btn.blur();
+  });
+
+  // Check initial scroll offset in case page was reloaded when scrolled
+  updateBackToTopVisibility();
+}
+
 
 
