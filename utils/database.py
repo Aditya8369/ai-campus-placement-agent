@@ -83,6 +83,7 @@ def init_db() -> None:
             )
         """)
         # Table 5: Store registered user accounts
+                # Table 5: Store registered user accounts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
@@ -994,6 +995,8 @@ def get_cohort_stats(
         }
     finally:
         conn.close()
+
+
 
 
 def get_user_placement_history(

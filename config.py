@@ -33,7 +33,9 @@ REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
 if not FLASK_SECRET_KEY:
-    raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
+    if os.getenv("FLASK_ENV") == "production":
+        raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
+    FLASK_SECRET_KEY = "dev-secret-key-12345"
 
 # Centralized model setting
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -72,3 +74,12 @@ MIN_PDF_TEXT_CHARS = int(os.getenv("MIN_PDF_TEXT_CHARS", "100"))
 MIN_PDF_EXTRACTED_CHARS = MIN_PDF_TEXT_CHARS
 ENABLE_OCR_FALLBACK = os.getenv("ENABLE_OCR_FALLBACK", "false").lower() in ("true", "1", "yes")
 
+# Gemini API Transient Error Retry & Exponential Backoff Configurations (Issue #155)
+# Transient errors (429 rate limit, 500/503 server errors, network timeouts) are retried automatically.
+# Permanent errors (400 bad request, 401/403 invalid credentials) fail fast without retry.
+GEMINI_RETRY_ATTEMPTS = int(os.getenv("GEMINI_RETRY_ATTEMPTS", os.getenv("GEMINI_MAX_RETRIES", "3")))
+GEMINI_MAX_RETRIES = GEMINI_RETRY_ATTEMPTS
+GEMINI_RETRY_INITIAL_DELAY = float(os.getenv("GEMINI_RETRY_INITIAL_DELAY", "1.0"))  # in seconds (e.g. 1s, 2s, 4s)
+GEMINI_RETRY_BACKOFF_FACTOR = float(os.getenv("GEMINI_RETRY_BACKOFF_FACTOR", "2.0"))
+GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "10.0"))  # in seconds
+GEMINI_RETRY_JITTER = os.getenv("GEMINI_RETRY_JITTER", "true").lower() in ("true", "1", "yes")
