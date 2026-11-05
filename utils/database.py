@@ -83,13 +83,31 @@ def init_db() -> None:
             )
         """)
         # Table 5: Store registered user accounts
-                # Table 5: Store registered user accounts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table 6: Store company interview experiences (#189)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interview_experiences (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                candidate_name TEXT NOT NULL DEFAULT 'Anonymous Candidate',
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                interview_date TEXT NOT NULL,
+                rounds_json TEXT NOT NULL,
+                overall_verdict TEXT NOT NULL DEFAULT 'Offer',
+                difficulty_level TEXT NOT NULL DEFAULT 'Medium',
+                tips_and_preparation TEXT,
+                reported_flag INTEGER NOT NULL DEFAULT 0,
+                report_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -130,6 +148,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_company ON interview_experiences (company_name, interview_date DESC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -1312,5 +1331,141 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def save_interview_experience(
+    exp_id: str,
+    student_id: str,
+    candidate_name: str,
+    company_name: str,
+    role_title: str,
+    interview_date: str,
+    rounds: List[Dict[str, Any]],
+    overall_verdict: str = "Offer",
+    difficulty_level: str = "Medium",
+    tips_and_preparation: Optional[str] = None
+) -> str:
+    """
+    Saves a student-submitted company interview experience (#189).
+    Never persists or displays sensitive contact info (phone/email).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_name = (candidate_name or "").strip() or "Anonymous Candidate"
+        # Mask any accidental email or phone in name
+        import re
+        if "@" in effective_name or re.search(r"\d{7,}", effective_name):
+            effective_name = "Anonymous Candidate"
+
+        cursor.execute("""
+            INSERT INTO interview_experiences (
+                id, student_id, candidate_name, company_name, role_title,
+                interview_date, rounds_json, overall_verdict, difficulty_level,
+                tips_and_preparation
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            exp_id,
+            student_id.strip() if student_id else "default_student",
+            effective_name,
+            company_name.strip(),
+            role_title.strip(),
+            interview_date.strip(),
+            json.dumps(rounds),
+            overall_verdict.strip(),
+            difficulty_level.strip(),
+            (tips_and_preparation or "").strip()
+        ))
+        conn.commit()
+        logger.info(f"Saved interview experience {exp_id} for company {company_name}")
+        return exp_id
+    except Exception as e:
+        logger.error(f"Error saving interview experience {exp_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_interview_experiences(
+    company_name: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    include_reported: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves company interview experiences with search and round filtering (#189).
+    Omits inappropriate/reported posts by default.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
+
+        if not include_reported:
+            conditions.append("reported_flag = 0")
+
+        if company_name and company_name.strip() and company_name.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(company_name) = LOWER(?)")
+            params.append(company_name.strip())
+
+        if search_query and search_query.strip():
+            kw = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(tips_and_preparation) LIKE ?)")
+            params.extend([kw, kw, kw])
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        experiences = []
+        for r in rows:
+            rec = dict(r)
+            try:
+                rec["rounds"] = json.loads(rec.get("rounds_json", "[]"))
+            except Exception:
+                rec["rounds"] = []
+
+            # If category_filter is specified (e.g. Technical, Coding, HR), filter by round category
+            if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+                target_cat = category_filter.strip().lower()
+                has_cat = any(
+                    target_cat in round_info.get("category", "").lower()
+                    for round_info in rec["rounds"]
+                )
+                if not has_cat:
+                    continue
+
+            experiences.append(rec)
+
+        return experiences
+    except Exception as e:
+        logger.error(f"Error fetching interview experiences: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def report_interview_experience(exp_id: str, reason: str) -> bool:
+    """
+    Flags an interview experience as reported for moderation review (#189).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE interview_experiences
+            SET reported_flag = 1, report_reason = ?
+            WHERE id = ?
+        """, (reason.strip() if reason else "Inappropriate content", exp_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error reporting interview experience {exp_id}: {e}")
+        return False
     finally:
         conn.close()

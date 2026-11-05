@@ -48,6 +48,9 @@ from utils.database import (
     save_job_application,
     get_job_applications,
     delete_job_application,
+    save_interview_experience,
+    get_interview_experiences,
+    report_interview_experience,
     update_job_application_status,
 )
 from utils.batch_analyzer import run_batch_company_comparison
@@ -2606,6 +2609,111 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
+
+
+@app.route("/interview-experiences", methods=["GET", "POST"])
+def interview_experiences_view():
+    """
+    Company-Wise Interview Experiences View and Submission Handler (#189).
+    Enables students to learn from real campus placement interview rounds (Coding, Technical, HR)
+    and submit their own verified candidate experiences anonymously.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    company_filter = request.args.get("company", "").strip()
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    if request.method == "POST":
+        company_name = request.form.get("company_name", "").strip()
+        role_title = request.form.get("role_title", "").strip()
+        interview_date = request.form.get("interview_date", "").strip()
+        overall_verdict = request.form.get("overall_verdict", "Offer").strip()
+        difficulty_level = request.form.get("difficulty_level", "Medium").strip()
+        tips = request.form.get("tips_and_preparation", "").strip()
+        candidate_name = request.form.get("candidate_name", "").strip() or "Anonymous Candidate"
+
+        if not company_name or not role_title or not interview_date:
+            flash("Company name, job role, and interview date are required.", "error")
+            return redirect(url_for("interview_experiences_view"))
+
+        # Parse submitted rounds (Coding, Technical, HR)
+        round_categories = request.form.getlist("round_category[]")
+        round_descriptions = request.form.getlist("round_description[]")
+        round_questions = request.form.getlist("round_questions[]")
+
+        rounds = []
+        for idx in range(len(round_categories)):
+            cat = round_categories[idx].strip() if idx < len(round_categories) else "Technical"
+            desc = round_descriptions[idx].strip() if idx < len(round_descriptions) else ""
+            q_text = round_questions[idx].strip() if idx < len(round_questions) else ""
+            if cat or desc or q_text:
+                rounds.append({
+                    "round_number": idx + 1,
+                    "category": cat or "Technical",
+                    "description": desc,
+                    "questions": [q.strip() for q in q_text.split("\n") if q.strip()]
+                })
+
+        if not rounds:
+            # Fallback default round if omitted
+            rounds.append({
+                "round_number": 1,
+                "category": "Technical",
+                "description": "Standard placement interview round.",
+                "questions": []
+            })
+
+        exp_id = f"exp-{uuid.uuid4().hex[:12]}"
+        save_interview_experience(
+            exp_id=exp_id,
+            student_id=student_id,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title,
+            interview_date=interview_date,
+            rounds=rounds,
+            overall_verdict=overall_verdict,
+            difficulty_level=difficulty_level,
+            tips_and_preparation=tips
+        )
+        flash("Thank you! Your interview experience was shared successfully.", "success")
+        return redirect(url_for("interview_experiences_view", company=company_name))
+
+    experiences = get_interview_experiences(
+        company_name=company_filter,
+        category_filter=category_filter,
+        search_query=search_query
+    )
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(experiences),
+            "experiences": experiences
+        }), 200
+
+    return render_template(
+        "interview_experiences.html",
+        experiences=experiences,
+        company_filter=company_filter,
+        category_filter=category_filter,
+        search_query=search_query,
+        student_id=student_id
+    )
+
+
+@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
+def api_report_interview_experience(exp_id: str):
+    """
+    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
+    """
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
+    reported = report_interview_experience(exp_id=exp_id, reason=reason)
+    return jsonify({
+        "success": reported,
+        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
+    }), (200 if reported else 404)
 
 
 if __name__ == "__main__":
