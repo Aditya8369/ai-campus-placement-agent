@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Candidate Profile & Placement Readiness - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4">
+    <!-- Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
+      <div>
+        <h2 class="h3 fw-bold text-primary mb-1">
+          <i class="fa-solid fa-user-check me-2"></i>Profile Completion & Readiness
+        </h2>
+        <p class="text-muted small mb-0">
+          Maintain your academic profile, target role preferences, and key technical skills to maximize placement opportunities.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill">
+          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
+        </a>
+      </div>
+    </div>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Progress Card -->
+    <div class="card border-0 shadow-sm mb-4 bg-white">
+      <div class="card-body p-4">
+        <div class="row align-items-center">
+          <div class="col-md-8">
+            <div class="d-flex align-items-center justify-content-between mb-2">
+              <span class="fw-bold text-dark fs-5">Overall Profile Completion</span>
+              <span class="badge {{ 'bg-success' if completion.completion_percentage >= 80 else ('bg-primary' if completion.completion_percentage >= 50 else 'bg-warning text-dark') }} fs-6">
+                {{ completion.completion_percentage }}% Completed
+              </span>
+            </div>
+            <div class="progress" style="height: 14px;">
+              <div class="progress-bar progress-bar-striped progress-bar-animated {{ 'bg-success' if completion.completion_percentage >= 80 else ('bg-primary' if completion.completion_percentage >= 50 else 'bg-warning') }}"
+                   role="progressbar"
+                   style="width: {{ completion.completion_percentage }}%;"
+                   aria-valuenow="{{ completion.completion_percentage }}"
+                   aria-valuemin="0"
+                   aria-valuemax="100">
+              </div>
+            </div>
+            <p class="text-muted small mt-2 mb-0">
+              {% if completion.is_complete %}
+                <i class="fa-solid fa-circle-check text-success me-1"></i> Fantastic! Your candidate profile is fully ready for recruiters.
+              {% else %}
+                <i class="fa-solid fa-circle-exclamation text-warning me-1"></i> Complete the remaining criteria below to boost your recommendation score.
+              {% endif %}
+            </p>
+          </div>
+          <div class="col-md-4 text-md-end mt-3 mt-md-0">
+            <span class="text-muted small d-block">Candidate Identifier</span>
+            <span class="fw-bold text-dark font-monospace">{{ student_id }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <!-- Edit Profile Form -->
+      <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+          <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="card-title fw-bold mb-0">Edit Profile Details</h5>
+          </div>
+          <div class="card-body">
+            <form action="/profile" method="POST">
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Full Name *</label>
+                  <input type="text" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="e.g. Alex Johnson">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Email Address *</label>
+                  <input type="email" name="email" class="form-control" value="{{ profile.email or '' }}" placeholder="alex@university.edu">
+                </div>
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Phone Number</label>
+                  <input type="tel" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Department / Major</label>
+                  <input type="text" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">
+                </div>
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Graduation Year</label>
+                  <input type="number" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Cumulative CGPA</label>
+                  <input type="number" step="0.01" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                </div>
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Target Placement Role</label>
+                  <input type="text" name="target_role" class="form-control" value="{{ profile.target_role or '' }}" placeholder="Software Development Engineer">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Target / Dream Company</label>
+                  <input type="text" name="target_company" class="form-control" value="{{ profile.target_company or '' }}" placeholder="Google, Microsoft, Amazon">
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label small fw-semibold">Key Technical Skills (Comma-separated, at least 3)</label>
+                <input type="text" name="skills" class="form-control" value="{{ skills_csv }}" placeholder="Python, SQL, React, Docker">
+              </div>
+
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
+                  <input type="url" name="linkedin_url" class="form-control" value="{{ profile.linkedin_url or '' }}" placeholder="https://linkedin.com/in/username">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">GitHub Profile URL</label>
+                  <input type="url" name="github_url" class="form-control" value="{{ profile.github_url or '' }}" placeholder="https://github.com/username">
+                </div>
+              </div>
+
+              <button type="submit" class="btn btn-primary rounded-pill px-4">
+                <i class="fa-solid fa-floppy-disk me-1"></i> Save Profile Details
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Completion Criteria Checklist -->
+      <div class="col-lg-5">
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="card-title fw-bold mb-0">Placement Readiness Checklist</h5>
+          </div>
+          <div class="card-body p-0">
+            <ul class="list-group list-group-flush">
+              {% for crit in completion.criteria %}
+                <li class="list-group-item d-flex justify-content-between align-items-center p-3">
+                  <div>
+                    <div class="d-flex align-items-center">
+                      {% if crit.completed %}
+                        <i class="fa-solid fa-circle-check text-success fs-5 me-2"></i>
+                      {% else %}
+                        <i class="fa-regular fa-circle text-muted fs-5 me-2"></i>
+                      {% endif %}
+                      <span class="fw-semibold text-dark">{{ crit.title }}</span>
+                    </div>
+                    <span class="text-muted small ms-4 d-block">{{ crit.category }} (+{{ crit.weight }}%)</span>
+                    {% if not crit.completed and crit.missing_items %}
+                      <div class="ms-4 mt-1">
+                        {% for m in crit.missing_items %}
+                          <span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle small me-1">{{ m }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div>
+                    {% if crit.completed %}
+                      <span class="badge bg-success">Done</span>
+                    {% else %}
+                      <span class="badge bg-secondary">Pending</span>
+                    {% endif %}
+                  </div>
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
