@@ -2816,50 +2816,37 @@ def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
         effective_student_id = (student_id or "default_student").strip()
         comp = (company_name or "Google").strip()
 
-        cursor.execute("""
-            SELECT * FROM company_preparation_checklists
-            WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
-        """, (effective_student_id, comp))
-        row = cursor.fetchone()
 
-        if row:
-            rec = dict(row)
-            try:
-                checklist_data = json.loads(rec.get("checklist_json", "{}"))
-            except Exception:
-                checklist_data = get_default_company_checklist(comp)
-        else:
-            checklist_data = get_default_company_checklist(comp)
-            # Initialize record
-            save_company_checklist(effective_student_id, comp, checklist_data)
+def get_interview_experiences(
+    company_name: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    include_reported: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves company interview experiences with search and round filtering (#189).
+    Omits inappropriate/reported posts by default.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
 
-        # Compute completion statistics
-        total_tasks = 0
-        completed_tasks = 0
-        category_stats = {}
+        if not include_reported:
+            conditions.append("reported_flag = 0")
 
-        for cat_name, task_list in checklist_data.items():
-            cat_total = len(task_list)
-            cat_done = sum(1 for t in task_list if t.get("completed"))
-            total_tasks += cat_total
-            completed_tasks += cat_done
-            category_stats[cat_name] = {
-                "total": cat_total,
-                "completed": cat_done,
-                "percentage": round((cat_done / cat_total * 100), 1) if cat_total else 0.0
-            }
+        if company_name and company_name.strip() and company_name.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(company_name) = LOWER(?)")
+            params.append(company_name.strip())
 
-        overall_percentage = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+        if search_query and search_query.strip():
+            kw = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(tips_and_preparation) LIKE ?)")
+            params.extend([kw, kw, kw])
 
-        return {
-            "student_id": effective_student_id,
-            "company_name": comp,
-            "checklist": checklist_data,
-            "total_tasks": total_tasks,
-            "completed_tasks": completed_tasks,
-            "overall_percentage": overall_percentage,
-            "category_stats": category_stats
-        }
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
 
     except Exception as e:
         logger.error(f"Error fetching company checklist for {company_name}: {e}")
@@ -3019,6 +3006,167 @@ def update_calendar_event(
 ) -> bool:
     """
     Updates an existing calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            UPDATE preparation_calendar_events
+            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
+                company_name = ?, description = ?, priority = ?, completed = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0,
+            event_id,
+            effective_student_id
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating calendar event {event_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_calendar_event(event_id: str, student_id: str) -> bool:
+    """
+    Deletes a calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM preparation_calendar_events WHERE id = ? AND student_id = ?",
+            (event_id, effective_student_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting calendar event {event_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_default_company_checklist(company_name: str) -> Dict[str, Any]:
+    """
+    Returns the foundational company checklist tasks structured across
+    Aptitude, Coding, Technical Concepts, and HR rounds (#192).
+    """
+    comp = (company_name or "General").strip()
+
+    return {
+        "Aptitude & Logical Reasoning": [
+            {"id": "apt_01", "task": f"Quantitative Aptitude: Speed, Distance, Work & Time for {comp}", "completed": False},
+            {"id": "apt_02", "task": "Data Interpretation & Logical Puzzles (Seating arrangements & Syllogisms)", "completed": False},
+            {"id": "apt_03", "task": "Verbal Ability & Reading Comprehension Practice", "completed": False}
+        ],
+        "Coding & Data Structures": [
+            {"id": "code_01", "task": f"Top 20 Most Frequent LeetCode Questions asked at {comp}", "completed": False},
+            {"id": "code_02", "task": "Arrays, Strings, HashMaps & Sliding Window problem sets", "completed": False},
+            {"id": "code_03", "task": "Trees, Graphs & Dynamic Programming fundamentals", "completed": False},
+            {"id": "code_04", "task": f"Timed 60-minute Online Assessment Simulation for {comp}", "completed": False}
+        ],
+        "Technical Concepts & CS Fundamentals": [
+            {"id": "tech_01", "task": "DBMS & SQL: Indexing, Transactions, ACID Properties, Normalization", "completed": False},
+            {"id": "tech_02", "task": "Operating Systems: Process vs Thread, Virtual Memory, Concurrency & Deadlocks", "completed": False},
+            {"id": "tech_03", "task": "Computer Networks: TCP/IP vs UDP, DNS, HTTP/HTTPS, WebSockets", "completed": False},
+            {"id": "tech_04", "task": "Object Oriented Programming (OOP) & Clean System Design principles", "completed": False}
+        ],
+        "HR, Culture & Behavioral (STAR)": [
+            {"id": "hr_01", "task": f"Company Deep Dive: Core values, business model, and leadership principles of {comp}", "completed": False},
+            {"id": "hr_02", "task": "Prepare 'Tell Me About Yourself' 90-second elevator pitch", "completed": False},
+            {"id": "hr_03", "task": "Structure 3 impactful project stories using the STAR methodology", "completed": False},
+            {"id": "hr_04", "task": f"Prepare 3 thoughtful questions to ask the interviewer about {comp}", "completed": False}
+        ]
+    }
+
+
+def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
+    """
+    Retrieves or initializes the student's company-specific preparation checklist (#192).
+    Calculates category progress and overall completion percentage.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        comp = (company_name or "Google").strip()
+
+        cursor.execute("""
+            SELECT * FROM company_preparation_checklists
+            WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
+        """, (effective_student_id, comp))
+        row = cursor.fetchone()
+
+        if row:
+            rec = dict(row)
+            try:
+                checklist_data = json.loads(rec.get("checklist_json", "{}"))
+            except Exception:
+                checklist_data = get_default_company_checklist(comp)
+        else:
+            checklist_data = get_default_company_checklist(comp)
+            # Initialize record
+            save_company_checklist(effective_student_id, comp, checklist_data)
+
+        # Compute completion statistics
+        total_tasks = 0
+        completed_tasks = 0
+        category_stats = {}
+
+        for cat_name, task_list in checklist_data.items():
+            cat_total = len(task_list)
+            cat_done = sum(1 for t in task_list if t.get("completed"))
+            total_tasks += cat_total
+            completed_tasks += cat_done
+            category_stats[cat_name] = {
+                "total": cat_total,
+                "completed": cat_done,
+                "percentage": round((cat_done / cat_total * 100), 1) if cat_total else 0.0
+            }
+
+        overall_percentage = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+
+        return {
+            "student_id": effective_student_id,
+            "company_name": comp,
+            "checklist": checklist_data,
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
+            "overall_percentage": overall_percentage,
+            "category_stats": category_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching company checklist for {company_name}: {e}")
+        default_data = get_default_company_checklist(company_name)
+        return {
+            "student_id": student_id,
+            "company_name": company_name,
+            "checklist": default_data,
+            "total_tasks": 15,
+            "completed_tasks": 0,
+            "overall_percentage": 0.0,
+            "category_stats": {}
+        }
+    finally:
+        conn.close()
+
+
+def save_company_checklist(student_id: str, company_name: str, checklist_data: Dict[str, Any]) -> bool:
+    """
+    Saves candidate progress for a specific target company (#192).
     """
     conn = get_db_connection()
     try:
@@ -3427,6 +3575,7 @@ def record_viewed_job(
     Records or bumps a job into the student's recently viewed list (#201).
     Enforces per-student data isolation and updates viewed_at on revisit.
     """
+    import uuid
     conn = get_db_connection()
     try:
         cursor = conn.cursor()

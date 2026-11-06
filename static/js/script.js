@@ -45,6 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initRoleBasedPrep();
   initSkillsComparisonChart();
   initBackToTop();
+  initPreparationNotes();
 });
 
 /**
@@ -3220,6 +3221,7 @@ function initCharacterCounters() {
   }
 }
 
+/**
  * Role-Based Preparation Mode: Dynamic Role Switcher (#154)
  * Allows candidates to toggle between Python Developer, Data Analyst,
  * Data Scientist, and Software Engineer to update preparation content in real time.
@@ -3435,6 +3437,9 @@ function initRoleBasedPrep() {
       `).join("");
     }
   }
+}
+
+/**
  * Visual Skills Comparison Chart (Chart.js)
  * Visualizes Matching Skills vs. Missing Skills from the Job Matching Agent.
  * Responsive on desktop and mobile, supports theme switching (light/dark mode).
@@ -3526,6 +3531,9 @@ function initSkillsComparisonChart() {
   if (centerVal) {
     centerVal.innerText = `${matchPct}%`;
   }
+}
+
+/**
  * Back-to-Top Floating Action Button
  * Shows when scrolled down (> 300px), smoothly scrolls to top on click.
  * Ensures cross-browser compatibility and avoids interfering with touch devices.
@@ -3578,6 +3586,246 @@ function initBackToTop() {
 
   // Check initial scroll offset in case page was reloaded when scrolled
   updateBackToTopVisibility();
+}
+
+/**
+ * Interview Preparation Notes (#235)
+ * Personal space for candidates to create, organize, edit, and categorize notes.
+ * Provides real-time search, category filtering, modal form handling, and toast alerts.
+ */
+function initPreparationNotes() {
+  const page = document.querySelector(".notes-page");
+  if (!page) return;
+
+  function showNoteToast(message, isSuccess = true) {
+    const toastEl = document.getElementById("noteToast");
+    const toastMsg = document.getElementById("noteToastMsg");
+    const toastIcon = document.getElementById("noteToastIcon");
+    if (!toastEl || !toastMsg) return;
+
+    toastMsg.textContent = message;
+    if (toastIcon) {
+      toastIcon.className = isSuccess
+        ? "fa-solid fa-note-sticky text-warning me-2 fs-5"
+        : "fa-solid fa-circle-exclamation text-danger me-2 fs-5";
+    }
+
+    if (window.bootstrap && window.bootstrap.Toast) {
+      const toast = window.bootstrap.Toast.getOrCreateInstance(toastEl, { delay: 2800 });
+      toast.show();
+    }
+  }
+
+  function updateCategoryBadges(counts) {
+    if (!counts) return;
+    const badgeAll = document.getElementById("badgeCountAll");
+    const badgeTech = document.getElementById("badgeCountTechnical");
+    const badgeHR = document.getElementById("badgeCountHR");
+    const badgeDSA = document.getElementById("badgeCountDSA");
+    const badgeComp = document.getElementById("badgeCountCompany");
+    const navCount = document.getElementById("navNotesCount");
+
+    if (badgeAll) badgeAll.textContent = String(counts["All"] || 0);
+    if (badgeTech) badgeTech.textContent = String(counts["Technical"] || 0);
+    if (badgeHR) badgeHR.textContent = String(counts["HR"] || 0);
+    if (badgeDSA) badgeDSA.textContent = String(counts["DSA"] || 0);
+    if (badgeComp) badgeComp.textContent = String(counts["Company Preparation"] || 0);
+    if (navCount) navCount.textContent = String(counts["All"] || 0);
+  }
+
+  function filterCardsLocally() {
+    const searchInput = document.getElementById("noteSearchInput");
+    const term = searchInput ? searchInput.value.trim().toLowerCase() : "";
+    const cards = document.querySelectorAll(".note-item-col");
+    const noNotesMsg = document.getElementById("noNotesMessage");
+    const grid = document.getElementById("notesGrid");
+
+    let visibleCount = 0;
+    cards.forEach((col) => {
+      const title = (col.dataset.title || "").toLowerCase();
+      const desc = (col.dataset.description || "").toLowerCase();
+      const match = !term || title.includes(term) || desc.includes(term);
+      if (match) {
+        col.classList.remove("d-none");
+        visibleCount++;
+      } else {
+        col.classList.add("d-none");
+      }
+    });
+
+    if (visibleCount === 0) {
+      if (noNotesMsg) noNotesMsg.classList.remove("d-none");
+      if (grid && cards.length === 0) grid.classList.add("d-none");
+    } else {
+      if (noNotesMsg) noNotesMsg.classList.add("d-none");
+      if (grid) grid.classList.remove("d-none");
+    }
+  }
+
+  // Live search input
+  const searchInput = document.getElementById("noteSearchInput");
+  if (searchInput) {
+    searchInput.addEventListener("input", filterCardsLocally);
+  }
+
+  // Edit Note button delegated click
+  let editModalInstance = null;
+  const editModalEl = document.getElementById("editNoteModal");
+  if (editModalEl && window.bootstrap && window.bootstrap.Modal) {
+    editModalInstance = window.bootstrap.Modal.getOrCreateInstance(editModalEl);
+  }
+
+  document.addEventListener("click", (e) => {
+    const editBtn = e.target.closest(".btn-edit-note");
+    if (editBtn) {
+      e.preventDefault();
+      const noteId = editBtn.dataset.noteId;
+      const title = editBtn.dataset.noteTitle || "";
+      const cat = editBtn.dataset.noteCategory || "Technical";
+      const desc = editBtn.dataset.noteDescription || "";
+
+      const inputId = document.getElementById("editNoteId");
+      const inputTitle = document.getElementById("editNoteTitle");
+      const inputCat = document.getElementById("editNoteCategory");
+      const inputDesc = document.getElementById("editNoteDescription");
+
+      if (inputId) inputId.value = noteId;
+      if (inputTitle) inputTitle.value = title;
+      if (inputCat) inputCat.value = cat;
+      if (inputDesc) inputDesc.value = desc;
+
+      if (editModalInstance) {
+        editModalInstance.show();
+      }
+    }
+  });
+
+  // Edit form submit
+  const editForm = document.getElementById("editNoteForm");
+  if (editForm) {
+    editForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const noteId = document.getElementById("editNoteId")?.value;
+      const title = document.getElementById("editNoteTitle")?.value.trim();
+      const category = document.getElementById("editNoteCategory")?.value;
+      const description = document.getElementById("editNoteDescription")?.value.trim();
+
+      if (!noteId || !title || !description) return;
+
+      try {
+        const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({ title, category, description })
+        });
+        const data = await res.json();
+        if (data.success && data.note) {
+          const cardCol = document.getElementById(`note-card-${noteId}`);
+          if (cardCol) {
+            cardCol.dataset.title = data.note.title;
+            cardCol.dataset.category = data.note.category;
+            cardCol.dataset.description = data.note.description;
+
+            const titleEl = cardCol.querySelector(".note-title");
+            if (titleEl) titleEl.textContent = data.note.title;
+
+            const descEl = cardCol.querySelector(".note-description");
+            if (descEl) descEl.textContent = data.note.description;
+
+            const badgeEl = cardCol.querySelector(".note-category-badge");
+            if (badgeEl) {
+              badgeEl.className = `badge rounded-pill note-category-badge badge-note-${data.note.category.toLowerCase().replace(/\s+/g, "-")}`;
+              let catIcon = "fa-tag";
+              if (data.note.category === "Technical") catIcon = "fa-laptop-code";
+              else if (data.note.category === "HR") catIcon = "fa-users";
+              else if (data.note.category === "DSA") catIcon = "fa-code";
+              else if (data.note.category === "Company Preparation") catIcon = "fa-building";
+              badgeEl.innerHTML = `<i class="fa-solid ${catIcon} me-1"></i> ${data.note.category === "Company Preparation" ? "Company Prep" : data.note.category}`;
+            }
+
+            const editBtn = cardCol.querySelector(".btn-edit-note");
+            if (editBtn) {
+              editBtn.dataset.noteTitle = data.note.title;
+              editBtn.dataset.noteCategory = data.note.category;
+              editBtn.dataset.noteDescription = data.note.description;
+            }
+          }
+          if (data.category_counts) {
+            updateCategoryBadges(data.category_counts);
+          }
+          if (editModalInstance) editModalInstance.hide();
+          showNoteToast(`Note "${title}" updated successfully!`);
+        } else {
+          showNoteToast(data.error || "Failed to update note.", false);
+        }
+      } catch (err) {
+        console.error("Error updating note:", err);
+        showNoteToast("Network error updating note.", false);
+      }
+    });
+  }
+
+  // Delete Note button delegated click
+  let deleteTargetId = null;
+  let deleteModalInstance = null;
+  const deleteModalEl = document.getElementById("deleteNoteModal");
+  if (deleteModalEl && window.bootstrap && window.bootstrap.Modal) {
+    deleteModalInstance = window.bootstrap.Modal.getOrCreateInstance(deleteModalEl);
+  }
+
+  document.addEventListener("click", (e) => {
+    const deleteBtn = e.target.closest(".btn-delete-note");
+    if (deleteBtn) {
+      e.preventDefault();
+      deleteTargetId = deleteBtn.dataset.noteId;
+      const title = deleteBtn.dataset.noteTitle || "Note";
+
+      const titleDisplay = document.getElementById("deleteNoteTitleDisplay");
+      if (titleDisplay) titleDisplay.textContent = title;
+
+      if (deleteModalInstance) {
+        deleteModalInstance.show();
+      }
+    }
+  });
+
+  const confirmDeleteBtn = document.getElementById("btnConfirmDeleteNote");
+  if (confirmDeleteBtn) {
+    confirmDeleteBtn.addEventListener("click", async () => {
+      if (!deleteTargetId) return;
+      try {
+        const res = await fetch(`/api/notes/${encodeURIComponent(deleteTargetId)}`, {
+          method: "DELETE",
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        const data = await res.json();
+        if (data.success) {
+          const cardCol = document.getElementById(`note-card-${deleteTargetId}`);
+          if (cardCol) {
+            cardCol.remove();
+          }
+          if (data.category_counts) {
+            updateCategoryBadges(data.category_counts);
+          }
+          filterCardsLocally();
+          if (deleteModalInstance) deleteModalInstance.hide();
+          showNoteToast("Note deleted successfully!");
+        } else {
+          showNoteToast(data.error || "Failed to delete note.", false);
+        }
+      } catch (err) {
+        console.error("Error deleting note:", err);
+        showNoteToast("Network error deleting note.", false);
+      }
+    });
+  }
 }
 
 
