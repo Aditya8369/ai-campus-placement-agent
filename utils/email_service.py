@@ -274,3 +274,40 @@ class EmailNotificationService:
             subject=f"Reminder: {interview_round} Interview with {company_name} at {scheduled_time}",
             html_content=html
         )
+
+    def send_verification_email(
+        self,
+        recipient_email: str,
+        student_name: str,
+        verification_token: str,
+        base_url: str = "http://localhost:5000"
+    ) -> bool:
+        """
+        Sends an account verification email containing a secure confirmation link (#206).
+        """
+        verify_url = f"{base_url.rstrip('/')}/verify-email/{verification_token}"
+        title = "Verify Your AI Campus Placement Account"
+        headline = "Confirm Your Email Address"
+        body = f"""
+        <p>Hi {student_name or 'there'},</p>
+        <p>Thank you for registering with <strong>AI Campus Placement Agent</strong>! Please verify your email address to activate your account and start preparing for placement drives.</p>
+        <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; padding: 16px; border-radius: 8px; margin: 16px 0;">
+          <strong>Account Email:</strong> {recipient_email}<br>
+          <strong>Status:</strong> Pending Email Verification
+        </div>
+        <p>Click the button below to confirm your email. If the button does not work, copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; font-size: 13px; color: #64748b;">{verify_url}</p>
+        """
+        html = self._format_html_layout(
+            title=title,
+            headline=headline,
+            body_content=body,
+            cta_url=verify_url,
+            cta_text="Verify My Email Address"
+        )
+        return self.send_email(
+            recipient_email=recipient_email,
+            subject="Please verify your email address - AI Campus Placement Agent",
+            html_content=html
+        )
+

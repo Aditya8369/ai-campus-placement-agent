@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resend Verification Email | AI Campus Placement Agent</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<nav class="navbar bg-white border-bottom py-3">
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="/">
+            🎓 AI Campus Placement Agent
+        </a>
+    </div>
+</nav>
+
+<div class="container d-flex justify-content-center align-items-center py-5">
+    <div class="card shadow-sm border-0 rounded-4 p-4" style="max-width: 480px; width: 100%;">
+        <div class="text-center mb-3">
+            <span class="badge bg-primary-subtle text-primary p-2 px-3 rounded-pill fw-medium">Email Verification</span>
+        </div>
+        <h2 class="text-center mb-2">Verify Your Account</h2>
+        <p class="text-center text-muted mb-4 small">
+            Enter the email address associated with your account and we will send you a new verification link.
+        </p>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ 'danger' if category == 'error' else ('warning' if category == 'warning' else ('info' if category == 'info' else 'success')) }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        {% endwith %}
+
+        <form method="POST" action="{{ url_for('resend_verification') }}">
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Email Address</label>
+                <input type="email" name="email" class="form-control"
+                       placeholder="Enter your registered email"
+                       value="{{ initial_email or '' }}" required autofocus>
+                <div class="form-text small">We will send a secure activation link to this address.</div>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 rounded-pill py-2 fw-semibold">
+                Send Verification Link
+            </button>
+        </form>
+
+        <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top small text-muted">
+            <a href="{{ url_for('login') }}" class="text-decoration-none">← Back to Login</a>
+            <a href="{{ url_for('register') }}" class="text-decoration-none">Create Account</a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

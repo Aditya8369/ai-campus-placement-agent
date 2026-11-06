@@ -19,6 +19,193 @@ from reportlab.platypus import (
 
 logger = logging.getLogger(__name__)
 
+# ==============================================================================
+# REPORT GENERATION ERROR RECOVERY SYSTEM (#202)
+# ==============================================================================
+
+class ReportGenerationError(Exception):
+    """
+    Diagnostic exception raised when report rendering or data pipeline fails.
+    Carries the operational stage and root cause exception for targeted recovery.
+    """
+    def __init__(self, message: str, stage: str = "initialization", cause: Exception = None):
+        super().__init__(message)
+        self.message = message
+        self.stage = stage
+        self.cause = cause
+
+
+def sanitize_report_data(raw_data: Any) -> dict:
+    """
+    Validates, normalizes, and sanitizes input data dictionaries before PDF generation.
+    Recovers from None, non-dict types, missing keys, or corrupt inner fields (#202).
+    Ensures safe integer scores, safe strings, and properly initialized nested lists/dicts.
+    """
+    if not isinstance(raw_data, dict):
+        logger.warning(
+            "Sanitizing report data: received non-dict input (%s). Initializing empty schema fallback.",
+            type(raw_data).__name__
+        )
+        raw_data = {}
+
+    data = dict(raw_data)
+
+    # Normalize top-level strings
+    data["company_name"] = str(data.get("company_name") or "General Placement Preparation").strip()
+    data["resume_filename"] = str(data.get("resume_filename") or "Candidate Resume").strip()
+    data["analysis_id"] = str(data.get("analysis_id") or data.get("id") or "analysis_summary").strip()
+    data["created_at"] = str(data.get("created_at") or "N/A").strip()
+
+    # Normalize nested results structure
+    results = data.get("results")
+    if not isinstance(results, dict):
+        results = {}
+
+    resume_analysis = results.get("resume_analysis")
+    if not isinstance(resume_analysis, dict):
+        resume_analysis = {}
+
+    job_match = results.get("job_match")
+    if not isinstance(job_match, dict):
+        job_match = {}
+
+    # Validate numbers
+    try:
+        data["ats_score"] = int(data.get("ats_score") or resume_analysis.get("ats_score", 0))
+    except (ValueError, TypeError):
+        data["ats_score"] = 0
+
+    try:
+        data["match_percentage"] = int(data.get("match_percentage") or job_match.get("match_percentage", 0))
+    except (ValueError, TypeError):
+        data["match_percentage"] = 0
+
+    # Ensure list fields are valid lists
+    if not isinstance(results.get("skill_gap"), list):
+        results["skill_gap"] = []
+    if not isinstance(results.get("study_plan"), list):
+        results["study_plan"] = []
+    if not isinstance(job_match.get("matched_skills"), list):
+        job_match["matched_skills"] = []
+    if not isinstance(job_match.get("missing_skills"), list):
+        job_match["missing_skills"] = []
+
+    results["resume_analysis"] = resume_analysis
+    results["job_match"] = job_match
+    data["results"] = results
+    return data
+
+
+def generate_fallback_pdf_report(
+    error_message: str,
+    output_path: str,
+    report_type: str = "Placement Preparation Report"
+) -> str:
+    """
+    Generates a graceful, readable fallback PDF document when unexpected system or rendering errors occur (#202).
+    Guarantees students receive a clean notification report rather than a broken page or 500 crash.
+    """
+    try:
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        doc = SimpleDocTemplate(
+            output_path,
+            pagesize=letter,
+            rightMargin=54,
+            leftMargin=54,
+            topMargin=54,
+            bottomMargin=54
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "FallbackTitle",
+            parent=styles["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=20,
+            leading=24,
+            textColor=colors.HexColor("#d93025"),
+            alignment=TA_CENTER
+        )
+        subtitle_style = ParagraphStyle(
+            "FallbackSub",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=11,
+            leading=16,
+            textColor=colors.HexColor("#5f6368"),
+            alignment=TA_CENTER
+        )
+        body_style = ParagraphStyle(
+            "FallbackBody",
+            parent=styles["Normal"],
+            fontName="Helvetica",
+            fontSize=10,
+            leading=15,
+            textColor=colors.HexColor("#202124")
+        )
+
+        story = [
+            Spacer(1, 40),
+            Paragraph("AI CAMPUS PLACEMENT AGENT", subtitle_style),
+            Spacer(1, 10),
+            Paragraph("Notice: Report Generation Recovery", title_style),
+            Spacer(1, 15),
+            Paragraph(
+                f"An unexpected issue occurred while rendering your detailed <b>{escape_xml(report_type)}</b>.",
+                subtitle_style
+            ),
+            Spacer(1, 25),
+            Table([
+                [Paragraph("<b>Status:</b> Safe Error Recovery Active", body_style)],
+                [Paragraph(f"<b>Diagnostic Detail:</b> {escape_xml(error_message)}", body_style)],
+                [Paragraph("<b>Recommended Action:</b> Please revisit the dashboard and re-trigger export, or contact campus platform support if the issue persists.", body_style)],
+            ], colWidths=[480], style=[
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fef7e0")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#f9ab00")),
+                ("PADDING", (0, 0), (-1, -1), 12),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE")
+            ]),
+            Spacer(1, 40),
+            Paragraph("Generated by automated safety watchdog &bull; AI Campus Placement Agent", subtitle_style)
+        ]
+        doc.build(story)
+        logger.info("Successfully generated fallback recovery PDF at: %s", output_path)
+        return output_path
+    except Exception as fallback_err:
+        logger.critical(f"Critical failure inside generate_fallback_pdf_report: {fallback_err}")
+        with open(output_path, "wb") as f:
+            f.write(
+                b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
+                b"3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f \n"
+                b"0000000009 00000 n \n0000000052 00000 n \n0000000101 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF\n"
+            )
+        return output_path
+
+
+def safe_generate_report_with_recovery(
+    generator_func,
+    data: Any,
+    output_path: str,
+    report_type: str = "Placement Report"
+) -> str:
+    """
+    Executes a report generator with automatic pre-validation and graceful error recovery (#202).
+    Catches rendering faults, file locks, or missing keys and generates a clean recovery document.
+    """
+    try:
+        sanitized_data = sanitize_report_data(data)
+        os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        return generator_func(sanitized_data, output_path)
+    except Exception as primary_err:
+        logger.error(f"Primary report generation for {report_type} failed: {primary_err}. Initiating safe fallback recovery.")
+        return generate_fallback_pdf_report(
+            error_message=str(primary_err),
+            output_path=output_path,
+            report_type=report_type
+        )
+    except Exception as primary_err:
+        return generate_fallback_pdf_report(str(primary_err), output_path, report_type)
+
+
 def escape_xml(value: Any) -> str:
     """
     Safely escapes text for ReportLab XML/HTML parsing while handling non-strings.
@@ -29,6 +216,7 @@ def escape_xml(value: Any) -> str:
     return html.escape(str(value), quote=False)
 
 def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
+    analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a beautifully structured PDF placement readiness report.
     Converts metrics, skill gap, conflict advisories, and roadmap into a professional printable PDF.
@@ -355,6 +543,7 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
 
 
 def generate_certificate_pdf(analysis_data: dict, output_path: str) -> str:
+    analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a formal, printable PDF Certificate of Placement Readiness using ReportLab.
     Includes certificate borders, candidate filename, target company name, ATS and Job Match scores,
@@ -523,6 +712,7 @@ def generate_certificate_pdf(analysis_data: dict, output_path: str) -> str:
 
 
 def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
+    analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a dedicated, beautifully formatted standalone Skills Gap & Upskilling PDF report (#136).
     Includes identified missing skills, priority rankings, learning resources, and mini-project recommendations.
