@@ -3728,6 +3728,33 @@ def api_delete_preparation_note_form(note_id: str):
     return redirect(url_for("preparation_notes_view"))
 
 
+@app.route("/api/migrations/status", methods=["GET"])
+def api_migrations_status():
+    """
+    Returns current database migration and schema version history (#204).
+    """
+    from utils.migrations import get_migration_status
+    status = get_migration_status(config.DATABASE_PATH)
+    return jsonify({
+        "status": "success",
+        "migration_info": status
+    }), 200
+
+
+@app.route("/api/migrations/run", methods=["POST"])
+def api_run_migrations():
+    """
+    Executes all pending database migrations in sequential order (#204).
+    """
+    from utils.migrations import run_database_migrations
+    try:
+        result = run_database_migrations(config.DATABASE_PATH)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Migration execution failed via API: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
