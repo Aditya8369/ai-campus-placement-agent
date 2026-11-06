@@ -24,6 +24,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    get_student_preparation_summary_data,
     record_viewed_job,
     get_recently_viewed_jobs,
     remove_recently_viewed_job,
@@ -120,6 +121,30 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
+try:
+    from utils.report_generator import (
+        generate_student_preparation_summary_pdf,
+        generate_pdf_report,
+        generate_certificate_pdf,
+        generate_skills_gap_pdf,
+        generate_interview_transcript_pdf,
+        generate_interview_transcript_markdown,
+        safe_generate_report_with_recovery,
+        generate_fallback_pdf_report,
+        sanitize_report_data,
+    )
+except ImportError:
+    from utils.report_generator import (
+        generate_pdf_report,
+        generate_certificate_pdf,
+        generate_skills_gap_pdf,
+        generate_interview_transcript_pdf,
+        generate_interview_transcript_markdown,
+    )
+    generate_student_preparation_summary_pdf = None
+    safe_generate_report_with_recovery = None
+    generate_fallback_pdf_report = None
+    sanitize_report_data = None
 from utils.report_generator import (
     generate_pdf_report,
     generate_certificate_pdf,
@@ -153,6 +178,13 @@ from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
+from utils.i18n import (
+    get_translation,
+    get_all_translations_for_locale,
+    SUPPORTED_LOCALES,
+    DEFAULT_LOCALE,
+    LOCALE_NAMES,
+)
 
 # Configure structured application logging
 logging.basicConfig(
@@ -202,6 +234,8 @@ def require_login():
         "register",
         "verify_email",
         "resend_verification",
+        "set_language",
+        "api_translations",
         "healthz",
         "health",
         "api_health",
@@ -222,6 +256,20 @@ def require_login():
             }), 401
 
         return redirect(url_for("login"))
+
+
+@app.context_processor
+def inject_i18n():
+    """
+    Injects internationalization helpers and active locale into all Jinja templates (#214).
+    """
+    current_locale = flask_session.get("locale") or DEFAULT_LOCALE
+    return {
+        "current_locale": current_locale,
+        "supported_locales": SUPPORTED_LOCALES,
+        "locale_names": LOCALE_NAMES,
+        "_t": lambda key, default=None: get_translation(key, locale=current_locale, default=default)
+    }
 
 
 def _is_student_authorized(record_or_student_id) -> bool:
@@ -470,6 +518,8 @@ def login():
             return render_template("login.html")
 
         # Email verification enforcement (#206)
+        # Note: If email verification is enabled, users must verify before full session login,
+        # unless running with legacy or test bypass when unverified accounts are flagged.
         is_verified = bool(user.get("is_verified", 0))
         if not is_verified and not app.config.get("TESTING_BYPASS_VERIFICATION", False):
             flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
@@ -635,6 +685,43 @@ def resend_verification():
 
     initial_email = request.args.get("email", "").strip().lower()
     return render_template("resend_verification.html", initial_email=initial_email)
+
+
+@app.route("/set-language/<lang_code>", methods=["GET", "POST"])
+def set_language(lang_code: str):
+    """
+    Switches the session UI language and redirects back to referring page (#214).
+    """
+    code = lang_code.strip().lower()
+    if code in SUPPORTED_LOCALES:
+        flask_session["locale"] = code
+        flash(get_translation("lang_switch_success", locale=code), "success")
+
+    # Redirect to referer or home
+    next_page = request.args.get("next") or request.referrer or url_for("index")
+    return redirect(next_page)
+
+
+@app.route("/api/translations", methods=["GET"])
+@app.route("/api/translations/<lang_code>", methods=["GET"])
+def api_translations(lang_code=None):
+    """
+    API endpoint returning translation catalogs for client-side dynamic rendering (#214).
+    """
+    code = (lang_code or flask_session.get("locale") or DEFAULT_LOCALE).strip().lower()
+    if code not in SUPPORTED_LOCALES:
+        code = DEFAULT_LOCALE
+
+    return jsonify({
+        "status": "success",
+        "locale": code,
+        "locale_name": LOCALE_NAMES.get(code, code),
+        "translations": get_all_translations_for_locale(code),
+        "supported_locales": SUPPORTED_LOCALES,
+        "available_locales": LOCALE_NAMES
+    }), 200
+
+
 
 @app.route("/")
 def index() -> str:
@@ -1715,6 +1802,62 @@ def skills_assessment_view():
         student_id=student_id
     )
 
+@app.route("/feedback", methods=["GET", "POST"])
+def feedback_view():
+    """
+    Renders and processes candidate platform experience feedback (#197).
+    Allows students to rate features, provide structured reviews, and view satisfaction statistics.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    categories = [
+        "Resume Analysis & ATS Scoring",
+        "Mock Interview Simulator",
+        "Job Application Tracker",
+        "Role Preparation & Roadmaps",
+        "Coding Practice & DSA",
+        "UI & Performance",
+        "General Experience"
+    ]
+
+    if request.method == "POST":
+        rating_raw = request.form.get("rating", "5")
+        category = request.form.get("category", "General Experience").strip()
+        comment = request.form.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            flash("Please enter feedback comments before submitting.", "danger")
+        else:
+            submit_user_feedback(
+                student_id=student_id,
+                rating=rating,
+                category=category,
+                comment=comment
+            )
+            flash("Thank you! Your feedback has been submitted successfully.", "success")
+        return redirect("/feedback")
+
+    feedback_list = get_user_feedback_list(limit=25)
+    metrics = get_feedback_metrics_summary()
+
+    return render_template(
+        "feedback.html",
+        categories=categories,
+        feedback_list=feedback_list,
+        metrics=metrics,
+        student_id=student_id
+    )
+
 
 @app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
 def api_skills_assessment():
@@ -1780,6 +1923,8 @@ def api_skills_assessment():
         }), 200 if deleted else 404
 
 
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
 
 @app.route("/interview/<analysis_id>/export")
 def export_interview_json(analysis_id: str):
@@ -4506,6 +4651,7 @@ def download_certificate_pdf(analysis_id: str):
                 generator_func=generate_certificate_pdf,
                 data=analysis_record,
                 output_path=cert_path,
+                report_type="Placement Readiness Certificate"
                 report_type='Placement Readiness Certificate'
             )
 
@@ -4541,6 +4687,7 @@ def download_pdf_report(analysis_id: str):
                 generator_func=generate_pdf_report,
                 data=analysis_record,
                 output_path=pdf_full_path,
+                report_type="Placement Readiness Comprehensive Report"
                 report_type='Placement Readiness Comprehensive Report'
             )
 
@@ -4576,6 +4723,7 @@ def download_skills_gap_report(analysis_id: str):
                 generator_func=generate_skills_gap_pdf,
                 data=analysis_record,
                 output_path=pdf_full_path,
+                report_type="Skills Gap and Upskilling Roadmap"
                 report_type='Skills Gap and Upskilling Roadmap'
             )
 
@@ -5842,6 +5990,8 @@ def role_preparation_view():
     )
 
 
+
+
 @app.route("/notification-settings", methods=["GET", "POST"])
 def notification_settings_view():
     """
@@ -5911,6 +6061,8 @@ def api_send_interview_reminder():
     )
 
     return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+
+
 
 
 @app.route("/interview-experiences", methods=["GET", "POST"])
@@ -6016,6 +6168,8 @@ def api_report_interview_experience(exp_id: str):
         "success": reported,
         "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
     }), (200 if reported else 404)
+
+
 
 
 @app.route("/calendar", methods=["GET", "POST"])
@@ -6127,6 +6281,8 @@ def api_manage_calendar_event(event_id: str):
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
+
+
 @app.route("/company-checklist", methods=["GET", "POST"])
 def company_checklist_view():
     """
@@ -6210,6 +6366,8 @@ def api_reset_checklist():
     }), 200
 
 
+
+
 @app.route("/coding-submissions")
 def coding_submissions_view():
     """
@@ -6270,193 +6428,152 @@ def api_coding_submissions():
     }), 200
 
 
-# ==============================================================================
-# Interview Preparation Notes (#235)
-# Personal space for candidates to create, organize, edit, and categorize notes.
-# Strictly enforces per-student data isolation.
-# ==============================================================================
-
-NOTE_CATEGORIES = ["Technical", "HR", "DSA", "Company Preparation"]
 
 
-@app.route("/notes", methods=["GET", "POST"])
-def preparation_notes_view():
+@app.route("/download/preparation-summary", methods=["GET"])
+@app.route("/download/preparation-summary/<student_id>", methods=["GET"])
+def download_student_preparation_summary_pdf(student_id: str = None):
     """
-    Personal Interview Preparation Notes View (#235).
-    Provides students with an organized space to create, filter, edit, and review notes.
-    Guarantees strict candidate privacy: one student cannot view another's notes.
+    Generates and downloads a comprehensive Placement Preparation Summary PDF report (#200).
+    Ensures candidate data isolation so students only access their own report.
     """
-    student_id = _get_current_student_id()
+    session_user_id = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
+    if not student_id:
+        student_id = session_user_id or "default_student"
+    elif session_user_id and session_user_id != "default_student" and student_id != session_user_id:
+        # Enforce student isolation
+        flash("Unauthorized access to student preparation summary.", "danger")
+        return redirect(url_for("index"))
 
-    if request.method == "POST":
-        title = request.form.get("title", "").strip()
-        description = request.form.get("description", "").strip()
-        category = request.form.get("category", "Technical").strip()
+    summary_data = get_student_preparation_summary_data(student_id)
+    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
+    
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        temp_pdf_path = tmp.name
 
-        if not title:
-            flash("Note title is required.", "danger")
-        elif not description:
-            flash("Note description or content cannot be empty.", "danger")
-        else:
-            created = create_preparation_note(
-                student_id=student_id,
-                title=title,
-                description=description,
-                category=category
-            )
-            flash(f"Note '{title}' created successfully!", "success")
-            return redirect(url_for("preparation_notes_view", category=category))
+    try:
+        safe_generate_report_with_recovery(
+            generator_func=generate_student_preparation_summary_pdf,
+            data=summary_data,
+            output_path=temp_pdf_path,
+            report_type="Student Placement Preparation Summary"
+        )
+        return send_file(
+            temp_pdf_path,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate student preparation summary PDF: {e}")
+        flash("Could not generate preparation summary report. Please try again later.", "danger")
+        return redirect(url_for("index"))
 
-    category_filter = request.args.get("category", "All").strip()
-    search_query = request.args.get("search", "").strip()
 
-    notes = get_preparation_notes(
-        student_id=student_id,
-        category_filter=category_filter if category_filter != "All" else None,
-        search_query=search_query or None
+@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
+def api_recently_viewed_jobs():
+    """
+    REST API endpoints to manage recently viewed jobs for candidates (#201).
+    Supports GET (fetch history), POST (track a job view), and DELETE (remove or clear history).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
     )
-    category_counts = get_note_category_counts(student_id)
-
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({
-            "success": True,
-            "count": len(notes),
-            "notes": notes,
-            "category_counts": category_counts
-        }), 200
-
-    return render_template(
-        "notes.html",
-        notes=notes,
-        category_counts=category_counts,
-        current_category=category_filter,
-        search_query=search_query,
-        categories=NOTE_CATEGORIES,
-        student_id=student_id
-    )
-
-
-@app.route("/api/notes", methods=["GET", "POST"])
-def api_preparation_notes():
-    """
-    REST API endpoint to fetch all notes or create a new note for the logged in student (#235).
-    """
-    student_id = _get_current_student_id()
 
     if request.method == "GET":
-        category_filter = request.args.get("category", "All").strip()
-        search_query = request.args.get("search", "").strip()
-        notes = get_preparation_notes(
-            student_id=student_id,
-            category_filter=category_filter if category_filter != "All" else None,
-            search_query=search_query or None
-        )
-        category_counts = get_note_category_counts(student_id)
+        limit = request.args.get("limit", 10)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 10
+        viewed_jobs = get_recently_viewed_jobs(student_id=student_id, limit=limit_val)
         return jsonify({
-            "success": True,
-            "count": len(notes),
-            "notes": notes,
-            "category_counts": category_counts
+            "status": "success",
+            "student_id": student_id,
+            "total": len(viewed_jobs),
+            "jobs": viewed_jobs
         }), 200
 
     if request.method == "POST":
         payload = request.get_json(silent=True) or request.form
-        title = (payload.get("title") or "").strip()
-        description = (payload.get("description") or "").strip()
-        category = (payload.get("category") or "Technical").strip()
+        job_id = str(payload.get("job_id", "")).strip()
+        company_name = str(payload.get("company_name", "")).strip()
+        role_title = str(payload.get("role_title", "")).strip()
+        location = str(payload.get("location", "Remote")).strip()
+        salary_range = payload.get("salary_range")
+        apply_url = payload.get("apply_url")
 
-        if not title:
-            return jsonify({"success": False, "error": "Note title is required"}), 400
-        if not description:
-            return jsonify({"success": False, "error": "Note description is required"}), 400
+        if not job_id or not company_name or not role_title:
+            return jsonify({
+                "status": "error",
+                "message": "job_id, company_name, and role_title are required fields."
+            }), 400
 
-        note = create_preparation_note(
+        record = record_viewed_job(
             student_id=student_id,
-            title=title,
-            description=description,
-            category=category
+            job_id=job_id,
+            company_name=company_name,
+            role_title=role_title,
+            location=location,
+            salary_range=salary_range,
+            apply_url=apply_url
         )
-        category_counts = get_note_category_counts(student_id)
         return jsonify({
-            "success": True,
-            "message": "Note created successfully",
-            "note": note,
-            "category_counts": category_counts
+            "status": "success",
+            "message": f"Recorded view for job '{role_title}' at '{company_name}'.",
+            "viewed_job": record
         }), 201
 
-
-@app.route("/api/notes/<note_id>", methods=["GET", "PUT", "POST", "DELETE"])
-def api_preparation_note_item(note_id: str):
-    """
-    REST API endpoint to retrieve, update, or delete a specific note (#235).
-    Enforces strict candidate privacy: checks note ownership against logged in student.
-    """
-    student_id = _get_current_student_id()
-
-    existing_note = get_preparation_note_by_id(note_id, student_id)
-    if not existing_note:
-        return jsonify({
-            "success": False,
-            "error": "Note not found or access denied."
-        }), 404
-
-    if request.method == "GET":
-        return jsonify({
-            "success": True,
-            "note": existing_note
-        }), 200
-
-    if request.method in ["PUT", "POST"]:
-        payload = request.get_json(silent=True) or request.form
-        title = (payload.get("title") or existing_note["title"]).strip()
-        description = (payload.get("description") or existing_note["description"]).strip()
-        category = (payload.get("category") or existing_note["category"]).strip()
-
-        if not title:
-            return jsonify({"success": False, "error": "Note title cannot be empty"}), 400
-        if not description:
-            return jsonify({"success": False, "error": "Note description cannot be empty"}), 400
-
-        updated = update_preparation_note(
-            note_id=note_id,
-            student_id=student_id,
-            title=title,
-            description=description,
-            category=category
-        )
-        if updated:
-            refreshed = get_preparation_note_by_id(note_id, student_id)
-            category_counts = get_note_category_counts(student_id)
-            return jsonify({
-                "success": True,
-                "message": "Note updated successfully",
-                "note": refreshed,
-                "category_counts": category_counts
-            }), 200
-        return jsonify({"success": False, "error": "Failed to update note"}), 500
-
     if request.method == "DELETE":
-        deleted = delete_preparation_note(note_id, student_id)
-        category_counts = get_note_category_counts(student_id)
-        return jsonify({
-            "success": deleted,
-            "message": "Note deleted successfully" if deleted else "Note not found",
-            "category_counts": category_counts
-        }), 200 if deleted else 404
+        payload = request.get_json(silent=True) or request.args
+        job_id = payload.get("job_id")
+        if job_id:
+            removed = remove_recently_viewed_job(student_id=student_id, job_id=job_id)
+            return jsonify({
+                "status": "success" if removed else "not_found",
+                "message": f"Removed job '{job_id}' from recently viewed list." if removed else "Job not found in history."
+            }), (200 if removed else 404)
+        else:
+            cleared_count = clear_recently_viewed_jobs(student_id=student_id)
+            return jsonify({
+                "status": "success",
+                "message": f"Cleared {cleared_count} recently viewed jobs.",
+                "cleared_count": cleared_count
+            }), 200
 
 
-@app.route("/api/notes/<note_id>/delete", methods=["POST"])
-def api_delete_preparation_note_form(note_id: str):
+@app.route("/api/migrations/status", methods=["GET"])
+def api_migrations_status():
     """
-    Form-friendly deletion endpoint for non-JS browser fallbacks (#235).
+    Returns current database migration and schema version history (#204).
     """
-    student_id = _get_current_student_id()
-    deleted = delete_preparation_note(note_id, student_id)
-    if deleted:
-        flash("Note deleted successfully.", "success")
-    else:
-        flash("Note could not be deleted or access was denied.", "danger")
-    return redirect(url_for("preparation_notes_view"))
+    from utils.migrations import get_migration_status
+    status = get_migration_status(config.DATABASE_PATH)
+    return jsonify({
+        "status": "success",
+        "migration_info": status
+    }), 200
+
+
+@app.route("/api/migrations/run", methods=["POST"])
+def api_run_migrations():
+    """
+    Executes all pending database migrations in sequential order (#204).
+    """
+    from utils.migrations import run_database_migrations
+    try:
+        result = run_database_migrations(config.DATABASE_PATH)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Migration execution failed via API: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 
 
 @app.route("/api/migrations/status", methods=["GET"])
