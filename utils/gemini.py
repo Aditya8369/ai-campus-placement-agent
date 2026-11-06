@@ -447,6 +447,7 @@ def generate_json_response(
 
     for attempt in range(1, total_attempts + 1):
         raw_text = ""
+        start_time = time.time()
         try:
             logger.info(f"Invoking Gemini model: {config.GEMINI_MODEL} (attempt {attempt}/{total_attempts})")
             response = client.models.generate_content(
@@ -455,10 +456,47 @@ def generate_json_response(
                 config=cfg,
             )
 
+            latency_ms = int((time.time() - start_time) * 1000)
             raw_text = getattr(response, "text", "") or ""
             if not raw_text or not raw_text.strip():
                 logger.error("Gemini returned an empty or null text response.")
                 raise AIResponseFormatError("Gemini returned an empty response. The model may have truncated output.")
+
+            # Extract token metadata if available from response (#215)
+            prompt_tokens = 0
+            candidate_tokens = 0
+            total_tokens = 0
+            try:
+                usage_meta = getattr(response, "usage_metadata", None)
+                if usage_meta:
+                    prompt_tokens = getattr(usage_meta, "prompt_token_count", 0) or 0
+                    candidate_tokens = getattr(usage_meta, "candidates_token_count", 0) or 0
+                    total_tokens = getattr(usage_meta, "total_token_count", 0) or (prompt_tokens + candidate_tokens)
+            except Exception:
+                pass
+
+            # Estimate tokens if SDK metadata is empty (approx 4 chars per token)
+            if prompt_tokens == 0:
+                prompt_tokens = max(1, len(prompt) // 4)
+            if candidate_tokens == 0:
+                candidate_tokens = max(1, len(raw_text) // 4)
+            if total_tokens == 0:
+                total_tokens = prompt_tokens + candidate_tokens
+
+            # Log API invocation to database for cost monitoring (#215)
+            try:
+                from utils.database import log_gemini_api_call
+                log_gemini_api_call(
+                    endpoint="generate_json_response",
+                    model_name=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    prompt_tokens=prompt_tokens,
+                    candidate_tokens=candidate_tokens,
+                    total_tokens=total_tokens,
+                    latency_ms=latency_ms,
+                    status="success",
+                )
+            except Exception as log_err:
+                logger.debug(f"Non-fatal Gemini log error: {log_err}")
 
             logger.info("Successfully received Gemini response text. Attempting JSON parsing...")
             cleaned_json = _extract_json_string(raw_text)
@@ -480,6 +518,23 @@ def generate_json_response(
             raise
 
         except Exception as e:
+            # Log failure to database if attempts are exhausted or non-retryable (#215)
+            try:
+                from utils.database import log_gemini_api_call
+                latency_ms = int((time.time() - start_time) * 1000)
+                log_gemini_api_call(
+                    endpoint="generate_json_response",
+                    model_name=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    prompt_tokens=max(1, len(prompt) // 4),
+                    candidate_tokens=0,
+                    total_tokens=max(1, len(prompt) // 4),
+                    latency_ms=latency_ms,
+                    status="failed",
+                    error_message=str(e)[:300],
+                )
+            except Exception:
+                pass
+
             classified = classify_gemini_error(e)
 
             # Check if this error is transient and we have remaining retry attempts

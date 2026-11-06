@@ -24,6 +24,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    get_student_preparation_summary_data,
+    record_viewed_job,
+    get_recently_viewed_jobs,
+    remove_recently_viewed_job,
+    clear_recently_viewed_jobs,
     init_db,
     get_db_connection,
     save_analysis,
@@ -75,6 +80,12 @@ from utils.database import (
     submit_user_feedback,
     get_user_feedback_list,
     get_feedback_metrics_summary,
+    generate_email_verification_token,
+    verify_user_email_token,
+    is_user_email_verified,
+    log_gemini_api_call,
+    get_gemini_usage_summary,
+    calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -101,13 +112,30 @@ from utils.gemini import (
     AIRateLimitError,
     format_ai_error_for_user,
 )
-from utils.report_generator import (
-    generate_pdf_report,
-    generate_certificate_pdf,
-    generate_skills_gap_pdf,
-    generate_interview_transcript_pdf,
-    generate_interview_transcript_markdown,
-)
+try:
+    from utils.report_generator import (
+        generate_student_preparation_summary_pdf,
+        generate_pdf_report,
+        generate_certificate_pdf,
+        generate_skills_gap_pdf,
+        generate_interview_transcript_pdf,
+        generate_interview_transcript_markdown,
+        safe_generate_report_with_recovery,
+        generate_fallback_pdf_report,
+        sanitize_report_data,
+    )
+except ImportError:
+    from utils.report_generator import (
+        generate_pdf_report,
+        generate_certificate_pdf,
+        generate_skills_gap_pdf,
+        generate_interview_transcript_pdf,
+        generate_interview_transcript_markdown,
+    )
+    generate_student_preparation_summary_pdf = None
+    safe_generate_report_with_recovery = None
+    generate_fallback_pdf_report = None
+    sanitize_report_data = None
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -178,10 +206,14 @@ def require_login():
         "index",
         "login",
         "register",
+        "verify_email",
+        "resend_verification",
         "healthz",
         "health",
         "api_health",
         "static",
+        "gemini_api_usage_dashboard",
+        "api_gemini_usage_summary",
     }
 
     if request.endpoint in public_endpoints:
@@ -202,9 +234,9 @@ def require_login():
 
 def _is_student_authorized(record_or_student_id) -> bool:
     """Verifies that the requested resource belongs to the currently logged in student."""
-    if app.config.get("TESTING"):
+    if app.config.get("TESTING") and not app.config.get("ENFORCE_STUDENT_ISOLATION"):
         return True
-    current_uid = flask_session.get("user_id")
+    current_uid = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
     if not current_uid:
         return False
     if isinstance(record_or_student_id, dict):
@@ -445,6 +477,14 @@ def login():
             flash("Invalid email or password.", "error")
             return render_template("login.html")
 
+        # Email verification enforcement (#206)
+        # Note: If email verification is enabled, users must verify before full session login,
+        # unless running with legacy or test bypass when unverified accounts are flagged.
+        is_verified = bool(user.get("is_verified", 0))
+        if not is_verified and not app.config.get("TESTING_BYPASS_VERIFICATION", False):
+            flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
+            return render_template("login.html", unverified_email=email)
+
         flask_session.clear()
         flask_session["user_id"] = user["id"]
         flask_session["user_name"] = user["name"]
@@ -480,17 +520,114 @@ def register():
             flash("An account with this email already exists.", "error")
             return render_template("register.html")
 
-        # Initialize email preferences and dispatch welcome notification (#186)
+        # Initialize email preferences and verification token (#186, #206)
         update_email_notification_preferences(student_id=user_id, email=email, email_enabled=True)
+        verification_token = generate_email_verification_token(user_id)
+
         try:
+            email_service.send_verification_email(
+                recipient_email=email,
+                student_name=name,
+                verification_token=verification_token,
+                base_url=request.host_url
+            )
             email_service.send_welcome_email(recipient_email=email, student_name=name)
         except Exception as mail_err:
-            logger.warning(f"Failed to dispatch welcome email: {mail_err}")
+            logger.warning(f"Failed to dispatch verification/welcome email: {mail_err}")
 
-        flash("Registration successful. Please log in.", "success")
+        flash("Registration successful! A verification link has been sent to your email. Please verify your account before logging in.", "success")
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+@app.route("/verify-email/<token>", methods=["GET"])
+def verify_email(token: str):
+    """
+    Validates token and activates student account (#206).
+    """
+    user = verify_user_email_token(token)
+    if not user:
+        flash("Invalid or expired verification link. Please request a new verification link below.", "error")
+        return redirect(url_for("resend_verification"))
+
+    flash(f"Congratulations {user.get('name', '')}! Your email has been verified. You can now log in.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    """
+    Resends account verification email if user hasn't verified their account yet (#206).
+    """
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        if not email:
+            flash("Please enter your registered email address.", "error")
+            return render_template("resend_verification.html")
+
+        user = get_user_by_email(email)
+        if not user:
+            # For security, avoid leaking whether the email exists
+            flash("If an unverified account exists for this email, a new verification link has been sent.", "info")
+            return redirect(url_for("login"))
+
+        if bool(user.get("is_verified", 0)):
+            flash("Your email is already verified! You can proceed to log in directly.", "info")
+            return redirect(url_for("login"))
+
+        token = generate_email_verification_token(user["id"])
+        try:
+            email_service.send_verification_email(
+                recipient_email=email,
+                student_name=user.get("name", "Student"),
+                verification_token=token,
+                base_url=request.host_url
+            )
+        except Exception as err:
+            logger.error(f"Error resending verification email to {email}: {err}")
+
+        flash("If an unverified account exists for this email, a new verification link has been sent.", "info")
+        return redirect(url_for("login"))
+
+    initial_email = request.args.get("email", "").strip().lower()
+    return render_template("resend_verification.html", initial_email=initial_email)
+
+
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Dashboard (#215)
+# ==============================================================================
+
+@app.route("/admin/api-usage", methods=["GET"])
+def gemini_api_usage_dashboard():
+    """
+    Renders the Gemini API Usage & Cost Monitoring Dashboard (#215).
+    Provides visual breakdowns of token consumption, estimated spend,
+    latency trends, and endpoint call distribution.
+    """
+    days = request.args.get("days", 30, type=int)
+    if days not in [1, 7, 14, 30, 90]:
+        days = 30
+
+    usage_data = get_gemini_usage_summary(days=days)
+    return render_template("api_usage_dashboard.html", usage=usage_data, selected_days=days)
+
+
+@app.route("/api/admin/usage-stats", methods=["GET"])
+def api_gemini_usage_summary():
+    """
+    JSON API endpoint exposing aggregated usage and expenditure metrics (#215).
+    """
+    days = request.args.get("days", 30, type=int)
+    if days < 1 or days > 365:
+        days = 30
+
+    usage_data = get_gemini_usage_summary(days=days)
+    return jsonify({
+        "status": "success",
+        "data": usage_data
+    })
+
 
 @app.route("/")
 def index() -> str:
@@ -1568,6 +1705,9 @@ def skills_assessment_view():
         category_summary=category_summary,
         avg_score=avg_score,
         total_skills=len(assessments),
+        student_id=student_id
+    )
+
 @app.route("/feedback", methods=["GET", "POST"])
 def feedback_view():
     """
@@ -1629,10 +1769,6 @@ def feedback_view():
 def api_skills_assessment():
     """
     REST API endpoint for managing student technical skill self-assessments.
-@app.route("/api/feedback", methods=["GET", "POST"])
-def api_feedback():
-    """
-    REST API endpoint for submitting and retrieving feedback (#197).
     """
     student_id = (
         request.args.get("student_id")
@@ -1649,19 +1785,6 @@ def api_feedback():
             "student_id": student_id,
             "total": len(items),
             "skills": items
-        cat = request.args.get("category")
-        limit = request.args.get("limit", 50)
-        try:
-            limit_val = int(limit)
-        except (ValueError, TypeError):
-            limit_val = 50
-        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
-        metrics = get_feedback_metrics_summary()
-        return jsonify({
-            "status": "success",
-            "total": len(items),
-            "metrics": metrics,
-            "feedback": items
         }), 200
 
     if request.method == "POST":
@@ -1705,6 +1828,38 @@ def api_feedback():
             "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
         }), 200 if deleted else 404
 
+
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
+    """
+    REST API endpoint for submitting and retrieving feedback (#197).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        cat = request.args.get("category")
+        limit = request.args.get("limit", 50)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 50
+        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
+        metrics = get_feedback_metrics_summary()
+        return jsonify({
+            "status": "success",
+            "total": len(items),
+            "metrics": metrics,
+            "feedback": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
         rating_raw = payload.get("rating", 5)
         category = payload.get("category", "General Experience")
         comment = payload.get("comment", "").strip()
@@ -1898,7 +2053,12 @@ def download_certificate_pdf(analysis_id: str):
         cert_path = os.path.join(config.REPORT_FOLDER, cert_filename)
 
         if not os.path.exists(cert_path):
-            generate_certificate_pdf(analysis_record, cert_path)
+            safe_generate_report_with_recovery(
+                generator_func=generate_certificate_pdf,
+                data=analysis_record,
+                output_path=cert_path,
+                report_type="Placement Readiness Certificate"
+            )
 
         company_clean = secure_filename(analysis_record.get("company_name", "General"))
         return send_file(
@@ -1928,9 +2088,11 @@ def download_pdf_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_pdf_report(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_pdf_report,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type="Placement Readiness Comprehensive Report"
             )
 
         return send_file(
@@ -1961,9 +2123,11 @@ def download_skills_gap_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_skills_gap_pdf(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_skills_gap_pdf,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type="Skills Gap and Upskilling Roadmap"
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -2464,6 +2628,14 @@ def internships_view():
     location_filter = request.args.get("location") or request.form.get("location", "All")
     search_query = request.args.get("search") or request.form.get("search", "")
 
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
     candidate_skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else [
         "Python", "SQL", "Git", "Data Structures", "Java"
     ]
@@ -2475,12 +2647,18 @@ def internships_view():
         search_query=search_query
     )
 
+    recently_viewed = get_recently_viewed_jobs(student_id=student_id, limit=6)
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(recommendations_data), 200
+        res_data = dict(recommendations_data)
+        res_data["recently_viewed"] = recently_viewed
+        return jsonify(res_data), 200
 
     return render_template(
         "internships.html",
         data=recommendations_data,
+        recently_viewed=recently_viewed,
+        student_id=student_id,
         skills_str=",".join(candidate_skills),
         current_role=role_filter,
         current_location=location_filter,
@@ -3086,6 +3264,8 @@ def role_preparation_view():
     )
 
 
+
+
 @app.route("/notification-settings", methods=["GET", "POST"])
 def notification_settings_view():
     """
@@ -3115,6 +3295,50 @@ def notification_settings_view():
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "preferences": prefs
+        }), 200
+
+    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
+
+
+@app.route("/api/notifications/remind-interview", methods=["POST"])
+def api_send_interview_reminder():
+    """
+    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or "default_student"
+    company_name = payload.get("company_name", "").strip()
+    round_type = payload.get("round_type", "Technical Round").strip()
+    scheduled_time = payload.get("scheduled_time", "").strip()
+    interview_link = payload.get("interview_link", "").strip()
+
+    if not company_name or not scheduled_time:
+        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
+
+    prefs = get_email_notification_preferences(student_id)
+    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
+        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
+
+    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
+    sent = email_service.send_interview_reminder_email(
+        recipient_email=recipient_email,
+        student_name=student_id,
+        company_name=company_name,
+        interview_round=round_type,
+        scheduled_time=scheduled_time,
+        interview_link=interview_link or None
+    )
+
+    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+
+
+
+
 @app.route("/interview-experiences", methods=["GET", "POST"])
 def interview_experiences_view():
     """
@@ -3202,6 +3426,26 @@ def interview_experiences_view():
         company_filter=company_filter,
         category_filter=category_filter,
         search_query=search_query,
+        student_id=student_id
+    )
+
+
+@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
+def api_report_interview_experience(exp_id: str):
+    """
+    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
+    """
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
+    reported = report_interview_experience(exp_id=exp_id, reason=reason)
+    return jsonify({
+        "success": reported,
+        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
+    }), (200 if reported else 404)
+
+
+
+
 @app.route("/calendar", methods=["GET", "POST"])
 def placement_calendar_view():
     """
@@ -3249,85 +3493,10 @@ def placement_calendar_view():
     interviews_count = sum(1 for e in all_events if e.get("event_type") == "interview")
     tasks_count = sum(1 for e in all_events if e.get("event_type") == "preparation")
     deadlines_count = sum(1 for e in all_events if e.get("event_type") == "deadline")
-@app.route("/company-checklist", methods=["GET", "POST"])
-def company_checklist_view():
-    """
-    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
-    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-    target_company = request.args.get("company", "Google").strip()
-
-    available_companies = get_available_companies()
-    if not available_companies:
-        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
-
-    if target_company not in available_companies and target_company != "Google":
-        available_companies.insert(0, target_company)
-
-    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
-@app.route("/coding-submissions")
-def coding_submissions_view():
-    """
-    Coding Assessment Submission History View (#194).
-    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-    question_filter = request.args.get("question", "").strip()
-    language_filter = request.args.get("language", "All").strip()
-    status_filter = request.args.get("status", "All").strip()
-
-    submissions = get_coding_submissions(
-        student_id=student_id,
-        question_title=question_filter or None,
-        language_filter=language_filter,
-        status_filter=status_filter
-    )
-
-    all_user_subs = get_coding_submissions(student_id=student_id)
-    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
-    failed_count = len(all_user_subs) - passed_count
-    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "preferences": prefs
-        }), 200
-
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
-
-
-@app.route("/api/notifications/remind-interview", methods=["POST"])
-def api_send_interview_reminder():
-    """
-    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
-    """
-    payload = request.get_json(silent=True) or {}
-    student_id = payload.get("student_id") or "default_student"
-    company_name = payload.get("company_name", "").strip()
-    round_type = payload.get("round_type", "Technical Round").strip()
-    scheduled_time = payload.get("scheduled_time", "").strip()
-    interview_link = payload.get("interview_link", "").strip()
-
-    if not company_name or not scheduled_time:
-        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
-
-    prefs = get_email_notification_preferences(student_id)
-    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
-        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
-
-    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
-    sent = email_service.send_interview_reminder_email(
-        recipient_email=recipient_email,
-        student_name=student_id,
-        company_name=company_name,
-        interview_round=round_type,
-        scheduled_time=scheduled_time,
-        interview_link=interview_link or None
-    )
-
-    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
             "month": month_filter,
             "count": len(events),
             "events": events
@@ -3384,6 +3553,31 @@ def api_manage_calendar_event(event_id: str):
         completed=completed
     )
     return jsonify({"success": updated}), (200 if updated else 404)
+
+
+
+
+@app.route("/company-checklist", methods=["GET", "POST"])
+def company_checklist_view():
+    """
+    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
+    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    target_company = request.args.get("company", "Google").strip()
+
+    available_companies = get_available_companies()
+    if not available_companies:
+        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
+
+    if target_company not in available_companies and target_company != "Google":
+        available_companies.insert(0, target_company)
+
+    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
             "data": checklist_info
         }), 200
 
@@ -3396,18 +3590,6 @@ def api_manage_calendar_event(event_id: str):
     )
 
 
-@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
-def api_report_interview_experience(exp_id: str):
-    """
-    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
-    """
-    payload = request.get_json(silent=True) or {}
-    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
-    reported = report_interview_experience(exp_id=exp_id, reason=reason)
-    return jsonify({
-        "success": reported,
-        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
-    }), (200 if reported else 404)
 @app.route("/api/company-checklist/toggle-task", methods=["POST"])
 def api_toggle_checklist_task():
     """
@@ -3455,6 +3637,37 @@ def api_reset_checklist():
         "success": True,
         "message": f"Checklist for {company_name} reset successfully.",
         "data": refreshed
+    }), 200
+
+
+
+
+@app.route("/coding-submissions")
+def coding_submissions_view():
+    """
+    Coding Assessment Submission History View (#194).
+    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    language_filter = request.args.get("language", "All").strip()
+    status_filter = request.args.get("status", "All").strip()
+
+    submissions = get_coding_submissions(
+        student_id=student_id,
+        question_title=question_filter or None,
+        language_filter=language_filter,
+        status_filter=status_filter
+    )
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
             "count": len(submissions),
             "submissions": submissions
         }), 200
@@ -3487,6 +3700,154 @@ def api_coding_submissions():
         "count": len(submissions),
         "submissions": submissions
     }), 200
+
+
+
+
+@app.route("/download/preparation-summary", methods=["GET"])
+@app.route("/download/preparation-summary/<student_id>", methods=["GET"])
+def download_student_preparation_summary_pdf(student_id: str = None):
+    """
+    Generates and downloads a comprehensive Placement Preparation Summary PDF report (#200).
+    Ensures candidate data isolation so students only access their own report.
+    """
+    session_user_id = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
+    if not student_id:
+        student_id = session_user_id or "default_student"
+    elif session_user_id and session_user_id != "default_student" and student_id != session_user_id:
+        # Enforce student isolation
+        flash("Unauthorized access to student preparation summary.", "danger")
+        return redirect(url_for("index"))
+
+    summary_data = get_student_preparation_summary_data(student_id)
+    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
+    
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        temp_pdf_path = tmp.name
+
+    try:
+        safe_generate_report_with_recovery(
+            generator_func=generate_student_preparation_summary_pdf,
+            data=summary_data,
+            output_path=temp_pdf_path,
+            report_type="Student Placement Preparation Summary"
+        )
+        return send_file(
+            temp_pdf_path,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate student preparation summary PDF: {e}")
+        flash("Could not generate preparation summary report. Please try again later.", "danger")
+        return redirect(url_for("index"))
+
+
+@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
+def api_recently_viewed_jobs():
+    """
+    REST API endpoints to manage recently viewed jobs for candidates (#201).
+    Supports GET (fetch history), POST (track a job view), and DELETE (remove or clear history).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        limit = request.args.get("limit", 10)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 10
+        viewed_jobs = get_recently_viewed_jobs(student_id=student_id, limit=limit_val)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(viewed_jobs),
+            "jobs": viewed_jobs
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        job_id = str(payload.get("job_id", "")).strip()
+        company_name = str(payload.get("company_name", "")).strip()
+        role_title = str(payload.get("role_title", "")).strip()
+        location = str(payload.get("location", "Remote")).strip()
+        salary_range = payload.get("salary_range")
+        apply_url = payload.get("apply_url")
+
+        if not job_id or not company_name or not role_title:
+            return jsonify({
+                "status": "error",
+                "message": "job_id, company_name, and role_title are required fields."
+            }), 400
+
+        record = record_viewed_job(
+            student_id=student_id,
+            job_id=job_id,
+            company_name=company_name,
+            role_title=role_title,
+            location=location,
+            salary_range=salary_range,
+            apply_url=apply_url
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Recorded view for job '{role_title}' at '{company_name}'.",
+            "viewed_job": record
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        job_id = payload.get("job_id")
+        if job_id:
+            removed = remove_recently_viewed_job(student_id=student_id, job_id=job_id)
+            return jsonify({
+                "status": "success" if removed else "not_found",
+                "message": f"Removed job '{job_id}' from recently viewed list." if removed else "Job not found in history."
+            }), (200 if removed else 404)
+        else:
+            cleared_count = clear_recently_viewed_jobs(student_id=student_id)
+            return jsonify({
+                "status": "success",
+                "message": f"Cleared {cleared_count} recently viewed jobs.",
+                "cleared_count": cleared_count
+            }), 200
+
+
+@app.route("/api/migrations/status", methods=["GET"])
+def api_migrations_status():
+    """
+    Returns current database migration and schema version history (#204).
+    """
+    from utils.migrations import get_migration_status
+    status = get_migration_status(config.DATABASE_PATH)
+    return jsonify({
+        "status": "success",
+        "migration_info": status
+    }), 200
+
+
+@app.route("/api/migrations/run", methods=["POST"])
+def api_run_migrations():
+    """
+    Executes all pending database migrations in sequential order (#204).
+    """
+    from utils.migrations import run_database_migrations
+    try:
+        result = run_database_migrations(config.DATABASE_PATH)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Migration execution failed via API: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 
 
 if __name__ == "__main__":
