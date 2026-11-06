@@ -85,6 +85,8 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    get_user_data_export_manifest,
+    delete_user_account_and_personal_data,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -501,6 +503,61 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+# ==============================================================================
+# Account Deletion and GDPR Data Erasure Routes (#207)
+# ==============================================================================
+
+@app.route("/account/delete", methods=["GET", "POST"])
+def delete_account():
+    """
+    Handles account deletion and personal data erasure (#207).
+    Requires explicit confirmation and student's password verification.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    manifest = get_user_data_export_manifest(student_id)
+
+    if request.method == "POST":
+        confirm_text = request.form.get("confirm_phrase", "").strip()
+        password = request.form.get("password", "")
+
+        if confirm_text != "DELETE MY ACCOUNT":
+            flash("Please type 'DELETE MY ACCOUNT' exactly as shown to confirm deletion.", "error")
+            return render_template("delete_account.html", manifest=manifest, student_id=student_id)
+
+        # If user has a password in DB, verify it
+        user = get_user_by_id(student_id)
+        if user and user.get("password_hash"):
+            if not password or not check_password_hash(user["password_hash"], password):
+                flash("Incorrect password. Account deletion aborted.", "error")
+                return render_template("delete_account.html", manifest=manifest, student_id=student_id)
+
+        try:
+            purge_result = delete_user_account_and_personal_data(student_id)
+            flask_session.clear()
+            flash(f"Your account and all {purge_result['total_deleted']} associated records have been permanently removed.", "info")
+            return redirect(url_for("index"))
+        except Exception as err:
+            logger.error(f"Error purging account for {student_id}: {err}")
+            flash("An error occurred while deleting your personal data. Please try again or contact support.", "error")
+            return render_template("delete_account.html", manifest=manifest, student_id=student_id)
+
+    return render_template("delete_account.html", manifest=manifest, student_id=student_id)
+
+
+@app.route("/api/account/export-manifest", methods=["GET"])
+def api_account_export_manifest():
+    """
+    Returns an audit summary of all personal data held for the authenticated student (#207).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    manifest = get_user_data_export_manifest(student_id)
+    return jsonify({
+        "status": "success",
+        "manifest": manifest
+    }), 200
+
 
 @app.route("/")
 def index() -> str:

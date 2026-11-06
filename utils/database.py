@@ -1648,7 +1648,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+            "SELECT id, name, email, password_hash, created_at FROM users WHERE id = ?",
             (user_id,)
         )
         row = cursor.fetchone()
@@ -3074,5 +3074,199 @@ def get_note_category_counts(
     except Exception as e:
         logger.error(f"Error getting note category counts: {e}")
         return {"All": 0, "Technical": 0, "HR": 0, "DSA": 0, "Company Preparation": 0}
+    finally:
+        conn.close()
+
+
+# ==============================================================================
+# GDPR & Personal Data Removal / Account Deletion Subsystem (#207)
+# ==============================================================================
+
+def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
+    """
+    Collects all records and counts associated with a student across the database for GDPR audit and export (#207).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        summary = {"student_id": student_id, "tables": {}}
+
+        # Count in analyses
+        cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
+        summary["tables"]["analyses"] = cursor.fetchone()[0]
+
+        # Count in interviews (via analyses or direct analysis_ids)
+        cursor.execute("""
+            SELECT COUNT(*) FROM interviews
+            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
+        """, (student_id,))
+        summary["tables"]["interviews"] = cursor.fetchone()[0]
+
+        # Count in batch_comparisons
+        cursor.execute("SELECT COUNT(*) FROM batch_comparisons WHERE student_id = ?", (student_id,))
+        summary["tables"]["batch_comparisons"] = cursor.fetchone()[0]
+
+        # Count in job_applications
+        cursor.execute("SELECT COUNT(*) FROM job_applications WHERE student_id = ?", (student_id,))
+        summary["tables"]["job_applications"] = cursor.fetchone()[0]
+
+        # Count in email_notification_preferences
+        cursor.execute("SELECT COUNT(*) FROM email_notification_preferences WHERE student_id = ?", (student_id,))
+        summary["tables"]["email_notification_preferences"] = cursor.fetchone()[0]
+
+        # Count in interview_experiences
+        cursor.execute("SELECT COUNT(*) FROM interview_experiences WHERE student_id = ?", (student_id,))
+        summary["tables"]["interview_experiences"] = cursor.fetchone()[0]
+
+        # Count in preparation_calendar_events
+        cursor.execute("SELECT COUNT(*) FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
+        summary["tables"]["preparation_calendar_events"] = cursor.fetchone()[0]
+
+        # Count in company_preparation_checklists
+        cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
+        summary["tables"]["company_preparation_checklists"] = cursor.fetchone()[0]
+
+        # Count in coding_submissions
+        cursor.execute("SELECT COUNT(*) FROM coding_submissions WHERE student_id = ?", (student_id,))
+        summary["tables"]["coding_submissions"] = cursor.fetchone()[0]
+
+        # Count in technical_self_assessments
+        cursor.execute("SELECT COUNT(*) FROM technical_self_assessments WHERE student_id = ?", (student_id,))
+        summary["tables"]["technical_self_assessments"] = cursor.fetchone()[0]
+
+        # Count in user_feedback
+        cursor.execute("SELECT COUNT(*) FROM user_feedback WHERE student_id = ?", (student_id,))
+        summary["tables"]["user_feedback"] = cursor.fetchone()[0]
+
+        # Count in interview_preparation_notes
+        cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
+        summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
+
+        # Count in users
+        cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
+        summary["tables"]["users"] = cursor.fetchone()[0]
+
+        summary["total_records"] = sum(summary["tables"].values())
+        return summary
+    finally:
+        conn.close()
+
+
+def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
+    """
+    Permanently deletes a student account and cascades removal across all personal placement records (#207).
+    Complies with personal data erasure requirements and returns deletion audit log.
+    """
+    if not student_id or not student_id.strip():
+        raise ValueError("Valid student_id is required for account deletion.")
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        deleted_counts = {}
+
+        # 1. Delete associated mock interview records linked to student analyses
+        cursor.execute("""
+            DELETE FROM interviews
+            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
+        """, (student_id,))
+        deleted_counts["interviews"] = cursor.rowcount
+
+        # 2. Delete placement analyses
+        cursor.execute("DELETE FROM analyses WHERE student_id = ?", (student_id,))
+        deleted_counts["analyses"] = cursor.rowcount
+
+        # 3. Delete batch comparisons
+        cursor.execute("DELETE FROM batch_comparisons WHERE student_id = ?", (student_id,))
+        deleted_counts["batch_comparisons"] = cursor.rowcount
+
+        # 4. Delete job applications
+        cursor.execute("DELETE FROM job_applications WHERE student_id = ?", (student_id,))
+        deleted_counts["job_applications"] = cursor.rowcount
+
+        # 5. Delete email notification preferences
+        cursor.execute("DELETE FROM email_notification_preferences WHERE student_id = ?", (student_id,))
+        deleted_counts["email_notification_preferences"] = cursor.rowcount
+
+        # 6. Delete interview experiences
+        cursor.execute("DELETE FROM interview_experiences WHERE student_id = ?", (student_id,))
+        deleted_counts["interview_experiences"] = cursor.rowcount
+
+        # 7. Delete preparation calendar events
+        cursor.execute("DELETE FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
+        deleted_counts["preparation_calendar_events"] = cursor.rowcount
+
+        # 8. Delete company preparation checklists
+        cursor.execute("DELETE FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
+        deleted_counts["company_preparation_checklists"] = cursor.rowcount
+
+        # 9. Delete coding assessment submissions
+        cursor.execute("DELETE FROM coding_submissions WHERE student_id = ?", (student_id,))
+        deleted_counts["coding_submissions"] = cursor.rowcount
+
+        # 10. Delete technical skill self-assessments
+        cursor.execute("DELETE FROM technical_self_assessments WHERE student_id = ?", (student_id,))
+        deleted_counts["technical_self_assessments"] = cursor.rowcount
+
+        # 11. Delete user feedback entries
+        cursor.execute("DELETE FROM user_feedback WHERE student_id = ?", (student_id,))
+        deleted_counts["user_feedback"] = cursor.rowcount
+
+        # 12. Delete interview preparation notes
+        cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
+        deleted_counts["interview_preparation_notes"] = cursor.rowcount
+
+        # 13. Delete student profile if exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM student_profiles WHERE student_id = ?", (student_id,))
+            deleted_counts["student_profiles"] = cursor.rowcount
+
+        # 14. Delete bookmarked coding questions if exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarked_coding_questions'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM bookmarked_coding_questions WHERE student_id = ?", (student_id,))
+            deleted_counts["bookmarked_coding_questions"] = cursor.rowcount
+
+        # 15. Check if recently_viewed_jobs table exists, if so delete student rows
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recently_viewed_jobs'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (student_id,))
+            deleted_counts["recently_viewed_jobs"] = cursor.rowcount
+
+        # 16. Finally, delete the student account from users table
+        cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
+        deleted_counts["users"] = cursor.rowcount
+
+        conn.commit()
+        logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
+
+        # Also purge any student files (e.g., reports, resumes) on disk if named after student or analysis
+        try:
+            import os
+            import config
+            for folder in [config.UPLOAD_FOLDER, config.REPORT_FOLDER]:
+                if os.path.exists(folder):
+                    for fname in os.listdir(folder):
+                        if student_id in fname:
+                            fpath = os.path.join(folder, fname)
+                            try:
+                                if os.path.isfile(fpath):
+                                    os.remove(fpath)
+                            except Exception as file_err:
+                                logger.warning(f"Could not remove student file {fpath}: {file_err}")
+        except Exception as f_err:
+            logger.warning(f"Disk cleanup non-fatal error during purge: {f_err}")
+
+        return {
+            "status": "purged",
+            "student_id": student_id,
+            "deleted_counts": deleted_counts,
+            "total_deleted": sum(deleted_counts.values())
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to delete account for student {student_id}: {e}")
+        raise e
     finally:
         conn.close()
