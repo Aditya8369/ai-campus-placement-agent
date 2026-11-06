@@ -1513,4 +1513,145 @@ html {
   }
 }
 
+/* ==========================================================================
+   Interview Preparation Notes Module (#235)
+   ========================================================================== */
+
+.note-card {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  background-color: #ffffff;
+}
+
+.note-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+.note-description {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 220px;
+  overflow-y: auto;
+  line-height: 1.55;
+}
+
+.note-description::-webkit-scrollbar {
+  width: 4px;
+}
+
+.note-description::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+
+/* Category Badges */
+.badge-note-technical {
+  background-color: rgba(13, 110, 253, 0.12) !important;
+  color: #0d6efd !important;
+  border: 1px solid rgba(13, 110, 253, 0.25) !important;
+}
+
+.badge-note-hr {
+  background-color: rgba(25, 135, 84, 0.12) !important;
+  color: #198754 !important;
+  border: 1px solid rgba(25, 135, 84, 0.25) !important;
+}
+
+.badge-note-dsa {
+  background-color: rgba(13, 202, 240, 0.15) !important;
+  color: #087990 !important;
+  border: 1px solid rgba(13, 202, 240, 0.3) !important;
+}
+
+.badge-note-company-preparation,
+.badge-note-company-prep {
+  background-color: rgba(255, 193, 7, 0.18) !important;
+  color: #856404 !important;
+  border: 1px solid rgba(255, 193, 7, 0.35) !important;
+}
+
+.btn-edit-note,
+.btn-delete-note {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  transition: all 0.2s ease;
+  font-size: 0.85rem;
+}
+
+.btn-edit-note:hover {
+  background-color: #ffc107;
+  border-color: #ffc107;
+  color: #000000;
+  transform: scale(1.08);
+}
+
+.btn-delete-note:hover {
+  background-color: #dc3545;
+  border-color: #dc3545;
+  color: #ffffff;
+  transform: scale(1.08);
+}
+
+/* Dark Mode Adaptations */
+[data-bs-theme="dark"] .note-card {
+  background-color: #161b22 !important;
+  border: 1px solid #30363d !important;
+  color: #f0f6fc;
+}
+
+[data-bs-theme="dark"] .note-title {
+  color: #f0f6fc !important;
+}
+
+[data-bs-theme="dark"] .note-description {
+  color: #8b949e !important;
+}
+
+[data-bs-theme="dark"] .note-description::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+[data-bs-theme="dark"] #noNotesMessage {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+  color: #8b949e;
+}
+
+[data-bs-theme="dark"] .modal-content {
+  background-color: #161b22 !important;
+  color: #f0f6fc;
+  border: 1px solid #30363d !important;
+}
+
+[data-bs-theme="dark"] .modal-content .form-control,
+[data-bs-theme="dark"] .modal-content .form-select {
+  background-color: #0d1117 !important;
+  border-color: #30363d !important;
+  color: #f0f6fc !important;
+}
+
+[data-bs-theme="dark"] .modal-content .form-control:focus,
+[data-bs-theme="dark"] .modal-content .form-select:focus {
+  border-color: #58a6ff !important;
+  box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25) !important;
+}
+
+@media (max-width: 767.98px) {
+  .btn-edit-note,
+  .btn-delete-note {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+  }
+}
+
+
 
