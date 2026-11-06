@@ -10,7 +10,7 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 
-<body class="bg-light">
+<body class="bg-light coding-practice-page">
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -20,6 +20,9 @@
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
           <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="#savedQuestionsSection" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-bookmark me-1 text-warning"></i> Saved (<span class="header-saved-count">{{ bookmarked_problems|length }}</span>)
         </a>
         <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
           <i class="fa-solid fa-trophy me-1"></i> Leaderboard
@@ -97,6 +100,105 @@
     </div>
     {% endif %}
 
+    <!-- Saved Questions Section -->
+    <div id="savedQuestionsSection" class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <div>
+          <h4 class="fw-bold mb-1">
+            <i class="fa-solid fa-bookmark text-warning me-2"></i>Saved Questions
+            <span id="savedQuestionsCountBadge" class="badge bg-warning text-dark rounded-pill ms-2 fs-6 align-middle">{{ bookmarked_problems|length }}</span>
+          </h4>
+          <p class="text-muted small mb-0">Your saved collection of important placement practice problems. Preserved across sessions.</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <a href="#recommendedProblemsSection" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+            <i class="fa-solid fa-list-check me-1"></i> Browse Recommendations
+          </a>
+        </div>
+      </div>
+
+      <!-- Empty state when no questions saved -->
+      <div id="noSavedQuestionsMessage" class="text-center py-5 bg-light rounded-4 border border-dashed {% if bookmarked_problems and bookmarked_problems|length > 0 %}d-none{% endif %}">
+        <div class="mb-3">
+          <i class="fa-regular fa-bookmark fa-3x text-secondary opacity-50"></i>
+        </div>
+        <h6 class="fw-bold text-dark mb-1">No saved questions yet</h6>
+        <p class="text-muted small mb-3">Click the bookmark icon on any challenge below to save it here for later practice.</p>
+        <a href="#recommendedProblemsSection" class="btn btn-primary btn-sm rounded-pill px-4">
+          <i class="fa-solid fa-arrow-down me-1"></i> Explore Recommended Problems
+        </a>
+      </div>
+
+      <!-- Saved Questions Grid -->
+      <div id="savedQuestionsGrid" class="row g-3 {% if not bookmarked_problems or bookmarked_problems|length == 0 %}d-none{% endif %}">
+        {% for prob in bookmarked_problems %}
+        <div class="col-md-6 saved-problem-item" id="saved-card-{{ prob.id }}">
+          <div class="card border border-warning-subtle shadow-sm rounded-4 h-100 p-4 d-flex flex-column justify-content-between bg-white position-relative">
+            <div>
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div>
+                  <span class="badge {{ 'bg-success' if prob.difficulty == 'Easy' else ('bg-warning text-dark' if prob.difficulty == 'Medium' else 'bg-danger') }} rounded-pill me-2">
+                    {{ prob.difficulty }}
+                  </span>
+                  <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ prob.topic or 'DSA' }}</span>
+                </div>
+                <button type="button" 
+                        class="btn btn-sm btn-outline-danger btn-remove-bookmark rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
+                        data-problem-id="{{ prob.id }}"
+                        data-problem-title="{{ prob.title }}"
+                        title="Remove from Saved Questions"
+                        aria-label="Remove {{ prob.title }} from Saved Questions"
+                        style="width: 36px; height: 36px;">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+
+              <h5 class="fw-bold text-dark mb-1">{{ prob.title }}</h5>
+              <p class="text-muted small mb-3">{{ prob.description }}</p>
+
+              {% if prob.companies %}
+              <div class="mb-3">
+                <div class="small fw-semibold text-muted mb-1">Target Companies:</div>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for comp in prob.companies %}
+                  <span class="badge bg-light text-dark border rounded-pill small">{{ comp }}</span>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+            </div>
+
+            <div class="pt-3 border-top d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <span class="small text-muted">
+                {% if prob.time_complexity or prob.space_complexity %}
+                <i class="fa-solid fa-clock me-1"></i> {{ prob.time_complexity or 'O(N)' }} | <i class="fa-solid fa-memory me-1"></i> {{ prob.space_complexity or 'O(1)' }}
+                {% else %}
+                <i class="fa-solid fa-bookmark text-warning me-1"></i> Saved Question
+                {% endif %}
+              </span>
+              <a href="{{ prob.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+                Solve on {{ prob.platform or 'LeetCode' }} <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
+              </a>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Recommended Problems Section Header -->
+    <div id="recommendedProblemsSection" class="d-flex align-items-center justify-content-between mb-3 mt-4">
+      <div>
+        <h4 class="fw-bold mb-0">
+          <i class="fa-solid fa-code text-primary me-2"></i>Recommended Problems
+        </h4>
+        <p class="text-muted small mb-0">Customized algorithmic questions matched to your company target and skill gaps.</p>
+      </div>
+      <span class="badge bg-light text-secondary border rounded-pill small px-3 py-2">
+        Showing {{ data.recommendations|length }} Problems
+      </span>
+    </div>
+
     <!-- Recommended Problems List -->
     <div class="row g-3">
       {% for prob in data.recommendations %}
@@ -110,9 +212,28 @@
                 </span>
                 <span class="badge bg-secondary-subtle text-secondary rounded-pill">{{ prob.topic }}</span>
               </div>
-              <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill">
-                Match Score: {{ prob.relevance_score }}
-              </span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill">
+                  Match Score: {{ prob.relevance_score }}
+                </span>
+                <button type="button" 
+                        class="btn btn-sm btn-bookmark-question {{ 'btn-warning text-dark active' if prob.id in bookmarked_ids else 'btn-outline-secondary' }} rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
+                        data-problem-id="{{ prob.id }}"
+                        data-problem-title="{{ prob.title }}"
+                        data-problem-difficulty="{{ prob.difficulty }}"
+                        data-problem-topic="{{ prob.topic }}"
+                        data-problem-platform="{{ prob.platform }}"
+                        data-problem-url="{{ prob.practice_url }}"
+                        data-problem-time="{{ prob.time_complexity }}"
+                        data-problem-space="{{ prob.space_complexity }}"
+                        data-problem-description="{{ prob.description }}"
+                        data-problem-companies="{{ prob.companies | join(',') if prob.companies is iterable and prob.companies is not string else (prob.companies or '') }}"
+                        title="{{ 'Remove from Saved Questions' if prob.id in bookmarked_ids else 'Save to Bookmarks' }}"
+                        aria-label="{{ 'Remove ' ~ prob.title ~ ' from Saved Questions' if prob.id in bookmarked_ids else 'Bookmark ' ~ prob.title }}"
+                        style="width: 36px; height: 36px;">
+                  <i class="{{ 'fa-solid fa-bookmark' if prob.id in bookmarked_ids else 'fa-regular fa-bookmark' }}"></i>
+                </button>
+              </div>
             </div>
 
             <h5 class="fw-bold text-dark mb-1">{{ prob.title }}</h5>
@@ -153,6 +274,19 @@
         <p class="text-muted">No practice problems match the current filter. Try adjusting your parameters.</p>
       </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+    <div id="bookmarkToast" class="toast align-items-center text-bg-dark border-0 rounded-3 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body d-flex align-items-center">
+          <i id="bookmarkToastIcon" class="fa-solid fa-bookmark text-warning me-2 fs-5"></i>
+          <span id="bookmarkToastMsg">Question bookmarked!</span>
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
     </div>
   </div>
 
