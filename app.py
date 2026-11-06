@@ -24,6 +24,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    record_viewed_job,
+    get_recently_viewed_jobs,
+    remove_recently_viewed_job,
+    clear_recently_viewed_jobs,
     init_db,
     get_db_connection,
     save_analysis,
@@ -111,6 +115,9 @@ from utils.report_generator import (
     generate_skills_gap_pdf,
     generate_interview_transcript_pdf,
     generate_interview_transcript_markdown,
+    safe_generate_report_with_recovery,
+    generate_fallback_pdf_report,
+    sanitize_report_data,
 )
 from utils.gemini import (
     AIAnalysisError,
@@ -206,9 +213,9 @@ def require_login():
 
 def _is_student_authorized(record_or_student_id) -> bool:
     """Verifies that the requested resource belongs to the currently logged in student."""
-    if app.config.get("TESTING"):
+    if app.config.get("TESTING") and not app.config.get("ENFORCE_STUDENT_ISOLATION"):
         return True
-    current_uid = flask_session.get("user_id")
+    current_uid = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
     if not current_uid:
         return False
     if isinstance(record_or_student_id, dict):
@@ -4362,7 +4369,12 @@ def download_certificate_pdf(analysis_id: str):
         cert_path = os.path.join(config.REPORT_FOLDER, cert_filename)
 
         if not os.path.exists(cert_path):
-            generate_certificate_pdf(analysis_record, cert_path)
+            safe_generate_report_with_recovery(
+                generator_func=generate_certificate_pdf,
+                data=analysis_record,
+                output_path=cert_path,
+                report_type='Placement Readiness Certificate'
+            )
 
         company_clean = secure_filename(analysis_record.get("company_name", "General"))
         return send_file(
@@ -4392,9 +4404,11 @@ def download_pdf_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_pdf_report(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_pdf_report,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type='Placement Readiness Comprehensive Report'
             )
 
         return send_file(
@@ -4425,9 +4439,11 @@ def download_skills_gap_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_skills_gap_pdf(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_skills_gap_pdf,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type='Skills Gap and Upskilling Roadmap'
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -4928,6 +4944,14 @@ def internships_view():
     location_filter = request.args.get("location") or request.form.get("location", "All")
     search_query = request.args.get("search") or request.form.get("search", "")
 
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
     candidate_skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else [
         "Python", "SQL", "Git", "Data Structures", "Java"
     ]
@@ -4939,12 +4963,18 @@ def internships_view():
         search_query=search_query
     )
 
+    recently_viewed = get_recently_viewed_jobs(student_id=student_id, limit=6)
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(recommendations_data), 200
+        res_data = dict(recommendations_data)
+        res_data["recently_viewed"] = recently_viewed
+        return jsonify(res_data), 200
 
     return render_template(
         "internships.html",
         data=recommendations_data,
+        recently_viewed=recently_viewed,
+        student_id=student_id,
         skills_str=",".join(candidate_skills),
         current_role=role_filter,
         current_location=location_filter,
@@ -6294,6 +6324,108 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+@app.route("/api/migrations/status", methods=["GET"])
+def api_migrations_status():
+    """
+    Returns current database migration and schema version history (#204).
+    """
+    from utils.migrations import get_migration_status
+    status = get_migration_status(config.DATABASE_PATH)
+    return jsonify({
+        "status": "success",
+        "migration_info": status
+    }), 200
+
+
+@app.route("/api/migrations/run", methods=["POST"])
+def api_run_migrations():
+    """
+    Executes all pending database migrations in sequential order (#204).
+    """
+    from utils.migrations import run_database_migrations
+    try:
+        result = run_database_migrations(config.DATABASE_PATH)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Migration execution failed via API: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
+def api_recently_viewed_jobs():
+    """
+    REST API endpoints to manage recently viewed jobs for candidates (#201).
+    Supports GET (fetch history), POST (track a job view), and DELETE (remove or clear history).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        limit = request.args.get("limit", 10)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 10
+        viewed_jobs = get_recently_viewed_jobs(student_id=student_id, limit=limit_val)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(viewed_jobs),
+            "jobs": viewed_jobs
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        job_id = str(payload.get("job_id", "")).strip()
+        company_name = str(payload.get("company_name", "")).strip()
+        role_title = str(payload.get("role_title", "")).strip()
+        location = str(payload.get("location", "Remote")).strip()
+        salary_range = payload.get("salary_range")
+        apply_url = payload.get("apply_url")
+
+        if not job_id or not company_name or not role_title:
+            return jsonify({
+                "status": "error",
+                "message": "job_id, company_name, and role_title are required fields."
+            }), 400
+
+        record = record_viewed_job(
+            student_id=student_id,
+            job_id=job_id,
+            company_name=company_name,
+            role_title=role_title,
+            location=location,
+            salary_range=salary_range,
+            apply_url=apply_url
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Recorded view for job '{role_title}' at '{company_name}'.",
+            "viewed_job": record
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        job_id = payload.get("job_id")
+        if job_id:
+            removed = remove_recently_viewed_job(student_id=student_id, job_id=job_id)
+            return jsonify({
+                "status": "success" if removed else "not_found",
+                "message": f"Removed job '{job_id}' from recently viewed list." if removed else "Job not found in history."
+            }), (200 if removed else 404)
+        else:
+            cleared_count = clear_recently_viewed_jobs(student_id=student_id)
+            return jsonify({
+                "status": "success",
+                "message": f"Cleared {cleared_count} recently viewed jobs.",
+                "cleared_count": cleared_count
+            }), 200
+
 
 
 if __name__ == "__main__":

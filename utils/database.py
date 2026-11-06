@@ -256,6 +256,22 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 17: Store recently viewed jobs by candidates (#201)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                location TEXT DEFAULT 'Remote',
+                salary_range TEXT,
+                apply_url TEXT,
+                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, job_id)
+            )
+        """)
         
         # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -290,6 +306,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -298,6 +315,13 @@ def init_db() -> None:
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
+        
+        # Run any pending versioned file-based migrations (#204)
+        try:
+            from utils.migrations import run_database_migrations
+            run_database_migrations(config.DATABASE_PATH)
+        except Exception as mig_err:
+            logger.warning(f"Note: Automatic migration runner skipped during init: {mig_err}")
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database: {str(e)}")
         raise e
@@ -2908,3 +2932,322 @@ def is_coding_bookmarked(
         return False
     finally:
         conn.close()
+
+
+def create_preparation_note(
+    student_id: str,
+    title: str,
+    description: str,
+    category: str = "Technical"
+) -> Dict[str, Any]:
+    """
+    Creates a new private interview preparation note for a student (#235).
+    Enforces student isolation and validates category.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        note_id = f"note-{uuid.uuid4().hex[:12]}"
+        
+        valid_categories = ["Technical", "HR", "DSA", "Company Preparation"]
+        clean_category = category.strip() if category and category.strip() in valid_categories else "Technical"
+        clean_title = (title or "Untitled Note").strip()
+        clean_desc = (description or "").strip()
+
+        cursor.execute("""
+            INSERT INTO interview_preparation_notes (
+                id, student_id, title, description, category, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        """, (note_id, effective_student_id, clean_title, clean_desc, clean_category))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM interview_preparation_notes WHERE id = ?", (note_id,))
+        row = cursor.fetchone()
+        logger.info(f"Created interview note {note_id} for student {effective_student_id}")
+        return dict(row) if row else {}
+    except Exception as e:
+        logger.error(f"Error creating preparation note: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_preparation_notes(
+    student_id: str,
+    category_filter: Optional[str] = None,
+    search_query: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all interview preparation notes belonging exclusively to the specified student (#235).
+    Guarantees strict candidate privacy: students cannot access another student's private notes.
+    Supports filtering by category and search keyword in title or description.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        conditions = ["student_id = ?"]
+        params = [effective_student_id]
+
+        if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(category) = LOWER(?)")
+            params.append(category_filter.strip())
+
+        if search_query and search_query.strip():
+            term = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(title) LIKE ? OR LOWER(description) LIKE ?)")
+            params.extend([term, term])
+
+        where_clause = " WHERE " + " AND ".join(conditions)
+        query = f"""
+            SELECT id, student_id, title, description, category, created_at, updated_at
+            FROM interview_preparation_notes
+            {where_clause}
+            ORDER BY updated_at DESC, created_at DESC
+        """
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error fetching preparation notes for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_preparation_note_by_id(
+    note_id: str,
+    student_id: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single preparation note by its ID, enforcing strict student ownership verification (#235).
+    Returns None if the note does not exist or belongs to another student.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT id, student_id, title, description, category, created_at, updated_at
+            FROM interview_preparation_notes
+            WHERE id = ? AND student_id = ?
+        """, (note_id.strip(), effective_student_id))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error fetching preparation note {note_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_preparation_note(
+    note_id: str,
+    student_id: str,
+    title: str,
+    description: str,
+    category: str
+) -> bool:
+    """
+    Updates an existing preparation note (#235).
+    Strictly checks that the note belongs to the specified student before modifying.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        valid_categories = ["Technical", "HR", "DSA", "Company Preparation"]
+        clean_category = category.strip() if category and category.strip() in valid_categories else "Technical"
+        clean_title = (title or "Untitled Note").strip()
+        clean_desc = (description or "").strip()
+
+        cursor.execute("""
+            UPDATE interview_preparation_notes
+            SET title = ?, description = ?, category = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND student_id = ?
+        """, (clean_title, clean_desc, clean_category, note_id.strip(), effective_student_id))
+        conn.commit()
+        logger.info(f"Updated preparation note {note_id} for student {effective_student_id}")
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating preparation note {note_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_preparation_note(
+    note_id: str,
+    student_id: str
+) -> bool:
+    """
+    Permanently deletes a preparation note after validating student ownership (#235).
+    Returns True if deleted, False if not found or unauthorized.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        cursor.execute("""
+            DELETE FROM interview_preparation_notes
+            WHERE id = ? AND student_id = ?
+        """, (note_id.strip(), effective_student_id))
+        conn.commit()
+        logger.info(f"Deleted preparation note {note_id} for student {effective_student_id}")
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting preparation note {note_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_note_category_counts(
+    student_id: str
+) -> Dict[str, int]:
+    """
+    Returns aggregated note counts per category for the student (#235).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT category, COUNT(*) as cnt
+            FROM interview_preparation_notes
+            WHERE student_id = ?
+            GROUP BY category
+        """, (effective_student_id,))
+        counts = {"All": 0, "Technical": 0, "HR": 0, "DSA": 0, "Company Preparation": 0}
+        total = 0
+        for row in cursor.fetchall():
+            cat = row["category"]
+            cnt = row["cnt"]
+            total += cnt
+            if cat in counts:
+                counts[cat] = cnt
+            else:
+                counts[cat] = cnt
+        counts["All"] = total
+        return counts
+    except Exception as e:
+        logger.error(f"Error getting note category counts: {e}")
+        return {"All": 0, "Technical": 0, "HR": 0, "DSA": 0, "Company Preparation": 0}
+    finally:
+        conn.close()
+
+
+def record_viewed_job(
+    student_id: str,
+    job_id: str,
+    company_name: str,
+    role_title: str,
+    location: str = "Remote",
+    salary_range: Optional[str] = None,
+    apply_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Records or bumps a job into the student's recently viewed list (#201).
+    Enforces per-student data isolation and updates viewed_at on revisit.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        rec_id = f"viewed-{uuid.uuid4().hex[:12]}"
+        s_id = (student_id or "default_student").strip()
+        j_id = str(job_id).strip()
+        comp = str(company_name).strip()
+        role = str(role_title).strip()
+        loc = (location or "Remote").strip()
+        sal = salary_range.strip() if salary_range else None
+        url = apply_url.strip() if apply_url else None
+
+        cursor.execute("""
+            INSERT INTO recently_viewed_jobs (
+                id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'subsec'))
+            ON CONFLICT(student_id, job_id) DO UPDATE SET
+                company_name = excluded.company_name,
+                role_title = excluded.role_title,
+                location = excluded.location,
+                salary_range = excluded.salary_range,
+                apply_url = excluded.apply_url,
+                viewed_at = datetime('now', 'subsec')
+        """, (rec_id, s_id, j_id, comp, role, loc, sal, url))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, j_id))
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+    except Exception as e:
+        logger.error(f"Error recording recently viewed job {job_id} for student {student_id}: {e}")
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        lim = max(1, min(int(limit), 50)) if limit else 10
+        cursor.execute("""
+            SELECT id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
+            FROM recently_viewed_jobs
+            WHERE student_id = ?
+            ORDER BY viewed_at DESC, rowid DESC
+            LIMIT ?
+        """, (s_id, lim))
+        return [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error fetching recently viewed jobs for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
+    """
+    Removes a single viewed job entry from student history (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, str(job_id).strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error removing viewed job {job_id} for student {student_id}: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def clear_recently_viewed_jobs(student_id: str) -> int:
+    """
+    Clears all viewed job history for the given student (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
+        conn.rollback()
+        return 0
+    finally:
+        conn.close()
+
