@@ -83,6 +83,15 @@ from utils.database import (
     remove_coding_bookmark,
     get_coding_bookmarks,
     is_coding_bookmarked,
+    create_preparation_note,
+    get_preparation_notes,
+    get_preparation_note_by_id,
+    update_preparation_note,
+    delete_preparation_note,
+    get_note_category_counts,
+    generate_email_verification_token,
+    verify_user_email_token,
+    is_user_email_verified,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -189,6 +198,8 @@ def require_login():
         "index",
         "login",
         "register",
+        "verify_email",
+        "resend_verification",
         "healthz",
         "health",
         "api_health",
@@ -456,6 +467,12 @@ def login():
             flash("Invalid email or password.", "error")
             return render_template("login.html")
 
+        # Email verification enforcement (#206)
+        is_verified = bool(user.get("is_verified", 0))
+        if not is_verified and not app.config.get("TESTING_BYPASS_VERIFICATION", False):
+            flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
+            return render_template("login.html", unverified_email=email)
+
         flask_session.clear()
         flask_session["user_id"] = user["id"]
         flask_session["user_name"] = user["name"]
@@ -491,17 +508,78 @@ def register():
             flash("An account with this email already exists.", "error")
             return render_template("register.html")
 
-        # Initialize email preferences and dispatch welcome notification (#186)
+        # Initialize email preferences and verification token (#186, #206)
         update_email_notification_preferences(student_id=user_id, email=email, email_enabled=True)
+        verification_token = generate_email_verification_token(user_id)
+
         try:
+            email_service.send_verification_email(
+                recipient_email=email,
+                student_name=name,
+                verification_token=verification_token,
+                base_url=request.host_url
+            )
             email_service.send_welcome_email(recipient_email=email, student_name=name)
         except Exception as mail_err:
-            logger.warning(f"Failed to dispatch welcome email: {mail_err}")
+            logger.warning(f"Failed to dispatch verification/welcome email: {mail_err}")
 
-        flash("Registration successful. Please log in.", "success")
+        flash("Registration successful! A verification link has been sent to your email. Please verify your account before logging in.", "success")
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+@app.route("/verify-email/<token>", methods=["GET"])
+def verify_email(token: str):
+    """
+    Validates token and activates student account (#206).
+    """
+    user = verify_user_email_token(token)
+    if not user:
+        flash("Invalid or expired verification link. Please request a new verification link below.", "error")
+        return redirect(url_for("resend_verification"))
+
+    flash(f"Congratulations {user.get('name', '')}! Your email has been verified. You can now log in.", "success")
+    return redirect(url_for("login"))
+
+
+@app.route("/resend-verification", methods=["GET", "POST"])
+def resend_verification():
+    """
+    Resends account verification email if user hasn't verified their account yet (#206).
+    """
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        if not email:
+            flash("Please enter your registered email address.", "error")
+            return render_template("resend_verification.html")
+
+        user = get_user_by_email(email)
+        if not user:
+            # For security, avoid leaking whether the email exists
+            flash("If an unverified account exists for this email, a new verification link has been sent.", "info")
+            return redirect(url_for("login"))
+
+        if bool(user.get("is_verified", 0)):
+            flash("Your email is already verified! You can proceed to log in directly.", "info")
+            return redirect(url_for("login"))
+
+        token = generate_email_verification_token(user["id"])
+        try:
+            email_service.send_verification_email(
+                recipient_email=email,
+                student_name=user.get("name", "Student"),
+                verification_token=token,
+                base_url=request.host_url
+            )
+        except Exception as err:
+            logger.error(f"Error resending verification email to {email}: {err}")
+
+        flash("If an unverified account exists for this email, a new verification link has been sent.", "info")
+        return redirect(url_for("login"))
+
+    initial_email = request.args.get("email", "").strip().lower()
+    return render_template("resend_verification.html", initial_email=initial_email)
 
 @app.route("/")
 def index() -> str:

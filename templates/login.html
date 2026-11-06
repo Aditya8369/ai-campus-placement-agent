@@ -24,11 +24,18 @@
 
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% for category, message in messages %}
-                <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }}">
+                <div class="alert alert-{{ 'danger' if category == 'error' else ('warning' if category == 'warning' else ('info' if category == 'info' else 'success')) }}">
                     {{ message }}
                 </div>
             {% endfor %}
         {% endwith %}
+
+        {% if unverified_email %}
+        <div class="alert alert-light border border-warning-subtle text-dark p-3 mb-3 small">
+            <span>Did not receive your verification email?</span>
+            <a href="{{ url_for('resend_verification', email=unverified_email) }}" class="fw-semibold text-primary ms-1">Resend Verification Email</a>
+        </div>
+        {% endif %}
 
         <form method="POST" action="{{ url_for('login') }}">
             <div class="mb-3">
@@ -48,9 +55,13 @@
             </button>
         </form>
 
-        <p class="text-center mt-4 mb-0">
+        <p class="text-center mt-4 mb-1">
             Don't have an account?
             <a href="{{ url_for('register') }}">Register</a>
+        </p>
+        <p class="text-center mb-0 small text-muted">
+            Need email verification?
+            <a href="{{ url_for('resend_verification') }}" class="text-decoration-none">Resend link</a>
         </p>
     </div>
 </div>

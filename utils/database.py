@@ -291,6 +291,16 @@ def init_db() -> None:
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
 
+        # Schema migration for users table (#206)
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [col[1] for col in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        if "verification_token" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        if "token_created_at" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
@@ -3140,6 +3150,28 @@ def get_note_category_counts(
         conn.close()
 
 
+# ==============================================================================
+# Email Verification Functions (#206)
+# ==============================================================================
+
+def generate_email_verification_token(user_id: str) -> str:
+    """
+    Generates and stores a unique email verification token for user registration (#206).
+    """
+    token = f"verify_{uuid.uuid4().hex}"
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users SET
+                verification_token = ?,
+                token_created_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (token, user_id))
+        conn.commit()
+        return token
+    except Exception as e:
+        logger.error(f"Error generating verification token for user {user_id}: {e}")
 def record_viewed_job(
     student_id: str,
     job_id: str,
@@ -3190,6 +3222,39 @@ def record_viewed_job(
         conn.close()
 
 
+def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Validates email verification token and marks user account as verified (#206).
+    Returns user dict on success, None on invalid or expired token.
+    """
+    if not token or not token.strip():
+        return None
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, name, email, is_verified, token_created_at
+            FROM users
+            WHERE verification_token = ?
+        """, (token.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        user = dict(row)
+        cursor.execute("""
+            UPDATE users SET
+                is_verified = 1,
+                verification_token = NULL
+            WHERE id = ?
+        """, (user["id"],))
+        conn.commit()
+        user["is_verified"] = 1
+        return user
+    except Exception as e:
+        logger.error(f"Error verifying user email token: {e}")
+        conn.rollback()
+        return None
 def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
@@ -3233,6 +3298,9 @@ def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
         conn.close()
 
 
+def is_user_email_verified(user_id: str) -> bool:
+    """
+    Checks whether a user has verified their email address (#206).
 def clear_recently_viewed_jobs(student_id: str) -> int:
     """
     Clears all viewed job history for the given student (#201).
@@ -3240,6 +3308,16 @@ def clear_recently_viewed_jobs(student_id: str) -> int:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute("SELECT is_verified FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row["is_verified"])
+    except Exception as e:
+        logger.error(f"Error checking email verification status for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
         s_id = (student_id or "default_student").strip()
         cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
         conn.commit()
