@@ -212,22 +212,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 13: Store personal interview preparation notes (#235)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS interview_preparation_notes (
-                id TEXT PRIMARY KEY,
-                student_id TEXT NOT NULL DEFAULT 'default_student',
-                title TEXT NOT NULL,
-                description TEXT NOT NULL,
-                category TEXT NOT NULL DEFAULT 'Technical',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
-
-        # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
+        # Table 13: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
                 id TEXT PRIMARY KEY,
@@ -245,7 +230,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 15: Store technical skills self-assessments
+        # Table 14: Store technical skills self-assessments
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS technical_self_assessments (
                 id TEXT PRIMARY KEY,
@@ -260,7 +245,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 16: Store student and user feedback
+        # Table 15: Store student and user feedback
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_feedback (
                 id TEXT PRIMARY KEY,
@@ -269,6 +254,22 @@ def init_db() -> None:
                 category TEXT NOT NULL,
                 comment TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table 17: Store recently viewed jobs by candidates (#201)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                location TEXT DEFAULT 'Remote',
+                salary_range TEXT,
+                apply_url TEXT,
+                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, job_id)
             )
         """)
         
@@ -290,6 +291,16 @@ def init_db() -> None:
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
 
+        # Schema migration for users table (#206)
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [col[1] for col in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        if "verification_token" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        if "token_created_at" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
@@ -305,6 +316,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -313,6 +325,13 @@ def init_db() -> None:
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
+        
+        # Run any pending versioned file-based migrations (#204)
+        try:
+            from utils.migrations import run_database_migrations
+            run_database_migrations(config.DATABASE_PATH)
+        except Exception as mig_err:
+            logger.warning(f"Note: Automatic migration runner skipped during init: {mig_err}")
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database: {str(e)}")
         raise e
@@ -2613,15 +2632,68 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
                 "has_resume_uploaded": 0
             }
 
-        data = dict(row)
-        if data.get("skills_json"):
-            try:
-                data["skills"] = json.loads(data["skills_json"])
-            except Exception:
-                data["skills"] = []
-        else:
-            data["skills"] = []
-        return data
+def save_skill_self_assessment(
+    student_id: str,
+    skill_name: str,
+    category: str,
+    proficiency_level: str,
+    years_experience: float = 0.0,
+    notes: str = ""
+) -> Dict[str, Any]:
+    """Saves or updates a student's technical skill self-assessment."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        record_id = str(uuid.uuid4())
+        normalized_student_id = (student_id or "default_student").strip()
+        normalized_skill = skill_name.strip()
+        normalized_category = (category or "General").strip()
+        valid_levels = ["Beginner", "Intermediate", "Advanced", "Expert"]
+        level = proficiency_level if proficiency_level in valid_levels else "Intermediate"
+
+        cursor.execute("""
+            INSERT INTO technical_self_assessments (
+                id, student_id, skill_name, category, proficiency_level, years_experience, notes, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, skill_name) DO UPDATE SET
+                category = excluded.category,
+                proficiency_level = excluded.proficiency_level,
+                years_experience = excluded.years_experience,
+                notes = excluded.notes,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            record_id,
+            normalized_student_id,
+            normalized_skill,
+            normalized_category,
+            level,
+            float(years_experience or 0.0),
+            notes.strip() if notes else ""
+        ))
+        conn.commit()
+
+        cursor.execute(
+            "SELECT * FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, normalized_skill)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all technical skill self-assessments for a student."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT * FROM technical_self_assessments
+            WHERE student_id = ?
+            ORDER BY category ASC, skill_name ASC
+        """, (normalized_student_id,))
+        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -3148,6 +3220,73 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
 
         summary["total_records"] = sum(summary["tables"].values())
         return summary
+# Email Verification Functions (#206)
+# ==============================================================================
+
+def generate_email_verification_token(user_id: str) -> str:
+    """
+    Generates and stores a unique email verification token for user registration (#206).
+    """
+    token = f"verify_{uuid.uuid4().hex}"
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users SET
+                verification_token = ?,
+                token_created_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (token, user_id))
+        conn.commit()
+        return token
+    except Exception as e:
+        logger.error(f"Error generating verification token for user {user_id}: {e}")
+def record_viewed_job(
+    student_id: str,
+    job_id: str,
+    company_name: str,
+    role_title: str,
+    location: str = "Remote",
+    salary_range: Optional[str] = None,
+    apply_url: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Records or bumps a job into the student's recently viewed list (#201).
+    Enforces per-student data isolation and updates viewed_at on revisit.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        rec_id = f"viewed-{uuid.uuid4().hex[:12]}"
+        s_id = (student_id or "default_student").strip()
+        j_id = str(job_id).strip()
+        comp = str(company_name).strip()
+        role = str(role_title).strip()
+        loc = (location or "Remote").strip()
+        sal = salary_range.strip() if salary_range else None
+        url = apply_url.strip() if apply_url else None
+
+        cursor.execute("""
+            INSERT INTO recently_viewed_jobs (
+                id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'subsec'))
+            ON CONFLICT(student_id, job_id) DO UPDATE SET
+                company_name = excluded.company_name,
+                role_title = excluded.role_title,
+                location = excluded.location,
+                salary_range = excluded.salary_range,
+                apply_url = excluded.apply_url,
+                viewed_at = datetime('now', 'subsec')
+        """, (rec_id, s_id, j_id, comp, role, loc, sal, url))
+        conn.commit()
+
+        cursor.execute("SELECT * FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, j_id))
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+    except Exception as e:
+        logger.error(f"Error recording recently viewed job {job_id} for student {student_id}: {e}")
+        conn.rollback()
+        raise e
     finally:
         conn.close()
 
@@ -3270,3 +3409,110 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         raise e
     finally:
         conn.close()
+def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Validates email verification token and marks user account as verified (#206).
+    Returns user dict on success, None on invalid or expired token.
+    """
+    if not token or not token.strip():
+        return None
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, name, email, is_verified, token_created_at
+            FROM users
+            WHERE verification_token = ?
+        """, (token.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        user = dict(row)
+        cursor.execute("""
+            UPDATE users SET
+                is_verified = 1,
+                verification_token = NULL
+            WHERE id = ?
+        """, (user["id"],))
+        conn.commit()
+        user["is_verified"] = 1
+        return user
+    except Exception as e:
+        logger.error(f"Error verifying user email token: {e}")
+        conn.rollback()
+        return None
+def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        lim = max(1, min(int(limit), 50)) if limit else 10
+        cursor.execute("""
+            SELECT id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
+            FROM recently_viewed_jobs
+            WHERE student_id = ?
+            ORDER BY viewed_at DESC, rowid DESC
+            LIMIT ?
+        """, (s_id, lim))
+        return [dict(r) for r in cursor.fetchall()]
+    except Exception as e:
+        logger.error(f"Error fetching recently viewed jobs for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
+    """
+    Removes a single viewed job entry from student history (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, str(job_id).strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error removing viewed job {job_id} for student {student_id}: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+
+def is_user_email_verified(user_id: str) -> bool:
+    """
+    Checks whether a user has verified their email address (#206).
+def clear_recently_viewed_jobs(student_id: str) -> int:
+    """
+    Clears all viewed job history for the given student (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_verified FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row["is_verified"])
+    except Exception as e:
+        logger.error(f"Error checking email verification status for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
+        conn.rollback()
+        return 0
+    finally:
+        conn.close()
+
