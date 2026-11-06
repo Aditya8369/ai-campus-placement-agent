@@ -219,9 +219,9 @@ def require_login():
 
 def _is_student_authorized(record_or_student_id) -> bool:
     """Verifies that the requested resource belongs to the currently logged in student."""
-    if app.config.get("TESTING"):
+    if app.config.get("TESTING") and not app.config.get("ENFORCE_STUDENT_ISOLATION"):
         return True
-    current_uid = flask_session.get("user_id")
+    current_uid = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
     if not current_uid:
         return False
     if isinstance(record_or_student_id, dict):
