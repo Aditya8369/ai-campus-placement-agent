@@ -121,6 +121,9 @@ from utils.report_generator import (
     generate_skills_gap_pdf,
     generate_interview_transcript_pdf,
     generate_interview_transcript_markdown,
+    safe_generate_report_with_recovery,
+    generate_fallback_pdf_report,
+    sanitize_report_data,
 )
 from utils.gemini import (
     AIAnalysisError,
@@ -1798,7 +1801,12 @@ def download_certificate_pdf(analysis_id: str):
         cert_path = os.path.join(config.REPORT_FOLDER, cert_filename)
 
         if not os.path.exists(cert_path):
-            generate_certificate_pdf(analysis_record, cert_path)
+            safe_generate_report_with_recovery(
+                generator_func=generate_certificate_pdf,
+                data=analysis_record,
+                output_path=cert_path,
+                report_type='Placement Readiness Certificate'
+            )
 
         company_clean = secure_filename(analysis_record.get("company_name", "General"))
         return send_file(
@@ -1828,9 +1836,11 @@ def download_pdf_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_pdf_report(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_pdf_report,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type='Placement Readiness Comprehensive Report'
             )
 
         return send_file(
@@ -1861,9 +1871,11 @@ def download_skills_gap_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_skills_gap_pdf(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_skills_gap_pdf,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type='Skills Gap and Upskilling Roadmap'
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
