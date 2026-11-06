@@ -75,6 +75,16 @@ from utils.database import (
     submit_user_feedback,
     get_user_feedback_list,
     get_feedback_metrics_summary,
+    save_coding_bookmark,
+    remove_coding_bookmark,
+    get_coding_bookmarks,
+    is_coding_bookmarked,
+    create_preparation_note,
+    get_preparation_notes,
+    get_preparation_note_by_id,
+    update_preparation_note,
+    delete_preparation_note,
+    get_note_category_counts,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -1568,6 +1578,74 @@ def skills_assessment_view():
         category_summary=category_summary,
         avg_score=avg_score,
         total_skills=len(assessments),
+        student_id=student_id
+    )
+
+
+@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
+def api_skills_assessment():
+    """
+    REST API endpoint for managing student technical skill self-assessments.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        items = get_student_skill_self_assessments(student_id)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(items),
+            "skills": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        skill_name = payload.get("skill_name", "").strip()
+        category = payload.get("category", "General").strip()
+        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
+        years_experience = payload.get("years_experience", 0.0)
+        notes = payload.get("notes", "").strip()
+
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+
+        try:
+            exp_val = float(years_experience)
+        except (ValueError, TypeError):
+            exp_val = 0.0
+
+        saved = save_skill_self_assessment(
+            student_id=student_id,
+            skill_name=skill_name,
+            category=category,
+            proficiency_level=proficiency_level,
+            years_experience=exp_val,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Skill '{skill_name}' assessment saved",
+            "skill": saved
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        skill_name = (payload.get("skill_name") or "").strip()
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
+        deleted = delete_skill_self_assessment(student_id, skill_name)
+        return jsonify({
+            "status": "success" if deleted else "not_found",
+            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
+        }), 200 if deleted else 404
+
+
 @app.route("/feedback", methods=["GET", "POST"])
 def feedback_view():
     """
@@ -1625,10 +1703,6 @@ def feedback_view():
     )
 
 
-@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
-def api_skills_assessment():
-    """
-    REST API endpoint for managing student technical skill self-assessments.
 @app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
     """
@@ -1643,12 +1717,6 @@ def api_feedback():
     )
 
     if request.method == "GET":
-        items = get_student_skill_self_assessments(student_id)
-        return jsonify({
-            "status": "success",
-            "student_id": student_id,
-            "total": len(items),
-            "skills": items
         cat = request.args.get("category")
         limit = request.args.get("limit", 50)
         try:
@@ -1666,45 +1734,6 @@ def api_feedback():
 
     if request.method == "POST":
         payload = request.get_json(silent=True) or request.form
-        skill_name = payload.get("skill_name", "").strip()
-        category = payload.get("category", "General").strip()
-        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
-        years_experience = payload.get("years_experience", 0.0)
-        notes = payload.get("notes", "").strip()
-
-        if not skill_name:
-            return jsonify({"status": "error", "message": "skill_name is required"}), 400
-
-        try:
-            exp_val = float(years_experience)
-        except (ValueError, TypeError):
-            exp_val = 0.0
-
-        saved = save_skill_self_assessment(
-            student_id=student_id,
-            skill_name=skill_name,
-            category=category,
-            proficiency_level=proficiency_level,
-            years_experience=exp_val,
-            notes=notes
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Skill '{skill_name}' assessment saved",
-            "skill": saved
-        }), 201
-
-    if request.method == "DELETE":
-        payload = request.get_json(silent=True) or request.args
-        skill_name = (payload.get("skill_name") or "").strip()
-        if not skill_name:
-            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
-        deleted = delete_skill_self_assessment(student_id, skill_name)
-        return jsonify({
-            "status": "success" if deleted else "not_found",
-            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
-        }), 200 if deleted else 404
-
         rating_raw = payload.get("rating", 5)
         category = payload.get("category", "General Experience")
         comment = payload.get("comment", "").strip()
@@ -1731,139 +1760,6 @@ def api_feedback():
             "message": "Feedback recorded successfully",
             "feedback": record
         }), 201
-
-
-
-@app.route("/interview/<analysis_id>/export")
-def export_interview_json(analysis_id: str):
-    """
-    Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
-    """
-    session_id = (
-        request.args.get("session_id")
-        or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-        or analysis_id
-    )
-    session = get_interview_session(session_id)
-    if not session and session_id != analysis_id:
-        session_id = analysis_id
-        session = get_interview_session(session_id)
-
-    analysis_record = get_analysis(analysis_id)
-
-    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
-        return jsonify({"error": "Interview session not found."}), 404
-
-    if not session:
-        flash("Interview session not found.", "error")
-        return redirect(url_for("index"))
-
-    company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-    answers_recorded = session.get("answers", [])
-    session_summary = live_interview_agent.calculate_session_summary(answers_recorded) if answers_recorded else {}
-
-    export_data = {
-        "analysis_id": analysis_id,
-        "company_name": company_name,
-        "completed": bool(session.get("completed", 0)),
-        "total_questions": len(session.get("questions", [])),
-        "answers_recorded": len(answers_recorded),
-        "session_summary": session_summary,
-        "transcript": answers_recorded,
-    }
-
-    response = jsonify(export_data)
-    safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_"))
-    response.headers["Content-Disposition"] = (
-        f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
-    )
-    return response
-
-
-@app.route("/interview/<analysis_id>/transcript")
-@app.route("/download/interview-transcript/<analysis_id>")
-def download_interview_transcript(analysis_id: str):
-    """
-    Exports the mock interview transcript, per-question scores, AI feedback,
-    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
-    Works after at least one question has been answered.
-    """
-    try:
-        session_id = (
-            request.args.get("session_id")
-            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-            or analysis_id
-        )
-        session = get_interview_session(session_id)
-        if not session and session_id != analysis_id:
-            session_id = analysis_id
-            session = get_interview_session(session_id)
-
-        if not session:
-            flash("Interview session not found.", "error")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        answers_recorded = session.get("answers", [])
-        if not answers_recorded:
-            if request.headers.get("Accept") == "application/json":
-                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
-            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        analysis_record = get_analysis(analysis_id)
-        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
-
-        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
-        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
-        export_format = request.args.get("format", "pdf").strip().lower()
-
-        if export_format in ("md", "markdown"):
-            md_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                md_content,
-                mimetype="text/markdown",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
-            )
-        elif export_format in ("txt", "text"):
-            txt_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                txt_content,
-                mimetype="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
-            )
-        elif export_format == "json":
-            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
-        else:
-            # Default PDF
-            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
-            pdf_filename = f"{filename_base}_{session_id}.pdf"
-            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
-
-            generate_interview_transcript_pdf(
-                session_data=session,
-                output_path=pdf_full_path,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return send_file(
-                pdf_full_path,
-                as_attachment=True,
-                download_name=f"{filename_base}.pdf",
-                mimetype="application/pdf",
-            )
-    except Exception as e:
-        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
-        flash(f"Error compiling interview transcript: {str(e)}", "error")
-        return redirect(url_for("interview", analysis_id=analysis_id))
 
 
 @app.route("/certificate/<analysis_id>")
@@ -2789,11 +2685,27 @@ def linkedin_analyzer():
 
 
 @app.route("/coding-practice", methods=["GET", "POST"])
+def _get_current_student_id() -> str:
+    """
+    Resolves the authenticated student's unique identifier from session (#235).
+    Guarantees strict privacy: students cannot access another student's private notes or data.
+    """
+    return (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+
 def coding_practice_view():
     """
-    Personalized Coding Practice Recommendation View and Endpoint (#147).
+    Personalized Coding Practice Recommendation View and Endpoint (#147, #234).
     Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
+    Includes student's bookmarked questions and bookmark IDs.
     """
+    student_id = _get_current_student_id()
+
     target_company = request.args.get("company", "").strip()
     difficulty = request.args.get("difficulty", "All").strip()
     raw_skills = request.args.get("skills", "").strip()
@@ -2812,10 +2724,15 @@ def coding_practice_view():
         limit=8
     )
 
+    bookmarked_problems = get_coding_bookmarks(student_id)
+    bookmarked_ids = {str(p.get("id")) for p in bookmarked_problems if p.get("id")}
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "data": recommendations_data
+            "data": recommendations_data,
+            "bookmarked_problems": bookmarked_problems,
+            "bookmarked_ids": list(bookmarked_ids)
         }), 200
 
     return render_template(
@@ -2823,7 +2740,9 @@ def coding_practice_view():
         data=recommendations_data,
         target_company=target_company,
         difficulty=difficulty,
-        skills_input=raw_skills
+        skills_input=raw_skills,
+        bookmarked_problems=bookmarked_problems,
+        bookmarked_ids=bookmarked_ids
     )
 
 
@@ -2847,6 +2766,112 @@ def api_coding_practice_recommendations():
         "success": True,
         "data": recommendations_data
     }), 200
+
+
+@app.route("/api/coding-practice/bookmarks", methods=["GET"])
+def api_get_coding_bookmarks():
+    """
+    Returns the student's bookmarked coding questions (#234).
+    """
+    student_id = _get_current_student_id()
+    bookmarks = get_coding_bookmarks(student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "count": len(bookmarks),
+        "bookmarks": bookmarks
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark", methods=["POST"])
+def api_save_coding_bookmark():
+    """
+    Bookmarks a coding practice question for a candidate (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    problem_data = {
+        "id": problem_id,
+        "title": payload.get("title") or payload.get("problem_title") or "Coding Question",
+        "difficulty": payload.get("difficulty") or payload.get("problem_difficulty") or "Medium",
+        "topic": payload.get("topic") or payload.get("problem_topic") or "DSA",
+        "platform": payload.get("platform") or payload.get("problem_platform") or "LeetCode",
+        "practice_url": payload.get("practice_url") or payload.get("practice_link") or payload.get("url") or "#",
+        "time_complexity": payload.get("time_complexity") or payload.get("problem_time") or "",
+        "space_complexity": payload.get("space_complexity") or payload.get("problem_space") or "",
+        "description": payload.get("description") or payload.get("problem_description") or "",
+        "companies": payload.get("companies") or []
+    }
+    if isinstance(problem_data["companies"], str):
+        problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+
+    saved = save_coding_bookmark(student_id, problem_id, problem_data)
+    return jsonify({
+        "success": saved,
+        "message": f"Problem '{problem_data['title']}' bookmarked successfully" if saved else "Failed to save bookmark",
+        "problem": problem_data
+    }), (200 if saved else 500)
+
+
+@app.route("/api/coding-practice/bookmark/<problem_id>", methods=["DELETE", "POST"])
+def api_remove_coding_bookmark(problem_id: str):
+    """
+    Removes a bookmarked coding question for a candidate (#234).
+    """
+    student_id = _get_current_student_id()
+    removed = remove_coding_bookmark(student_id, problem_id)
+    return jsonify({
+        "success": removed,
+        "message": "Bookmark removed successfully" if removed else "Bookmark not found or already removed"
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark/toggle", methods=["POST"])
+def api_toggle_coding_bookmark():
+    """
+    Toggles bookmark state for a coding question (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    already_bookmarked = is_coding_bookmarked(student_id, problem_id)
+    if already_bookmarked:
+        remove_coding_bookmark(student_id, problem_id)
+        return jsonify({
+            "success": True,
+            "bookmarked": False,
+            "message": "Bookmark removed"
+        }), 200
+    else:
+        problem_data = {
+            "id": problem_id,
+            "title": payload.get("title") or "Coding Question",
+            "difficulty": payload.get("difficulty") or "Medium",
+            "topic": payload.get("topic") or "DSA",
+            "platform": payload.get("platform") or "LeetCode",
+            "practice_url": payload.get("practice_url") or "#",
+            "time_complexity": payload.get("time_complexity") or "",
+            "space_complexity": payload.get("space_complexity") or "",
+            "description": payload.get("description") or "",
+            "companies": payload.get("companies") or []
+        }
+        if isinstance(problem_data["companies"], str):
+            problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+        saved = save_coding_bookmark(student_id, problem_id, problem_data)
+        return jsonify({
+            "success": saved,
+            "bookmarked": True,
+            "message": "Bookmark added"
+        }), 200
 
 
 @app.route("/my-reports")
@@ -3115,6 +3140,48 @@ def notification_settings_view():
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "preferences": prefs
+        }), 200
+
+    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
+
+
+@app.route("/api/notifications/remind-interview", methods=["POST"])
+def api_send_interview_reminder():
+    """
+    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or "default_student"
+    company_name = payload.get("company_name", "").strip()
+    round_type = payload.get("round_type", "Technical Round").strip()
+    scheduled_time = payload.get("scheduled_time", "").strip()
+    interview_link = payload.get("interview_link", "").strip()
+
+    if not company_name or not scheduled_time:
+        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
+
+    prefs = get_email_notification_preferences(student_id)
+    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
+        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
+
+    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
+    sent = email_service.send_interview_reminder_email(
+        recipient_email=recipient_email,
+        student_name=student_id,
+        company_name=company_name,
+        interview_round=round_type,
+        scheduled_time=scheduled_time,
+        interview_link=interview_link or None
+    )
+
+    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+
+
 @app.route("/interview-experiences", methods=["GET", "POST"])
 def interview_experiences_view():
     """
@@ -3202,6 +3269,24 @@ def interview_experiences_view():
         company_filter=company_filter,
         category_filter=category_filter,
         search_query=search_query,
+        student_id=student_id
+    )
+
+
+@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
+def api_report_interview_experience(exp_id: str):
+    """
+    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
+    """
+    payload = request.get_json(silent=True) or {}
+    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
+    reported = report_interview_experience(exp_id=exp_id, reason=reason)
+    return jsonify({
+        "success": reported,
+        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
+    }), (200 if reported else 404)
+
+
 @app.route("/calendar", methods=["GET", "POST"])
 def placement_calendar_view():
     """
@@ -3249,85 +3334,10 @@ def placement_calendar_view():
     interviews_count = sum(1 for e in all_events if e.get("event_type") == "interview")
     tasks_count = sum(1 for e in all_events if e.get("event_type") == "preparation")
     deadlines_count = sum(1 for e in all_events if e.get("event_type") == "deadline")
-@app.route("/company-checklist", methods=["GET", "POST"])
-def company_checklist_view():
-    """
-    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
-    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-    target_company = request.args.get("company", "Google").strip()
-
-    available_companies = get_available_companies()
-    if not available_companies:
-        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
-
-    if target_company not in available_companies and target_company != "Google":
-        available_companies.insert(0, target_company)
-
-    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
-@app.route("/coding-submissions")
-def coding_submissions_view():
-    """
-    Coding Assessment Submission History View (#194).
-    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-    question_filter = request.args.get("question", "").strip()
-    language_filter = request.args.get("language", "All").strip()
-    status_filter = request.args.get("status", "All").strip()
-
-    submissions = get_coding_submissions(
-        student_id=student_id,
-        question_title=question_filter or None,
-        language_filter=language_filter,
-        status_filter=status_filter
-    )
-
-    all_user_subs = get_coding_submissions(student_id=student_id)
-    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
-    failed_count = len(all_user_subs) - passed_count
-    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "preferences": prefs
-        }), 200
-
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
-
-
-@app.route("/api/notifications/remind-interview", methods=["POST"])
-def api_send_interview_reminder():
-    """
-    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
-    """
-    payload = request.get_json(silent=True) or {}
-    student_id = payload.get("student_id") or "default_student"
-    company_name = payload.get("company_name", "").strip()
-    round_type = payload.get("round_type", "Technical Round").strip()
-    scheduled_time = payload.get("scheduled_time", "").strip()
-    interview_link = payload.get("interview_link", "").strip()
-
-    if not company_name or not scheduled_time:
-        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
-
-    prefs = get_email_notification_preferences(student_id)
-    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
-        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
-
-    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
-    sent = email_service.send_interview_reminder_email(
-        recipient_email=recipient_email,
-        student_name=student_id,
-        company_name=company_name,
-        interview_round=round_type,
-        scheduled_time=scheduled_time,
-        interview_link=interview_link or None
-    )
-
-    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
             "month": month_filter,
             "count": len(events),
             "events": events
@@ -3384,6 +3394,29 @@ def api_manage_calendar_event(event_id: str):
         completed=completed
     )
     return jsonify({"success": updated}), (200 if updated else 404)
+
+
+@app.route("/company-checklist", methods=["GET", "POST"])
+def company_checklist_view():
+    """
+    Company-Wise Placement Preparation Checklist View and Task Updater (#192).
+    Provides structured readiness checklists across Aptitude, Coding, Technical, and HR.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    target_company = request.args.get("company", "Google").strip()
+
+    available_companies = get_available_companies()
+    if not available_companies:
+        available_companies = ["Google", "Amazon", "Microsoft", "Meta", "TCS", "Infosys", "Wipro", "Cognizant", "Adobe"]
+
+    if target_company not in available_companies and target_company != "Google":
+        available_companies.insert(0, target_company)
+
+    checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
             "data": checklist_info
         }), 200
 
@@ -3396,18 +3429,6 @@ def api_manage_calendar_event(event_id: str):
     )
 
 
-@app.route("/api/interview-experiences/<exp_id>/report", methods=["POST"])
-def api_report_interview_experience(exp_id: str):
-    """
-    Moderation reporting endpoint for misleading or inappropriate interview posts (#189).
-    """
-    payload = request.get_json(silent=True) or {}
-    reason = payload.get("reason") or request.form.get("reason", "Inappropriate or misleading submission.")
-    reported = report_interview_experience(exp_id=exp_id, reason=reason)
-    return jsonify({
-        "success": reported,
-        "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
-    }), (200 if reported else 404)
 @app.route("/api/company-checklist/toggle-task", methods=["POST"])
 def api_toggle_checklist_task():
     """
@@ -3455,6 +3476,35 @@ def api_reset_checklist():
         "success": True,
         "message": f"Checklist for {company_name} reset successfully.",
         "data": refreshed
+    }), 200
+
+
+@app.route("/coding-submissions")
+def coding_submissions_view():
+    """
+    Coding Assessment Submission History View (#194).
+    Displays student previous attempts, question names, test results, and attempt-over-attempt improvements.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    question_filter = request.args.get("question", "").strip()
+    language_filter = request.args.get("language", "All").strip()
+    status_filter = request.args.get("status", "All").strip()
+
+    submissions = get_coding_submissions(
+        student_id=student_id,
+        question_title=question_filter or None,
+        language_filter=language_filter,
+        status_filter=status_filter
+    )
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
             "count": len(submissions),
             "submissions": submissions
         }), 200
@@ -3487,6 +3537,195 @@ def api_coding_submissions():
         "count": len(submissions),
         "submissions": submissions
     }), 200
+
+
+# ==============================================================================
+# Interview Preparation Notes (#235)
+# Personal space for candidates to create, organize, edit, and categorize notes.
+# Strictly enforces per-student data isolation.
+# ==============================================================================
+
+NOTE_CATEGORIES = ["Technical", "HR", "DSA", "Company Preparation"]
+
+
+@app.route("/notes", methods=["GET", "POST"])
+def preparation_notes_view():
+    """
+    Personal Interview Preparation Notes View (#235).
+    Provides students with an organized space to create, filter, edit, and review notes.
+    Guarantees strict candidate privacy: one student cannot view another's notes.
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        category = request.form.get("category", "Technical").strip()
+
+        if not title:
+            flash("Note title is required.", "danger")
+        elif not description:
+            flash("Note description or content cannot be empty.", "danger")
+        else:
+            created = create_preparation_note(
+                student_id=student_id,
+                title=title,
+                description=description,
+                category=category
+            )
+            flash(f"Note '{title}' created successfully!", "success")
+            return redirect(url_for("preparation_notes_view", category=category))
+
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    notes = get_preparation_notes(
+        student_id=student_id,
+        category_filter=category_filter if category_filter != "All" else None,
+        search_query=search_query or None
+    )
+    category_counts = get_note_category_counts(student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    return render_template(
+        "notes.html",
+        notes=notes,
+        category_counts=category_counts,
+        current_category=category_filter,
+        search_query=search_query,
+        categories=NOTE_CATEGORIES,
+        student_id=student_id
+    )
+
+
+@app.route("/api/notes", methods=["GET", "POST"])
+def api_preparation_notes():
+    """
+    REST API endpoint to fetch all notes or create a new note for the logged in student (#235).
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "GET":
+        category_filter = request.args.get("category", "All").strip()
+        search_query = request.args.get("search", "").strip()
+        notes = get_preparation_notes(
+            student_id=student_id,
+            category_filter=category_filter if category_filter != "All" else None,
+            search_query=search_query or None
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or "").strip()
+        description = (payload.get("description") or "").strip()
+        category = (payload.get("category") or "Technical").strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title is required"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description is required"}), 400
+
+        note = create_preparation_note(
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "message": "Note created successfully",
+            "note": note,
+            "category_counts": category_counts
+        }), 201
+
+
+@app.route("/api/notes/<note_id>", methods=["GET", "PUT", "POST", "DELETE"])
+def api_preparation_note_item(note_id: str):
+    """
+    REST API endpoint to retrieve, update, or delete a specific note (#235).
+    Enforces strict candidate privacy: checks note ownership against logged in student.
+    """
+    student_id = _get_current_student_id()
+
+    existing_note = get_preparation_note_by_id(note_id, student_id)
+    if not existing_note:
+        return jsonify({
+            "success": False,
+            "error": "Note not found or access denied."
+        }), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "success": True,
+            "note": existing_note
+        }), 200
+
+    if request.method in ["PUT", "POST"]:
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or existing_note["title"]).strip()
+        description = (payload.get("description") or existing_note["description"]).strip()
+        category = (payload.get("category") or existing_note["category"]).strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title cannot be empty"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description cannot be empty"}), 400
+
+        updated = update_preparation_note(
+            note_id=note_id,
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        if updated:
+            refreshed = get_preparation_note_by_id(note_id, student_id)
+            category_counts = get_note_category_counts(student_id)
+            return jsonify({
+                "success": True,
+                "message": "Note updated successfully",
+                "note": refreshed,
+                "category_counts": category_counts
+            }), 200
+        return jsonify({"success": False, "error": "Failed to update note"}), 500
+
+    if request.method == "DELETE":
+        deleted = delete_preparation_note(note_id, student_id)
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": deleted,
+            "message": "Note deleted successfully" if deleted else "Note not found",
+            "category_counts": category_counts
+        }), 200 if deleted else 404
+
+
+@app.route("/api/notes/<note_id>/delete", methods=["POST"])
+def api_delete_preparation_note_form(note_id: str):
+    """
+    Form-friendly deletion endpoint for non-JS browser fallbacks (#235).
+    """
+    student_id = _get_current_student_id()
+    deleted = delete_preparation_note(note_id, student_id)
+    if deleted:
+        flash("Note deleted successfully.", "success")
+    else:
+        flash("Note could not be deleted or access was denied.", "danger")
+    return redirect(url_for("preparation_notes_view"))
 
 
 if __name__ == "__main__":
