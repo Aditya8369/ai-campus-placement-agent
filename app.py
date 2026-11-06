@@ -1888,139 +1888,6 @@ def api_feedback():
         }), 201
 
 
-
-@app.route("/interview/<analysis_id>/export")
-def export_interview_json(analysis_id: str):
-    """
-    Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
-    """
-    session_id = (
-        request.args.get("session_id")
-        or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-        or analysis_id
-    )
-    session = get_interview_session(session_id)
-    if not session and session_id != analysis_id:
-        session_id = analysis_id
-        session = get_interview_session(session_id)
-
-    analysis_record = get_analysis(analysis_id)
-
-    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
-        return jsonify({"error": "Interview session not found."}), 404
-
-    if not session:
-        flash("Interview session not found.", "error")
-        return redirect(url_for("index"))
-
-    company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-    answers_recorded = session.get("answers", [])
-    session_summary = live_interview_agent.calculate_session_summary(answers_recorded) if answers_recorded else {}
-
-    export_data = {
-        "analysis_id": analysis_id,
-        "company_name": company_name,
-        "completed": bool(session.get("completed", 0)),
-        "total_questions": len(session.get("questions", [])),
-        "answers_recorded": len(answers_recorded),
-        "session_summary": session_summary,
-        "transcript": answers_recorded,
-    }
-
-    response = jsonify(export_data)
-    safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_"))
-    response.headers["Content-Disposition"] = (
-        f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
-    )
-    return response
-
-
-@app.route("/interview/<analysis_id>/transcript")
-@app.route("/download/interview-transcript/<analysis_id>")
-def download_interview_transcript(analysis_id: str):
-    """
-    Exports the mock interview transcript, per-question scores, AI feedback,
-    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
-    Works after at least one question has been answered.
-    """
-    try:
-        session_id = (
-            request.args.get("session_id")
-            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-            or analysis_id
-        )
-        session = get_interview_session(session_id)
-        if not session and session_id != analysis_id:
-            session_id = analysis_id
-            session = get_interview_session(session_id)
-
-        if not session:
-            flash("Interview session not found.", "error")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        answers_recorded = session.get("answers", [])
-        if not answers_recorded:
-            if request.headers.get("Accept") == "application/json":
-                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
-            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        analysis_record = get_analysis(analysis_id)
-        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
-
-        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
-        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
-        export_format = request.args.get("format", "pdf").strip().lower()
-
-        if export_format in ("md", "markdown"):
-            md_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                md_content,
-                mimetype="text/markdown",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
-            )
-        elif export_format in ("txt", "text"):
-            txt_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                txt_content,
-                mimetype="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
-            )
-        elif export_format == "json":
-            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
-        else:
-            # Default PDF
-            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
-            pdf_filename = f"{filename_base}_{session_id}.pdf"
-            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
-
-            generate_interview_transcript_pdf(
-                session_data=session,
-                output_path=pdf_full_path,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return send_file(
-                pdf_full_path,
-                as_attachment=True,
-                download_name=f"{filename_base}.pdf",
-                mimetype="application/pdf",
-            )
-    except Exception as e:
-        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
-        flash(f"Error compiling interview transcript: {str(e)}", "error")
-        return redirect(url_for("interview", analysis_id=analysis_id))
-
-
 @app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
@@ -2967,11 +2834,27 @@ def linkedin_analyzer():
 
 
 @app.route("/coding-practice", methods=["GET", "POST"])
+def _get_current_student_id() -> str:
+    """
+    Resolves the authenticated student's unique identifier from session (#235).
+    Guarantees strict privacy: students cannot access another student's private notes or data.
+    """
+    return (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+
 def coding_practice_view():
     """
-    Personalized Coding Practice Recommendation View and Endpoint (#147).
+    Personalized Coding Practice Recommendation View and Endpoint (#147, #234).
     Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
+    Includes student's bookmarked questions and bookmark IDs.
     """
+    student_id = _get_current_student_id()
+
     target_company = request.args.get("company", "").strip()
     difficulty = request.args.get("difficulty", "All").strip()
     raw_skills = request.args.get("skills", "").strip()
@@ -2990,10 +2873,15 @@ def coding_practice_view():
         limit=8
     )
 
+    bookmarked_problems = get_coding_bookmarks(student_id)
+    bookmarked_ids = {str(p.get("id")) for p in bookmarked_problems if p.get("id")}
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "data": recommendations_data
+            "data": recommendations_data,
+            "bookmarked_problems": bookmarked_problems,
+            "bookmarked_ids": list(bookmarked_ids)
         }), 200
 
     return render_template(
@@ -3001,7 +2889,9 @@ def coding_practice_view():
         data=recommendations_data,
         target_company=target_company,
         difficulty=difficulty,
-        skills_input=raw_skills
+        skills_input=raw_skills,
+        bookmarked_problems=bookmarked_problems,
+        bookmarked_ids=bookmarked_ids
     )
 
 
@@ -3025,6 +2915,112 @@ def api_coding_practice_recommendations():
         "success": True,
         "data": recommendations_data
     }), 200
+
+
+@app.route("/api/coding-practice/bookmarks", methods=["GET"])
+def api_get_coding_bookmarks():
+    """
+    Returns the student's bookmarked coding questions (#234).
+    """
+    student_id = _get_current_student_id()
+    bookmarks = get_coding_bookmarks(student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "count": len(bookmarks),
+        "bookmarks": bookmarks
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark", methods=["POST"])
+def api_save_coding_bookmark():
+    """
+    Bookmarks a coding practice question for a candidate (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    problem_data = {
+        "id": problem_id,
+        "title": payload.get("title") or payload.get("problem_title") or "Coding Question",
+        "difficulty": payload.get("difficulty") or payload.get("problem_difficulty") or "Medium",
+        "topic": payload.get("topic") or payload.get("problem_topic") or "DSA",
+        "platform": payload.get("platform") or payload.get("problem_platform") or "LeetCode",
+        "practice_url": payload.get("practice_url") or payload.get("practice_link") or payload.get("url") or "#",
+        "time_complexity": payload.get("time_complexity") or payload.get("problem_time") or "",
+        "space_complexity": payload.get("space_complexity") or payload.get("problem_space") or "",
+        "description": payload.get("description") or payload.get("problem_description") or "",
+        "companies": payload.get("companies") or []
+    }
+    if isinstance(problem_data["companies"], str):
+        problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+
+    saved = save_coding_bookmark(student_id, problem_id, problem_data)
+    return jsonify({
+        "success": saved,
+        "message": f"Problem '{problem_data['title']}' bookmarked successfully" if saved else "Failed to save bookmark",
+        "problem": problem_data
+    }), (200 if saved else 500)
+
+
+@app.route("/api/coding-practice/bookmark/<problem_id>", methods=["DELETE", "POST"])
+def api_remove_coding_bookmark(problem_id: str):
+    """
+    Removes a bookmarked coding question for a candidate (#234).
+    """
+    student_id = _get_current_student_id()
+    removed = remove_coding_bookmark(student_id, problem_id)
+    return jsonify({
+        "success": removed,
+        "message": "Bookmark removed successfully" if removed else "Bookmark not found or already removed"
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark/toggle", methods=["POST"])
+def api_toggle_coding_bookmark():
+    """
+    Toggles bookmark state for a coding question (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    already_bookmarked = is_coding_bookmarked(student_id, problem_id)
+    if already_bookmarked:
+        remove_coding_bookmark(student_id, problem_id)
+        return jsonify({
+            "success": True,
+            "bookmarked": False,
+            "message": "Bookmark removed"
+        }), 200
+    else:
+        problem_data = {
+            "id": problem_id,
+            "title": payload.get("title") or "Coding Question",
+            "difficulty": payload.get("difficulty") or "Medium",
+            "topic": payload.get("topic") or "DSA",
+            "platform": payload.get("platform") or "LeetCode",
+            "practice_url": payload.get("practice_url") or "#",
+            "time_complexity": payload.get("time_complexity") or "",
+            "space_complexity": payload.get("space_complexity") or "",
+            "description": payload.get("description") or "",
+            "companies": payload.get("companies") or []
+        }
+        if isinstance(problem_data["companies"], str):
+            problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+        saved = save_coding_bookmark(student_id, problem_id, problem_data)
+        return jsonify({
+            "success": saved,
+            "bookmarked": True,
+            "message": "Bookmark added"
+        }), 200
 
 
 @app.route("/my-reports")

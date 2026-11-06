@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interview Preparation Notes - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light notes-page">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/notes" class="btn btn-warning text-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-note-sticky me-1"></i> My Notes (<span id="navNotesCount">{{ category_counts['All'] if category_counts else (notes|length) }}</span>)
+        </a>
+        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-code me-1"></i> Practice DSA
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Flash message alerts -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="row mb-3">
+          <div class="col-12">
+            {% for category, message in messages %}
+              <div class="alert alert-{{ 'danger' if category == 'danger' or category == 'error' else category }} alert-dismissible fade show rounded-3 shadow-sm" role="alert">
+                <i class="fa-solid {{ 'fa-circle-check text-success' if category == 'success' else 'fa-circle-exclamation text-danger' }} me-2"></i>
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Page Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-note-sticky text-warning me-2"></i>Interview Preparation Notes
+        </h2>
+        <p class="text-muted mb-0">Your private workspace to record concepts, behavioral STAR stories, algorithmic tricks, and target company insights.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#createNoteModal" id="btnOpenCreateModal">
+          <i class="fa-solid fa-plus me-1"></i> Create Note
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls Bar -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 mb-4">
+      <div class="row g-3 align-items-center justify-content-between">
+        <!-- Category Filter Pills -->
+        <div class="col-lg-8">
+          <div class="d-flex flex-wrap gap-2" id="categoryFilterContainer">
+            <a href="/notes?category=All{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-dark' if current_category == 'All' or not current_category else 'btn-outline-secondary' }}"
+               data-category="All">
+              <i class="fa-solid fa-layer-group me-1"></i> All Notes
+              <span class="badge {{ 'bg-light text-dark' if current_category == 'All' or not current_category else 'bg-secondary' }} rounded-pill ms-1" id="badgeCountAll">
+                {{ category_counts['All'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/notes?category=Technical{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-primary' if current_category == 'Technical' else 'btn-outline-primary' }}"
+               data-category="Technical">
+              <i class="fa-solid fa-laptop-code me-1"></i> Technical
+              <span class="badge {{ 'bg-light text-primary' if current_category == 'Technical' else 'bg-primary-subtle text-primary' }} rounded-pill ms-1" id="badgeCountTechnical">
+                {{ category_counts['Technical'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/notes?category=HR{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-success' if current_category == 'HR' else 'btn-outline-success' }}"
+               data-category="HR">
+              <i class="fa-solid fa-users me-1"></i> HR &amp; STAR
+              <span class="badge {{ 'bg-light text-success' if current_category == 'HR' else 'bg-success-subtle text-success' }} rounded-pill ms-1" id="badgeCountHR">
+                {{ category_counts['HR'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/notes?category=DSA{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-info text-white' if current_category == 'DSA' else 'btn-outline-info' }}"
+               data-category="DSA">
+              <i class="fa-solid fa-code me-1"></i> DSA
+              <span class="badge {{ 'bg-light text-info' if current_category == 'DSA' else 'bg-info-subtle text-info' }} rounded-pill ms-1" id="badgeCountDSA">
+                {{ category_counts['DSA'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/notes?category=Company+Preparation{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-warning text-dark' if current_category == 'Company Preparation' else 'btn-outline-warning' }}"
+               data-category="Company Preparation">
+              <i class="fa-solid fa-building me-1"></i> Company Preparation
+              <span class="badge {{ 'bg-light text-dark' if current_category == 'Company Preparation' else 'bg-warning-subtle text-dark' }} rounded-pill ms-1" id="badgeCountCompany">
+                {{ category_counts['Company Preparation'] or 0 }}
+              </span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Real-time Search Box -->
+        <div class="col-lg-4">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-end-0 rounded-start-pill ps-3 text-muted">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </span>
+            <input type="text" class="form-control border-start-0 rounded-end-pill pe-3" id="noteSearchInput" 
+                   placeholder="Search title or content..." value="{{ search_query or '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State (Shown when no notes match) -->
+    <div id="noNotesMessage" class="text-center py-5 bg-white rounded-4 border border-dashed shadow-sm {% if notes and notes|length > 0 %}d-none{% endif %}">
+      <div class="mb-3">
+        <i class="fa-regular fa-note-sticky fa-3x text-warning opacity-75"></i>
+      </div>
+      <h5 class="fw-bold text-dark mb-1">No preparation notes found</h5>
+      <p class="text-muted small mb-3">Create your personal notes to organize key interview frameworks, algorithmic patterns, and company questions.</p>
+      <button type="button" class="btn btn-primary btn-sm rounded-pill px-4" data-bs-toggle="modal" data-bs-target="#createNoteModal">
+        <i class="fa-solid fa-plus me-1"></i> Create Your First Note
+      </button>
+    </div>
+
+    <!-- Notes Grid Container -->
+    <div id="notesGrid" class="row g-4 {% if not notes or notes|length == 0 %}d-none{% endif %}">
+      {% for note in notes %}
+      <div class="col-md-6 col-lg-4 note-item-col" 
+           id="note-card-{{ note.id }}"
+           data-note-id="{{ note.id }}"
+           data-category="{{ note.category }}"
+           data-title="{{ note.title }}"
+           data-description="{{ note.description }}">
+        <div class="card border-0 shadow-sm rounded-4 h-100 note-card p-4 d-flex flex-column justify-content-between position-relative">
+          <div>
+            <!-- Note Header -->
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="badge rounded-pill note-category-badge badge-note-{{ note.category|lower|replace(' ', '-') }}">
+                {% if note.category == 'Technical' %}
+                  <i class="fa-solid fa-laptop-code me-1"></i> Technical
+                {% elif note.category == 'HR' %}
+                  <i class="fa-solid fa-users me-1"></i> HR &amp; STAR
+                {% elif note.category == 'DSA' %}
+                  <i class="fa-solid fa-code me-1"></i> DSA
+                {% elif note.category == 'Company Preparation' %}
+                  <i class="fa-solid fa-building me-1"></i> Company Prep
+                {% else %}
+                  <i class="fa-solid fa-tag me-1"></i> {{ note.category }}
+                {% endif %}
+              </span>
+
+              <!-- Action buttons -->
+              <div class="d-flex align-items-center gap-1">
+                <button type="button" 
+                        class="btn btn-sm btn-outline-secondary btn-edit-note rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
+                        data-note-id="{{ note.id }}"
+                        data-note-title="{{ note.title }}"
+                        data-note-category="{{ note.category }}"
+                        data-note-description="{{ note.description }}"
+                        title="Edit Note"
+                        aria-label="Edit {{ note.title }}"
+                        style="width: 34px; height: 34px;">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button type="button" 
+                        class="btn btn-sm btn-outline-danger btn-delete-note rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
+                        data-note-id="{{ note.id }}"
+                        data-note-title="{{ note.title }}"
+                        title="Delete Note"
+                        aria-label="Delete {{ note.title }}"
+                        style="width: 34px; height: 34px;">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Title -->
+            <h5 class="fw-bold text-dark note-title mb-2 mt-1">{{ note.title }}</h5>
+
+            <!-- Description / Content -->
+            <div class="note-description text-secondary small mb-3">
+              {{ note.description }}
+            </div>
+          </div>
+
+          <!-- Note Footer -->
+          <div class="pt-3 border-top d-flex justify-content-between align-items-center text-muted small">
+            <span class="note-timestamp" title="Created: {{ note.created_at }}">
+              <i class="fa-solid fa-clock me-1"></i> {{ (note.updated_at or note.created_at)[:10] }}
+            </span>
+            <span class="badge bg-light text-muted border rounded-pill px-2 py-1 small">
+              Private Note
+            </span>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Create Note Modal -->
+  <div class="modal fade" id="createNoteModal" tabindex="-1" aria-labelledby="createNoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-0 shadow-lg rounded-4">
+        <form id="createNoteForm" method="POST" action="/notes">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="createNoteModalLabel">
+              <i class="fa-solid fa-plus-circle text-primary me-2"></i>Create Preparation Note
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label for="createNoteTitle" class="form-label fw-semibold">Note Title <span class="text-danger">*</span></label>
+                <input type="text" class="form-control rounded-3" id="createNoteTitle" name="title" required 
+                       placeholder="e.g. Amazon Leadership Principles &amp; Behavioral STAR Stories">
+              </div>
+              <div class="col-md-4">
+                <label for="createNoteCategory" class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                <select class="form-select rounded-3" id="createNoteCategory" name="category" required>
+                  <option value="Technical">Technical</option>
+                  <option value="HR">HR</option>
+                  <option value="DSA">DSA</option>
+                  <option value="Company Preparation">Company Preparation</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label for="createNoteDescription" class="form-label fw-semibold">Description / Key Material <span class="text-danger">*</span></label>
+                <textarea class="form-control rounded-3 font-monospace" id="createNoteDescription" name="description" rows="7" required
+                          placeholder="Write your study notes, key algorithms, frameworks, edge cases, formulas, or project talking points..."></textarea>
+                <div class="form-text">Preserves formatting, bullet points, and code snippets. Private to your account.</div>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary rounded-pill px-4" id="btnSubmitCreateNote">
+              <i class="fa-solid fa-check me-1"></i> Save Note
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit Note Modal -->
+  <div class="modal fade" id="editNoteModal" tabindex="-1" aria-labelledby="editNoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content border-0 shadow-lg rounded-4">
+        <form id="editNoteForm">
+          <input type="hidden" id="editNoteId" name="note_id">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="editNoteModalLabel">
+              <i class="fa-solid fa-pen-to-square text-warning me-2"></i>Edit Preparation Note
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label for="editNoteTitle" class="form-label fw-semibold">Note Title <span class="text-danger">*</span></label>
+                <input type="text" class="form-control rounded-3" id="editNoteTitle" name="title" required>
+              </div>
+              <div class="col-md-4">
+                <label for="editNoteCategory" class="form-label fw-semibold">Category <span class="text-danger">*</span></label>
+                <select class="form-select rounded-3" id="editNoteCategory" name="category" required>
+                  <option value="Technical">Technical</option>
+                  <option value="HR">HR</option>
+                  <option value="DSA">DSA</option>
+                  <option value="Company Preparation">Company Preparation</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <label for="editNoteDescription" class="form-label fw-semibold">Description / Key Material <span class="text-danger">*</span></label>
+                <textarea class="form-control rounded-3 font-monospace" id="editNoteDescription" name="description" rows="7" required></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-warning rounded-pill px-4" id="btnSubmitEditNote">
+              <i class="fa-solid fa-save me-1"></i> Update Note
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Note Modal -->
+  <div class="modal fade" id="deleteNoteModal" tabindex="-1" aria-labelledby="deleteNoteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow-lg rounded-4">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold text-danger" id="deleteNoteModalLabel">
+            <i class="fa-solid fa-triangle-exclamation me-2"></i>Delete Preparation Note
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-3">
+          <p class="text-secondary mb-1">Are you sure you want to delete this note?</p>
+          <div class="p-3 bg-light rounded-3 border fw-semibold text-dark my-2" id="deleteNoteTitleDisplay">
+            Note Title
+          </div>
+          <p class="text-muted small mb-0">This action cannot be undone. Only you can delete your private notes.</p>
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-danger rounded-pill px-4" id="btnConfirmDeleteNote">
+            <i class="fa-solid fa-trash-can me-1"></i> Delete Note
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1100;">
+    <div id="noteToast" class="toast align-items-center text-bg-dark border-0 rounded-3 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body d-flex align-items-center">
+          <i id="noteToastIcon" class="fa-solid fa-note-sticky text-warning me-2 fs-5"></i>
+          <span id="noteToastMsg">Action completed!</span>
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>
