@@ -5253,11 +5253,27 @@ def linkedin_analyzer():
 
 
 @app.route("/coding-practice", methods=["GET", "POST"])
+def _get_current_student_id() -> str:
+    """
+    Resolves the authenticated student's unique identifier from session (#235).
+    Guarantees strict privacy: students cannot access another student's private notes or data.
+    """
+    return (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+
 def coding_practice_view():
     """
-    Personalized Coding Practice Recommendation View and Endpoint (#147).
+    Personalized Coding Practice Recommendation View and Endpoint (#147, #234).
     Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
+    Includes student's bookmarked questions and bookmark IDs.
     """
+    student_id = _get_current_student_id()
+
     target_company = request.args.get("company", "").strip()
     difficulty = request.args.get("difficulty", "All").strip()
     raw_skills = request.args.get("skills", "").strip()
@@ -5276,10 +5292,15 @@ def coding_practice_view():
         limit=8
     )
 
+    bookmarked_problems = get_coding_bookmarks(student_id)
+    bookmarked_ids = {str(p.get("id")) for p in bookmarked_problems if p.get("id")}
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "data": recommendations_data
+            "data": recommendations_data,
+            "bookmarked_problems": bookmarked_problems,
+            "bookmarked_ids": list(bookmarked_ids)
         }), 200
 
     return render_template(
@@ -5287,7 +5308,9 @@ def coding_practice_view():
         data=recommendations_data,
         target_company=target_company,
         difficulty=difficulty,
-        skills_input=raw_skills
+        skills_input=raw_skills,
+        bookmarked_problems=bookmarked_problems,
+        bookmarked_ids=bookmarked_ids
     )
 
 
@@ -5311,6 +5334,112 @@ def api_coding_practice_recommendations():
         "success": True,
         "data": recommendations_data
     }), 200
+
+
+@app.route("/api/coding-practice/bookmarks", methods=["GET"])
+def api_get_coding_bookmarks():
+    """
+    Returns the student's bookmarked coding questions (#234).
+    """
+    student_id = _get_current_student_id()
+    bookmarks = get_coding_bookmarks(student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "count": len(bookmarks),
+        "bookmarks": bookmarks
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark", methods=["POST"])
+def api_save_coding_bookmark():
+    """
+    Bookmarks a coding practice question for a candidate (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    problem_data = {
+        "id": problem_id,
+        "title": payload.get("title") or payload.get("problem_title") or "Coding Question",
+        "difficulty": payload.get("difficulty") or payload.get("problem_difficulty") or "Medium",
+        "topic": payload.get("topic") or payload.get("problem_topic") or "DSA",
+        "platform": payload.get("platform") or payload.get("problem_platform") or "LeetCode",
+        "practice_url": payload.get("practice_url") or payload.get("practice_link") or payload.get("url") or "#",
+        "time_complexity": payload.get("time_complexity") or payload.get("problem_time") or "",
+        "space_complexity": payload.get("space_complexity") or payload.get("problem_space") or "",
+        "description": payload.get("description") or payload.get("problem_description") or "",
+        "companies": payload.get("companies") or []
+    }
+    if isinstance(problem_data["companies"], str):
+        problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+
+    saved = save_coding_bookmark(student_id, problem_id, problem_data)
+    return jsonify({
+        "success": saved,
+        "message": f"Problem '{problem_data['title']}' bookmarked successfully" if saved else "Failed to save bookmark",
+        "problem": problem_data
+    }), (200 if saved else 500)
+
+
+@app.route("/api/coding-practice/bookmark/<problem_id>", methods=["DELETE", "POST"])
+def api_remove_coding_bookmark(problem_id: str):
+    """
+    Removes a bookmarked coding question for a candidate (#234).
+    """
+    student_id = _get_current_student_id()
+    removed = remove_coding_bookmark(student_id, problem_id)
+    return jsonify({
+        "success": removed,
+        "message": "Bookmark removed successfully" if removed else "Bookmark not found or already removed"
+    }), 200
+
+
+@app.route("/api/coding-practice/bookmark/toggle", methods=["POST"])
+def api_toggle_coding_bookmark():
+    """
+    Toggles bookmark state for a coding question (#234).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
+
+    if not problem_id:
+        return jsonify({"success": False, "error": "Problem ID is required"}), 400
+
+    already_bookmarked = is_coding_bookmarked(student_id, problem_id)
+    if already_bookmarked:
+        remove_coding_bookmark(student_id, problem_id)
+        return jsonify({
+            "success": True,
+            "bookmarked": False,
+            "message": "Bookmark removed"
+        }), 200
+    else:
+        problem_data = {
+            "id": problem_id,
+            "title": payload.get("title") or "Coding Question",
+            "difficulty": payload.get("difficulty") or "Medium",
+            "topic": payload.get("topic") or "DSA",
+            "platform": payload.get("platform") or "LeetCode",
+            "practice_url": payload.get("practice_url") or "#",
+            "time_complexity": payload.get("time_complexity") or "",
+            "space_complexity": payload.get("space_complexity") or "",
+            "description": payload.get("description") or "",
+            "companies": payload.get("companies") or []
+        }
+        if isinstance(problem_data["companies"], str):
+            problem_data["companies"] = [c.strip() for c in problem_data["companies"].split(",") if c.strip()]
+        saved = save_coding_bookmark(student_id, problem_id, problem_data)
+        return jsonify({
+            "success": saved,
+            "bookmarked": True,
+            "message": "Bookmark added"
+        }), 200
 
 
 @app.route("/my-reports")
@@ -5976,6 +6105,195 @@ def api_coding_submissions():
         "count": len(submissions),
         "submissions": submissions
     }), 200
+
+
+# ==============================================================================
+# Interview Preparation Notes (#235)
+# Personal space for candidates to create, organize, edit, and categorize notes.
+# Strictly enforces per-student data isolation.
+# ==============================================================================
+
+NOTE_CATEGORIES = ["Technical", "HR", "DSA", "Company Preparation"]
+
+
+@app.route("/notes", methods=["GET", "POST"])
+def preparation_notes_view():
+    """
+    Personal Interview Preparation Notes View (#235).
+    Provides students with an organized space to create, filter, edit, and review notes.
+    Guarantees strict candidate privacy: one student cannot view another's notes.
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        category = request.form.get("category", "Technical").strip()
+
+        if not title:
+            flash("Note title is required.", "danger")
+        elif not description:
+            flash("Note description or content cannot be empty.", "danger")
+        else:
+            created = create_preparation_note(
+                student_id=student_id,
+                title=title,
+                description=description,
+                category=category
+            )
+            flash(f"Note '{title}' created successfully!", "success")
+            return redirect(url_for("preparation_notes_view", category=category))
+
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    notes = get_preparation_notes(
+        student_id=student_id,
+        category_filter=category_filter if category_filter != "All" else None,
+        search_query=search_query or None
+    )
+    category_counts = get_note_category_counts(student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    return render_template(
+        "notes.html",
+        notes=notes,
+        category_counts=category_counts,
+        current_category=category_filter,
+        search_query=search_query,
+        categories=NOTE_CATEGORIES,
+        student_id=student_id
+    )
+
+
+@app.route("/api/notes", methods=["GET", "POST"])
+def api_preparation_notes():
+    """
+    REST API endpoint to fetch all notes or create a new note for the logged in student (#235).
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "GET":
+        category_filter = request.args.get("category", "All").strip()
+        search_query = request.args.get("search", "").strip()
+        notes = get_preparation_notes(
+            student_id=student_id,
+            category_filter=category_filter if category_filter != "All" else None,
+            search_query=search_query or None
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or "").strip()
+        description = (payload.get("description") or "").strip()
+        category = (payload.get("category") or "Technical").strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title is required"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description is required"}), 400
+
+        note = create_preparation_note(
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "message": "Note created successfully",
+            "note": note,
+            "category_counts": category_counts
+        }), 201
+
+
+@app.route("/api/notes/<note_id>", methods=["GET", "PUT", "POST", "DELETE"])
+def api_preparation_note_item(note_id: str):
+    """
+    REST API endpoint to retrieve, update, or delete a specific note (#235).
+    Enforces strict candidate privacy: checks note ownership against logged in student.
+    """
+    student_id = _get_current_student_id()
+
+    existing_note = get_preparation_note_by_id(note_id, student_id)
+    if not existing_note:
+        return jsonify({
+            "success": False,
+            "error": "Note not found or access denied."
+        }), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "success": True,
+            "note": existing_note
+        }), 200
+
+    if request.method in ["PUT", "POST"]:
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or existing_note["title"]).strip()
+        description = (payload.get("description") or existing_note["description"]).strip()
+        category = (payload.get("category") or existing_note["category"]).strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title cannot be empty"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description cannot be empty"}), 400
+
+        updated = update_preparation_note(
+            note_id=note_id,
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        if updated:
+            refreshed = get_preparation_note_by_id(note_id, student_id)
+            category_counts = get_note_category_counts(student_id)
+            return jsonify({
+                "success": True,
+                "message": "Note updated successfully",
+                "note": refreshed,
+                "category_counts": category_counts
+            }), 200
+        return jsonify({"success": False, "error": "Failed to update note"}), 500
+
+    if request.method == "DELETE":
+        deleted = delete_preparation_note(note_id, student_id)
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": deleted,
+            "message": "Note deleted successfully" if deleted else "Note not found",
+            "category_counts": category_counts
+        }), 200 if deleted else 404
+
+
+@app.route("/api/notes/<note_id>/delete", methods=["POST"])
+def api_delete_preparation_note_form(note_id: str):
+    """
+    Form-friendly deletion endpoint for non-JS browser fallbacks (#235).
+    """
+    student_id = _get_current_student_id()
+    deleted = delete_preparation_note(note_id, student_id)
+    if deleted:
+        flash("Note deleted successfully.", "success")
+    else:
+        flash("Note could not be deleted or access was denied.", "danger")
+    return redirect(url_for("preparation_notes_view"))
 
 
 if __name__ == "__main__":
