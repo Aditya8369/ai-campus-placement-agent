@@ -330,6 +330,13 @@ def init_db() -> None:
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
+        
+        # Run any pending versioned file-based migrations (#204)
+        try:
+            from utils.migrations import run_database_migrations
+            run_database_migrations(config.DATABASE_PATH)
+        except Exception as mig_err:
+            logger.warning(f"Note: Automatic migration runner skipped during init: {mig_err}")
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database: {str(e)}")
         raise e
