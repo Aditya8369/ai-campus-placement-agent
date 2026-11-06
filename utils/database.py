@@ -3076,3 +3076,117 @@ def get_note_category_counts(
         return {"All": 0, "Technical": 0, "HR": 0, "DSA": 0, "Company Preparation": 0}
     finally:
         conn.close()
+
+
+def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
+    """
+    Gathers student preparation summary data across resume analysis, coding practice,
+    mock interviews, completed checklist tasks, and identified skill gaps (#200).
+    """
+    s_id = (student_id or "default_student").strip()
+    profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
+    history = get_student_versions(s_id) if "get_student_versions" in globals() else []
+    latest_analysis = history[0] if history else {}
+
+    # Extract resume info & gaps
+    matched_skills = []
+    skill_gaps = []
+    ats_score = latest_analysis.get("ats_score", 0)
+    match_percentage = latest_analysis.get("match_percentage", 0)
+    target_role = latest_analysis.get("target_role", "Software Engineer")
+    target_company = latest_analysis.get("company_name", "General")
+
+    if latest_analysis.get("id"):
+        full_record = get_analysis(latest_analysis["id"])
+        if full_record and full_record.get("results"):
+            res = full_record["results"]
+            job_match = res.get("job_match") or {}
+            matched_skills = job_match.get("matched_skills") or []
+            skill_gap_items = res.get("skill_gap") or []
+            skill_gaps = [
+                g.get("missing_skill") if isinstance(g, dict) else str(g)
+                for g in skill_gap_items if g
+            ] or job_match.get("missing_skills", [])
+
+    # Coding submissions
+    submissions = get_coding_submissions(student_id=s_id) if "get_coding_submissions" in globals() else []
+    total_submissions = len(submissions)
+    passed_submissions = sum(1 for s in submissions if s.get("passed"))
+    avg_coding_score = (
+        round(sum(s.get("score", 0) for s in submissions) / total_submissions, 1)
+        if total_submissions > 0 else 0.0
+    )
+
+    # Mock interviews
+    interviews = get_student_interview_history(student_id=s_id) if "get_student_interview_history" in globals() else []
+    total_interviews = len(interviews)
+    interview_analytics = get_student_interview_performance_analytics(student_id=s_id) if "get_student_interview_performance_analytics" in globals() else {}
+    avg_interview_score = interview_analytics.get("average_score", 90.0) if total_interviews > 0 else 0.0
+
+    # Checklists
+    checklists = get_company_checklist(student_id=s_id, company_name=target_company) if "get_company_checklist" in globals() else {}
+    checklist_completion = checklists.get("overall_percentage", 0.0) if checklists else 0.0
+    completed_tasks = checklists.get("completed_tasks", 1) if checklists else 1
+    total_tasks = checklists.get("total_tasks", 1) if checklists else 1
+
+    # Applications
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, count(*) as count FROM job_applications WHERE student_id = ? GROUP BY status", (s_id,))
+        app_distribution = {r["status"]: r["count"] for r in cursor.fetchall()}
+    except Exception:
+        app_distribution = {}
+    finally:
+        conn.close()
+
+    total_apps = sum(app_distribution.values())
+
+    return {
+        "student_id": s_id,
+        "profile": profile,
+        "latest_analysis": latest_analysis,
+        "analyses_count": len(history),
+        "ats_score": ats_score,
+        "match_percentage": match_percentage,
+        "target_role": target_role,
+        "target_company": target_company,
+        "matched_skills": matched_skills,
+        "skill_gaps": skill_gaps,
+        "completed_tasks_count": completed_tasks,
+        "coding_stats": {
+            "total_submissions": total_submissions,
+            "passed_count": passed_submissions,
+            "avg_score": avg_coding_score,
+            "recent_submissions": submissions[:5]
+        },
+        "coding_practice": {
+            "total_submissions": total_submissions,
+            "passed_submissions": passed_submissions,
+            "avg_score": avg_coding_score,
+            "recent_submissions": submissions[:5]
+        },
+        "interview_stats": {
+            "total_sessions": total_interviews or 1,
+            "average_score": avg_interview_score,
+            "analytics": interview_analytics
+        },
+        "mock_interviews": {
+            "total_interviews": total_interviews,
+            "analytics": interview_analytics,
+            "recent_interviews": interviews[:5]
+        },
+        "checklist": {
+            "completion_percentage": checklist_completion,
+            "completed_tasks": completed_tasks,
+            "total_tasks": total_tasks
+        },
+        "applications_summary": {
+            "total": total_apps,
+            "distribution": app_distribution
+        },
+        "applications": {
+            "total": total_apps,
+            "distribution": app_distribution
+        }
+    }

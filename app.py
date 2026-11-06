@@ -24,6 +24,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    get_student_preparation_summary_data,
     init_db,
     get_db_connection,
     save_analysis,
@@ -112,6 +113,7 @@ from utils.gemini import (
     format_ai_error_for_user,
 )
 from utils.report_generator import (
+    generate_student_preparation_summary_pdf,
     generate_pdf_report,
     generate_certificate_pdf,
     generate_skills_gap_pdf,
@@ -3726,6 +3728,43 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+@app.route("/download/preparation-summary", methods=["GET"])
+@app.route("/download/preparation-summary/<student_id>", methods=["GET"])
+def download_student_preparation_summary_pdf(student_id: str = None):
+    """
+    Generates and downloads a comprehensive Placement Preparation Summary PDF report (#200).
+    Ensures candidate data isolation so students only access their own report.
+    """
+    session_user_id = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
+    if not student_id:
+        student_id = session_user_id or "default_student"
+    elif session_user_id and session_user_id != "default_student" and student_id != session_user_id:
+        # Enforce student isolation
+        flash("Unauthorized access to student preparation summary.", "danger")
+        return redirect(url_for("index"))
+
+    summary_data = get_student_preparation_summary_data(student_id)
+    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
+    
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        temp_pdf_path = tmp.name
+
+    try:
+        generate_student_preparation_summary_pdf(summary_data, temp_pdf_path)
+        return send_file(
+            temp_pdf_path,
+            as_attachment=True,
+            download_name=output_filename,
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate student preparation summary PDF: {e}")
+        flash("Could not generate preparation summary report. Please try again later.", "danger")
+        return redirect(url_for("index"))
+
 
 
 if __name__ == "__main__":
