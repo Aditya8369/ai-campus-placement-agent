@@ -1513,4 +1513,158 @@ html {
   }
 }
 
+/* ==========================================================================
+   Coding Practice Question Bookmarking (#234)
+   ========================================================================== */
+
+.btn-bookmark-question {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  font-size: 0.95rem;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.btn-bookmark-question:hover {
+  transform: scale(1.08);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-bookmark-question:active {
+  transform: scale(0.94);
+}
+
+.btn-bookmark-question.active {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.45);
+}
+
+.btn-bookmark-question.active:hover {
+  background-color: #ffca2c !important;
+  border-color: #ffc720 !important;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.55);
+}
+
+.btn-remove-bookmark {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  font-size: 0.88rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-remove-bookmark:hover {
+  background-color: #dc3545;
+  color: #ffffff;
+  transform: scale(1.08);
+  box-shadow: 0 3px 8px rgba(220, 53, 69, 0.35);
+}
+
+#savedQuestionsSection {
+  border-left: 4px solid #ffc107 !important;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+#noSavedQuestionsMessage {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  background-color: #f8f9fa;
+  transition: all 0.25s ease;
+}
+
+.saved-problem-item {
+  transition: transform 0.2s ease, opacity 0.25s ease;
+}
+
+.saved-problem-item .card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.saved-problem-item .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Dark Mode Adaptations for Coding Bookmarks */
+[data-bs-theme="dark"] #savedQuestionsSection {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+  border-left-color: #e3b341 !important;
+  color: #f0f6fc;
+}
+
+[data-bs-theme="dark"] #noSavedQuestionsMessage {
+  background-color: #0d1117 !important;
+  border-color: #30363d !important;
+  color: #8b949e;
+}
+
+[data-bs-theme="dark"] .saved-problem-item .card {
+  background-color: #161b22 !important;
+  border-color: #30363d !important;
+  color: #f0f6fc;
+}
+
+[data-bs-theme="dark"] .saved-problem-item .card h5 {
+  color: #f0f6fc !important;
+}
+
+[data-bs-theme="dark"] .saved-problem-item .card .text-muted {
+  color: #8b949e !important;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.btn-outline-secondary {
+  color: #8b949e;
+  border-color: #30363d;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.btn-outline-secondary:hover {
+  color: #f0f6fc;
+  background-color: #21262d;
+  border-color: #8b949e;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.active {
+  background-color: #e3b341 !important;
+  border-color: #e3b341 !important;
+  color: #0d1117 !important;
+  box-shadow: 0 2px 10px rgba(227, 179, 65, 0.4);
+}
+
+@media (max-width: 767.98px) {
+  .btn-bookmark-question {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 1rem;
+  }
+  
+  .btn-remove-bookmark {
+    width: 38px;
+    height: 38px;
+    min-width: 38px;
+    min-height: 38px;
+  }
+}
+
+
 

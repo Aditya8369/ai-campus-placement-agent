@@ -108,7 +108,10 @@ def init_db() -> None:
                 notify_status_change INTEGER NOT NULL DEFAULT 1,
                 notify_interview_reminder INTEGER NOT NULL DEFAULT 1,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        # Table 6: Store company interview experiences (#189)
+            )
+        """)
+
+        # Table 7: Store company interview experiences (#189)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_experiences (
                 id TEXT PRIMARY KEY,
@@ -124,7 +127,10 @@ def init_db() -> None:
                 reported_flag INTEGER NOT NULL DEFAULT 0,
                 report_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        # Table 6: Store student placement preparation calendar events (#190)
+            )
+        """)
+
+        # Table 8: Store student placement preparation calendar events (#190)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS preparation_calendar_events (
                 id TEXT PRIMARY KEY,
@@ -138,7 +144,10 @@ def init_db() -> None:
                 priority TEXT NOT NULL DEFAULT 'Medium',
                 completed INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        # Table 6: Store company-wise preparation checklist progress (#192)
+            )
+        """)
+
+        # Table 9: Store company-wise preparation checklist progress (#192)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS company_preparation_checklists (
                 id TEXT PRIMARY KEY,
@@ -147,7 +156,10 @@ def init_db() -> None:
                 checklist_json TEXT NOT NULL,
                 completion_percentage REAL NOT NULL DEFAULT 0.0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        # Table 6: Store coding assessment submission history (#194)
+            )
+        """)
+
+        # Table 10: Store coding assessment submission history (#194)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS coding_submissions (
                 id TEXT PRIMARY KEY,
@@ -168,7 +180,39 @@ def init_db() -> None:
             )
         """)
 
-        # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
+        # Table 11: Store student profiles (#199)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_profiles (
+                student_id TEXT PRIMARY KEY,
+                full_name TEXT,
+                email TEXT,
+                phone TEXT,
+                department TEXT,
+                grad_year INTEGER,
+                cgpa REAL,
+                target_role TEXT,
+                target_company TEXT,
+                skills_json TEXT,
+                linkedin_url TEXT,
+                github_url TEXT,
+                has_resume_uploaded INTEGER DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Table 12: Store bookmarked coding practice questions (#234)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bookmarked_coding_questions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                problem_id TEXT NOT NULL,
+                problem_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, problem_id)
+            )
+        """)
+
+        # Table 13: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
                 id TEXT PRIMARY KEY,
@@ -186,7 +230,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 6: Store technical skills self-assessments
+        # Table 14: Store technical skills self-assessments
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS technical_self_assessments (
                 id TEXT PRIMARY KEY,
@@ -198,7 +242,10 @@ def init_db() -> None:
                 notes TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(student_id, skill_name)
-        # Table 6: Store student and user feedback
+            )
+        """)
+
+        # Table 15: Store student and user feedback
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS user_feedback (
                 id TEXT PRIMARY KEY,
@@ -1600,6 +1647,98 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
     """
     Retrieves candidate email notification configuration (#186).
     Defaults to all enabled if no preference record exists yet.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "SELECT * FROM email_notification_preferences WHERE student_id = ?",
+            (effective_id,)
+        )
+        row = cursor.fetchone()
+        if row:
+            rec = dict(row)
+            return {
+                "student_id": rec["student_id"],
+                "email": rec.get("email") or "",
+                "email_enabled": bool(rec.get("email_enabled", 1)),
+                "notify_welcome": bool(rec.get("notify_welcome", 1)),
+                "notify_application_created": bool(rec.get("notify_application_created", 1)),
+                "notify_status_change": bool(rec.get("notify_status_change", 1)),
+                "notify_interview_reminder": bool(rec.get("notify_interview_reminder", 1))
+            }
+        return {
+            "student_id": effective_id,
+            "email": "",
+            "email_enabled": True,
+            "notify_welcome": True,
+            "notify_application_created": True,
+            "notify_status_change": True,
+            "notify_interview_reminder": True
+        }
+    except Exception as e:
+        logger.error(f"Error fetching email preferences for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "email": "",
+            "email_enabled": True,
+            "notify_welcome": True,
+            "notify_application_created": True,
+            "notify_status_change": True,
+            "notify_interview_reminder": True
+        }
+    finally:
+        conn.close()
+
+
+def update_email_notification_preferences(
+    student_id: str,
+    email: Optional[str] = None,
+    email_enabled: bool = True,
+    notify_welcome: bool = True,
+    notify_application_created: bool = True,
+    notify_status_change: bool = True,
+    notify_interview_reminder: bool = True
+) -> bool:
+    """
+    Saves or updates email notification settings for a student (#186).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT INTO email_notification_preferences (
+                student_id, email, email_enabled, notify_welcome,
+                notify_application_created, notify_status_change, notify_interview_reminder, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id) DO UPDATE SET
+                email = coalesce(excluded.email, email_notification_preferences.email),
+                email_enabled = excluded.email_enabled,
+                notify_welcome = excluded.notify_welcome,
+                notify_application_created = excluded.notify_application_created,
+                notify_status_change = excluded.notify_status_change,
+                notify_interview_reminder = excluded.notify_interview_reminder,
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            effective_id,
+            email.strip() if email else None,
+            1 if email_enabled else 0,
+            1 if notify_welcome else 0,
+            1 if notify_application_created else 0,
+            1 if notify_status_change else 0,
+            1 if notify_interview_reminder else 0
+        ))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating email preferences for {student_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def save_interview_experience(
     exp_id: str,
     student_id: str,
@@ -1615,6 +1754,127 @@ def save_interview_experience(
     """
     Saves a student-submitted company interview experience (#189).
     Never persists or displays sensitive contact info (phone/email).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_name = (candidate_name or "").strip() or "Anonymous Candidate"
+        # Mask any accidental email or phone in name
+        import re
+        if "@" in effective_name or re.search(r"\d{7,}", effective_name):
+            effective_name = "Anonymous Candidate"
+
+        cursor.execute("""
+            INSERT INTO interview_experiences (
+                id, student_id, candidate_name, company_name, role_title,
+                interview_date, rounds_json, overall_verdict, difficulty_level,
+                tips_and_preparation
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            exp_id,
+            student_id.strip() if student_id else "default_student",
+            effective_name,
+            company_name.strip(),
+            role_title.strip(),
+            interview_date.strip(),
+            json.dumps(rounds),
+            overall_verdict.strip(),
+            difficulty_level.strip(),
+            (tips_and_preparation or "").strip()
+        ))
+        conn.commit()
+        logger.info(f"Saved interview experience {exp_id} for company {company_name}")
+        return exp_id
+    except Exception as e:
+        logger.error(f"Error saving interview experience {exp_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_interview_experiences(
+    company_name: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    search_query: Optional[str] = None,
+    include_reported: bool = False
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves company interview experiences with search and round filtering (#189).
+    Omits inappropriate/reported posts by default.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        conditions = []
+        params = []
+
+        if not include_reported:
+            conditions.append("reported_flag = 0")
+
+        if company_name and company_name.strip() and company_name.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(company_name) = LOWER(?)")
+            params.append(company_name.strip())
+
+        if search_query and search_query.strip():
+            kw = f"%{search_query.strip().lower()}%"
+            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(tips_and_preparation) LIKE ?)")
+            params.extend([kw, kw, kw])
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        experiences = []
+        for r in rows:
+            rec = dict(r)
+            try:
+                rec["rounds"] = json.loads(rec.get("rounds_json", "[]"))
+            except Exception:
+                rec["rounds"] = []
+
+            # If category_filter is specified (e.g. Technical, Coding, HR), filter by round category
+            if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+                target_cat = category_filter.strip().lower()
+                has_cat = any(
+                    target_cat in round_info.get("category", "").lower()
+                    for round_info in rec["rounds"]
+                )
+                if not has_cat:
+                    continue
+
+            experiences.append(rec)
+
+        return experiences
+    except Exception as e:
+        logger.error(f"Error fetching interview experiences: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def report_interview_experience(exp_id: str, reason: str) -> bool:
+    """
+    Flags an interview experience as reported for moderation review (#189).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE interview_experiences
+            SET reported_flag = 1, report_reason = ?
+            WHERE id = ?
+        """, (reason.strip() if reason else "Inappropriate content", exp_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error reporting interview experience {exp_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def save_calendar_event(
     event_id: str,
     student_id: str,
@@ -1630,6 +1890,141 @@ def save_calendar_event(
     """
     Creates or updates a candidate placement preparation calendar event (#190).
     Enforces per-student data isolation.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            INSERT OR REPLACE INTO preparation_calendar_events (
+                id, student_id, title, event_type, event_date, event_time,
+                company_name, description, priority, completed
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            event_id,
+            effective_student_id,
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0
+        ))
+        conn.commit()
+        logger.info(f"Saved calendar event {event_id} for student {effective_student_id}")
+        return event_id
+    except Exception as e:
+        logger.error(f"Error saving calendar event {event_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_calendar_events(
+    student_id: str,
+    month: Optional[str] = None,
+    event_type: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all calendar preparation events for a student (#190).
+    Allows filtering by YYYY-MM month prefix and event_type (interview, preparation, deadline).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        conditions = ["student_id = ?"]
+        params = [effective_student_id]
+
+        if month and len(month.strip()) == 7:
+            conditions.append("event_date LIKE ?")
+            params.append(f"{month.strip()}%")
+
+        if event_type and event_type.strip() and event_type.strip().lower() not in ("all", "any"):
+            conditions.append("event_type = ?")
+            params.append(event_type.strip().lower())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM preparation_calendar_events {where_clause} ORDER BY event_date ASC, event_time ASC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.error(f"Error retrieving calendar events for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def update_calendar_event(
+    event_id: str,
+    student_id: str,
+    title: str,
+    event_type: str,
+    event_date: str,
+    event_time: Optional[str] = None,
+    company_name: Optional[str] = None,
+    description: Optional[str] = None,
+    priority: str = "Medium",
+    completed: bool = False
+) -> bool:
+    """
+    Updates an existing calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            UPDATE preparation_calendar_events
+            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
+                company_name = ?, description = ?, priority = ?, completed = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0,
+            event_id,
+            effective_student_id
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating calendar event {event_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def delete_calendar_event(event_id: str, student_id: str) -> bool:
+    """
+    Deletes a calendar event owned by student_id (#190).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM preparation_calendar_events WHERE id = ? AND student_id = ?",
+            (event_id, effective_student_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error deleting calendar event {event_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def get_default_company_checklist(company_name: str) -> Dict[str, Any]:
     """
     Returns the foundational company checklist tasks structured across
@@ -1672,73 +2067,6 @@ def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        effective_id = (student_id or "default_student").strip()
-        cursor.execute(
-            "SELECT * FROM email_notification_preferences WHERE student_id = ?",
-            (effective_id,)
-        )
-        row = cursor.fetchone()
-        if row:
-            rec = dict(row)
-            return {
-                "student_id": rec["student_id"],
-                "email": rec.get("email") or "",
-                "email_enabled": bool(rec.get("email_enabled", 1)),
-                "notify_welcome": bool(rec.get("notify_welcome", 1)),
-                "notify_application_created": bool(rec.get("notify_application_created", 1)),
-                "notify_status_change": bool(rec.get("notify_status_change", 1)),
-                "notify_interview_reminder": bool(rec.get("notify_interview_reminder", 1))
-            }
-        return {
-            "student_id": effective_id,
-            "email": "",
-            "email_enabled": True,
-            "notify_welcome": True,
-            "notify_application_created": True,
-            "notify_status_change": True,
-            "notify_interview_reminder": True
-        }
-    except Exception as e:
-        logger.error(f"Error fetching email preferences for {student_id}: {e}")
-        return {
-            "student_id": student_id,
-            "email": "",
-            "email_enabled": True,
-            "notify_welcome": True,
-            "notify_application_created": True,
-            "notify_status_change": True,
-            "notify_interview_reminder": True
-        }
-        effective_name = (candidate_name or "").strip() or "Anonymous Candidate"
-        # Mask any accidental email or phone in name
-        import re
-        if "@" in effective_name or re.search(r"\d{7,}", effective_name):
-            effective_name = "Anonymous Candidate"
-
-        cursor.execute("""
-            INSERT INTO interview_experiences (
-                id, student_id, candidate_name, company_name, role_title,
-                interview_date, rounds_json, overall_verdict, difficulty_level,
-                tips_and_preparation
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            exp_id,
-            student_id.strip() if student_id else "default_student",
-            effective_name,
-            company_name.strip(),
-            role_title.strip(),
-            interview_date.strip(),
-            json.dumps(rounds),
-            overall_verdict.strip(),
-            difficulty_level.strip(),
-            (tips_and_preparation or "").strip()
-        ))
-        conn.commit()
-        logger.info(f"Saved interview experience {exp_id} for company {company_name}")
-        return exp_id
-    except Exception as e:
-        logger.error(f"Error saving interview experience {exp_id}: {e}")
-        raise e
         effective_student_id = (student_id or "default_student").strip()
         comp = (company_name or "Google").strip()
 
@@ -1799,6 +2127,55 @@ def get_company_checklist(student_id: str, company_name: str) -> Dict[str, Any]:
             "overall_percentage": 0.0,
             "category_stats": {}
         }
+    finally:
+        conn.close()
+
+
+def save_company_checklist(student_id: str, company_name: str, checklist_data: Dict[str, Any]) -> bool:
+    """
+    Saves candidate progress for a specific target company (#192).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        comp = (company_name or "Google").strip()
+
+        total_tasks = 0
+        completed_tasks = 0
+        for task_list in checklist_data.values():
+            total_tasks += len(task_list)
+            completed_tasks += sum(1 for t in task_list if t.get("completed"))
+
+        pct = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
+        rec_id = f"chk-{effective_student_id}-{comp.lower().replace(' ', '_')}"
+
+        cursor.execute("""
+            INSERT INTO company_preparation_checklists (
+                id, student_id, company_name, checklist_json, completion_percentage, updated_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, company_name) DO UPDATE SET
+                checklist_json = excluded.checklist_json,
+                completion_percentage = excluded.completion_percentage,
+                updated_at = CURRENT_TIMESTAMP
+        """, (rec_id, effective_student_id, comp, json.dumps(checklist_data), pct))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error saving checklist for {company_name}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def reset_company_checklist(student_id: str, company_name: str) -> bool:
+    """
+    Resets all tasks to uncompleted for the target company checklist (#192).
+    """
+    default_data = get_default_company_checklist(company_name)
+    return save_company_checklist(student_id, company_name, default_data)
+
+
 def save_coding_submission(
     sub_id: str,
     student_id: str,
@@ -1824,28 +2201,6 @@ def save_coding_submission(
         cursor = conn.cursor()
         effective_student_id = (student_id or "default_student").strip()
         cursor.execute("""
-            INSERT OR REPLACE INTO preparation_calendar_events (
-                id, student_id, title, event_type, event_date, event_time,
-                company_name, description, priority, completed
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            event_id,
-            effective_student_id,
-            title.strip(),
-            event_type.strip().lower(),
-            event_date.strip(),
-            (event_time or "").strip(),
-            (company_name or "").strip(),
-            (description or "").strip(),
-            priority.strip(),
-            1 if completed else 0
-        ))
-        conn.commit()
-        logger.info(f"Saved calendar event {event_id} for student {effective_student_id}")
-        return event_id
-    except Exception as e:
-        logger.error(f"Error saving calendar event {event_id}: {e}")
-        raise e
             INSERT INTO coding_submissions (
                 id, student_id, analysis_id, question_title, company_name,
                 language, code, passed, score, tests_passed, total_tests,
@@ -1873,6 +2228,65 @@ def save_coding_submission(
     except Exception as e:
         logger.error(f"Error saving coding submission {sub_id}: {e}")
         raise e
+    finally:
+        conn.close()
+
+
+def get_coding_submissions(
+    student_id: str,
+    question_title: Optional[str] = None,
+    language_filter: Optional[str] = None,
+    status_filter: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all coding assessment submission attempts for a student (#194).
+    Supports question matching to compare attempts over time.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        conditions = ["student_id = ?"]
+        params: List[Any] = [effective_student_id]
+
+        if question_title and question_title.strip():
+            conditions.append("LOWER(question_title) = LOWER(?)")
+            params.append(question_title.strip())
+
+        if language_filter and language_filter.strip() and language_filter.strip().lower() not in ("all", "any"):
+            conditions.append("LOWER(language) = LOWER(?)")
+            params.append(language_filter.strip())
+
+        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
+            if status_filter.strip().lower() == "passed":
+                conditions.append("passed = 1")
+            elif status_filter.strip().lower() == "failed":
+                conditions.append("passed = 0")
+
+        where_clause = f"WHERE {' AND '.join(conditions)}"
+        query = f"SELECT * FROM coding_submissions {where_clause} ORDER BY submitted_at DESC, id DESC"
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+        submissions = []
+        for r in rows:
+            rec = dict(r)
+            try:
+                rec["test_results"] = json.loads(rec.get("test_results_json", "[]"))
+            except Exception:
+                rec["test_results"] = []
+            rec["passed"] = bool(rec.get("passed", 0))
+            submissions.append(rec)
+
+        return submissions
+    except Exception as e:
+        logger.error(f"Error retrieving coding submissions for {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
 def save_skill_self_assessment(
     student_id: str,
     skill_name: str,
@@ -1919,6 +2333,53 @@ def save_skill_self_assessment(
         )
         row = cursor.fetchone()
         return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
+    """Retrieves all technical skill self-assessments for a student."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT * FROM technical_self_assessments
+            WHERE student_id = ?
+            ORDER BY category ASC, skill_name ASC
+        """, (normalized_student_id,))
+        return [dict(row) for row in cursor.fetchall()]
+    finally:
+        conn.close()
+
+
+def delete_skill_self_assessment(student_id: str, skill_name: str) -> bool:
+    """Deletes a student's self-assessment entry for a skill."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        normalized_student_id = (student_id or "default_student").strip()
+        cursor.execute(
+            "DELETE FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
+            (normalized_student_id, skill_name.strip())
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_default_technical_skills_catalog() -> Dict[str, List[str]]:
+    """Returns curated placement technical skills catalog grouped by category."""
+    return {
+        "Programming Languages": ["Python", "Java", "C++", "JavaScript", "TypeScript", "Go"],
+        "Web & Frameworks": ["React", "Node.js", "Flask", "Django", "Spring Boot", "HTML5/CSS3"],
+        "Data & Databases": ["SQL", "PostgreSQL", "MongoDB", "Redis", "Data Structures & Algorithms"],
+        "Cloud & DevOps": ["Git & GitHub", "Docker", "Kubernetes", "AWS", "CI/CD Pipelines", "Linux"],
+        "Core CS Fundamentals": ["Operating Systems", "DBMS", "Computer Networks", "System Design", "OOP"]
+    }
+
+
 def submit_user_feedback(
     student_id: str,
     rating: int,
@@ -1948,6 +2409,83 @@ def submit_user_feedback(
         cursor.execute("SELECT * FROM user_feedback WHERE id = ?", (f_id,))
         row = cursor.fetchone()
         return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_user_feedback_list(
+    student_id: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    limit: int = 50
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves recorded user feedback entries, optionally filtered by student or feature category (#197).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        query = "SELECT * FROM user_feedback WHERE 1=1"
+        params: List[Any] = []
+
+        if student_id and student_id.strip():
+            query += " AND student_id = ?"
+            params.append(student_id.strip())
+
+        if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(category) = LOWER(?)"
+            params.append(category_filter.strip())
+
+        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_feedback_metrics_summary() -> Dict[str, Any]:
+    """
+    Calculates aggregated satisfaction scores and category distribution (#197).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                COUNT(*) as total_feedback,
+                COALESCE(AVG(rating), 0) as avg_rating,
+                COALESCE(SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END), 0) as five_star_count,
+                COALESCE(SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END), 0) as four_star_count,
+                COALESCE(SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END), 0) as three_star_count,
+                COALESCE(SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END), 0) as two_star_count,
+                COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) as one_star_count
+            FROM user_feedback
+        """)
+        row = cursor.fetchone()
+        stats = dict(row) if row else {}
+        stats["avg_rating"] = round(float(stats.get("avg_rating", 0.0)), 2)
+
+        cursor.execute("""
+            SELECT category, COUNT(*) as count, AVG(rating) as category_avg
+            FROM user_feedback
+            GROUP BY category
+            ORDER BY count DESC
+        """)
+        stats["category_breakdown"] = [
+            {
+                "category": r["category"],
+                "count": r["count"],
+                "avg_rating": round(float(r["category_avg"] or 0), 1)
+            }
+            for r in cursor.fetchall()
+        ]
+        return stats
+    finally:
+        conn.close()
+
+
 def save_student_profile(
     student_id: str,
     full_name: Optional[str] = None,
@@ -2031,65 +2569,6 @@ def save_student_profile(
         conn.close()
 
 
-def update_email_notification_preferences(
-    student_id: str,
-    email: Optional[str] = None,
-    email_enabled: bool = True,
-    notify_welcome: bool = True,
-    notify_application_created: bool = True,
-    notify_status_change: bool = True,
-    notify_interview_reminder: bool = True
-) -> bool:
-    """
-    Saves or updates email notification settings for a student (#186).
-def get_interview_experiences(
-    company_name: Optional[str] = None,
-    category_filter: Optional[str] = None,
-    search_query: Optional[str] = None,
-    include_reported: bool = False
-) -> List[Dict[str, Any]]:
-    """
-    Retrieves company interview experiences with search and round filtering (#189).
-    Omits inappropriate/reported posts by default.
-def get_calendar_events(
-    student_id: str,
-    month: Optional[str] = None,
-    event_type: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """
-    Retrieves all calendar preparation events for a student (#190).
-    Allows filtering by YYYY-MM month prefix and event_type (interview, preparation, deadline).
-def save_company_checklist(student_id: str, company_name: str, checklist_data: Dict[str, Any]) -> bool:
-    """
-    Saves candidate progress for a specific target company (#192).
-def get_coding_submissions(
-    student_id: str,
-    question_title: Optional[str] = None,
-    language_filter: Optional[str] = None,
-    status_filter: Optional[str] = None
-) -> List[Dict[str, Any]]:
-    """
-    Retrieves all coding assessment submission attempts for a student (#194).
-    Supports question matching to compare attempts over time.
-def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
-    """Retrieves all technical skill self-assessments for a student."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        normalized_student_id = (student_id or "default_student").strip()
-        cursor.execute("""
-            SELECT * FROM technical_self_assessments
-            WHERE student_id = ?
-            ORDER BY category ASC, skill_name ASC
-        """, (normalized_student_id,))
-        return [dict(row) for row in cursor.fetchall()]
-def get_user_feedback_list(
-    student_id: Optional[str] = None,
-    category_filter: Optional[str] = None,
-    limit: int = 50
-) -> List[Dict[str, Any]]:
-    """
-    Retrieves recorded user feedback entries, optionally filtered by student or feature category (#197).
 def get_student_profile(student_id: str) -> Dict[str, Any]:
     """
     Retrieves student profile record by student_id (#199).
@@ -2097,231 +2576,6 @@ def get_student_profile(student_id: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        effective_student_id = (student_id or "default_student").strip()
-        conditions = ["student_id = ?"]
-        params = [effective_student_id]
-
-        if month and len(month.strip()) == 7:
-            conditions.append("event_date LIKE ?")
-            params.append(f"{month.strip()}%")
-
-        if event_type and event_type.strip() and event_type.strip().lower() not in ("all", "any"):
-            conditions.append("event_type = ?")
-            params.append(event_type.strip().lower())
-
-        where_clause = f"WHERE {' AND '.join(conditions)}"
-        query = f"SELECT * FROM preparation_calendar_events {where_clause} ORDER BY event_date ASC, event_time ASC"
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        return [dict(r) for r in rows]
-    except Exception as e:
-        logger.error(f"Error retrieving calendar events for {student_id}: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-def update_calendar_event(
-    event_id: str,
-    student_id: str,
-    title: str,
-    event_type: str,
-    event_date: str,
-    event_time: Optional[str] = None,
-    company_name: Optional[str] = None,
-    description: Optional[str] = None,
-    priority: str = "Medium",
-    completed: bool = False
-) -> bool:
-    """
-    Updates an existing calendar event owned by student_id (#190).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        effective_id = (student_id or "default_student").strip()
-        cursor.execute("""
-            INSERT INTO email_notification_preferences (
-                student_id, email, email_enabled, notify_welcome,
-                notify_application_created, notify_status_change, notify_interview_reminder, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(student_id) DO UPDATE SET
-                email = coalesce(excluded.email, email_notification_preferences.email),
-                email_enabled = excluded.email_enabled,
-                notify_welcome = excluded.notify_welcome,
-                notify_application_created = excluded.notify_application_created,
-                notify_status_change = excluded.notify_status_change,
-                notify_interview_reminder = excluded.notify_interview_reminder,
-                updated_at = CURRENT_TIMESTAMP
-        """, (
-            effective_id,
-            email.strip() if email else None,
-            1 if email_enabled else 0,
-            1 if notify_welcome else 0,
-            1 if notify_application_created else 0,
-            1 if notify_status_change else 0,
-            1 if notify_interview_reminder else 0
-        ))
-        conn.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Error updating email preferences for {student_id}: {e}")
-        return False
-    finally:
-        conn.close()
-        conditions = []
-        params = []
-
-        if not include_reported:
-            conditions.append("reported_flag = 0")
-
-        if company_name and company_name.strip() and company_name.strip().lower() not in ("all", "any"):
-            conditions.append("LOWER(company_name) = LOWER(?)")
-            params.append(company_name.strip())
-
-        if search_query and search_query.strip():
-            kw = f"%{search_query.strip().lower()}%"
-            conditions.append("(LOWER(company_name) LIKE ? OR LOWER(role_title) LIKE ? OR LOWER(tips_and_preparation) LIKE ?)")
-            params.extend([kw, kw, kw])
-
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
-        effective_student_id = (student_id or "default_student").strip()
-        cursor.execute("""
-            UPDATE preparation_calendar_events
-            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
-                company_name = ?, description = ?, priority = ?, completed = ?
-            WHERE id = ? AND student_id = ?
-        """, (
-            title.strip(),
-            event_type.strip().lower(),
-            event_date.strip(),
-            (event_time or "").strip(),
-            (company_name or "").strip(),
-            (description or "").strip(),
-            priority.strip(),
-            1 if completed else 0,
-            event_id,
-            effective_student_id
-        ))
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Error updating calendar event {event_id}: {e}")
-        return False
-        comp = (company_name or "Google").strip()
-
-        total_tasks = 0
-        completed_tasks = 0
-        for task_list in checklist_data.values():
-            total_tasks += len(task_list)
-            completed_tasks += sum(1 for t in task_list if t.get("completed"))
-
-        pct = round((completed_tasks / total_tasks * 100), 1) if total_tasks else 0.0
-        rec_id = f"chk-{effective_student_id}-{comp.lower().replace(' ', '_')}"
-
-        cursor.execute("""
-            INSERT INTO company_preparation_checklists (
-                id, student_id, company_name, checklist_json, completion_percentage, updated_at
-            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(student_id, company_name) DO UPDATE SET
-                checklist_json = excluded.checklist_json,
-                completion_percentage = excluded.completion_percentage,
-                updated_at = CURRENT_TIMESTAMP
-        """, (rec_id, effective_student_id, comp, json.dumps(checklist_data), pct))
-        conn.commit()
-        return True
-    except Exception as e:
-        logger.error(f"Error saving checklist for {company_name}: {e}")
-        return False
-        conditions = ["student_id = ?"]
-        params: List[Any] = [effective_student_id]
-
-        if question_title and question_title.strip():
-            conditions.append("LOWER(question_title) = LOWER(?)")
-            params.append(question_title.strip())
-
-        if language_filter and language_filter.strip() and language_filter.strip().lower() not in ("all", "any"):
-            conditions.append("LOWER(language) = LOWER(?)")
-            params.append(language_filter.strip())
-
-        if status_filter and status_filter.strip() and status_filter.strip().lower() not in ("all", "any"):
-            if status_filter.strip().lower() == "passed":
-                conditions.append("passed = 1")
-            elif status_filter.strip().lower() == "failed":
-                conditions.append("passed = 0")
-
-        where_clause = f"WHERE {' AND '.join(conditions)}"
-        query = f"SELECT * FROM coding_submissions {where_clause} ORDER BY submitted_at DESC, id DESC"
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-
-        experiences = []
-        for r in rows:
-            rec = dict(r)
-            try:
-                rec["rounds"] = json.loads(rec.get("rounds_json", "[]"))
-            except Exception:
-                rec["rounds"] = []
-
-            # If category_filter is specified (e.g. Technical, Coding, HR), filter by round category
-            if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
-                target_cat = category_filter.strip().lower()
-                has_cat = any(
-                    target_cat in round_info.get("category", "").lower()
-                    for round_info in rec["rounds"]
-                )
-                if not has_cat:
-                    continue
-
-            experiences.append(rec)
-
-        return experiences
-    except Exception as e:
-        logger.error(f"Error fetching interview experiences: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-def report_interview_experience(exp_id: str, reason: str) -> bool:
-    """
-    Flags an interview experience as reported for moderation review (#189).
-        submissions = []
-        for r in rows:
-            rec = dict(r)
-            try:
-                rec["test_results"] = json.loads(rec.get("test_results_json", "[]"))
-            except Exception:
-                rec["test_results"] = []
-            rec["passed"] = bool(rec.get("passed", 0))
-            submissions.append(rec)
-
-        return submissions
-    except Exception as e:
-        logger.error(f"Error retrieving coding submissions for {student_id}: {e}")
-        return []
-    finally:
-        conn.close()
-        query = "SELECT * FROM user_feedback WHERE 1=1"
-        params: List[Any] = []
-
-        if student_id and student_id.strip():
-            query += " AND student_id = ?"
-            params.append(student_id.strip())
-
-        if category_filter and category_filter.strip() and category_filter.strip().lower() not in ("all", "any"):
-            query += " AND LOWER(category) = LOWER(?)"
-            params.append(category_filter.strip())
-
-        query += " ORDER BY created_at DESC, id DESC LIMIT ?"
-        params.append(max(1, int(limit)))
-
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
-        return [dict(r) for r in rows]
         s_id = (student_id or "default_student").strip()
         cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
         row = cursor.fetchone()
@@ -2358,102 +2612,6 @@ def report_interview_experience(exp_id: str, reason: str) -> bool:
         conn.close()
 
 
-def delete_skill_self_assessment(student_id: str, skill_name: str) -> bool:
-    """Deletes a student's self-assessment entry for a skill."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        normalized_student_id = (student_id or "default_student").strip()
-        cursor.execute(
-            "DELETE FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
-            (normalized_student_id, skill_name.strip())
-        )
-        conn.commit()
-        return cursor.rowcount > 0
-    finally:
-        conn.close()
-
-
-def delete_calendar_event(event_id: str, student_id: str) -> bool:
-    """
-    Deletes a calendar event owned by student_id (#190).
-def reset_company_checklist(student_id: str, company_name: str) -> bool:
-    """
-    Resets all tasks to uncompleted for the target company checklist (#192).
-    """
-    default_data = get_default_company_checklist(company_name)
-    return save_company_checklist(student_id, company_name, default_data)
-def get_default_technical_skills_catalog() -> Dict[str, List[str]]:
-    """Returns curated placement technical skills catalog grouped by category."""
-    return {
-        "Programming Languages": ["Python", "Java", "C++", "JavaScript", "TypeScript", "Go"],
-        "Web & Frameworks": ["React", "Node.js", "Flask", "Django", "Spring Boot", "HTML5/CSS3"],
-        "Data & Databases": ["SQL", "PostgreSQL", "MongoDB", "Redis", "Data Structures & Algorithms"],
-        "Cloud & DevOps": ["Git & GitHub", "Docker", "Kubernetes", "AWS", "CI/CD Pipelines", "Linux"],
-        "Core CS Fundamentals": ["Operating Systems", "DBMS", "Computer Networks", "System Design", "OOP"]
-def get_feedback_metrics_summary() -> Dict[str, Any]:
-    """
-    Calculates aggregated satisfaction scores and category distribution (#197).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE interview_experiences
-            SET reported_flag = 1, report_reason = ?
-            WHERE id = ?
-        """, (reason.strip() if reason else "Inappropriate content", exp_id))
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Error reporting interview experience {exp_id}: {e}")
-        return False
-    finally:
-        conn.close()
-        effective_student_id = (student_id or "default_student").strip()
-        cursor.execute(
-            "DELETE FROM preparation_calendar_events WHERE id = ? AND student_id = ?",
-            (event_id, effective_student_id)
-        )
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Error deleting calendar event {event_id}: {e}")
-        return False
-    finally:
-        conn.close()
-        cursor.execute("""
-            SELECT 
-                COUNT(*) as total_feedback,
-                COALESCE(AVG(rating), 0) as avg_rating,
-                COALESCE(SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END), 0) as five_star_count,
-                COALESCE(SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END), 0) as four_star_count,
-                COALESCE(SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END), 0) as three_star_count,
-                COALESCE(SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END), 0) as two_star_count,
-                COALESCE(SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END), 0) as one_star_count
-            FROM user_feedback
-        """)
-        row = cursor.fetchone()
-        stats = dict(row) if row else {}
-        stats["avg_rating"] = round(float(stats.get("avg_rating", 0.0)), 2)
-
-        cursor.execute("""
-            SELECT category, COUNT(*) as count, AVG(rating) as category_avg
-            FROM user_feedback
-            GROUP BY category
-            ORDER BY count DESC
-        """)
-        stats["category_breakdown"] = [
-            {
-                "category": r["category"],
-                "count": r["count"],
-                "avg_rating": round(float(r["category_avg"] or 0), 1)
-            }
-            for r in cursor.fetchall()
-        ]
-        return stats
-    finally:
-        conn.close()
 def calculate_profile_completion(student_id: str) -> Dict[str, Any]:
     """
     Evaluates profile completeness across key placement readiness criteria (#199):
@@ -2569,3 +2727,132 @@ def calculate_profile_completion(student_id: str) -> Dict[str, Any]:
         "missing_fields": all_missing,
         "profile": profile
     }
+
+
+def save_coding_bookmark(
+    student_id: str,
+    problem_id: str,
+    problem_data: Dict[str, Any]
+) -> bool:
+    """
+    Saves a recommended coding practice question to the candidate's bookmarked collection (#234).
+    Persists problem metadata across sessions and handles duplicates idempotently.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        p_id = str(problem_id).strip()
+        data_json = json.dumps(problem_data)
+
+        bookmark_id = str(uuid.uuid4())
+
+        cursor.execute("""
+            INSERT INTO bookmarked_coding_questions (
+                id, student_id, problem_id, problem_data, created_at
+            ) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, problem_id) DO UPDATE SET
+                problem_data = excluded.problem_data,
+                created_at = CURRENT_TIMESTAMP
+        """, (bookmark_id, effective_student_id, p_id, data_json))
+        conn.commit()
+        logger.info(f"Saved coding bookmark for student {effective_student_id}, problem {p_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving coding bookmark for problem {problem_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_coding_bookmark(
+    student_id: str,
+    problem_id: str
+) -> bool:
+    """
+    Removes a bookmarked coding question for a candidate (#234).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        p_id = str(problem_id).strip()
+
+        cursor.execute("""
+            DELETE FROM bookmarked_coding_questions
+            WHERE student_id = ? AND problem_id = ?
+        """, (effective_student_id, p_id))
+        conn.commit()
+        logger.info(f"Removed coding bookmark for student {effective_student_id}, problem {p_id}")
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error removing coding bookmark for problem {problem_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_coding_bookmarks(
+    student_id: str
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all bookmarked coding questions for a student (#234).
+    Returns list of deserialized problem dictionaries ordered by bookmark date.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        cursor.execute("""
+            SELECT id, student_id, problem_id, problem_data, created_at
+            FROM bookmarked_coding_questions
+            WHERE student_id = ?
+            ORDER BY created_at DESC
+        """, (effective_student_id,))
+        rows = cursor.fetchall()
+
+        bookmarks = []
+        for row in rows:
+            rec = dict(row)
+            try:
+                prob = json.loads(rec.get("problem_data", "{}"))
+            except Exception:
+                prob = {}
+            if "id" not in prob or not prob["id"]:
+                prob["id"] = rec.get("problem_id")
+            prob["bookmark_id"] = rec.get("id")
+            prob["bookmarked_at"] = rec.get("created_at")
+            bookmarks.append(prob)
+        return bookmarks
+    except Exception as e:
+        logger.error(f"Error fetching coding bookmarks for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def is_coding_bookmarked(
+    student_id: str,
+    problem_id: str
+) -> bool:
+    """
+    Checks if a coding practice question is bookmarked by the student (#234).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        p_id = str(problem_id).strip()
+
+        cursor.execute("""
+            SELECT 1 FROM bookmarked_coding_questions
+            WHERE student_id = ? AND problem_id = ?
+            LIMIT 1
+        """, (effective_student_id, p_id))
+        return cursor.fetchone() is not None
+    except Exception as e:
+        logger.error(f"Error checking bookmark status for problem {problem_id}: {e}")
+        return False
+    finally:
+        conn.close()
