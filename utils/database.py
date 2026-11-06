@@ -94,6 +94,23 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Table: Secure password reset tokens (#150)
+        cursor.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at INTEGER NOT NULL,
+                    used_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+
+        cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_password_reset_token_hash
+                ON password_reset_tokens(token_hash)
+            """)
 
         # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
@@ -4297,6 +4314,152 @@ def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
         app_distribution = {r["status"]: r["count"] for r in cursor.fetchall()}
     except Exception:
         app_distribution = {}
+    finally:
+        conn.close()
+def create_password_reset_token(
+    user_id: str,
+    token_hash: str,
+    expires_at: int
+) -> bool:
+    """Create a reset token and invalidate previous unused tokens."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+
+        # Invalidate previous unused tokens for this user
+        conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        conn.execute("""
+            INSERT INTO password_reset_tokens
+            (id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            str(uuid.uuid4()),
+            user_id,
+            token_hash,
+            expires_at,
+            now
+        ))
+
+        conn.commit()
+        return True
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to create password reset token")
+        return False
+
+    finally:
+        conn.close()
+
+
+def get_valid_password_reset_token(
+    token_hash: str
+) -> Optional[Dict[str, Any]]:
+    """Retrieve an unused, non-expired reset token."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        row = conn.execute("""
+            SELECT id, user_id, token_hash, expires_at
+            FROM password_reset_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+        """, (token_hash, int(time.time()))).fetchone()
+
+        return dict(row) if row else None
+
+    finally:
+        conn.close()
+
+
+def reset_user_password(
+    token_hash: str,
+    new_password_hash: str
+) -> bool:
+    """Update password and consume the reset token atomically."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+
+        token = conn.execute("""
+            SELECT user_id
+            FROM password_reset_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+        """, (token_hash, now)).fetchone()
+
+        if not token:
+            conn.rollback()
+            return False
+
+        user_id = token["user_id"]
+
+        updated = conn.execute("""
+            UPDATE users
+            SET password_hash = ?
+            WHERE id = ?
+        """, (new_password_hash, user_id))
+
+        if updated.rowcount != 1:
+            conn.rollback()
+            return False
+
+        # Consume all outstanding reset tokens for this user
+        conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        conn.commit()
+        return True
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to reset user password")
+        return False
+
+    finally:
+        conn.close()
+def invalidate_password_reset_token(token_hash: str) -> bool:
+    """Invalidate a password reset token."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        cursor = conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE token_hash = ?
+              AND used_at IS NULL
+        """, (int(time.time()), token_hash))
+
+        conn.commit()
+        return cursor.rowcount > 0
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to invalidate password reset token")
+        return False
+
     finally:
         conn.close()
 

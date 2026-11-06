@@ -5,6 +5,8 @@ import json
 import time
 import logging
 import re
+import secrets
+import hashlib
 from pathlib import Path
 from flask import (
     Flask,
@@ -20,7 +22,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from utils.rate_limiter import rate_limit
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
@@ -90,6 +92,10 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    create_password_reset_token,
+    get_valid_password_reset_token,
+    reset_user_password,
+    invalidate_password_reset_token
     get_user_data_export_manifest,
     delete_user_account_and_personal_data,
     generate_email_verification_token,
@@ -241,6 +247,8 @@ def require_login():
         "health",
         "api_health",
         "static",
+        "forgot_password",
+        "reset_password",
     }
 
     if request.endpoint in public_endpoints:
@@ -535,7 +543,128 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+@app.route("/forgot-password", methods=["GET", "POST"])
+@rate_limit(max_requests=5, window_seconds=900, scope="forgot_password", is_api=False)
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
 
+        # Always show the same response to prevent email enumeration
+        generic_message = (
+            "If an account with that email exists, "
+            "a password reset link has been sent."
+        )
+
+        if not email:
+            flash(generic_message, "success")
+            return redirect(url_for("forgot_password"))
+
+        user = get_user_by_email(email)
+
+        if user:
+            # Generate a cryptographically secure random token
+            raw_token = secrets.token_urlsafe(32)
+
+            # Store only the SHA-256 hash of the token
+            token_hash = hashlib.sha256(
+                raw_token.encode("utf-8")
+            ).hexdigest()
+
+            # Token expires after 30 minutes
+            expires_at = int(time.time()) + 1800
+
+            token_created = create_password_reset_token(
+                user_id=user["id"],
+                token_hash=token_hash,
+                expires_at=expires_at
+            )
+
+            if token_created:
+                reset_url = url_for(
+                    "reset_password",
+                    token=raw_token,
+                    _external=True
+                )
+                try:
+                    email_sent = email_service.send_password_reset_email(
+                            recipient_email=user["email"],
+                            reset_url=reset_url,
+                            student_name=user["name"]
+                        )
+
+                    if not email_sent:
+                            invalidate_password_reset_token(token_hash)
+
+                except Exception:
+                    invalidate_password_reset_token(token_hash)
+                    logger.exception("Failed to send password reset email")
+        flash(generic_message, "success")
+        return redirect(url_for("forgot_password"))
+
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+@rate_limit(max_requests=10, window_seconds=900, scope="reset_password", is_api=False)
+def reset_password(token):
+    # Hash the token received from the reset URL
+    token_hash = hashlib.sha256(
+        token.encode("utf-8")
+    ).hexdigest()
+
+    # Reject invalid, expired, or already-used tokens
+    reset_record = get_valid_password_reset_token(token_hash)
+
+    if not reset_record:
+        flash(
+            "This password reset link is invalid or has expired. "
+            "Please request a new one.",
+            "error"
+        )
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        new_password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        if not new_password or not confirm_password:
+            flash("Both password fields are required.", "error")
+            return render_template("reset_password.html", token=token)
+
+        if new_password != confirm_password:
+            flash("Passwords do not match.", "error")
+            return render_template("reset_password.html", token=token)
+
+        if len(new_password) < 8:
+            flash(
+                "Password must contain at least 8 characters.",
+                "error"
+            )
+            return render_template("reset_password.html", token=token)
+
+        # Hash the new password before storing it
+        new_password_hash = generate_password_hash(new_password)
+
+        success = reset_user_password(
+            token_hash=token_hash,
+            new_password_hash=new_password_hash
+        )
+
+        if not success:
+            flash(
+                "This password reset link is invalid or has expired. "
+                "Please request a new one.",
+                "error"
+            )
+            return redirect(url_for("forgot_password"))
+
+        flash(
+            "Your password has been reset successfully. Please log in.",
+            "success"
+        )
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", token=token)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
