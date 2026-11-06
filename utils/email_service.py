@@ -150,6 +150,48 @@ class EmailNotificationService:
             subject="Welcome to AI Campus Placement Agent! 🎓",
             html_content=html
         )
+    def send_password_reset_email(
+        self,
+        recipient_email: str,
+        reset_url: str,
+        student_name: str = ""
+    ) -> bool:
+        """Send a secure password reset email."""
+
+        import html
+
+        safe_name = html.escape(student_name or "there")
+
+        body_content = f"""
+            <p>Hello {safe_name},</p>
+            <p>We received a request to reset your AI Campus Placement Agent password.</p>
+            <p>Click the button below to create a new password.</p>
+            <p>This link will expire in <strong>30 minutes</strong>.</p>
+            <p>If you did not request this reset, you can safely ignore this email.</p>
+        """
+
+        html_content = self._format_html_layout(
+            title="Reset Your Password",
+            headline="Password Reset Request",
+            body_content=body_content,
+            cta_url=reset_url,
+            cta_text="Reset Password"
+        )
+
+        plain_text = (
+            f"Hello {student_name or 'there'},\n\n"
+            "We received a request to reset your password.\n"
+            f"Use this link to reset it: {reset_url}\n\n"
+            "This link expires in 30 minutes.\n"
+            "If you did not request this reset, ignore this email."
+        )
+
+        return self.send_email(
+            recipient_email=recipient_email,
+            subject="Reset Your AI Campus Placement Agent Password",
+            html_content=html_content,
+            plain_text=plain_text
+        )
 
     def send_application_created_email(
         self,
