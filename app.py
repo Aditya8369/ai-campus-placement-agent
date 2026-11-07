@@ -117,6 +117,9 @@ from utils.database import (
     calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.experience_search_service import (
+    search_and_filter_interview_experiences,
+    get_interview_filter_facets
 from utils.bookmark_folders import (
     create_bookmark_folder,
     list_student_bookmark_folders,
@@ -147,7 +150,6 @@ from utils.company_profile_manager import (
     archive_company_profile,
     seed_default_company_profiles
 )
-from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -6800,6 +6802,55 @@ def api_recently_viewed_jobs():
 
 
 # ============================================================================
+# INTERVIEW EXPERIENCE ADVANCED SEARCH AND FILTER ENDPOINTS (#254)
+# ============================================================================
+
+@app.route("/api/interview-experiences/search", methods=["GET"])
+def api_search_interview_experiences_endpoint():
+    """
+    Advanced multi-facet search endpoint for campus interview experiences.
+    Supports filtering by company, role, verdict, difficulty, round category, year,
+    and sorting with pagination.
+    """
+    company_name = request.args.get("company")
+    role_title = request.args.get("role")
+    verdict = request.args.get("verdict")
+    difficulty = request.args.get("difficulty")
+    category_filter = request.args.get("category")
+    year_filter = request.args.get("year")
+    search_query = request.args.get("q") or request.args.get("search")
+    sort_by = request.args.get("sort", "date_desc")
+    page = int(request.args.get("page", 1))
+    page_size = int(request.args.get("page_size", 20))
+
+    result = search_and_filter_interview_experiences(
+        company_name=company_name,
+        role_title=role_title,
+        verdict=verdict,
+        difficulty=difficulty,
+        category_filter=category_filter,
+        year_filter=year_filter,
+        search_query=search_query,
+        sort_by=sort_by,
+        page=page,
+        page_size=page_size
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": result
+    }), 200
+
+
+@app.route("/api/interview-experiences/facets", methods=["GET"])
+def api_interview_experience_facets_endpoint():
+    """
+    Returns unique aggregations and metrics for populating dynamic frontend filters.
+    """
+    facets = get_interview_filter_facets()
+    return jsonify({
+        "status": "success",
+        "facets": facets
 # CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
 # ============================================================================
 
