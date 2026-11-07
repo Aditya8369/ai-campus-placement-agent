@@ -2317,6 +2317,49 @@ def api_database_backup():
         }), 500
 
 
+@app.route("/api/admin/database/backup/retention", methods=["GET", "POST"])
+def api_admin_backup_retention():
+    """
+    Manages database backup retention policy evaluation and pruning (#247).
+    GET: Evaluates backup inventory, age, and reclaimable space without deleting.
+    POST: Prunes expired backups older than retention window while preserving recent backups.
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret-key"):
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.backup_retention import evaluate_backup_retention, prune_expired_backups
+
+    if request.method == "GET":
+        retention_days = int(request.args.get("retention_days", 7))
+        min_preserved = int(request.args.get("min_preserved", 3))
+        eval_result = evaluate_backup_retention(
+            retention_days=retention_days,
+            min_preserved=min_preserved
+        )
+        return jsonify({
+            "success": True,
+            "data": eval_result
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        retention_days = int(payload.get("retention_days", 7))
+        min_preserved = int(payload.get("min_preserved", 3))
+        dry_run = bool(payload.get("dry_run", False))
+
+        prune_result = prune_expired_backups(
+            retention_days=retention_days,
+            min_preserved=min_preserved,
+            dry_run=dry_run
+        )
+        return jsonify({
+            "success": True,
+            "prune_result": prune_result
+        }), 200
+
+
 @app.route("/api/admin/retention/run", methods=["POST"])
 def api_admin_run_retention():
     """

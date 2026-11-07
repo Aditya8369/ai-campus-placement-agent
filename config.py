@@ -24,10 +24,13 @@ else:
 UPLOAD_FOLDER = STORAGE_DIR / "uploads"
 REPORT_FOLDER = STORAGE_DIR / "reports"
 DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+BACKUP_DIR = STORAGE_DIR / "backups"
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-secret-key")
 
 # Ensure folders exist
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
