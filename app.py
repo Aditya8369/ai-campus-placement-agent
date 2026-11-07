@@ -126,6 +126,7 @@ from utils.company_profile_manager import (
     archive_company_profile,
     seed_default_company_profiles
 )
+from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -265,7 +266,7 @@ def require_login():
         return None
 
     if not flask_session.get("user_id"):
-        if app.config.get("TESTING"):
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
             flask_session["user_id"] = "default_student"
             return None
         if request.path.startswith("/api/"):
@@ -944,6 +945,19 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
+
         # Multi-company batch comparison request
         batch_companies = request.form.getlist("batch_companies")
         if not batch_companies:
@@ -1056,6 +1070,19 @@ def start_analysis_async():
         student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
+
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
 
         task = create_analysis_task(
             company_name=selected_company,
@@ -2574,6 +2601,32 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
+@app.route("/api/jobs/feed/dedup", methods=["GET"])
+def api_jobs_feed_dedup():
+    """
+    Returns curated campus placement opportunities processed with duplicate filtering and deadline expiration (#248).
+    """
+    hide_expired = request.args.get("hide_expired", "false").lower() in ("true", "1", "yes")
+    from utils.job_feed_service import JobFeedService
+    from utils.job_dedup_expiration import process_jobs_feed_with_expiration_and_dedup
+
+    feed_service = JobFeedService()
+    raw_jobs = feed_service.get_all_jobs()
+    processed = process_jobs_feed_with_expiration_and_dedup(raw_jobs, hide_expired=hide_expired)
+    return jsonify({
+        "success": True,
+        "feed_summary": {
+            "total_raw": processed["total_raw"],
+            "deduplicated_count": processed["deduplicated_count"],
+            "duplicates_removed": processed["duplicates_removed"],
+            "expired_count": processed["expired_count"],
+            "active_count": processed["active_count"],
+        },
+        "jobs": processed["jobs"]
+    }), 200
+
+
+
 @app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
@@ -2610,6 +2663,49 @@ def api_database_backup():
             "success": False,
             "error": str(exc),
         }), 500
+
+
+@app.route("/api/admin/database/backup/retention", methods=["GET", "POST"])
+def api_admin_backup_retention():
+    """
+    Manages database backup retention policy evaluation and pruning (#247).
+    GET: Evaluates backup inventory, age, and reclaimable space without deleting.
+    POST: Prunes expired backups older than retention window while preserving recent backups.
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret-key"):
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.backup_retention import evaluate_backup_retention, prune_expired_backups
+
+    if request.method == "GET":
+        retention_days = int(request.args.get("retention_days", 7))
+        min_preserved = int(request.args.get("min_preserved", 3))
+        eval_result = evaluate_backup_retention(
+            retention_days=retention_days,
+            min_preserved=min_preserved
+        )
+        return jsonify({
+            "success": True,
+            "data": eval_result
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        retention_days = int(payload.get("retention_days", 7))
+        min_preserved = int(payload.get("min_preserved", 3))
+        dry_run = bool(payload.get("dry_run", False))
+
+        prune_result = prune_expired_backups(
+            retention_days=retention_days,
+            min_preserved=min_preserved,
+            dry_run=dry_run
+        )
+        return jsonify({
+            "success": True,
+            "prune_result": prune_result
+        }), 200
 
 
 @app.route("/api/admin/retention/run", methods=["POST"])
@@ -6795,6 +6891,102 @@ def company_profile_detail_endpoint(profile_id: str):
             "status": "success" if archived else "error",
             "message": f"Archived company profile '{profile['company_name']}'."
         }), 200
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
+    """
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
+    return jsonify({
+        "status": "success",
+        "scan": scan_result
+    }), 200
+
+
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
+    """
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
+
+    if not raw_text or not raw_text.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
+
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+
+    return jsonify({
+        "status": "success",
+        "redaction": redacted_result
+    }), 200
 
 
 if __name__ == "__main__":
