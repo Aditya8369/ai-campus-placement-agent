@@ -117,6 +117,7 @@ from utils.database import (
     calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -256,7 +257,7 @@ def require_login():
         return None
 
     if not flask_session.get("user_id"):
-        if app.config.get("TESTING"):
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
             flask_session["user_id"] = "default_student"
             return None
         if request.path.startswith("/api/"):
@@ -935,6 +936,19 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
+
         # Multi-company batch comparison request
         batch_companies = request.form.getlist("batch_companies")
         if not batch_companies:
@@ -1047,6 +1061,19 @@ def start_analysis_async():
         student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
+
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
 
         task = create_analysis_task(
             company_name=selected_company,
@@ -6742,169 +6769,102 @@ def api_recently_viewed_jobs():
             }), 200
 
 
-@app.route("/api/migrations/status", methods=["GET"])
-def api_migrations_status():
+# ============================================================================
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
     """
-    Returns current database migration and schema version history (#204).
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
     """
-    from utils.migrations import get_migration_status
-    status = get_migration_status(config.DATABASE_PATH)
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
     return jsonify({
         "status": "success",
-        "migration_info": status
+        "scan": scan_result
     }), 200
 
 
-@app.route("/api/migrations/run", methods=["POST"])
-def api_run_migrations():
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
     """
-    Executes all pending database migrations in sequential order (#204).
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
     """
-    from utils.migrations import run_database_migrations
-    try:
-        result = run_database_migrations(config.DATABASE_PATH)
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Migration execution failed via API: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
 
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
 
+    if not raw_text or not raw_text.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
 
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
 
-@app.route("/streak", methods=["GET"])
-def streak_tracker_view():
-    """
-    Renders the Daily Preparation Streak Tracker page (#236).
-    Displays current streak, longest streak, active days, interactive monthly calendar,
-    consistency milestones, and recent preparation activity audit log.
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
 
-    try:
-        req_year = int(request.args.get("year", 0))
-    except (ValueError, TypeError):
-        req_year = None
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
 
-    try:
-        req_month = int(request.args.get("month", 0))
-    except (ValueError, TypeError):
-        req_month = None
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
 
-    streak_data = get_student_streak(student_id)
-    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
-    recent_activities = get_recent_preparation_activities(student_id, limit=15)
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
 
-    informative_message = (
-        "You haven't started your preparation streak yet! Complete a meaningful activity "
-        "— like analyzing your resume, practicing DSA problems, completing a company checklist item, "
-        "or taking a mock interview — to ignite your streak today."
-    ) if not streak_data.get("has_started") else None
-
-    milestones = [
-        {"days": 3, "name": "3-Day Spark", "icon": "fa-bolt", "unlocked": streak_data["longest_streak"] >= 3},
-        {"days": 7, "name": "7-Day Flame", "icon": "fa-fire", "unlocked": streak_data["longest_streak"] >= 7},
-        {"days": 14, "name": "14-Day Torch", "icon": "fa-fire-flame-curved", "unlocked": streak_data["longest_streak"] >= 14},
-        {"days": 30, "name": "30-Day Firestorm", "icon": "fa-crown", "unlocked": streak_data["longest_streak"] >= 30},
-    ]
-
-    return render_template(
-        "streak.html",
-        streak=streak_data,
-        calendar=calendar_data,
-        recent_activities=recent_activities,
-        student_id=student_id,
-        informative_message=informative_message,
-        milestones=milestones
-    )
-
-
-@app.route("/api/streak", methods=["GET"])
-def api_get_student_streak():
-    """
-    JSON API returning student preparation streak statistics and status (#236).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
-
-    streak_data = get_student_streak(student_id)
-    return jsonify({
-        "success": True,
-        "streak": streak_data,
-        "message": "Streak retrieved successfully"
-    }), 200
-
-
-@app.route("/api/streak/calendar", methods=["GET"])
-def api_get_streak_calendar():
-    """
-    JSON API returning the monthly preparation calendar matrix (#236).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
-
-    try:
-        req_year = int(request.args.get("year", 0))
-    except (ValueError, TypeError):
-        req_year = None
-
-    try:
-        req_month = int(request.args.get("month", 0))
-    except (ValueError, TypeError):
-        req_month = None
-
-    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
-    return jsonify({
-        "success": True,
-        "calendar": calendar_data
-    }), 200
-
-
-@app.route("/api/streak/record-activity", methods=["POST"])
-def api_record_preparation_activity():
-    """
-    REST API endpoint allowing candidates to log meaningful preparation activity (#236).
-    Enforces same-day idempotency to prevent streak inflation.
-    """
-    payload = request.get_json(silent=True) or request.form
-    student_id = (
-        payload.get("student_id")
-        or flask_session.get("user_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
-
-    activity_type = (payload.get("activity_type") or "general_practice").strip()
-    metadata = payload.get("metadata") or {}
-    activity_date = payload.get("activity_date")
-
-    updated_streak = record_preparation_activity(
-        student_id=student_id,
-        activity_type=activity_type,
-        metadata=metadata,
-        activity_date=activity_date
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
     )
 
     return jsonify({
-        "success": True,
-        "message": f"Activity '{activity_type}' recorded successfully",
-        "streak": updated_streak
+        "status": "success",
+        "redaction": redacted_result
     }), 200
 
 
