@@ -117,6 +117,15 @@ from utils.database import (
     calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.bookmark_folders import (
+    create_bookmark_folder,
+    list_student_bookmark_folders,
+    get_bookmark_folder_by_id,
+    update_bookmark_folder,
+    delete_bookmark_folder,
+    move_bookmark_to_folder,
+    get_folder_bookmarks
+)
 from utils.interview_moderation import (
     get_moderation_queue,
     moderate_interview_experience,
@@ -6791,6 +6800,11 @@ def api_recently_viewed_jobs():
 
 
 # ============================================================================
+# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
+# ============================================================================
+
+@app.route("/api/coding/folders", methods=["GET", "POST"])
+def coding_bookmark_folders_collection_endpoint():
 # INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
 # ============================================================================
 
@@ -7035,43 +7049,45 @@ def student_reminder_preferences_endpoint():
 @app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
-    Scans submitted resume text or uploaded resume file for Personally Identifiable
-    Information (PII) including email addresses, phone numbers, addresses,
-    and government identifiers (PAN, Aadhaar, SSN).
+    GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
+    POST: Creates a new bookmark folder.
     """
-    if "user_id" not in flask_session:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
+    student_id = flask_session.get("user_id") or "default_student"
 
-    text_to_scan = ""
-    # Option 1: JSON payload
-    if request.is_json:
-        data = request.get_json(silent=True) or {}
-        text_to_scan = data.get("text", "")
-    elif "resume" in request.files:
-        # Option 2: Uploaded file
-        uploaded_file = request.files["resume"]
-        if uploaded_file and uploaded_file.filename != "":
-            try:
-                text_to_scan, _, _, err = _extract_and_validate_resume(request)
-                if err:
-                    return jsonify({"status": "error", "message": err}), 400
-            except Exception as e:
-                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
-    else:
-        text_to_scan = request.form.get("text", "")
-
-    if not text_to_scan or not text_to_scan.strip():
+    if request.method == "GET":
+        data = list_student_bookmark_folders(student_id)
         return jsonify({
-            "status": "error",
-            "message": "No resume text provided for PII scanning."
-        }), 400
+            "status": "success",
+            "data": data
+        }), 200
 
-    scan_result = pii_service.detect_pii(text_to_scan)
-    return jsonify({
-        "status": "success",
-        "scan": scan_result
-    }), 200
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        folder_name = payload.get("name")
+        if not folder_name or not folder_name.strip():
+            return jsonify({"status": "error", "message": "Folder name is required."}), 400
 
+        try:
+            folder = create_bookmark_folder(
+                student_id=student_id,
+                name=folder_name,
+                description=payload.get("description"),
+                color_hex=payload.get("color_hex", "#3b82f6"),
+                icon_name=payload.get("icon_name", "fa-folder")
+            )
+            return jsonify({
+                "status": "success",
+                "message": f"Folder '{folder_name}' created.",
+                "folder": folder
+            }), 201
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Creation failed: {str(e)}"}), 500
+
+
+@app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def coding_bookmark_folder_detail_endpoint(folder_id: str):
     reason = payload.get("reason", "")
     moderator_id = flask_session.get("user_id") or "admin"
 
@@ -7114,22 +7130,80 @@ def admin_experience_moderation_logs_endpoint(exp_id: str):
 @app.route("/api/resume/redact-pii", methods=["POST"])
 def redact_resume_pii_endpoint():
     """
-    Applies configurable redaction rules to sensitive PII entities within resume text.
-    Allows candidate granular control to redact emails, phone numbers, addresses,
-    government IDs, or custom sensitive terms.
+    GET: Retrieves folder metadata and bookmarked problems inside.
+    PUT/PATCH: Updates folder name, description, color, or icon.
+    DELETE: Deletes folder (optionally unassigns or deletes contents).
     """
-    if "user_id" not in flask_session:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
+    student_id = flask_session.get("user_id") or "default_student"
+    folder = get_bookmark_folder_by_id(student_id, folder_id)
+    if not folder:
+        return jsonify({"status": "error", "message": f"Folder '{folder_id}' not found."}), 404
 
-    data = request.get_json(silent=True) or request.form
-    raw_text = data.get("text", "")
-
-    if not raw_text or not raw_text.strip():
+    if request.method == "GET":
+        bookmarks = get_folder_bookmarks(student_id, folder_id)
         return jsonify({
-            "status": "error",
-            "message": "No resume text provided for redaction."
-        }), 400
+            "status": "success",
+            "folder": folder,
+            "bookmarks": bookmarks,
+            "count": len(bookmarks)
+        }), 200
 
+    if request.method in ("PUT", "PATCH"):
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        try:
+            updated = update_bookmark_folder(
+                student_id=student_id,
+                folder_id=folder_id,
+                name=payload.get("name"),
+                description=payload.get("description"),
+                color_hex=payload.get("color_hex"),
+                icon_name=payload.get("icon_name")
+            )
+            return jsonify({
+                "status": "success",
+                "message": "Folder updated successfully.",
+                "folder": updated
+            }), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Update failed: {str(e)}"}), 500
+
+    if request.method == "DELETE":
+        delete_contents = request.args.get("delete_contents", "false").lower() == "true"
+        deleted = delete_bookmark_folder(student_id, folder_id, delete_contents=delete_contents)
+        return jsonify({
+            "status": "success" if deleted else "error",
+            "message": f"Folder '{folder['name']}' deleted."
+        }), 200
+
+
+@app.route("/api/coding/bookmarks/<problem_id>/move", methods=["POST"])
+def move_coding_bookmark_endpoint(problem_id: str):
+    """
+    Moves a bookmarked coding question to a target folder (or removes it to Uncategorized).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    target_folder_id = payload.get("target_folder_id") or payload.get("folder_id")
+
+    try:
+        moved = move_bookmark_to_folder(
+            student_id=student_id,
+            problem_id=problem_id,
+            target_folder_id=target_folder_id
+        )
+        if not moved:
+            return jsonify({"status": "error", "message": "Bookmark not found."}), 404
+        return jsonify({
+            "status": "success",
+            "message": f"Bookmark '{problem_id}' moved successfully.",
+            "target_folder_id": target_folder_id
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Move failed: {str(e)}"}), 500
     redact_emails = data.get("redact_emails", True)
     if isinstance(redact_emails, str):
         redact_emails = redact_emails.lower() not in ("false", "0", "no")
