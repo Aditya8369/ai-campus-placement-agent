@@ -91,6 +91,7 @@ from utils.database import (
     get_note_category_counts,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -205,7 +206,7 @@ def require_login():
         return None
 
     if not flask_session.get("user_id"):
-        if app.config.get("TESTING"):
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
             flask_session["user_id"] = "default_student"
             return None
         if request.path.startswith("/api/"):
@@ -644,6 +645,19 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
+
         # Multi-company batch comparison request
         batch_companies = request.form.getlist("batch_companies")
         if not batch_companies:
@@ -756,6 +770,19 @@ def start_analysis_async():
         student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
+
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
 
         task = create_analysis_task(
             company_name=selected_company,
@@ -3858,6 +3885,104 @@ def api_recently_viewed_jobs():
                 "cleared_count": cleared_count
             }), 200
 
+
+# ============================================================================
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
+    """
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
+    return jsonify({
+        "status": "success",
+        "scan": scan_result
+    }), 200
+
+
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
+    """
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
+
+    if not raw_text or not raw_text.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
+
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+
+    return jsonify({
+        "status": "success",
+        "redaction": redacted_result
+    }), 200
 
 
 if __name__ == "__main__":
