@@ -122,6 +122,23 @@ from utils.interview_moderation import (
     moderate_interview_experience,
     get_experience_moderation_logs
 )
+from utils.deadline_reminders import (
+    scan_and_generate_student_reminders,
+    list_student_reminders,
+    acknowledge_deadline_reminder,
+    get_student_deadline_preferences,
+    update_student_deadline_preferences
+)
+from utils.company_profile_manager import (
+    create_company_profile,
+    update_company_profile,
+    get_company_profile_by_id,
+    get_company_profile_by_name,
+    list_company_profiles,
+    archive_company_profile,
+    seed_default_company_profiles
+)
+from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -261,7 +278,7 @@ def require_login():
         return None
 
     if not flask_session.get("user_id"):
-        if app.config.get("TESTING"):
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
             flask_session["user_id"] = "default_student"
             return None
         if request.path.startswith("/api/"):
@@ -940,6 +957,19 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
+
         # Multi-company batch comparison request
         batch_companies = request.form.getlist("batch_companies")
         if not batch_companies:
@@ -1052,6 +1082,19 @@ def start_analysis_async():
         student_id = flask_session["user_id"]
         if len(job_description) > 15000:
             job_description = job_description[:15000]
+
+        # PII Detection and Redaction Option (#249)
+        redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
+        if redact_pii_flag:
+            redaction_res = pii_service.redact_pii(
+                extracted_resume_text,
+                redact_emails=request.form.get("pii_emails", "true").lower() != "false",
+                redact_phones=request.form.get("pii_phones", "true").lower() != "false",
+                redact_addresses=request.form.get("pii_addresses", "true").lower() != "false",
+                redact_gov_ids=request.form.get("pii_gov_ids", "true").lower() != "false",
+            )
+            extracted_resume_text = redaction_res["redacted_text"]
+            logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
 
         task = create_analysis_task(
             company_name=selected_company,
@@ -6804,6 +6847,230 @@ def admin_moderate_experience_action_endpoint(exp_id: str):
     action = payload.get("action")
     if not action:
         return jsonify({"status": "error", "message": "Moderation 'action' is required."}), 400
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
+def student_deadline_reminders_endpoint():
+    """
+    GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
+    POST: Triggers an on-demand scan and synchronization of reminders for the candidate.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    urgency_filter = request.args.get("urgency")
+    include_acknowledged = request.args.get("include_acknowledged", "false").lower() == "true"
+
+    if request.method == "POST":
+        reminders = scan_and_generate_student_reminders(student_id)
+        return jsonify({
+            "status": "success",
+            "message": f"Scanned and updated deadline reminders for student '{student_id}'.",
+            "count": len(reminders),
+            "reminders": reminders
+        }), 200
+
+    # GET: Scan and fetch
+    scan_and_generate_student_reminders(student_id)
+    reminders = list_student_reminders(
+        student_id=student_id,
+        include_acknowledged=include_acknowledged,
+        urgency_filter=urgency_filter
+    )
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(reminders),
+        "reminders": reminders
+    }), 200
+# COMPANY PROFILE UPDATE MANAGEMENT SYSTEM (#250)
+# ============================================================================
+
+@app.route("/api/companies", methods=["GET", "POST"])
+def company_profiles_collection_endpoint():
+    """
+    GET: Lists enterprise company recruitment profiles with filtering by search and hiring tier.
+    POST: Creates a new company profile (requires admin privileges or secret key).
+    """
+    if request.method == "GET":
+        search_query = request.args.get("search")
+        tier_filter = request.args.get("tier")
+        include_inactive = request.args.get("include_inactive", "false").lower() == "true"
+        
+        # Auto-seed default directory if completely empty
+        seed_default_company_profiles()
+
+        profiles = list_company_profiles(
+            search_query=search_query,
+            tier_filter=tier_filter,
+            active_only=not include_inactive
+        )
+        return jsonify({
+            "status": "success",
+            "total_count": len(profiles),
+            "companies": profiles
+        }), 200
+
+    if request.method == "POST":
+        admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+        user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+        if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+            return jsonify({
+                "status": "error",
+                "message": "Unauthorized. Administrative privilege required to create company profiles."
+            }), 403
+
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        comp_name = payload.get("company_name")
+        if not comp_name or not str(comp_name).strip():
+            return jsonify({"status": "error", "message": "company_name is required."}), 400
+
+        try:
+            profile = create_company_profile(
+                company_name=comp_name,
+                industry=payload.get("industry", "Technology"),
+                website_url=payload.get("website_url"),
+                careers_url=payload.get("careers_url"),
+                logo_url=payload.get("logo_url"),
+                overview=payload.get("overview"),
+                hiring_tier=payload.get("hiring_tier", "Tier 1"),
+                hiring_workflow=payload.get("hiring_workflow", []),
+                primary_tech_stack=payload.get("primary_tech_stack", []),
+                typical_ctc_range=payload.get("typical_ctc_range"),
+                headquarters=payload.get("headquarters")
+            )
+            return jsonify({
+                "status": "success",
+                "message": f"Created company profile for '{comp_name}'.",
+                "company": profile
+            }), 201
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Failed to create profile: {str(e)}"}), 500
+
+
+@app.route("/api/companies/<profile_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def company_profile_detail_endpoint(profile_id: str):
+    """
+    GET: Fetches a single company profile by its unique ID.
+    PUT/PATCH: Updates company profile fields (admin only).
+    DELETE: Archives / soft-deletes the company profile (admin only).
+    """
+    profile = get_company_profile_by_id(profile_id)
+    if not profile:
+        return jsonify({"status": "error", "message": f"Company profile '{profile_id}' not found."}), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "status": "success",
+            "company": profile
+        }), 200
+
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to modify company profiles."
+        }), 403
+
+    if request.method in ("PUT", "PATCH"):
+        updates = request.get_json(silent=True) or request.form.to_dict()
+        try:
+            updated_profile = update_company_profile(profile_id, updates)
+            return jsonify({
+                "status": "success",
+                "message": f"Updated profile for '{profile['company_name']}'.",
+                "company": updated_profile
+            }), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Update failed: {str(e)}"}), 500
+
+    if request.method == "DELETE":
+        archived = archive_company_profile(profile_id)
+        return jsonify({
+            "status": "success" if archived else "error",
+            "message": f"Archived company profile '{profile['company_name']}'."
+        }), 200
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines/<reminder_id>/acknowledge", methods=["POST"])
+def acknowledge_deadline_reminder_endpoint(reminder_id: str):
+    """Marks an upcoming deadline reminder as acknowledged/dismissed."""
+    student_id = flask_session.get("user_id") or "default_student"
+    success = acknowledge_deadline_reminder(student_id=student_id, reminder_id=reminder_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Reminder not found or already acknowledged."}), 404
+    return jsonify({
+        "status": "success",
+        "message": "Deadline reminder acknowledged successfully."
+    }), 200
+
+
+@app.route("/api/reminders/preferences", methods=["GET", "PUT", "PATCH"])
+def student_reminder_preferences_endpoint():
+    """
+    GET: Retrieves student's deadline reminder preferences.
+    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        prefs = get_student_deadline_preferences(student_id)
+        return jsonify({
+            "status": "success",
+            "preferences": prefs
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    updated = update_student_deadline_preferences(
+        student_id=student_id,
+        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
+        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
+        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
+        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
+    """
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
+    return jsonify({
+        "status": "success",
+        "scan": scan_result
+    }), 200
 
     reason = payload.get("reason", "")
     moderator_id = flask_session.get("user_id") or "admin"
@@ -6844,6 +7111,58 @@ def admin_experience_moderation_logs_endpoint(exp_id: str):
         "status": "success",
         "experience_id": exp_id,
         "logs": logs
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
+    """
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
+
+    if not raw_text or not raw_text.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
+
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+    return jsonify({
+        "status": "success",
+        "message": "Updated deadline reminder preferences.",
+        "preferences": updated
+        "redaction": redacted_result
     }), 200
 
 
