@@ -117,6 +117,13 @@ from utils.database import (
     calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.deadline_reminders import (
+    scan_and_generate_student_reminders,
+    list_student_reminders,
+    acknowledge_deadline_reminder,
+    get_student_deadline_preferences,
+    update_student_deadline_preferences
+)
 from utils.company_profile_manager import (
     create_company_profile,
     update_company_profile,
@@ -6779,6 +6786,41 @@ def api_recently_viewed_jobs():
 
 
 # ============================================================================
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
+def student_deadline_reminders_endpoint():
+    """
+    GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
+    POST: Triggers an on-demand scan and synchronization of reminders for the candidate.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    urgency_filter = request.args.get("urgency")
+    include_acknowledged = request.args.get("include_acknowledged", "false").lower() == "true"
+
+    if request.method == "POST":
+        reminders = scan_and_generate_student_reminders(student_id)
+        return jsonify({
+            "status": "success",
+            "message": f"Scanned and updated deadline reminders for student '{student_id}'.",
+            "count": len(reminders),
+            "reminders": reminders
+        }), 200
+
+    # GET: Scan and fetch
+    scan_and_generate_student_reminders(student_id)
+    reminders = list_student_reminders(
+        student_id=student_id,
+        include_acknowledged=include_acknowledged,
+        urgency_filter=urgency_filter
+    )
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(reminders),
+        "reminders": reminders
+    }), 200
 # COMPANY PROFILE UPDATE MANAGEMENT SYSTEM (#250)
 # ============================================================================
 
@@ -6894,6 +6936,41 @@ def company_profile_detail_endpoint(profile_id: str):
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
+@app.route("/api/reminders/deadlines/<reminder_id>/acknowledge", methods=["POST"])
+def acknowledge_deadline_reminder_endpoint(reminder_id: str):
+    """Marks an upcoming deadline reminder as acknowledged/dismissed."""
+    student_id = flask_session.get("user_id") or "default_student"
+    success = acknowledge_deadline_reminder(student_id=student_id, reminder_id=reminder_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Reminder not found or already acknowledged."}), 404
+    return jsonify({
+        "status": "success",
+        "message": "Deadline reminder acknowledged successfully."
+    }), 200
+
+
+@app.route("/api/reminders/preferences", methods=["GET", "PUT", "PATCH"])
+def student_reminder_preferences_endpoint():
+    """
+    GET: Retrieves student's deadline reminder preferences.
+    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        prefs = get_student_deadline_preferences(student_id)
+        return jsonify({
+            "status": "success",
+            "preferences": prefs
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    updated = update_student_deadline_preferences(
+        student_id=student_id,
+        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
+        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
+        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
+        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
 @app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
@@ -6982,9 +7059,10 @@ def redact_resume_pii_endpoint():
         redact_gov_ids=redact_gov_ids,
         custom_redact_values=custom_tokens
     )
-
     return jsonify({
         "status": "success",
+        "message": "Updated deadline reminder preferences.",
+        "preferences": updated
         "redaction": redacted_result
     }), 200
 
