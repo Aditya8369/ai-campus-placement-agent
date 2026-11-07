@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Preparation Streak Tracker - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light streak-page">
+  <!-- Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/streak" class="btn btn-danger btn-sm rounded-pill px-3 py-1 fw-bold shadow-sm">
+          <i class="fa-solid fa-fire me-1"></i> Streak: {{ streak.current_streak }} {{ 'Day' if streak.current_streak == 1 else 'Days' }}
+        </a>
+        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-code me-1"></i> Practice DSA
+        </a>
+        <a href="/notes" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-note-sticky me-1 text-warning"></i> Notes
+        </a>
+        <a href="/company-checklist" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-list-check me-1"></i> Checklist
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4 g-3">
+      <div class="col-md-8">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span class="fs-2 streak-flame-header">🔥</span>
+          <h1 class="h2 fw-bold mb-0 text-dark">Daily Preparation Streak Tracker</h1>
+        </div>
+        <p class="text-muted mb-0">
+          Build consistency in your placement journey. Every day you practice DSA, analyze resumes, complete mock interviews, or prepare notes keeps your streak alive.
+        </p>
+      </div>
+      <div class="col-md-4 text-md-end">
+        {% if streak.active_today %}
+          <div class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fs-6 fw-semibold shadow-sm">
+            <i class="fa-solid fa-circle-check me-1"></i> Active Today &bull; Streak Protected!
+          </div>
+        {% elif streak.has_started %}
+          <div class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 rounded-pill fs-6 fw-semibold shadow-sm pulse-warning">
+            <i class="fa-solid fa-fire-burner me-1"></i> Complete an activity today to maintain your streak!
+          </div>
+        {% else %}
+          <div class="badge bg-secondary-subtle text-secondary border px-3 py-2 rounded-pill fs-6 fw-semibold">
+            <i class="fa-solid fa-hourglass-start me-1"></i> Ready to start your streak
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Informative Message Banner for Unstarted Streak (#236) -->
+    {% if informative_message %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-gradient-info text-dark p-4 border-start border-primary border-5" style="background: linear-gradient(135deg, #e3f2fd 0%, #ffffff 100%);">
+      <div class="d-flex align-items-start gap-3">
+        <div class="fs-1 text-primary mt-1">
+          <i class="fa-solid fa-lightbulb"></i>
+        </div>
+        <div class="flex-grow-1">
+          <h5 class="fw-bold mb-1 text-primary">Start Your Placement Preparation Streak Today!</h5>
+          <p class="text-secondary mb-3">
+            {{ informative_message }}
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <a href="/" class="btn btn-primary btn-sm rounded-pill px-3 fw-semibold">
+              <i class="fa-solid fa-file-lines me-1"></i> Analyze Resume
+            </a>
+            <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 fw-semibold">
+              <i class="fa-solid fa-code me-1"></i> Practice DSA Problem
+            </a>
+            <a href="/company-checklist" class="btn btn-outline-success btn-sm rounded-pill px-3 fw-semibold">
+              <i class="fa-solid fa-check-double me-1"></i> Complete Checklist Task
+            </a>
+            <a href="/notes" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 fw-semibold">
+              <i class="fa-solid fa-pen-to-square me-1"></i> Create Study Note
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Top KPI Stat Cards -->
+    <div class="row g-3 mb-4">
+      <!-- Current Streak Card -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 h-100 kpi-card-streak current-streak-card">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-uppercase fw-bold text-danger small tracking-wider">Current Streak</span>
+            <div class="streak-badge-icon bg-danger-subtle text-danger rounded-circle p-2">
+              <i class="fa-solid fa-fire fs-5"></i>
+            </div>
+          </div>
+          <div class="d-flex align-items-baseline gap-2">
+            <h2 class="display-5 fw-extrabold mb-0 text-danger" id="currentStreakValue">{{ streak.current_streak }}</h2>
+            <span class="text-muted fw-bold">{{ 'Day' if streak.current_streak == 1 else 'Days' }}</span>
+          </div>
+          <p class="text-muted small mt-2 mb-0">
+            {% if streak.active_today %}
+              <i class="fa-solid fa-check-circle text-success me-1"></i> Streak active today!
+            {% elif streak.current_streak > 0 %}
+              <i class="fa-solid fa-clock text-warning me-1"></i> Practice before midnight to keep it!
+            {% else %}
+              <i class="fa-solid fa-sparkles text-primary me-1"></i> Complete a task to start!
+            {% endif %}
+          </p>
+        </div>
+      </div>
+
+      <!-- Longest Streak Card -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 h-100 kpi-card-streak longest-streak-card">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-uppercase fw-bold text-warning-emphasis small tracking-wider">Longest Streak</span>
+            <div class="streak-badge-icon bg-warning-subtle text-warning rounded-circle p-2">
+              <i class="fa-solid fa-trophy fs-5 text-warning"></i>
+            </div>
+          </div>
+          <div class="d-flex align-items-baseline gap-2">
+            <h2 class="display-5 fw-extrabold mb-0 text-dark" id="longestStreakValue">{{ streak.longest_streak }}</h2>
+            <span class="text-muted fw-bold">{{ 'Day' if streak.longest_streak == 1 else 'Days' }}</span>
+          </div>
+          <p class="text-muted small mt-2 mb-0">
+            <i class="fa-solid fa-award text-warning me-1"></i> Personal historical best
+          </p>
+        </div>
+      </div>
+
+      <!-- Total Active Days Card -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 h-100 kpi-card-streak total-days-card">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-uppercase fw-bold text-primary small tracking-wider">Total Active Days</span>
+            <div class="streak-badge-icon bg-primary-subtle text-primary rounded-circle p-2">
+              <i class="fa-regular fa-calendar-check fs-5"></i>
+            </div>
+          </div>
+          <div class="d-flex align-items-baseline gap-2">
+            <h2 class="display-5 fw-extrabold mb-0 text-primary" id="totalActiveDaysValue">{{ streak.total_active_days }}</h2>
+            <span class="text-muted fw-bold">{{ 'Day' if streak.total_active_days == 1 else 'Days' }}</span>
+          </div>
+          <p class="text-muted small mt-2 mb-0">
+            <i class="fa-solid fa-calendar-day text-primary me-1"></i> Calendar days practiced
+          </p>
+        </div>
+      </div>
+
+      <!-- Today's Status Card -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 h-100 kpi-card-streak today-status-card">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-uppercase fw-bold text-secondary small tracking-wider">Today's Status</span>
+            <div class="streak-badge-icon {{ 'bg-success-subtle text-success' if streak.active_today else 'bg-secondary-subtle text-secondary' }} rounded-circle p-2">
+              <i class="fa-solid {{ 'fa-circle-check text-success' if streak.active_today else 'fa-circle-dot text-secondary' }} fs-5"></i>
+            </div>
+          </div>
+          <div class="d-flex align-items-baseline gap-2">
+            <h3 class="fw-bold mb-0 {{ 'text-success' if streak.active_today else 'text-secondary' }}">
+              {{ 'Completed' if streak.active_today else 'Pending' }}
+            </h3>
+          </div>
+          <p class="text-muted small mt-2 mb-0">
+            {% if streak.active_today %}
+              <i class="fa-solid fa-star text-warning me-1"></i> Awesome job today!
+            {% else %}
+              <i class="fa-solid fa-arrow-right text-primary me-1"></i> Log an activity now
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Calendar & Consistency Milestones Grid -->
+    <div class="row g-4 mb-4">
+      <!-- Visual Monthly Activity Calendar -->
+      <div class="col-lg-8">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100 bg-white">
+          <!-- Calendar Header & Month Controls -->
+          <div class="d-flex flex-wrap align-items-center justify-content-between mb-4 gap-2">
+            <div>
+              <h4 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                <i class="fa-regular fa-calendar-days text-primary"></i>
+                <span id="calendarMonthTitle">{{ calendar.month_name }} {{ calendar.year }}</span>
+              </h4>
+              <small class="text-muted">
+                <span class="badge bg-primary-subtle text-primary rounded-pill me-1" id="monthActiveDaysCount">{{ calendar.active_days_in_month }}</span> active preparation {{ 'day' if calendar.active_days_in_month == 1 else 'days' }} this month
+              </small>
+            </div>
+            <div class="btn-group" role="group" aria-label="Month Navigation">
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-start-pill px-3" id="btnPrevMonth" data-year="{{ calendar.year }}" data-month="{{ calendar.month }}" title="Previous Month">
+                <i class="fa-solid fa-chevron-left me-1"></i> Prev
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm px-3" id="btnCurrentMonth" title="Go to Current Month">
+                Today
+              </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm rounded-end-pill px-3" id="btnNextMonth" data-year="{{ calendar.year }}" data-month="{{ calendar.month }}" title="Next Month">
+                Next <i class="fa-solid fa-chevron-right ms-1"></i>
+              </button>
+            </div>
+          </div>
+
+          <!-- Calendar Grid Table -->
+          <div class="table-responsive">
+            <div class="streak-calendar-wrapper" id="streakCalendarContainer">
+              <!-- Day of week header -->
+              <div class="streak-calendar-weekdays">
+                <div class="streak-weekday">Mon</div>
+                <div class="streak-weekday">Tue</div>
+                <div class="streak-weekday">Wed</div>
+                <div class="streak-weekday">Thu</div>
+                <div class="streak-weekday">Fri</div>
+                <div class="streak-weekday weekend">Sat</div>
+                <div class="streak-weekday weekend">Sun</div>
+              </div>
+
+              <!-- Days Grid -->
+              <div class="streak-calendar-days" id="streakCalendarDays">
+                {% for week in calendar.calendar_weeks %}
+                  {% for day in week %}
+                    <div class="streak-day-cell {% if not day.is_current_month %}other-month{% endif %} {% if day.is_today %}today-cell{% endif %} {% if day.is_active %}active-day{% endif %}"
+                         data-date="{{ day.date }}"
+                         title="{% if day.is_active %}{{ day.date }}: {{ day.activities|join(', ')|replace('_', ' ')|title }} ({{ day.activity_count }} activities){% elif day.is_today %}Today ({{ day.date }}){% else %}{{ day.date }}{% endif %}">
+                      <div class="streak-day-number">{{ day.day_number }}</div>
+                      {% if day.is_active %}
+                        <div class="streak-day-flame" title="{{ day.activity_count }} activity completed">
+                          <span class="streak-flame-icon">🔥</span>
+                        </div>
+                      {% elif day.is_today %}
+                        <div class="streak-day-dot today-dot" title="Today"></div>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <!-- Calendar Legend -->
+          <div class="d-flex flex-wrap align-items-center justify-content-between mt-4 pt-3 border-top gap-3 small text-muted">
+            <div class="d-flex align-items-center gap-3">
+              <span class="d-flex align-items-center gap-1">
+                <span class="streak-legend-box active-legend">🔥</span> Active Day
+              </span>
+              <span class="d-flex align-items-center gap-1">
+                <span class="streak-legend-box today-legend"></span> Today
+              </span>
+              <span class="d-flex align-items-center gap-1">
+                <span class="streak-legend-box empty-legend"></span> Rest Day
+              </span>
+            </div>
+            <div class="text-secondary small">
+              <i class="fa-solid fa-shield-halved text-primary me-1"></i> Same-day activities only count once toward streaks
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Consistency Milestones & Motivation -->
+      <div class="col-lg-4">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100 bg-white">
+          <h5 class="fw-bold mb-3 text-dark d-flex align-items-center gap-2">
+            <i class="fa-solid fa-medal text-warning"></i> Consistency Badges
+          </h5>
+          <p class="text-muted small mb-4">
+            Unlock achievements by maintaining your placement preparation streak.
+          </p>
+
+          <div class="milestones-list d-flex flex-column gap-3">
+            {% for m in milestones %}
+              <div class="p-3 rounded-3 border {% if m.unlocked %}bg-light border-warning-subtle shadow-xs{% else %}bg-light-subtle opacity-75{% endif %} d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="milestone-badge-circle rounded-circle text-center {% if m.unlocked %}bg-warning text-dark{% else %}bg-secondary-subtle text-muted{% endif %}" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fa-solid {{ m.icon }} fs-5"></i>
+                  </div>
+                  <div>
+                    <h6 class="fw-bold mb-0 text-dark">{{ m.name }}</h6>
+                    <small class="text-muted">{{ m.days }}-Day Consecutive Streak</small>
+                  </div>
+                </div>
+                <div>
+                  {% if m.unlocked %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                      <i class="fa-solid fa-check me-1"></i> Unlocked
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-1 small">
+                      {{ [0, m.days - streak.current_streak]|max }} days left
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <div class="mt-4 pt-3 border-top">
+            <h6 class="fw-bold mb-2 text-dark small text-uppercase">Meaningful Activities:</h6>
+            <ul class="list-unstyled small text-muted mb-0 d-flex flex-column gap-1">
+              <li><i class="fa-solid fa-check text-success me-2"></i><strong>Resume Analysis:</strong> Full AI ATS evaluation</li>
+              <li><i class="fa-solid fa-check text-success me-2"></i><strong>Mock Interview:</strong> Answer candidate questions</li>
+              <li><i class="fa-solid fa-check text-success me-2"></i><strong>Coding Practice:</strong> DSA question solutions</li>
+              <li><i class="fa-solid fa-check text-success me-2"></i><strong>Checklist:</strong> Complete company preparation task</li>
+              <li><i class="fa-solid fa-check text-success me-2"></i><strong>Notes:</strong> Save interview study notes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Preparation Activity Audit Log -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+      <div class="d-flex flex-wrap align-items-center justify-content-between mb-3 gap-2">
+        <div>
+          <h5 class="fw-bold mb-1 text-dark d-flex align-items-center gap-2">
+            <i class="fa-solid fa-timeline text-primary"></i> Preparation Activity History
+          </h5>
+          <p class="text-muted small mb-0">Record of verified preparation sessions contributing to your consistency</p>
+        </div>
+        <span class="badge bg-light text-secondary border px-3 py-2 rounded-pill small">
+          {{ recent_activities|length }} Recent {{ 'Event' if recent_activities|length == 1 else 'Events' }}
+        </span>
+      </div>
+
+      {% if recent_activities %}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light small text-uppercase text-secondary">
+              <tr>
+                <th scope="col" style="width: 160px;">Date</th>
+                <th scope="col" style="width: 200px;">Activity Type</th>
+                <th scope="col">Details</th>
+                <th scope="col" style="width: 120px;" class="text-end">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for act in recent_activities %}
+                <tr>
+                  <td class="text-nowrap fw-semibold text-dark">
+                    <i class="fa-regular fa-calendar me-1 text-muted"></i> {{ act.activity_date }}
+                  </td>
+                  <td>
+                    {% if act.activity_type == 'resume_analysis' %}
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-file-lines me-1"></i> Resume Analysis
+                      </span>
+                    {% elif act.activity_type == 'mock_interview' %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-microphone me-1"></i> Mock Interview
+                      </span>
+                    {% elif act.activity_type == 'coding_practice' %}
+                      <span class="badge bg-dark-subtle text-dark border rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-code me-1"></i> Coding Practice
+                      </span>
+                    {% elif act.activity_type == 'checklist_task' %}
+                      <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-list-check me-1"></i> Checklist Task
+                      </span>
+                    {% elif act.activity_type == 'prep_note' %}
+                      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-note-sticky me-1"></i> Prep Note
+                      </span>
+                    {% else %}
+                      <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-bolt me-1"></i> {{ act.activity_type|replace('_', ' ')|title }}
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="text-secondary small">
+                    {% if act.metadata %}
+                      {% if act.metadata.company %}Company: <strong>{{ act.metadata.company }}</strong>{% endif %}
+                      {% if act.metadata.question_title %}Problem: <strong>{{ act.metadata.question_title }}</strong>{% endif %}
+                      {% if act.metadata.title %}Note: <strong>{{ act.metadata.title }}</strong>{% endif %}
+                      {% if act.metadata.score %}Score: <strong>{{ act.metadata.score }}</strong>{% endif %}
+                    {% else %}
+                      Placement preparation action logged
+                    {% endif %}
+                  </td>
+                  <td class="text-end">
+                    <span class="text-success small fw-semibold">
+                      <i class="fa-solid fa-check-circle me-1"></i> Counted
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center py-5 text-muted">
+          <div class="fs-1 text-secondary mb-2">
+            <i class="fa-regular fa-calendar-xmark"></i>
+          </div>
+          <h6 class="fw-bold text-dark">No preparation activities logged yet</h6>
+          <p class="small text-muted mb-3">Your activities will appear here once you begin analyzing resumes or practicing questions.</p>
+          <a href="/" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+            Get Started
+          </a>
+        </div>
+      {% endif %}
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>
