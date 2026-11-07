@@ -2298,8 +2298,10 @@ def api_database_backup():
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
     """
     try:
+        from utils.backup_restoration import get_backup_storage_directory
+        backup_dir = get_backup_storage_directory()
         backup_filename = f"placement_backup_{int(time.time())}.db"
-        backup_path = os.path.join(config.BASE_DIR, backup_filename)
+        backup_path = os.path.join(backup_dir, backup_filename)
         create_database_backup(backup_path)
 
         file_size = os.path.getsize(backup_path) if os.path.exists(backup_path) else 0
@@ -2315,6 +2317,98 @@ def api_database_backup():
             "success": False,
             "error": str(exc),
         }), 500
+
+
+@app.route("/api/admin/database/backups", methods=["GET"])
+def api_admin_list_backups():
+    """
+    Lists all available database backups for administrator inspection (#245).
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        # Deny unauthorized access
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.backup_restoration import list_available_backups
+    backups = list_available_backups()
+    return jsonify({
+        "success": True,
+        "count": len(backups),
+        "backups": backups
+    }), 200
+
+
+@app.route("/api/admin/database/backups/validate", methods=["POST"])
+def api_admin_validate_backup():
+    """
+    Pre-validates a backup candidate before restoration (#245).
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    payload = request.get_json(silent=True) or request.form
+    filename = payload.get("filename") or payload.get("backup_identifier")
+    if not filename:
+        return jsonify({"success": False, "error": "Backup filename or path is required."}), 400
+
+    from utils.backup_restoration import get_backup_storage_directory, validate_backup_file
+    backup_dir = get_backup_storage_directory()
+    target_path = os.path.join(backup_dir, os.path.basename(filename))
+    if not os.path.exists(target_path) and os.path.isabs(filename):
+        target_path = filename
+
+    result = validate_backup_file(target_path)
+    return jsonify({
+        "success": result.get("valid", False),
+        "validation": result
+    }), (200 if result.get("valid") else 400)
+
+
+@app.route("/api/admin/database/restore", methods=["POST"])
+def api_admin_restore_database():
+    """
+    Restores the application database from an authorized backup file (#245).
+    Enforces administrator authorization, creates safety snapshot, and validates structure.
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_user = flask_session.get("user", {}).get("email") or "admin"
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        logger.warning(f"Unauthorized restoration attempt from IP {request.remote_addr}")
+        return jsonify({"success": False, "error": "Unauthorized: Administrator privileges required to restore database."}), 403
+
+    payload = request.get_json(silent=True) or request.form
+    backup_identifier = payload.get("backup_identifier") or payload.get("filename")
+
+    if not backup_identifier:
+        return jsonify({
+            "success": False,
+            "error": "Missing backup_identifier in request payload."
+        }), 400
+
+    from utils.backup_restoration import restore_database_from_backup, BackupRestorationError
+    try:
+        restore_result = restore_database_from_backup(
+            backup_identifier=str(backup_identifier).strip(),
+            admin_user=admin_user
+        )
+        return jsonify(restore_result), 200
+    except BackupRestorationError as b_err:
+        logger.error(f"Backup restoration failed with operational error: {b_err}")
+        return jsonify({
+            "success": False,
+            "error": str(b_err)
+        }), 400
+    except Exception as exc:
+        logger.critical(f"Unexpected restoration error: {exc}")
+        return jsonify({
+            "success": False,
+            "error": f"Internal system failure during restoration: {exc}"
+        }), 500
+
 
 
 @app.route("/api/admin/retention/run", methods=["POST"])
