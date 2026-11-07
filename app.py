@@ -82,25 +82,12 @@ from utils.database import (
     submit_user_feedback,
     get_user_feedback_list,
     get_feedback_metrics_summary,
-    save_coding_bookmark,
-    remove_coding_bookmark,
-    get_coding_bookmarks,
-    is_coding_bookmarked,
-    create_preparation_note,
-    get_preparation_notes,
-    get_preparation_note_by_id,
-    update_preparation_note,
-    delete_preparation_note,
-    get_note_category_counts,
-    create_password_reset_token,
-    get_valid_password_reset_token,
-    reset_user_password,
-    invalidate_password_reset_token
-    get_user_data_export_manifest,
-    delete_user_account_and_personal_data,
     generate_email_verification_token,
     verify_user_email_token,
     is_user_email_verified,
+    log_gemini_api_call,
+    get_gemini_usage_summary,
+    calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from utils.progress_tracker import (
@@ -151,17 +138,6 @@ except ImportError:
     safe_generate_report_with_recovery = None
     generate_fallback_pdf_report = None
     sanitize_report_data = None
-from utils.report_generator import (
-    generate_student_preparation_summary_pdf,
-    generate_pdf_report,
-    generate_certificate_pdf,
-    generate_skills_gap_pdf,
-    generate_interview_transcript_pdf,
-    generate_interview_transcript_markdown,
-    safe_generate_report_with_recovery,
-    generate_fallback_pdf_report,
-    sanitize_report_data,
-)
 from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
@@ -241,14 +217,12 @@ def require_login():
         "register",
         "verify_email",
         "resend_verification",
-        "set_language",
-        "api_translations",
         "healthz",
         "health",
         "api_health",
         "static",
-        "forgot_password",
-        "reset_password",
+        "gemini_api_usage_dashboard",
+        "api_gemini_usage_summary",
     }
 
     if request.endpoint in public_endpoints:
@@ -711,59 +685,6 @@ def register():
     return render_template("register.html")
 
 
-# ==============================================================================
-# Account Deletion and GDPR Data Erasure Routes (#207)
-# ==============================================================================
-
-@app.route("/account/delete", methods=["GET", "POST"])
-def delete_account():
-    """
-    Handles account deletion and personal data erasure (#207).
-    Requires explicit confirmation and student's password verification.
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-    manifest = get_user_data_export_manifest(student_id)
-
-    if request.method == "POST":
-        confirm_text = request.form.get("confirm_phrase", "").strip()
-        password = request.form.get("password", "")
-
-        if confirm_text != "DELETE MY ACCOUNT":
-            flash("Please type 'DELETE MY ACCOUNT' exactly as shown to confirm deletion.", "error")
-            return render_template("delete_account.html", manifest=manifest, student_id=student_id)
-
-        # If user has a password in DB, verify it
-        user = get_user_by_id(student_id)
-        if user and user.get("password_hash"):
-            if not password or not check_password_hash(user["password_hash"], password):
-                flash("Incorrect password. Account deletion aborted.", "error")
-                return render_template("delete_account.html", manifest=manifest, student_id=student_id)
-
-        try:
-            purge_result = delete_user_account_and_personal_data(student_id)
-            flask_session.clear()
-            flash(f"Your account and all {purge_result['total_deleted']} associated records have been permanently removed.", "info")
-            return redirect(url_for("index"))
-        except Exception as err:
-            logger.error(f"Error purging account for {student_id}: {err}")
-            flash("An error occurred while deleting your personal data. Please try again or contact support.", "error")
-            return render_template("delete_account.html", manifest=manifest, student_id=student_id)
-
-    return render_template("delete_account.html", manifest=manifest, student_id=student_id)
-
-
-@app.route("/api/account/export-manifest", methods=["GET"])
-def api_account_export_manifest():
-    """
-    Returns an audit summary of all personal data held for the authenticated student (#207).
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-    manifest = get_user_data_export_manifest(student_id)
-    return jsonify({
-        "status": "success",
-        "manifest": manifest
-    }), 200
-
 @app.route("/verify-email/<token>", methods=["GET"])
 def verify_email(token: str):
     """
@@ -817,40 +738,39 @@ def resend_verification():
     return render_template("resend_verification.html", initial_email=initial_email)
 
 
-@app.route("/set-language/<lang_code>", methods=["GET", "POST"])
-def set_language(lang_code: str):
-    """
-    Switches the session UI language and redirects back to referring page (#214).
-    """
-    code = lang_code.strip().lower()
-    if code in SUPPORTED_LOCALES:
-        flask_session["locale"] = code
-        flash(get_translation("lang_switch_success", locale=code), "success")
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Dashboard (#215)
+# ==============================================================================
 
-    # Redirect to referer or home
-    next_page = request.args.get("next") or request.referrer or url_for("index")
-    return redirect(next_page)
-
-
-@app.route("/api/translations", methods=["GET"])
-@app.route("/api/translations/<lang_code>", methods=["GET"])
-def api_translations(lang_code=None):
+@app.route("/admin/api-usage", methods=["GET"])
+def gemini_api_usage_dashboard():
     """
-    API endpoint returning translation catalogs for client-side dynamic rendering (#214).
+    Renders the Gemini API Usage & Cost Monitoring Dashboard (#215).
+    Provides visual breakdowns of token consumption, estimated spend,
+    latency trends, and endpoint call distribution.
     """
-    code = (lang_code or flask_session.get("locale") or DEFAULT_LOCALE).strip().lower()
-    if code not in SUPPORTED_LOCALES:
-        code = DEFAULT_LOCALE
+    days = request.args.get("days", 30, type=int)
+    if days not in [1, 7, 14, 30, 90]:
+        days = 30
 
+    usage_data = get_gemini_usage_summary(days=days)
+    return render_template("api_usage_dashboard.html", usage=usage_data, selected_days=days)
+
+
+@app.route("/api/admin/usage-stats", methods=["GET"])
+def api_gemini_usage_summary():
+    """
+    JSON API endpoint exposing aggregated usage and expenditure metrics (#215).
+    """
+    days = request.args.get("days", 30, type=int)
+    if days < 1 or days > 365:
+        days = 30
+
+    usage_data = get_gemini_usage_summary(days=days)
     return jsonify({
         "status": "success",
-        "locale": code,
-        "locale_name": LOCALE_NAMES.get(code, code),
-        "translations": get_all_translations_for_locale(code),
-        "supported_locales": SUPPORTED_LOCALES,
-        "available_locales": LOCALE_NAMES
-    }), 200
-
+        "data": usage_data
+    })
 
 
 @app.route("/")
@@ -2055,158 +1975,6 @@ def api_skills_assessment():
 
 @app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
-
-@app.route("/interview/<analysis_id>/export")
-def export_interview_json(analysis_id: str):
-    """
-    Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
-    """
-    session_id = (
-        request.args.get("session_id")
-        or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-        or analysis_id
-    )
-    session = get_interview_session(session_id)
-    if not session and session_id != analysis_id:
-        session_id = analysis_id
-        session = get_interview_session(session_id)
-
-    analysis_record = get_analysis(analysis_id)
-
-    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
-        return jsonify({"error": "Interview session not found."}), 404
-
-    if not session:
-        flash("Interview session not found.", "error")
-        return redirect(url_for("index"))
-
-    company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-    answers_recorded = session.get("answers", [])
-    session_summary = live_interview_agent.calculate_session_summary(answers_recorded) if answers_recorded else {}
-
-    export_data = {
-        "analysis_id": analysis_id,
-        "company_name": company_name,
-        "completed": bool(session.get("completed", 0)),
-        "total_questions": len(session.get("questions", [])),
-        "answers_recorded": len(answers_recorded),
-        "session_summary": session_summary,
-        "transcript": answers_recorded,
-    }
-
-    response = jsonify(export_data)
-    safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_"))
-    response.headers["Content-Disposition"] = (
-        f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
-    )
-    return response
-
-
-@app.route("/interview/<analysis_id>/transcript")
-@app.route("/download/interview-transcript/<analysis_id>")
-def download_interview_transcript(analysis_id: str):
-    """
-    Exports the mock interview transcript, per-question scores, AI feedback,
-    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
-    Works after at least one question has been answered.
-    """
-    try:
-        session_id = (
-            request.args.get("session_id")
-            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
-            or analysis_id
-        )
-        session = get_interview_session(session_id)
-        if not session and session_id != analysis_id:
-            session_id = analysis_id
-            session = get_interview_session(session_id)
-
-        if not session:
-            flash("Interview session not found.", "error")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        answers_recorded = session.get("answers", [])
-        if not answers_recorded:
-            if request.headers.get("Accept") == "application/json":
-                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
-            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        analysis_record = get_analysis(analysis_id)
-        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
-
-        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
-        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
-        export_format = request.args.get("format", "pdf").strip().lower()
-
-        if export_format in ("md", "markdown"):
-            md_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                md_content,
-                mimetype="text/markdown",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
-            )
-        elif export_format in ("txt", "text"):
-            txt_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                txt_content,
-                mimetype="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
-            )
-        elif export_format == "json":
-            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
-        else:
-            # Default PDF
-            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
-            pdf_filename = f"{filename_base}_{session_id}.pdf"
-            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
-
-            generate_interview_transcript_pdf(
-                session_data=session,
-                output_path=pdf_full_path,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return send_file(
-                pdf_full_path,
-                as_attachment=True,
-                download_name=f"{filename_base}.pdf",
-                mimetype="application/pdf",
-            )
-    except Exception as e:
-        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
-        flash(f"Error compiling interview transcript: {str(e)}", "error")
-        return redirect(url_for("interview", analysis_id=analysis_id))
-
-
-@app.route("/certificate/<analysis_id>")
-def certificate(analysis_id: str):
-    """
-    Renders printable placement readiness completion certificate.
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-            flash("The requested placement analysis report could not be found.", "error")
-            return redirect(url_for("index"))
-
-    return render_template(
-        "certificate.html",
-        analysis=analysis_record,
-        analysis_id=analysis_id,
-    )
-
-
-@app.route("/certificate/<analysis_id>/download")
-def download_certificate_pdf(analysis_id: str):
     """
     Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
     """
@@ -4782,7 +4550,6 @@ def download_certificate_pdf(analysis_id: str):
                 data=analysis_record,
                 output_path=cert_path,
                 report_type="Placement Readiness Certificate"
-                report_type='Placement Readiness Certificate'
             )
 
         company_clean = secure_filename(analysis_record.get("company_name", "General"))
@@ -4818,7 +4585,6 @@ def download_pdf_report(analysis_id: str):
                 data=analysis_record,
                 output_path=pdf_full_path,
                 report_type="Placement Readiness Comprehensive Report"
-                report_type='Placement Readiness Comprehensive Report'
             )
 
         return send_file(
@@ -4854,7 +4620,6 @@ def download_skills_gap_report(analysis_id: str):
                 data=analysis_record,
                 output_path=pdf_full_path,
                 report_type="Skills Gap and Upskilling Roadmap"
-                report_type='Skills Gap and Upskilling Roadmap'
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -6703,145 +6468,6 @@ def api_run_migrations():
         logger.error(f"Migration execution failed via API: {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
-
-
-@app.route("/api/migrations/status", methods=["GET"])
-def api_migrations_status():
-    """
-    Returns current database migration and schema version history (#204).
-    """
-    from utils.migrations import get_migration_status
-    status = get_migration_status(config.DATABASE_PATH)
-    return jsonify({
-        "status": "success",
-        "migration_info": status
-    }), 200
-
-
-@app.route("/api/migrations/run", methods=["POST"])
-def api_run_migrations():
-    """
-    Executes all pending database migrations in sequential order (#204).
-    """
-    from utils.migrations import run_database_migrations
-    try:
-        result = run_database_migrations(config.DATABASE_PATH)
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Migration execution failed via API: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
-def api_recently_viewed_jobs():
-    """
-    REST API endpoints to manage recently viewed jobs for candidates (#201).
-    Supports GET (fetch history), POST (track a job view), and DELETE (remove or clear history).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
-
-    if request.method == "GET":
-        limit = request.args.get("limit", 10)
-        try:
-            limit_val = int(limit)
-        except (ValueError, TypeError):
-            limit_val = 10
-        viewed_jobs = get_recently_viewed_jobs(student_id=student_id, limit=limit_val)
-        return jsonify({
-            "status": "success",
-            "student_id": student_id,
-            "total": len(viewed_jobs),
-            "jobs": viewed_jobs
-        }), 200
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        job_id = str(payload.get("job_id", "")).strip()
-        company_name = str(payload.get("company_name", "")).strip()
-        role_title = str(payload.get("role_title", "")).strip()
-        location = str(payload.get("location", "Remote")).strip()
-        salary_range = payload.get("salary_range")
-        apply_url = payload.get("apply_url")
-
-        if not job_id or not company_name or not role_title:
-            return jsonify({
-                "status": "error",
-                "message": "job_id, company_name, and role_title are required fields."
-            }), 400
-
-        record = record_viewed_job(
-            student_id=student_id,
-            job_id=job_id,
-            company_name=company_name,
-            role_title=role_title,
-            location=location,
-            salary_range=salary_range,
-            apply_url=apply_url
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Recorded view for job '{role_title}' at '{company_name}'.",
-            "viewed_job": record
-        }), 201
-
-    if request.method == "DELETE":
-        payload = request.get_json(silent=True) or request.args
-        job_id = payload.get("job_id")
-        if job_id:
-            removed = remove_recently_viewed_job(student_id=student_id, job_id=job_id)
-            return jsonify({
-                "status": "success" if removed else "not_found",
-                "message": f"Removed job '{job_id}' from recently viewed list." if removed else "Job not found in history."
-            }), (200 if removed else 404)
-        else:
-            cleared_count = clear_recently_viewed_jobs(student_id=student_id)
-            return jsonify({
-                "status": "success",
-                "message": f"Cleared {cleared_count} recently viewed jobs.",
-                "cleared_count": cleared_count
-            }), 200
-
-
-
-@app.route("/download/preparation-summary", methods=["GET"])
-@app.route("/download/preparation-summary/<student_id>", methods=["GET"])
-def download_student_preparation_summary_pdf(student_id: str = None):
-    """
-    Generates and downloads a comprehensive Placement Preparation Summary PDF report (#200).
-    Ensures candidate data isolation so students only access their own report.
-    """
-    session_user_id = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
-    if not student_id:
-        student_id = session_user_id or "default_student"
-    elif session_user_id and session_user_id != "default_student" and student_id != session_user_id:
-        # Enforce student isolation
-        flash("Unauthorized access to student preparation summary.", "danger")
-        return redirect(url_for("index"))
-
-    summary_data = get_student_preparation_summary_data(student_id)
-    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
-    
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        temp_pdf_path = tmp.name
-
-    try:
-        generate_student_preparation_summary_pdf(summary_data, temp_pdf_path)
-        return send_file(
-            temp_pdf_path,
-            as_attachment=True,
-            download_name=output_filename,
-            mimetype="application/pdf"
-        )
-    except Exception as e:
-        logger.error(f"Failed to generate student preparation summary PDF: {e}")
-        flash("Could not generate preparation summary report. Please try again later.", "danger")
-        return redirect(url_for("index"))
 
 
 

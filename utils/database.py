@@ -107,11 +107,6 @@ def init_db() -> None:
                 )
             """)
 
-        cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_password_reset_token_hash
-                ON password_reset_tokens(token_hash)
-            """)
-
         # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
@@ -230,7 +225,6 @@ def init_db() -> None:
         """)
 
         # Table: Store company interview experiences (#189)
-        # Table 13: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_experiences (
                 id TEXT PRIMARY KEY,
@@ -250,7 +244,6 @@ def init_db() -> None:
         """)
 
         # Table: Store user email notification preferences (#186)
-        # Table 14: Store technical skills self-assessments
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS email_notification_preferences (
                 student_id TEXT PRIMARY KEY,
@@ -265,7 +258,6 @@ def init_db() -> None:
         """)
 
         # Table: Store recently viewed jobs by candidates (#201)
-        # Table 15: Store student and user feedback
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
                 id TEXT PRIMARY KEY,
@@ -281,23 +273,23 @@ def init_db() -> None:
             )
         """)
 
-        # Table 17: Store recently viewed jobs by candidates (#201)
+        # Table: Store Gemini API Usage & Cost Monitoring Logs (#215)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
+            CREATE TABLE IF NOT EXISTS gemini_api_logs (
                 id TEXT PRIMARY KEY,
-                student_id TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                company_name TEXT NOT NULL,
-                role_title TEXT NOT NULL,
-                location TEXT DEFAULT 'Remote',
-                salary_range TEXT,
-                apply_url TEXT,
-                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(student_id, job_id)
+                endpoint TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                prompt_tokens INTEGER DEFAULT 0,
+                candidate_tokens INTEGER DEFAULT 0,
+                total_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd REAL DEFAULT 0.0,
+                latency_ms INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Schema migration: check if student_id and version_number exist in analyses
+
         cursor.execute("PRAGMA table_info(analyses)")
         existing_cols = [col[1] for col in cursor.fetchall()]
         if "student_id" not in existing_cols:
@@ -306,16 +298,6 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE analyses ADD COLUMN version_number INTEGER DEFAULT 1")
 
         # Users table schema migrations (#206)
-        cursor.execute("PRAGMA table_info(users)")
-        user_cols = [col[1] for col in cursor.fetchall()]
-        if "is_verified" not in user_cols:
-            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
-        if "verification_token" not in user_cols:
-            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
-        if "token_created_at" not in user_cols:
-            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
-
-        # Schema migration for users table (#206)
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [col[1] for col in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -341,6 +323,8 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_created ON gemini_api_logs (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_status ON gemini_api_logs (status)")
 
         # Seed initial cohort peers if table is currently empty
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
@@ -3241,91 +3225,6 @@ def save_company_checklist(student_id: str, company_name: str, checklist_data: D
     except Exception as e:
         logger.error(f"Error updating calendar event {event_id}: {e}")
         return False
-        s_id = (student_id or "default_student").strip()
-        cursor.execute("SELECT * FROM student_profiles WHERE student_id = ?", (s_id,))
-        row = cursor.fetchone()
-        if not row:
-            # Check users table fallback for name/email
-            cursor.execute("SELECT name, email FROM users WHERE id = ?", (s_id,))
-            user_row = cursor.fetchone()
-            return {
-                "student_id": s_id,
-                "full_name": user_row["name"] if user_row else "",
-                "email": user_row["email"] if user_row else "",
-                "phone": "",
-                "department": "",
-                "grad_year": None,
-                "cgpa": None,
-                "target_role": "",
-                "target_company": "",
-                "skills": [],
-                "linkedin_url": "",
-                "github_url": "",
-                "has_resume_uploaded": 0
-            }
-
-def save_skill_self_assessment(
-    student_id: str,
-    skill_name: str,
-    category: str,
-    proficiency_level: str,
-    years_experience: float = 0.0,
-    notes: str = ""
-) -> Dict[str, Any]:
-    """Saves or updates a student's technical skill self-assessment."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        record_id = str(uuid.uuid4())
-        normalized_student_id = (student_id or "default_student").strip()
-        normalized_skill = skill_name.strip()
-        normalized_category = (category or "General").strip()
-        valid_levels = ["Beginner", "Intermediate", "Advanced", "Expert"]
-        level = proficiency_level if proficiency_level in valid_levels else "Intermediate"
-
-        cursor.execute("""
-            INSERT INTO technical_self_assessments (
-                id, student_id, skill_name, category, proficiency_level, years_experience, notes, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(student_id, skill_name) DO UPDATE SET
-                category = excluded.category,
-                proficiency_level = excluded.proficiency_level,
-                years_experience = excluded.years_experience,
-                notes = excluded.notes,
-                updated_at = CURRENT_TIMESTAMP
-        """, (
-            record_id,
-            normalized_student_id,
-            normalized_skill,
-            normalized_category,
-            level,
-            float(years_experience or 0.0),
-            notes.strip() if notes else ""
-        ))
-        conn.commit()
-
-        cursor.execute(
-            "SELECT * FROM technical_self_assessments WHERE student_id = ? AND skill_name = ?",
-            (normalized_student_id, normalized_skill)
-        )
-        row = cursor.fetchone()
-        return dict(row) if row else {}
-    finally:
-        conn.close()
-
-
-def get_student_skill_self_assessments(student_id: str) -> List[Dict[str, Any]]:
-    """Retrieves all technical skill self-assessments for a student."""
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        normalized_student_id = (student_id or "default_student").strip()
-        cursor.execute("""
-            SELECT * FROM technical_self_assessments
-            WHERE student_id = ?
-            ORDER BY category ASC, skill_name ASC
-        """, (normalized_student_id,))
-        return [dict(row) for row in cursor.fetchall()]
     finally:
         conn.close()
 
@@ -3490,6 +3389,9 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
     Retrieves candidate email notification configuration (#186).
     Defaults to all enabled if no preference record exists yet.
     """
+    if not token or not token.strip():
+        return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3707,7 +3609,6 @@ def record_viewed_job(
     Records or bumps a job into the student's recently viewed list (#201).
     Enforces per-student data isolation and updates viewed_at on revisit.
     """
-    import uuid
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3748,291 +3649,6 @@ def record_viewed_job(
 def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        s_id = (student_id or "default_student").strip()
-        lim = max(1, min(int(limit), 50)) if limit else 10
-        cursor.execute("""
-            SELECT id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
-            FROM recently_viewed_jobs
-            WHERE student_id = ?
-            ORDER BY viewed_at DESC, rowid DESC
-            LIMIT ?
-        """, (s_id, lim))
-        return [dict(r) for r in cursor.fetchall()]
-    except Exception as e:
-        logger.error(f"Error fetching recently viewed jobs for student {student_id}: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
-    """
-    Removes a single viewed job entry from student history (#201).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        s_id = (student_id or "default_student").strip()
-        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, str(job_id).strip()))
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Error removing viewed job {job_id} for student {student_id}: {e}")
-        conn.rollback()
-        return False
-    finally:
-        conn.close()
-
-
-def clear_recently_viewed_jobs(student_id: str) -> int:
-    """
-    Clears all viewed job history for the given student (#201).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        s_id = (student_id or "default_student").strip()
-        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
-        conn.commit()
-        return cursor.rowcount
-    except Exception as e:
-        logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
-        conn.rollback()
-        return 0
-    finally:
-        conn.close()
-
-
-def generate_email_verification_token(user_id: str) -> str:
-    """
-    Generates and stores a unique email verification token for user registration (#206).
-    """
-    token = f"verify_{uuid.uuid4().hex}"
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE users SET
-                verification_token = ?,
-                token_created_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (token, user_id))
-        conn.commit()
-        return token
-    except Exception as e:
-        logger.error(f"Error generating verification token for user {user_id}: {e}")
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
-
-
-def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
-    """
-    Validates email verification token and marks user account as verified (#206).
-    Returns user dict on success, None on invalid or expired token.
-    """
-    if not token or not token.strip():
-        return None
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, email, is_verified, token_created_at
-            FROM users
-            WHERE verification_token = ?
-        """, (token.strip(),))
-        row = cursor.fetchone()
-        if not row:
-            return None
-
-        user = dict(row)
-        cursor.execute("""
-            UPDATE users SET
-                is_verified = 1,
-                verification_token = NULL
-            WHERE id = ?
-        """, (user["id"],))
-        conn.commit()
-        user["is_verified"] = 1
-        return user
-    except Exception as e:
-        logger.error(f"Error verifying user email token: {e}")
-        conn.rollback()
-        return None
-    finally:
-        conn.close()
-
-
-def is_user_email_verified(user_id: str) -> bool:
-    """
-    Checks whether a user has verified their email address (#206).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT is_verified FROM users WHERE id = ?", (user_id,))
-        row = cursor.fetchone()
-        if not row:
-            return False
-        return bool(row["is_verified"])
-    except Exception as e:
-        logger.error(f"Error checking email verification status for user {user_id}: {e}")
-        return False
-    finally:
-        conn.close()
-
-
-# ==============================================================================
-# GDPR & Personal Data Removal / Account Deletion Subsystem (#207)
-# ==============================================================================
-
-def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
-    """
-    Collects all records and counts associated with a student across the database for GDPR audit and export (#207).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        summary = {"student_id": student_id, "tables": {}}
-
-        # Count in analyses
-        cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
-        summary["tables"]["analyses"] = cursor.fetchone()[0]
-
-        # Count in interviews (via analyses or direct analysis_ids)
-        cursor.execute("""
-            SELECT COUNT(*) FROM interviews
-            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
-        """, (student_id,))
-        summary["tables"]["interviews"] = cursor.fetchone()[0]
-
-        # Count in batch_comparisons
-        cursor.execute("SELECT COUNT(*) FROM batch_comparisons WHERE student_id = ?", (student_id,))
-        summary["tables"]["batch_comparisons"] = cursor.fetchone()[0]
-
-        # Count in job_applications
-        cursor.execute("SELECT COUNT(*) FROM job_applications WHERE student_id = ?", (student_id,))
-        summary["tables"]["job_applications"] = cursor.fetchone()[0]
-
-        # Count in email_notification_preferences
-        cursor.execute("SELECT COUNT(*) FROM email_notification_preferences WHERE student_id = ?", (student_id,))
-        summary["tables"]["email_notification_preferences"] = cursor.fetchone()[0]
-
-        # Count in interview_experiences
-        cursor.execute("SELECT COUNT(*) FROM interview_experiences WHERE student_id = ?", (student_id,))
-        summary["tables"]["interview_experiences"] = cursor.fetchone()[0]
-
-        # Count in preparation_calendar_events
-        cursor.execute("SELECT COUNT(*) FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
-        summary["tables"]["preparation_calendar_events"] = cursor.fetchone()[0]
-
-        # Count in company_preparation_checklists
-        cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
-        summary["tables"]["company_preparation_checklists"] = cursor.fetchone()[0]
-
-        # Count in coding_submissions
-        cursor.execute("SELECT COUNT(*) FROM coding_submissions WHERE student_id = ?", (student_id,))
-        summary["tables"]["coding_submissions"] = cursor.fetchone()[0]
-
-        # Count in technical_self_assessments
-        cursor.execute("SELECT COUNT(*) FROM technical_self_assessments WHERE student_id = ?", (student_id,))
-        summary["tables"]["technical_self_assessments"] = cursor.fetchone()[0]
-
-        # Count in user_feedback
-        cursor.execute("SELECT COUNT(*) FROM user_feedback WHERE student_id = ?", (student_id,))
-        summary["tables"]["user_feedback"] = cursor.fetchone()[0]
-
-        # Count in interview_preparation_notes
-        cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
-        summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
-
-        # Count in users
-        cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
-        summary["tables"]["users"] = cursor.fetchone()[0]
-
-        summary["total_records"] = sum(summary["tables"].values())
-        return summary
-# Email Verification Functions (#206)
-# ==============================================================================
-
-def generate_email_verification_token(user_id: str) -> str:
-    """
-    Generates and stores a unique email verification token for user registration (#206).
-    """
-    token = f"verify_{uuid.uuid4().hex}"
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            UPDATE users SET
-                verification_token = ?,
-                token_created_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-        """, (token, user_id))
-        conn.commit()
-        return token
-    except Exception as e:
-        logger.error(f"Error generating verification token for user {user_id}: {e}")
-def record_viewed_job(
-    student_id: str,
-    job_id: str,
-    company_name: str,
-    role_title: str,
-    location: str = "Remote",
-    salary_range: Optional[str] = None,
-    apply_url: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Records or bumps a job into the student's recently viewed list (#201).
-    Enforces per-student data isolation and updates viewed_at on revisit.
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        rec_id = f"viewed-{uuid.uuid4().hex[:12]}"
-        s_id = (student_id or "default_student").strip()
-        j_id = str(job_id).strip()
-        comp = str(company_name).strip()
-        role = str(role_title).strip()
-        loc = (location or "Remote").strip()
-        sal = salary_range.strip() if salary_range else None
-        url = apply_url.strip() if apply_url else None
-
-        cursor.execute("""
-            INSERT INTO recently_viewed_jobs (
-                id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'subsec'))
-            ON CONFLICT(student_id, job_id) DO UPDATE SET
-                company_name = excluded.company_name,
-                role_title = excluded.role_title,
-                location = excluded.location,
-                salary_range = excluded.salary_range,
-                apply_url = excluded.apply_url,
-                viewed_at = datetime('now', 'subsec')
-        """, (rec_id, s_id, j_id, comp, role, loc, sal, url))
-        conn.commit()
-
-        cursor.execute("SELECT * FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, j_id))
-        row = cursor.fetchone()
-        return dict(row) if row else {}
-    except Exception as e:
-        logger.error(f"Error recording recently viewed job {job_id} for student {student_id}: {e}")
-        conn.rollback()
-        raise e
-    finally:
-        conn.close()
-
-
-def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
-    """
-    Permanently deletes a student account and cascades removal across all personal placement records (#207).
-    Complies with personal data erasure requirements and returns deletion audit log.
     """
     if not student_id or not student_id.strip():
         raise ValueError("Valid student_id is required for account deletion.")
@@ -4040,113 +3656,86 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        deleted_counts = {}
-
-        # 1. Delete associated mock interview records linked to student analyses
+        s_id = (student_id or "default_student").strip()
+        lim = max(1, min(int(limit), 50)) if limit else 10
         cursor.execute("""
-            DELETE FROM interviews
-            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
-        """, (student_id,))
-        deleted_counts["interviews"] = cursor.rowcount
-
-        # 2. Delete placement analyses
-        cursor.execute("DELETE FROM analyses WHERE student_id = ?", (student_id,))
-        deleted_counts["analyses"] = cursor.rowcount
-
-        # 3. Delete batch comparisons
-        cursor.execute("DELETE FROM batch_comparisons WHERE student_id = ?", (student_id,))
-        deleted_counts["batch_comparisons"] = cursor.rowcount
-
-        # 4. Delete job applications
-        cursor.execute("DELETE FROM job_applications WHERE student_id = ?", (student_id,))
-        deleted_counts["job_applications"] = cursor.rowcount
-
-        # 5. Delete email notification preferences
-        cursor.execute("DELETE FROM email_notification_preferences WHERE student_id = ?", (student_id,))
-        deleted_counts["email_notification_preferences"] = cursor.rowcount
-
-        # 6. Delete interview experiences
-        cursor.execute("DELETE FROM interview_experiences WHERE student_id = ?", (student_id,))
-        deleted_counts["interview_experiences"] = cursor.rowcount
-
-        # 7. Delete preparation calendar events
-        cursor.execute("DELETE FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
-        deleted_counts["preparation_calendar_events"] = cursor.rowcount
-
-        # 8. Delete company preparation checklists
-        cursor.execute("DELETE FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
-        deleted_counts["company_preparation_checklists"] = cursor.rowcount
-
-        # 9. Delete coding assessment submissions
-        cursor.execute("DELETE FROM coding_submissions WHERE student_id = ?", (student_id,))
-        deleted_counts["coding_submissions"] = cursor.rowcount
-
-        # 10. Delete technical skill self-assessments
-        cursor.execute("DELETE FROM technical_self_assessments WHERE student_id = ?", (student_id,))
-        deleted_counts["technical_self_assessments"] = cursor.rowcount
-
-        # 11. Delete user feedback entries
-        cursor.execute("DELETE FROM user_feedback WHERE student_id = ?", (student_id,))
-        deleted_counts["user_feedback"] = cursor.rowcount
-
-        # 12. Delete interview preparation notes
-        cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
-        deleted_counts["interview_preparation_notes"] = cursor.rowcount
-
-        # 13. Delete student profile if exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-        if cursor.fetchone():
-            cursor.execute("DELETE FROM student_profiles WHERE student_id = ?", (student_id,))
-            deleted_counts["student_profiles"] = cursor.rowcount
-
-        # 14. Delete bookmarked coding questions if exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarked_coding_questions'")
-        if cursor.fetchone():
-            cursor.execute("DELETE FROM bookmarked_coding_questions WHERE student_id = ?", (student_id,))
-            deleted_counts["bookmarked_coding_questions"] = cursor.rowcount
-
-        # 15. Check if recently_viewed_jobs table exists, if so delete student rows
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recently_viewed_jobs'")
-        if cursor.fetchone():
-            cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (student_id,))
-            deleted_counts["recently_viewed_jobs"] = cursor.rowcount
-
-        # 16. Finally, delete the student account from users table
-        cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
-        deleted_counts["users"] = cursor.rowcount
-
-        conn.commit()
-        logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
-
-        # Also purge any student files (e.g., reports, resumes) on disk if named after student or analysis
-        try:
-            import os
-            import config
-            for folder in [config.UPLOAD_FOLDER, config.REPORT_FOLDER]:
-                if os.path.exists(folder):
-                    for fname in os.listdir(folder):
-                        if student_id in fname:
-                            fpath = os.path.join(folder, fname)
-                            try:
-                                if os.path.isfile(fpath):
-                                    os.remove(fpath)
-                            except Exception as file_err:
-                                logger.warning(f"Could not remove student file {fpath}: {file_err}")
-        except Exception as f_err:
-            logger.warning(f"Disk cleanup non-fatal error during purge: {f_err}")
-
-        return {
-            "status": "purged",
-            "student_id": student_id,
-            "deleted_counts": deleted_counts,
-            "total_deleted": sum(deleted_counts.values())
-        }
+            SELECT id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
+            FROM recently_viewed_jobs
+            WHERE student_id = ?
+            ORDER BY viewed_at DESC, rowid DESC
+            LIMIT ?
+        """, (s_id, lim))
+        return [dict(r) for r in cursor.fetchall()]
     except Exception as e:
+        logger.error(f"Error fetching recently viewed jobs for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
+    """
+    Removes a single viewed job entry from student history (#201).
+    """
+    import uuid
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, str(job_id).strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error removing viewed job {job_id} for student {student_id}: {e}")
         conn.rollback()
-        logger.error(f"Failed to delete account for student {student_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def clear_recently_viewed_jobs(student_id: str) -> int:
+    """
+    Clears all viewed job history for the given student (#201).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
+        conn.rollback()
+        return 0
+    finally:
+        conn.close()
+
+
+def generate_email_verification_token(user_id: str) -> str:
+    """
+    Generates and stores a unique email verification token for user registration (#206).
+    """
+    token = f"verify_{uuid.uuid4().hex}"
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users SET
+                verification_token = ?,
+                token_created_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (token, user_id))
+        conn.commit()
+        return token
+    except Exception as e:
+        logger.error(f"Error generating verification token for user {user_id}: {e}")
+        conn.rollback()
         raise e
     finally:
         conn.close()
+
+
 def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
     """
     Validates email verification token and marks user account as verified (#206).
@@ -4154,6 +3743,7 @@ def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
     """
     if not token or not token.strip():
         return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -4180,45 +3770,6 @@ def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
         logger.error(f"Error verifying user email token: {e}")
         conn.rollback()
         return None
-def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        s_id = (student_id or "default_student").strip()
-        lim = max(1, min(int(limit), 50)) if limit else 10
-        cursor.execute("""
-            SELECT id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
-            FROM recently_viewed_jobs
-            WHERE student_id = ?
-            ORDER BY viewed_at DESC, rowid DESC
-            LIMIT ?
-        """, (s_id, lim))
-        return [dict(r) for r in cursor.fetchall()]
-    except Exception as e:
-        logger.error(f"Error fetching recently viewed jobs for student {student_id}: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
-    """
-    Removes a single viewed job entry from student history (#201).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        s_id = (student_id or "default_student").strip()
-        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, str(job_id).strip()))
-        conn.commit()
-        return cursor.rowcount > 0
-    except Exception as e:
-        logger.error(f"Error removing viewed job {job_id} for student {student_id}: {e}")
-        conn.rollback()
-        return False
     finally:
         conn.close()
 
@@ -4226,9 +3777,6 @@ def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
 def is_user_email_verified(user_id: str) -> bool:
     """
     Checks whether a user has verified their email address (#206).
-def clear_recently_viewed_jobs(student_id: str) -> int:
-    """
-    Clears all viewed job history for the given student (#201).
     """
     conn = get_db_connection()
     try:
@@ -4243,6 +3791,75 @@ def clear_recently_viewed_jobs(student_id: str) -> int:
         return False
     finally:
         conn.close()
+
+
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Utilities (#215)
+# ==============================================================================
+
+# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
+# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
+# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
+COST_PER_PROMPT_TOKEN = 0.000000075
+COST_PER_CANDIDATE_TOKEN = 0.00000030
+
+
+def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
+    """
+    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
+    """
+    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
+    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
+    return round(prompt_cost + candidate_cost, 6)
+
+
+def log_gemini_api_call(
+    endpoint: str,
+    model_name: str,
+    prompt_tokens: int = 0,
+    candidate_tokens: int = 0,
+    total_tokens: Optional[int] = None,
+    latency_ms: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+) -> str:
+    """
+    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
+    """
+    if total_tokens is None:
+        total_tokens = prompt_tokens + candidate_tokens
+
+    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
+    log_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO gemini_api_logs (
+                id, endpoint, model_name, prompt_tokens, candidate_tokens,
+                total_tokens, estimated_cost_usd, latency_ms, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_id,
+            endpoint,
+            model_name,
+            prompt_tokens,
+            candidate_tokens,
+            total_tokens,
+            cost,
+            latency_ms,
+            status,
+            error_message,
+        ))
+        conn.commit()
+        return log_id
+    except Exception as e:
+        logger.error(f"Error logging Gemini API call: {e}")
+        conn.rollback()
+        return ""
+    finally:
+        conn.close()
         s_id = (student_id or "default_student").strip()
         cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
         conn.commit()
@@ -4255,10 +3872,9 @@ def clear_recently_viewed_jobs(student_id: str) -> int:
         conn.close()
 
 
-def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
+def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     """
-    Gathers student preparation summary data across resume analysis, coding practice,
-    mock interviews, completed checklist tasks, and identified skill gaps (#200).
+    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
     """
     s_id = (student_id or "default_student").strip()
     profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
@@ -4310,206 +3926,99 @@ def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT status, count(*) as count FROM job_applications WHERE student_id = ? GROUP BY status", (s_id,))
-        app_distribution = {r["status"]: r["count"] for r in cursor.fetchall()}
-    except Exception:
-        app_distribution = {}
-    finally:
-        conn.close()
-def create_password_reset_token(
-    user_id: str,
-    token_hash: str,
-    expires_at: int
-) -> bool:
-    """Create a reset token and invalidate previous unused tokens."""
-    import time
 
-    conn = get_db_connection()
+        # Overall summary stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_calls,
+                SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) as failed_calls,
+                COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+                COALESCE(SUM(candidate_tokens), 0) as total_candidate_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
+                COALESCE(AVG(latency_ms), 0.0) as avg_latency_ms
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+        """, (f"-{days} days",))
+        summary_row = cursor.fetchone()
 
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        now = int(time.time())
+        # Breakdown by endpoint
+        cursor.execute("""
+            SELECT
+                endpoint,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as endpoint_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as endpoint_cost,
+                COALESCE(AVG(latency_ms), 0.0) as endpoint_latency
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY endpoint
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        endpoints_data = [dict(r) for r in cursor.fetchall()]
 
-        # Invalidate previous unused tokens for this user
-        conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE user_id = ? AND used_at IS NULL
-        """, (now, user_id))
+        # Breakdown by model
+        cursor.execute("""
+            SELECT
+                model_name,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as model_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as model_cost
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY model_name
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        models_data = [dict(r) for r in cursor.fetchall()]
 
-        conn.execute("""
-            INSERT INTO password_reset_tokens
-            (id, user_id, token_hash, expires_at, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            str(uuid.uuid4()),
-            user_id,
-            token_hash,
-            expires_at,
-            now
-        ))
+        # Recent 25 logs
+        cursor.execute("""
+            SELECT id, endpoint, model_name, prompt_tokens, candidate_tokens, total_tokens,
+                   estimated_cost_usd, latency_ms, status, error_message, created_at
+            FROM gemini_api_logs
+            ORDER BY created_at DESC
+            LIMIT 25
+        """)
+        recent_logs = [dict(r) for r in cursor.fetchall()]
 
-        conn.commit()
-        return True
+        total_calls = summary_row["total_calls"] if summary_row else 0
+        success_calls = summary_row["successful_calls"] if summary_row else 0
+        success_rate = round((success_calls / total_calls * 100), 1) if total_calls > 0 else 100.0
 
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to create password reset token")
-        return False
-
-    finally:
-        conn.close()
-
-
-def get_valid_password_reset_token(
-    token_hash: str
-) -> Optional[Dict[str, Any]]:
-    """Retrieve an unused, non-expired reset token."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        row = conn.execute("""
-            SELECT id, user_id, token_hash, expires_at
-            FROM password_reset_tokens
-            WHERE token_hash = ?
-              AND used_at IS NULL
-              AND expires_at > ?
-        """, (token_hash, int(time.time()))).fetchone()
-
-        return dict(row) if row else None
-
-    finally:
-        conn.close()
-
-
-def reset_user_password(
-    token_hash: str,
-    new_password_hash: str
-) -> bool:
-    """Update password and consume the reset token atomically."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        now = int(time.time())
-
-        token = conn.execute("""
-            SELECT user_id
-            FROM password_reset_tokens
-            WHERE token_hash = ?
-              AND used_at IS NULL
-              AND expires_at > ?
-        """, (token_hash, now)).fetchone()
-
-        if not token:
-            conn.rollback()
-            return False
-
-        user_id = token["user_id"]
-
-        updated = conn.execute("""
-            UPDATE users
-            SET password_hash = ?
-            WHERE id = ?
-        """, (new_password_hash, user_id))
-
-        if updated.rowcount != 1:
-            conn.rollback()
-            return False
-
-        # Consume all outstanding reset tokens for this user
-        conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE user_id = ? AND used_at IS NULL
-        """, (now, user_id))
-
-        conn.commit()
-        return True
-
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to reset user password")
-        return False
-
-    finally:
-        conn.close()
-def invalidate_password_reset_token(token_hash: str) -> bool:
-    """Invalidate a password reset token."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        cursor = conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE token_hash = ?
-              AND used_at IS NULL
-        """, (int(time.time()), token_hash))
-
-        conn.commit()
-        return cursor.rowcount > 0
-
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to invalidate password reset token")
-        return False
-
-    finally:
-        conn.close()
-
-    total_apps = sum(app_distribution.values())
-
-    return {
-        "student_id": s_id,
-        "profile": profile,
-        "latest_analysis": latest_analysis,
-        "analyses_count": len(history),
-        "ats_score": ats_score,
-        "match_percentage": match_percentage,
-        "target_role": target_role,
-        "target_company": target_company,
-        "matched_skills": matched_skills,
-        "skill_gaps": skill_gaps,
-        "completed_tasks_count": completed_tasks,
-        "coding_stats": {
-            "total_submissions": total_submissions,
-            "passed_count": passed_submissions,
-            "avg_score": avg_coding_score,
-            "recent_submissions": submissions[:5]
-        },
-        "coding_practice": {
-            "total_submissions": total_submissions,
-            "passed_submissions": passed_submissions,
-            "avg_score": avg_coding_score,
-            "recent_submissions": submissions[:5]
-        },
-        "interview_stats": {
-            "total_sessions": total_interviews or 1,
-            "average_score": avg_interview_score,
-            "analytics": interview_analytics
-        },
-        "mock_interviews": {
-            "total_interviews": total_interviews,
-            "analytics": interview_analytics,
-            "recent_interviews": interviews[:5]
-        },
-        "checklist": {
-            "completion_percentage": checklist_completion,
-            "completed_tasks": completed_tasks,
-            "total_tasks": total_tasks
-        },
-        "applications_summary": {
-            "total": total_apps,
-            "distribution": app_distribution
-        },
-        "applications": {
-            "total": total_apps,
-            "distribution": app_distribution
+        return {
+            "timeframe_days": days,
+            "total_calls": total_calls,
+            "successful_calls": success_calls,
+            "failed_calls": summary_row["failed_calls"] if summary_row else 0,
+            "success_rate_pct": success_rate,
+            "total_prompt_tokens": summary_row["total_prompt_tokens"] if summary_row else 0,
+            "total_candidate_tokens": summary_row["total_candidate_tokens"] if summary_row else 0,
+            "total_tokens": summary_row["total_tokens"] if summary_row else 0,
+            "total_cost_usd": round(summary_row["total_cost_usd"] if summary_row else 0.0, 4),
+            "avg_latency_ms": round(summary_row["avg_latency_ms"] if summary_row else 0.0, 1),
+            "endpoint_breakdown": endpoints_data,
+            "model_breakdown": models_data,
+            "recent_logs": recent_logs,
         }
-    }
+    except Exception as e:
+        logger.error(f"Error retrieving Gemini usage summary: {e}")
+        return {
+            "timeframe_days": days,
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "success_rate_pct": 100.0,
+            "total_prompt_tokens": 0,
+            "total_candidate_tokens": 0,
+            "total_tokens": 0,
+            "total_cost_usd": 0.0,
+            "avg_latency_ms": 0.0,
+            "endpoint_breakdown": [],
+            "model_breakdown": [],
+            "recent_logs": [],
+        }
+    finally:
+        conn.close()
+
+
