@@ -112,6 +112,7 @@ def init_db() -> None:
         """)
 
         # Table 7: Store company interview experiences (#189)
+        # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_experiences (
                 id TEXT PRIMARY KEY,
@@ -213,6 +214,7 @@ def init_db() -> None:
         """)
 
         # Table 13: Store personal interview preparation notes (#235)
+        # Table: Store company interview experiences (#189)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_preparation_notes (
                 id TEXT PRIMARY KEY,
@@ -228,6 +230,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
 
         # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
+        # Table: Store user email notification preferences (#186)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
                 id TEXT PRIMARY KEY,
@@ -246,6 +249,7 @@ def init_db() -> None:
         """)
 
         # Table 15: Store technical skills self-assessments
+        # Table: Store recently viewed jobs by candidates (#201)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS technical_self_assessments (
                 id TEXT PRIMARY KEY,
@@ -268,11 +272,23 @@ def init_db() -> None:
                 rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
                 category TEXT NOT NULL,
                 comment TEXT NOT NULL,
+        # Table: Store Gemini API Usage & Cost Monitoring Logs (#215)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gemini_api_logs (
+                id TEXT PRIMARY KEY,
+                endpoint TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                prompt_tokens INTEGER DEFAULT 0,
+                candidate_tokens INTEGER DEFAULT 0,
+                total_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd REAL DEFAULT 0.0,
+                latency_ms INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                error_message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        
-        # Schema migration: check if student_id and version_number exist in analyses
+
         cursor.execute("PRAGMA table_info(analyses)")
         existing_cols = [col[1] for col in cursor.fetchall()]
         if "student_id" not in existing_cols:
@@ -289,6 +305,15 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_type TEXT DEFAULT 'Full-Time'")
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
+        # Users table schema migrations (#206)
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [col[1] for col in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        if "verification_token" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        if "token_created_at" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -305,6 +330,9 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_created ON gemini_api_logs (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_status ON gemini_api_logs (status)")
 
         # Seed initial cohort peers if table is currently empty
         
@@ -2939,6 +2967,29 @@ def get_coding_bookmarks(
     except Exception as e:
         logger.error(f"Error fetching coding bookmarks for student {student_id}: {e}")
         return []
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            UPDATE preparation_calendar_events
+            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
+                company_name = ?, description = ?, priority = ?, completed = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0,
+            event_id,
+            effective_student_id
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating calendar event {event_id}: {e}")
+        return False
     finally:
         conn.close()
 
@@ -3099,6 +3150,9 @@ def update_preparation_note(
     Updates an existing preparation note (#235).
     Strictly checks that the note belongs to the specified student before modifying.
     """
+    if not token or not token.strip():
+        return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3239,6 +3293,9 @@ def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str,
     """
     Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
     """
+    if not student_id or not student_id.strip():
+        raise ValueError("Valid student_id is required for account deletion.")
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3263,6 +3320,7 @@ def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
     """
     Removes a single viewed job entry from student history (#201).
     """
+    import uuid
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3389,33 +3447,16 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         # Count in analyses
         cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
         summary["tables"]["analyses"] = cursor.fetchone()[0]
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Utilities (#215)
+# ==============================================================================
 
-        # Count in interviews (via analyses or direct analysis_ids)
-        cursor.execute("""
-            SELECT COUNT(*) FROM interviews
-            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
-        """, (student_id,))
-        summary["tables"]["interviews"] = cursor.fetchone()[0]
+# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
+# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
+# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
+COST_PER_PROMPT_TOKEN = 0.000000075
+COST_PER_CANDIDATE_TOKEN = 0.00000030
 
-        # Count in batch_comparisons
-        cursor.execute("SELECT COUNT(*) FROM batch_comparisons WHERE student_id = ?", (student_id,))
-        summary["tables"]["batch_comparisons"] = cursor.fetchone()[0]
-
-        # Count in job_applications
-        cursor.execute("SELECT COUNT(*) FROM job_applications WHERE student_id = ?", (student_id,))
-        summary["tables"]["job_applications"] = cursor.fetchone()[0]
-
-        # Count in email_notification_preferences
-        cursor.execute("SELECT COUNT(*) FROM email_notification_preferences WHERE student_id = ?", (student_id,))
-        summary["tables"]["email_notification_preferences"] = cursor.fetchone()[0]
-
-        # Count in interview_experiences
-        cursor.execute("SELECT COUNT(*) FROM interview_experiences WHERE student_id = ?", (student_id,))
-        summary["tables"]["interview_experiences"] = cursor.fetchone()[0]
-
-        # Count in preparation_calendar_events
-        cursor.execute("SELECT COUNT(*) FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
-        summary["tables"]["preparation_calendar_events"] = cursor.fetchone()[0]
 
         # Count in company_preparation_checklists
         cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
@@ -3448,12 +3489,30 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
 
 
 def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
+def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
     """
-    Permanently deletes a student account and cascades removal across all personal placement records (#207).
-    Complies with personal data erasure requirements and returns deletion audit log.
+    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
     """
-    if not student_id or not student_id.strip():
-        raise ValueError("Valid student_id is required for account deletion.")
+    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
+    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
+    return round(prompt_cost + candidate_cost, 6)
+
+
+def log_gemini_api_call(
+    endpoint: str,
+    model_name: str,
+    prompt_tokens: int = 0,
+    candidate_tokens: int = 0,
+    total_tokens: Optional[int] = None,
+    latency_ms: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+) -> str:
+    """
+    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
+    """
+    if total_tokens is None:
+        total_tokens = prompt_tokens + candidate_tokens
 
     conn = get_db_connection()
     try:
@@ -3542,6 +3601,39 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         deleted_counts["student_streaks"] = cursor.rowcount
         total_deleted += cursor.rowcount
 
+    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
+    log_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO gemini_api_logs (
+                id, endpoint, model_name, prompt_tokens, candidate_tokens,
+                total_tokens, estimated_cost_usd, latency_ms, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_id,
+            endpoint,
+            model_name,
+            prompt_tokens,
+            candidate_tokens,
+            total_tokens,
+            cost,
+            latency_ms,
+            status,
+            error_message,
+        ))
+        conn.commit()
+        return log_id
+    except Exception as e:
+        logger.error(f"Error logging Gemini API call: {e}")
+        conn.rollback()
+        return ""
+    finally:
+        conn.close()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
         conn.commit()
         logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
 
@@ -3576,10 +3668,9 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         conn.close()
 
 
-def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
+def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     """
-    Gathers student preparation summary data across resume analysis, coding practice,
-    mock interviews, completed checklist tasks, and identified skill gaps (#200).
+    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
     """
     s_id = (student_id or "default_student").strip()
     profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
@@ -3698,142 +3789,97 @@ def create_password_reset_token(
     """Create a reset token and invalidate previous unused tokens."""
     import time
 
-    conn = get_db_connection()
+        # Overall summary stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_calls,
+                SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) as failed_calls,
+                COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+                COALESCE(SUM(candidate_tokens), 0) as total_candidate_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
+                COALESCE(AVG(latency_ms), 0.0) as avg_latency_ms
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+        """, (f"-{days} days",))
+        summary_row = cursor.fetchone()
 
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        now = int(time.time())
+        # Breakdown by endpoint
+        cursor.execute("""
+            SELECT
+                endpoint,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as endpoint_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as endpoint_cost,
+                COALESCE(AVG(latency_ms), 0.0) as endpoint_latency
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY endpoint
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        endpoints_data = [dict(r) for r in cursor.fetchall()]
 
-        # Invalidate previous unused tokens for this user
-        conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE user_id = ? AND used_at IS NULL
-        """, (now, user_id))
+        # Breakdown by model
+        cursor.execute("""
+            SELECT
+                model_name,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as model_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as model_cost
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY model_name
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        models_data = [dict(r) for r in cursor.fetchall()]
 
-        conn.execute("""
-            INSERT INTO password_reset_tokens
-            (id, user_id, token_hash, expires_at, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            str(uuid.uuid4()),
-            user_id,
-            token_hash,
-            expires_at,
-            now
-        ))
+        # Recent 25 logs
+        cursor.execute("""
+            SELECT id, endpoint, model_name, prompt_tokens, candidate_tokens, total_tokens,
+                   estimated_cost_usd, latency_ms, status, error_message, created_at
+            FROM gemini_api_logs
+            ORDER BY created_at DESC
+            LIMIT 25
+        """)
+        recent_logs = [dict(r) for r in cursor.fetchall()]
 
-        conn.commit()
-        return True
+        total_calls = summary_row["total_calls"] if summary_row else 0
+        success_calls = summary_row["successful_calls"] if summary_row else 0
+        success_rate = round((success_calls / total_calls * 100), 1) if total_calls > 0 else 100.0
 
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to create password reset token")
-        return False
-
-    finally:
-        conn.close()
-
-
-def get_valid_password_reset_token(
-    token_hash: str
-) -> Optional[Dict[str, Any]]:
-    """Retrieve an unused, non-expired reset token."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        row = conn.execute("""
-            SELECT id, user_id, token_hash, expires_at
-            FROM password_reset_tokens
-            WHERE token_hash = ?
-              AND used_at IS NULL
-              AND expires_at > ?
-        """, (token_hash, int(time.time()))).fetchone()
-
-        return dict(row) if row else None
-
-    finally:
-        conn.close()
-
-
-def reset_user_password(
-    token_hash: str,
-    new_password_hash: str
-) -> bool:
-    """Update password and consume the reset token atomically."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        now = int(time.time())
-
-        token = conn.execute("""
-            SELECT user_id
-            FROM password_reset_tokens
-            WHERE token_hash = ?
-              AND used_at IS NULL
-              AND expires_at > ?
-        """, (token_hash, now)).fetchone()
-
-        if not token:
-            conn.rollback()
-            return False
-
-        user_id = token["user_id"]
-
-        updated = conn.execute("""
-            UPDATE users
-            SET password_hash = ?
-            WHERE id = ?
-        """, (new_password_hash, user_id))
-
-        if updated.rowcount != 1:
-            conn.rollback()
-            return False
-
-        # Consume all outstanding reset tokens for this user
-        conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE user_id = ? AND used_at IS NULL
-        """, (now, user_id))
-
-        conn.commit()
-        return True
-
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to reset user password")
-        return False
-
-    finally:
-        conn.close()
-def invalidate_password_reset_token(token_hash: str) -> bool:
-    """Invalidate a password reset token."""
-    import time
-
-    conn = get_db_connection()
-
-    try:
-        cursor = conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE token_hash = ?
-              AND used_at IS NULL
-        """, (int(time.time()), token_hash))
-
-        conn.commit()
-        return cursor.rowcount > 0
-
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to invalidate password reset token")
-        return False
-
+        return {
+            "timeframe_days": days,
+            "total_calls": total_calls,
+            "successful_calls": success_calls,
+            "failed_calls": summary_row["failed_calls"] if summary_row else 0,
+            "success_rate_pct": success_rate,
+            "total_prompt_tokens": summary_row["total_prompt_tokens"] if summary_row else 0,
+            "total_candidate_tokens": summary_row["total_candidate_tokens"] if summary_row else 0,
+            "total_tokens": summary_row["total_tokens"] if summary_row else 0,
+            "total_cost_usd": round(summary_row["total_cost_usd"] if summary_row else 0.0, 4),
+            "avg_latency_ms": round(summary_row["avg_latency_ms"] if summary_row else 0.0, 1),
+            "endpoint_breakdown": endpoints_data,
+            "model_breakdown": models_data,
+            "recent_logs": recent_logs,
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving Gemini usage summary: {e}")
+        return {
+            "timeframe_days": days,
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "success_rate_pct": 100.0,
+            "total_prompt_tokens": 0,
+            "total_candidate_tokens": 0,
+            "total_tokens": 0,
+            "total_cost_usd": 0.0,
+            "avg_latency_ms": 0.0,
+            "endpoint_breakdown": [],
+            "model_breakdown": [],
+            "recent_logs": [],
+        }
     finally:
         conn.close()
 
@@ -4113,3 +4159,4 @@ def get_recent_preparation_activities(
         return []
     finally:
         conn.close()
+
