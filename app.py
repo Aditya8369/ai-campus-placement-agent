@@ -126,6 +126,28 @@ from utils.bookmark_folders import (
     move_bookmark_to_folder,
     get_folder_bookmarks
 )
+from utils.interview_moderation import (
+    get_moderation_queue,
+    moderate_interview_experience,
+    get_experience_moderation_logs
+)
+from utils.deadline_reminders import (
+    scan_and_generate_student_reminders,
+    list_student_reminders,
+    acknowledge_deadline_reminder,
+    get_student_deadline_preferences,
+    update_student_deadline_preferences
+)
+from utils.company_profile_manager import (
+    create_company_profile,
+    update_company_profile,
+    get_company_profile_by_id,
+    get_company_profile_by_name,
+    list_company_profiles,
+    archive_company_profile,
+    seed_default_company_profiles
+)
+from utils.resume_pii_service import pii_service, REDACTION_TOKENS
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -6783,6 +6805,249 @@ def api_recently_viewed_jobs():
 
 @app.route("/api/coding/folders", methods=["GET", "POST"])
 def coding_bookmark_folders_collection_endpoint():
+# INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
+# ============================================================================
+
+@app.route("/api/admin/moderation/experiences", methods=["GET"])
+def admin_moderation_queue_endpoint():
+    """
+    Administrative queue for inspecting submitted interview experiences,
+    flagged content, and moderation metrics. Requires administrative privileges.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to access moderation queue."
+        }), 403
+
+    status_filter = request.args.get("status")
+    flagged_only = request.args.get("flagged_only", "false").lower() == "true"
+    company_filter = request.args.get("company")
+    search_query = request.args.get("search")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+
+    queue_data = get_moderation_queue(
+        status_filter=status_filter,
+        flagged_only=flagged_only,
+        company_filter=company_filter,
+        search_query=search_query,
+        limit=limit,
+        offset=offset
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": queue_data
+    }), 200
+
+
+@app.route("/api/admin/moderation/experiences/<exp_id>/action", methods=["POST"])
+def admin_moderate_experience_action_endpoint(exp_id: str):
+    """
+    Executes a moderation decision (approve, reject, flag, dismiss_report) on a submission.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to perform moderation actions."
+        }), 403
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    action = payload.get("action")
+    if not action:
+        return jsonify({"status": "error", "message": "Moderation 'action' is required."}), 400
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
+def student_deadline_reminders_endpoint():
+    """
+    GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
+    POST: Triggers an on-demand scan and synchronization of reminders for the candidate.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    urgency_filter = request.args.get("urgency")
+    include_acknowledged = request.args.get("include_acknowledged", "false").lower() == "true"
+
+    if request.method == "POST":
+        reminders = scan_and_generate_student_reminders(student_id)
+        return jsonify({
+            "status": "success",
+            "message": f"Scanned and updated deadline reminders for student '{student_id}'.",
+            "count": len(reminders),
+            "reminders": reminders
+        }), 200
+
+    # GET: Scan and fetch
+    scan_and_generate_student_reminders(student_id)
+    reminders = list_student_reminders(
+        student_id=student_id,
+        include_acknowledged=include_acknowledged,
+        urgency_filter=urgency_filter
+    )
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(reminders),
+        "reminders": reminders
+    }), 200
+# COMPANY PROFILE UPDATE MANAGEMENT SYSTEM (#250)
+# ============================================================================
+
+@app.route("/api/companies", methods=["GET", "POST"])
+def company_profiles_collection_endpoint():
+    """
+    GET: Lists enterprise company recruitment profiles with filtering by search and hiring tier.
+    POST: Creates a new company profile (requires admin privileges or secret key).
+    """
+    if request.method == "GET":
+        search_query = request.args.get("search")
+        tier_filter = request.args.get("tier")
+        include_inactive = request.args.get("include_inactive", "false").lower() == "true"
+        
+        # Auto-seed default directory if completely empty
+        seed_default_company_profiles()
+
+        profiles = list_company_profiles(
+            search_query=search_query,
+            tier_filter=tier_filter,
+            active_only=not include_inactive
+        )
+        return jsonify({
+            "status": "success",
+            "total_count": len(profiles),
+            "companies": profiles
+        }), 200
+
+    if request.method == "POST":
+        admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+        user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+        if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+            return jsonify({
+                "status": "error",
+                "message": "Unauthorized. Administrative privilege required to create company profiles."
+            }), 403
+
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        comp_name = payload.get("company_name")
+        if not comp_name or not str(comp_name).strip():
+            return jsonify({"status": "error", "message": "company_name is required."}), 400
+
+        try:
+            profile = create_company_profile(
+                company_name=comp_name,
+                industry=payload.get("industry", "Technology"),
+                website_url=payload.get("website_url"),
+                careers_url=payload.get("careers_url"),
+                logo_url=payload.get("logo_url"),
+                overview=payload.get("overview"),
+                hiring_tier=payload.get("hiring_tier", "Tier 1"),
+                hiring_workflow=payload.get("hiring_workflow", []),
+                primary_tech_stack=payload.get("primary_tech_stack", []),
+                typical_ctc_range=payload.get("typical_ctc_range"),
+                headquarters=payload.get("headquarters")
+            )
+            return jsonify({
+                "status": "success",
+                "message": f"Created company profile for '{comp_name}'.",
+                "company": profile
+            }), 201
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Failed to create profile: {str(e)}"}), 500
+
+
+@app.route("/api/companies/<profile_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def company_profile_detail_endpoint(profile_id: str):
+    """
+    GET: Fetches a single company profile by its unique ID.
+    PUT/PATCH: Updates company profile fields (admin only).
+    DELETE: Archives / soft-deletes the company profile (admin only).
+    """
+    profile = get_company_profile_by_id(profile_id)
+    if not profile:
+        return jsonify({"status": "error", "message": f"Company profile '{profile_id}' not found."}), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "status": "success",
+            "company": profile
+        }), 200
+
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to modify company profiles."
+        }), 403
+
+    if request.method in ("PUT", "PATCH"):
+        updates = request.get_json(silent=True) or request.form.to_dict()
+        try:
+            updated_profile = update_company_profile(profile_id, updates)
+            return jsonify({
+                "status": "success",
+                "message": f"Updated profile for '{profile['company_name']}'.",
+                "company": updated_profile
+            }), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Update failed: {str(e)}"}), 500
+
+    if request.method == "DELETE":
+        archived = archive_company_profile(profile_id)
+        return jsonify({
+            "status": "success" if archived else "error",
+            "message": f"Archived company profile '{profile['company_name']}'."
+        }), 200
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines/<reminder_id>/acknowledge", methods=["POST"])
+def acknowledge_deadline_reminder_endpoint(reminder_id: str):
+    """Marks an upcoming deadline reminder as acknowledged/dismissed."""
+    student_id = flask_session.get("user_id") or "default_student"
+    success = acknowledge_deadline_reminder(student_id=student_id, reminder_id=reminder_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Reminder not found or already acknowledged."}), 404
+    return jsonify({
+        "status": "success",
+        "message": "Deadline reminder acknowledged successfully."
+    }), 200
+
+
+@app.route("/api/reminders/preferences", methods=["GET", "PUT", "PATCH"])
+def student_reminder_preferences_endpoint():
+    """
+    GET: Retrieves student's deadline reminder preferences.
+    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        prefs = get_student_deadline_preferences(student_id)
+        return jsonify({
+            "status": "success",
+            "preferences": prefs
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    updated = update_student_deadline_preferences(
+        student_id=student_id,
+        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
+        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
+        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
+        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
     """
     GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
     POST: Creates a new bookmark folder.
@@ -6823,6 +7088,47 @@ def coding_bookmark_folders_collection_endpoint():
 
 @app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
 def coding_bookmark_folder_detail_endpoint(folder_id: str):
+    reason = payload.get("reason", "")
+    moderator_id = flask_session.get("user_id") or "admin"
+
+    try:
+        updated_experience = moderate_interview_experience(
+            experience_id=exp_id,
+            action=action,
+            moderator_id=str(moderator_id),
+            reason=reason
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
+            "experience": updated_experience
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
+
+
+@app.route("/api/admin/moderation/experiences/<exp_id>/logs", methods=["GET"])
+def admin_experience_moderation_logs_endpoint(exp_id: str):
+    """Retrieves full audit trail of moderation actions for a specific interview experience."""
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required."
+        }), 403
+
+    logs = get_experience_moderation_logs(exp_id)
+    return jsonify({
+        "status": "success",
+        "experience_id": exp_id,
+        "logs": logs
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
     """
     GET: Retrieves folder metadata and bookmarked problems inside.
     PUT/PATCH: Updates folder name, description, color, or icon.
@@ -6898,6 +7204,40 @@ def move_coding_bookmark_endpoint(problem_id: str):
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": f"Move failed: {str(e)}"}), 500
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+    return jsonify({
+        "status": "success",
+        "message": "Updated deadline reminder preferences.",
+        "preferences": updated
+        "redaction": redacted_result
+    }), 200
 
 
 if __name__ == "__main__":
