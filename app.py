@@ -2279,6 +2279,32 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
+@app.route("/api/jobs/feed/dedup", methods=["GET"])
+def api_jobs_feed_dedup():
+    """
+    Returns curated campus placement opportunities processed with duplicate filtering and deadline expiration (#248).
+    """
+    hide_expired = request.args.get("hide_expired", "false").lower() in ("true", "1", "yes")
+    from utils.job_feed_service import JobFeedService
+    from utils.job_dedup_expiration import process_jobs_feed_with_expiration_and_dedup
+
+    feed_service = JobFeedService()
+    raw_jobs = feed_service.get_all_jobs()
+    processed = process_jobs_feed_with_expiration_and_dedup(raw_jobs, hide_expired=hide_expired)
+    return jsonify({
+        "success": True,
+        "feed_summary": {
+            "total_raw": processed["total_raw"],
+            "deduplicated_count": processed["deduplicated_count"],
+            "duplicates_removed": processed["duplicates_removed"],
+            "expired_count": processed["expired_count"],
+            "active_count": processed["active_count"],
+        },
+        "jobs": processed["jobs"]
+    }), 200
+
+
+
 @app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
