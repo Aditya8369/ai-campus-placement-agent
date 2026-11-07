@@ -94,6 +94,18 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Table: Secure password reset tokens (#150)
+        cursor.execute("""
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    expires_at INTEGER NOT NULL,
+                    used_at INTEGER,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
 
         # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
@@ -1529,7 +1541,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+            "SELECT id, name, email, password_hash, created_at FROM users WHERE id = ?",
             (user_id,)
         )
         row = cursor.fetchone()
@@ -3377,6 +3389,9 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
     Retrieves candidate email notification configuration (#186).
     Defaults to all enabled if no preference record exists yet.
     """
+    if not token or not token.strip():
+        return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3635,6 +3650,9 @@ def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str,
     """
     Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
     """
+    if not student_id or not student_id.strip():
+        raise ValueError("Valid student_id is required for account deletion.")
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3842,12 +3860,69 @@ def log_gemini_api_call(
         return ""
     finally:
         conn.close()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
+        conn.commit()
+        return cursor.rowcount
+    except Exception as e:
+        logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
+        conn.rollback()
+        return 0
+    finally:
+        conn.close()
 
 
 def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     """
     Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
     """
+    s_id = (student_id or "default_student").strip()
+    profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
+    history = get_student_versions(s_id) if "get_student_versions" in globals() else []
+    latest_analysis = history[0] if history else {}
+
+    # Extract resume info & gaps
+    matched_skills = []
+    skill_gaps = []
+    ats_score = latest_analysis.get("ats_score", 0)
+    match_percentage = latest_analysis.get("match_percentage", 0)
+    target_role = latest_analysis.get("target_role", "Software Engineer")
+    target_company = latest_analysis.get("company_name", "General")
+
+    if latest_analysis.get("id"):
+        full_record = get_analysis(latest_analysis["id"])
+        if full_record and full_record.get("results"):
+            res = full_record["results"]
+            job_match = res.get("job_match") or {}
+            matched_skills = job_match.get("matched_skills") or []
+            skill_gap_items = res.get("skill_gap") or []
+            skill_gaps = [
+                g.get("missing_skill") if isinstance(g, dict) else str(g)
+                for g in skill_gap_items if g
+            ] or job_match.get("missing_skills", [])
+
+    # Coding submissions
+    submissions = get_coding_submissions(student_id=s_id) if "get_coding_submissions" in globals() else []
+    total_submissions = len(submissions)
+    passed_submissions = sum(1 for s in submissions if s.get("passed"))
+    avg_coding_score = (
+        round(sum(s.get("score", 0) for s in submissions) / total_submissions, 1)
+        if total_submissions > 0 else 0.0
+    )
+
+    # Mock interviews
+    interviews = get_student_interview_history(student_id=s_id) if "get_student_interview_history" in globals() else []
+    total_interviews = len(interviews)
+    interview_analytics = get_student_interview_performance_analytics(student_id=s_id) if "get_student_interview_performance_analytics" in globals() else {}
+    avg_interview_score = interview_analytics.get("average_score", 90.0) if total_interviews > 0 else 0.0
+
+    # Checklists
+    checklists = get_company_checklist(student_id=s_id, company_name=target_company) if "get_company_checklist" in globals() else {}
+    checklist_completion = checklists.get("overall_percentage", 0.0) if checklists else 0.0
+    completed_tasks = checklists.get("completed_tasks", 1) if checklists else 1
+    total_tasks = checklists.get("total_tasks", 1) if checklists else 1
+
+    # Applications
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
