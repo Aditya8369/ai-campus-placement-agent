@@ -91,6 +91,15 @@ from utils.database import (
     get_note_category_counts,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.bookmark_folders import (
+    create_bookmark_folder,
+    list_student_bookmark_folders,
+    get_bookmark_folder_by_id,
+    update_bookmark_folder,
+    delete_bookmark_folder,
+    move_bookmark_to_folder,
+    get_folder_bookmarks
+)
 from utils.progress_tracker import (
     calculate_version_delta,
     build_longitudinal_series,
@@ -3858,6 +3867,128 @@ def api_recently_viewed_jobs():
                 "cleared_count": cleared_count
             }), 200
 
+
+# ============================================================================
+# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
+# ============================================================================
+
+@app.route("/api/coding/folders", methods=["GET", "POST"])
+def coding_bookmark_folders_collection_endpoint():
+    """
+    GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
+    POST: Creates a new bookmark folder.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        data = list_student_bookmark_folders(student_id)
+        return jsonify({
+            "status": "success",
+            "data": data
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        folder_name = payload.get("name")
+        if not folder_name or not folder_name.strip():
+            return jsonify({"status": "error", "message": "Folder name is required."}), 400
+
+        try:
+            folder = create_bookmark_folder(
+                student_id=student_id,
+                name=folder_name,
+                description=payload.get("description"),
+                color_hex=payload.get("color_hex", "#3b82f6"),
+                icon_name=payload.get("icon_name", "fa-folder")
+            )
+            return jsonify({
+                "status": "success",
+                "message": f"Folder '{folder_name}' created.",
+                "folder": folder
+            }), 201
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Creation failed: {str(e)}"}), 500
+
+
+@app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def coding_bookmark_folder_detail_endpoint(folder_id: str):
+    """
+    GET: Retrieves folder metadata and bookmarked problems inside.
+    PUT/PATCH: Updates folder name, description, color, or icon.
+    DELETE: Deletes folder (optionally unassigns or deletes contents).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    folder = get_bookmark_folder_by_id(student_id, folder_id)
+    if not folder:
+        return jsonify({"status": "error", "message": f"Folder '{folder_id}' not found."}), 404
+
+    if request.method == "GET":
+        bookmarks = get_folder_bookmarks(student_id, folder_id)
+        return jsonify({
+            "status": "success",
+            "folder": folder,
+            "bookmarks": bookmarks,
+            "count": len(bookmarks)
+        }), 200
+
+    if request.method in ("PUT", "PATCH"):
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        try:
+            updated = update_bookmark_folder(
+                student_id=student_id,
+                folder_id=folder_id,
+                name=payload.get("name"),
+                description=payload.get("description"),
+                color_hex=payload.get("color_hex"),
+                icon_name=payload.get("icon_name")
+            )
+            return jsonify({
+                "status": "success",
+                "message": "Folder updated successfully.",
+                "folder": updated
+            }), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Update failed: {str(e)}"}), 500
+
+    if request.method == "DELETE":
+        delete_contents = request.args.get("delete_contents", "false").lower() == "true"
+        deleted = delete_bookmark_folder(student_id, folder_id, delete_contents=delete_contents)
+        return jsonify({
+            "status": "success" if deleted else "error",
+            "message": f"Folder '{folder['name']}' deleted."
+        }), 200
+
+
+@app.route("/api/coding/bookmarks/<problem_id>/move", methods=["POST"])
+def move_coding_bookmark_endpoint(problem_id: str):
+    """
+    Moves a bookmarked coding question to a target folder (or removes it to Uncategorized).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    target_folder_id = payload.get("target_folder_id") or payload.get("folder_id")
+
+    try:
+        moved = move_bookmark_to_folder(
+            student_id=student_id,
+            problem_id=problem_id,
+            target_folder_id=target_folder_id
+        )
+        if not moved:
+            return jsonify({"status": "error", "message": "Bookmark not found."}), 404
+        return jsonify({
+            "status": "success",
+            "message": f"Bookmark '{problem_id}' moved successfully.",
+            "target_folder_id": target_folder_id
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Move failed: {str(e)}"}), 500
 
 
 if __name__ == "__main__":
