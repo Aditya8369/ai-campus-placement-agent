@@ -117,6 +117,11 @@ from utils.database import (
     calculate_gemini_call_cost,
 )
 from utils.batch_analyzer import run_batch_company_comparison
+from utils.interview_moderation import (
+    get_moderation_queue,
+    moderate_interview_experience,
+    get_experience_moderation_logs
+)
 from utils.deadline_reminders import (
     scan_and_generate_student_reminders,
     list_student_reminders,
@@ -6786,6 +6791,62 @@ def api_recently_viewed_jobs():
 
 
 # ============================================================================
+# INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
+# ============================================================================
+
+@app.route("/api/admin/moderation/experiences", methods=["GET"])
+def admin_moderation_queue_endpoint():
+    """
+    Administrative queue for inspecting submitted interview experiences,
+    flagged content, and moderation metrics. Requires administrative privileges.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to access moderation queue."
+        }), 403
+
+    status_filter = request.args.get("status")
+    flagged_only = request.args.get("flagged_only", "false").lower() == "true"
+    company_filter = request.args.get("company")
+    search_query = request.args.get("search")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+
+    queue_data = get_moderation_queue(
+        status_filter=status_filter,
+        flagged_only=flagged_only,
+        company_filter=company_filter,
+        search_query=search_query,
+        limit=limit,
+        offset=offset
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": queue_data
+    }), 200
+
+
+@app.route("/api/admin/moderation/experiences/<exp_id>/action", methods=["POST"])
+def admin_moderate_experience_action_endpoint(exp_id: str):
+    """
+    Executes a moderation decision (approve, reject, flag, dismiss_report) on a submission.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to perform moderation actions."
+        }), 403
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    action = payload.get("action")
+    if not action:
+        return jsonify({"status": "error", "message": "Moderation 'action' is required."}), 400
 # JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
 
@@ -7011,7 +7072,45 @@ def scan_resume_pii_endpoint():
         "scan": scan_result
     }), 200
 
+    reason = payload.get("reason", "")
+    moderator_id = flask_session.get("user_id") or "admin"
 
+    try:
+        updated_experience = moderate_interview_experience(
+            experience_id=exp_id,
+            action=action,
+            moderator_id=str(moderator_id),
+            reason=reason
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
+            "experience": updated_experience
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
+
+
+@app.route("/api/admin/moderation/experiences/<exp_id>/logs", methods=["GET"])
+def admin_experience_moderation_logs_endpoint(exp_id: str):
+    """Retrieves full audit trail of moderation actions for a specific interview experience."""
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required."
+        }), 403
+
+    logs = get_experience_moderation_logs(exp_id)
+    return jsonify({
+        "status": "success",
+        "experience_id": exp_id,
+        "logs": logs
 @app.route("/api/resume/redact-pii", methods=["POST"])
 def redact_resume_pii_endpoint():
     """
