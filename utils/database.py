@@ -112,6 +112,7 @@ def init_db() -> None:
         """)
 
         # Table 7: Store company interview experiences (#189)
+        # Table 5: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_experiences (
                 id TEXT PRIMARY KEY,
@@ -213,6 +214,7 @@ def init_db() -> None:
         """)
 
         # Table 13: Store personal interview preparation notes (#235)
+        # Table: Store company interview experiences (#189)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_preparation_notes (
                 id TEXT PRIMARY KEY,
@@ -228,6 +230,7 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
 
         # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
+        # Table: Store user email notification preferences (#186)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
                 id TEXT PRIMARY KEY,
@@ -246,6 +249,7 @@ def init_db() -> None:
         """)
 
         # Table 15: Store technical skills self-assessments
+        # Table: Store recently viewed jobs by candidates (#201)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS technical_self_assessments (
                 id TEXT PRIMARY KEY,
@@ -268,27 +272,23 @@ def init_db() -> None:
                 rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
                 category TEXT NOT NULL,
                 comment TEXT NOT NULL,
+        # Table: Store Gemini API Usage & Cost Monitoring Logs (#215)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gemini_api_logs (
+                id TEXT PRIMARY KEY,
+                endpoint TEXT NOT NULL,
+                model_name TEXT NOT NULL,
+                prompt_tokens INTEGER DEFAULT 0,
+                candidate_tokens INTEGER DEFAULT 0,
+                total_tokens INTEGER DEFAULT 0,
+                estimated_cost_usd REAL DEFAULT 0.0,
+                latency_ms INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'success',
+                error_message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
-        # Table 17: Store recently viewed jobs by candidates (#201)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
-                id TEXT PRIMARY KEY,
-                student_id TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                company_name TEXT NOT NULL,
-                role_title TEXT NOT NULL,
-                location TEXT DEFAULT 'Remote',
-                salary_range TEXT,
-                apply_url TEXT,
-                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(student_id, job_id)
-            )
-        """)
-        
-        # Schema migration: check if student_id and version_number exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
         existing_cols = [col[1] for col in cursor.fetchall()]
         if "student_id" not in existing_cols:
@@ -305,6 +305,15 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_type TEXT DEFAULT 'Full-Time'")
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
+        # Users table schema migrations (#206)
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [col[1] for col in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        if "verification_token" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        if "token_created_at" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -322,21 +331,93 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_created ON gemini_api_logs (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_status ON gemini_api_logs (status)")
 
         # Seed initial cohort peers if table is currently empty
+        
+        # Recently viewed jobs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS recently_viewed_jobs (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                job_title TEXT NOT NULL,
+                company TEXT NOT NULL,
+                location TEXT,
+                salary TEXT,
+                experience_level TEXT,
+                match_score INTEGER DEFAULT 0,
+                source_url TEXT,
+                viewed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, job_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
+
+        # Email verification tokens table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS email_verification_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER DEFAULT NULL,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_email_verif_tokens ON email_verification_tokens (token_hash)")
+
+        # Password reset tokens table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                expires_at INTEGER NOT NULL,
+                used_at INTEGER DEFAULT NULL,
+                created_at INTEGER NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pwd_reset_tokens ON password_reset_tokens (token_hash)")
+
+        # Daily preparation activity log table (#236)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS preparation_activity_log (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                activity_date TEXT NOT NULL,
+                activity_type TEXT NOT NULL,
+                metadata_json TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, activity_date, activity_type)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_date ON preparation_activity_log (student_id, activity_date)")
+
+        # Student daily preparation streaks table (#236)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_streaks (
+                student_id TEXT PRIMARY KEY,
+                current_streak INTEGER NOT NULL DEFAULT 0,
+                longest_streak INTEGER NOT NULL DEFAULT 0,
+                last_activity_date TEXT,
+                total_active_days INTEGER NOT NULL DEFAULT 0,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [c[1] for c in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+
         cursor.execute("SELECT COUNT(*) FROM cohort_benchmarks")
         if cursor.fetchone()[0] == 0:
             _seed_cohort_benchmarks(cursor)
         
         conn.commit()
         logger.info("Database schema checked and initialized successfully.")
-        
-        # Run any pending versioned file-based migrations (#204)
-        try:
-            from utils.migrations import run_database_migrations
-            run_database_migrations(config.DATABASE_PATH)
-        except Exception as mig_err:
-            logger.warning(f"Note: Automatic migration runner skipped during init: {mig_err}")
     except Exception as e:
         logger.error(f"Failed to initialize SQLite database: {str(e)}")
         raise e
@@ -405,6 +486,16 @@ def save_analysis(
             )
         except Exception as bench_err:
             logger.warning(f"Failed to record cohort benchmark on save_analysis: {bench_err}")
+    
+        # Record preparation activity for candidate streak tracking (#236)
+        try:
+            record_preparation_activity(
+                student_id=effective_student_id,
+                activity_type="resume_analysis",
+                metadata={"analysis_id": analysis_id, "company": company_name}
+            )
+        except Exception as streak_err:
+            logger.warning(f"Failed to record preparation activity on save_analysis: {streak_err}")
     except Exception as e:
         logger.error(f"Error saving analysis {analysis_id} to database: {str(e)}")
         raise e
@@ -769,6 +860,15 @@ def verify_database_integrity() -> Dict[str, Any]:
         }
     finally:
         conn.close()
+
+
+def restore_database_backup(backup_filepath: str, admin_identifier: str = "admin") -> Dict[str, Any]:
+    """
+    Bridge function to execute database restoration via utils.backup_restoration (#245).
+    """
+    from utils.backup_restoration import restore_database_from_backup
+    return restore_database_from_backup(backup_identifier=backup_filepath, admin_user=admin_identifier)
+
 
 
 def save_batch_comparison(
@@ -2263,6 +2363,16 @@ def save_coding_submission(
         conn.commit()
         logger.info(f"Saved coding submission {sub_id} for student {effective_student_id}")
         return sub_id
+    
+        # Record preparation activity for candidate streak tracking (#236)
+        try:
+            record_preparation_activity(
+                student_id=effective_student_id,
+                activity_type="coding_practice",
+                metadata={"submission_id": sub_id, "question_title": question_title, "score": score, "passed": passed}
+            )
+        except Exception as streak_err:
+            logger.warning(f"Failed to record preparation activity on save_coding_submission: {streak_err}")
     except Exception as e:
         logger.error(f"Error saving coding submission {sub_id}: {e}")
         raise e
@@ -2866,6 +2976,29 @@ def get_coding_bookmarks(
     except Exception as e:
         logger.error(f"Error fetching coding bookmarks for student {student_id}: {e}")
         return []
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            UPDATE preparation_calendar_events
+            SET title = ?, event_type = ?, event_date = ?, event_time = ?,
+                company_name = ?, description = ?, priority = ?, completed = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            title.strip(),
+            event_type.strip().lower(),
+            event_date.strip(),
+            (event_time or "").strip(),
+            (company_name or "").strip(),
+            (description or "").strip(),
+            priority.strip(),
+            1 if completed else 0,
+            event_id,
+            effective_student_id
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating calendar event {event_id}: {e}")
+        return False
     finally:
         conn.close()
 
@@ -2931,6 +3064,16 @@ def create_preparation_note(
     except Exception as e:
         logger.error(f"Error creating preparation note: {e}")
         raise e
+    
+        # Record preparation activity for candidate streak tracking (#236)
+        try:
+            record_preparation_activity(
+                student_id=s_id,
+                activity_type="prep_note",
+                metadata={"note_id": note_id, "title": title.strip(), "category": category.strip()}
+            )
+        except Exception as streak_err:
+            logger.warning(f"Failed to record preparation activity on create_preparation_note: {streak_err}")
     finally:
         conn.close()
 
@@ -3016,6 +3159,9 @@ def update_preparation_note(
     Updates an existing preparation note (#235).
     Strictly checks that the note belongs to the specified student before modifying.
     """
+    if not token or not token.strip():
+        return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3156,6 +3302,9 @@ def get_recently_viewed_jobs(student_id: str, limit: int = 10) -> List[Dict[str,
     """
     Retrieves the list of jobs recently viewed by a specific student in chronological order (#201).
     """
+    if not student_id or not student_id.strip():
+        raise ValueError("Valid student_id is required for account deletion.")
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3180,6 +3329,7 @@ def remove_recently_viewed_job(student_id: str, job_id: str) -> bool:
     """
     Removes a single viewed job entry from student history (#201).
     """
+    import uuid
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -3210,6 +3360,812 @@ def clear_recently_viewed_jobs(student_id: str) -> int:
         logger.error(f"Error clearing viewed jobs for student {student_id}: {e}")
         conn.rollback()
         return 0
+    finally:
+        conn.close()
+
+
+def generate_email_verification_token(user_id: str) -> str:
+    """
+    Generates and stores a unique email verification token for user registration (#206).
+    """
+    token = f"verify_{uuid.uuid4().hex}"
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE users SET
+                verification_token = ?,
+                token_created_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+        """, (token, user_id))
+        conn.commit()
+        return token
+    except Exception as e:
+        logger.error(f"Error generating verification token for user {user_id}: {e}")
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
+
+
+def verify_user_email_token(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Validates email verification token and marks user account as verified (#206).
+    Returns user dict on success, None on invalid or expired token.
+    """
+    if not token or not token.strip():
+        return None
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, name, email, is_verified, token_created_at
+            FROM users
+            WHERE verification_token = ?
+        """, (token.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        user = dict(row)
+        cursor.execute("""
+            UPDATE users SET
+                is_verified = 1,
+                verification_token = NULL
+            WHERE id = ?
+        """, (user["id"],))
+        conn.commit()
+        user["is_verified"] = 1
+        return user
+    except Exception as e:
+        logger.error(f"Error verifying user email token: {e}")
+        conn.rollback()
+        return None
+    finally:
+        conn.close()
+
+
+def is_user_email_verified(user_id: str) -> bool:
+    """
+    Checks whether a user has verified their email address (#206).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_verified FROM users WHERE id = ?", (user_id,))
+        row = cursor.fetchone()
+        if not row:
+            return False
+        return bool(row["is_verified"])
+    except Exception as e:
+        logger.error(f"Error checking email verification status for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
+    """
+    Collects all records and counts associated with a student across the database for GDPR audit and export (#207).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        summary = {"student_id": student_id, "tables": {}}
+
+        # Count in analyses
+        cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
+        summary["tables"]["analyses"] = cursor.fetchone()[0]
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Utilities (#215)
+# ==============================================================================
+
+# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
+# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
+# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
+COST_PER_PROMPT_TOKEN = 0.000000075
+COST_PER_CANDIDATE_TOKEN = 0.00000030
+
+
+        # Count in company_preparation_checklists
+        cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
+        summary["tables"]["company_preparation_checklists"] = cursor.fetchone()[0]
+
+        # Count in coding_submissions
+        cursor.execute("SELECT COUNT(*) FROM coding_submissions WHERE student_id = ?", (student_id,))
+        summary["tables"]["coding_submissions"] = cursor.fetchone()[0]
+
+        # Count in technical_self_assessments
+        cursor.execute("SELECT COUNT(*) FROM technical_self_assessments WHERE student_id = ?", (student_id,))
+        summary["tables"]["technical_self_assessments"] = cursor.fetchone()[0]
+
+        # Count in user_feedback
+        cursor.execute("SELECT COUNT(*) FROM user_feedback WHERE student_id = ?", (student_id,))
+        summary["tables"]["user_feedback"] = cursor.fetchone()[0]
+
+        # Count in interview_preparation_notes
+        cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
+        summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
+
+        # Count in users
+        cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
+        summary["tables"]["users"] = cursor.fetchone()[0]
+
+        summary["total_records"] = sum(summary["tables"].values())
+        return summary
+    finally:
+        conn.close()
+
+
+def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
+def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
+    """
+    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
+    """
+    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
+    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
+    return round(prompt_cost + candidate_cost, 6)
+
+
+def log_gemini_api_call(
+    endpoint: str,
+    model_name: str,
+    prompt_tokens: int = 0,
+    candidate_tokens: int = 0,
+    total_tokens: Optional[int] = None,
+    latency_ms: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+) -> str:
+    """
+    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
+    """
+    if total_tokens is None:
+        total_tokens = prompt_tokens + candidate_tokens
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        deleted_counts = {}
+
+        # 1. Delete associated mock interview records linked to student analyses
+        cursor.execute("""
+            DELETE FROM interviews
+            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
+        """, (student_id,))
+        deleted_counts["interviews"] = cursor.rowcount
+
+        # 2. Delete placement analyses
+        cursor.execute("DELETE FROM analyses WHERE student_id = ?", (student_id,))
+        deleted_counts["analyses"] = cursor.rowcount
+
+        # 3. Delete batch comparisons
+        cursor.execute("DELETE FROM batch_comparisons WHERE student_id = ?", (student_id,))
+        deleted_counts["batch_comparisons"] = cursor.rowcount
+
+        # 4. Delete job applications
+        cursor.execute("DELETE FROM job_applications WHERE student_id = ?", (student_id,))
+        deleted_counts["job_applications"] = cursor.rowcount
+
+        # 5. Delete email notification preferences
+        cursor.execute("DELETE FROM email_notification_preferences WHERE student_id = ?", (student_id,))
+        deleted_counts["email_notification_preferences"] = cursor.rowcount
+
+        # 6. Delete interview experiences
+        cursor.execute("DELETE FROM interview_experiences WHERE student_id = ?", (student_id,))
+        deleted_counts["interview_experiences"] = cursor.rowcount
+
+        # 7. Delete preparation calendar events
+        cursor.execute("DELETE FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
+        deleted_counts["preparation_calendar_events"] = cursor.rowcount
+
+        # 8. Delete company preparation checklists
+        cursor.execute("DELETE FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
+        deleted_counts["company_preparation_checklists"] = cursor.rowcount
+
+        # 9. Delete coding assessment submissions
+        cursor.execute("DELETE FROM coding_submissions WHERE student_id = ?", (student_id,))
+        deleted_counts["coding_submissions"] = cursor.rowcount
+
+        # 10. Delete technical skill self-assessments
+        cursor.execute("DELETE FROM technical_self_assessments WHERE student_id = ?", (student_id,))
+        deleted_counts["technical_self_assessments"] = cursor.rowcount
+
+        # 11. Delete user feedback entries
+        cursor.execute("DELETE FROM user_feedback WHERE student_id = ?", (student_id,))
+        deleted_counts["user_feedback"] = cursor.rowcount
+
+        # 12. Delete interview preparation notes
+        cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
+        deleted_counts["interview_preparation_notes"] = cursor.rowcount
+
+        # 13. Delete student profile if exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM student_profiles WHERE student_id = ?", (student_id,))
+            deleted_counts["student_profiles"] = cursor.rowcount
+
+        # 14. Delete bookmarked coding questions if exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarked_coding_questions'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM bookmarked_coding_questions WHERE student_id = ?", (student_id,))
+            deleted_counts["bookmarked_coding_questions"] = cursor.rowcount
+
+        # 15. Check if recently_viewed_jobs table exists, if so delete student rows
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recently_viewed_jobs'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (student_id,))
+            deleted_counts["recently_viewed_jobs"] = cursor.rowcount
+
+        # 16. Finally, delete the student account from users table
+        cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
+        deleted_counts["users"] = cursor.rowcount
+
+        
+        cursor.execute("DELETE FROM preparation_activity_log WHERE student_id = ?", (student_id,))
+        deleted_counts["preparation_activity_log"] = cursor.rowcount
+        total_deleted += cursor.rowcount
+
+        cursor.execute("DELETE FROM student_streaks WHERE student_id = ?", (student_id,))
+        deleted_counts["student_streaks"] = cursor.rowcount
+        total_deleted += cursor.rowcount
+
+    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
+    log_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO gemini_api_logs (
+                id, endpoint, model_name, prompt_tokens, candidate_tokens,
+                total_tokens, estimated_cost_usd, latency_ms, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_id,
+            endpoint,
+            model_name,
+            prompt_tokens,
+            candidate_tokens,
+            total_tokens,
+            cost,
+            latency_ms,
+            status,
+            error_message,
+        ))
+        conn.commit()
+        return log_id
+    except Exception as e:
+        logger.error(f"Error logging Gemini API call: {e}")
+        conn.rollback()
+        return ""
+    finally:
+        conn.close()
+        s_id = (student_id or "default_student").strip()
+        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
+        conn.commit()
+        logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
+
+        # Also purge any student files (e.g., reports, resumes) on disk if named after student or analysis
+        try:
+            import os
+            import config
+            for folder in [config.UPLOAD_FOLDER, config.REPORT_FOLDER]:
+                if os.path.exists(folder):
+                    for fname in os.listdir(folder):
+                        if student_id in fname:
+                            fpath = os.path.join(folder, fname)
+                            try:
+                                if os.path.isfile(fpath):
+                                    os.remove(fpath)
+                            except Exception as file_err:
+                                logger.warning(f"Could not remove student file {fpath}: {file_err}")
+        except Exception as f_err:
+            logger.warning(f"Disk cleanup non-fatal error during purge: {f_err}")
+
+        return {
+            "status": "purged",
+            "student_id": student_id,
+            "deleted_counts": deleted_counts,
+            "total_deleted": sum(deleted_counts.values())
+        }
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Failed to delete account for student {student_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
+    """
+    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
+    """
+    s_id = (student_id or "default_student").strip()
+    profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
+    history = get_student_versions(s_id) if "get_student_versions" in globals() else []
+    latest_analysis = history[0] if history else {}
+
+    # Extract resume info & gaps
+    matched_skills = []
+    skill_gaps = []
+    ats_score = latest_analysis.get("ats_score", 0)
+    match_percentage = latest_analysis.get("match_percentage", 0)
+    target_role = latest_analysis.get("target_role", "Software Engineer")
+    target_company = latest_analysis.get("company_name", "General")
+
+    if latest_analysis.get("id"):
+        full_record = get_analysis(latest_analysis["id"])
+        if full_record and full_record.get("results"):
+            res = full_record["results"]
+            job_match = res.get("job_match") or {}
+            matched_skills = job_match.get("matched_skills") or []
+            skill_gap_items = res.get("skill_gap") or []
+            skill_gaps = [
+                g.get("missing_skill") if isinstance(g, dict) else str(g)
+                for g in skill_gap_items if g
+            ] or job_match.get("missing_skills", [])
+
+    # Coding submissions
+    submissions = get_coding_submissions(student_id=s_id) if "get_coding_submissions" in globals() else []
+    total_submissions = len(submissions)
+    passed_submissions = sum(1 for s in submissions if s.get("passed"))
+    avg_coding_score = (
+        round(sum(s.get("score", 0) for s in submissions) / total_submissions, 1)
+        if total_submissions > 0 else 0.0
+    )
+
+    # Mock interviews
+    interviews = get_student_interview_history(student_id=s_id) if "get_student_interview_history" in globals() else []
+    total_interviews = len(interviews)
+    interview_analytics = get_student_interview_performance_analytics(student_id=s_id) if "get_student_interview_performance_analytics" in globals() else {}
+    avg_interview_score = interview_analytics.get("average_score", 90.0) if total_interviews > 0 else 0.0
+
+    # Checklists
+    checklists = get_company_checklist(student_id=s_id, company_name=target_company) if "get_company_checklist" in globals() else {}
+    checklist_completion = checklists.get("overall_percentage", 0.0) if checklists else 0.0
+    completed_tasks = checklists.get("completed_tasks", 1) if checklists else 1
+    total_tasks = checklists.get("total_tasks", 1) if checklists else 1
+
+    # Applications
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, count(*) as count FROM job_applications WHERE student_id = ? GROUP BY status", (s_id,))
+        app_distribution = {r["status"]: r["count"] for r in cursor.fetchall()}
+    except Exception:
+        app_distribution = {}
+    finally:
+        conn.close()
+
+    total_apps = sum(app_distribution.values())
+
+    return {
+        "student_id": s_id,
+        "profile": profile,
+        "latest_analysis": latest_analysis,
+        "analyses_count": len(history),
+        "ats_score": ats_score,
+        "match_percentage": match_percentage,
+        "target_role": target_role,
+        "target_company": target_company,
+        "matched_skills": matched_skills,
+        "skill_gaps": skill_gaps,
+        "completed_tasks_count": completed_tasks,
+        "coding_stats": {
+            "total_submissions": total_submissions,
+            "passed_count": passed_submissions,
+            "avg_score": avg_coding_score,
+            "recent_submissions": submissions[:5]
+        },
+        "coding_practice": {
+            "total_submissions": total_submissions,
+            "passed_submissions": passed_submissions,
+            "avg_score": avg_coding_score,
+            "recent_submissions": submissions[:5]
+        },
+        "interview_stats": {
+            "total_sessions": total_interviews or 1,
+            "average_score": avg_interview_score,
+            "analytics": interview_analytics
+        },
+        "mock_interviews": {
+            "total_interviews": total_interviews,
+            "analytics": interview_analytics,
+            "recent_interviews": interviews[:5]
+        },
+        "checklist": {
+            "completion_percentage": checklist_completion,
+            "completed_tasks": completed_tasks,
+            "total_tasks": total_tasks
+        },
+        "applications_summary": {
+            "total": total_apps,
+            "distribution": app_distribution
+        },
+        "applications": {
+            "total": total_apps,
+            "distribution": app_distribution
+        }
+    }
+
+
+def create_password_reset_token(
+    user_id: str,
+    token_hash: str,
+    expires_at: int
+) -> bool:
+    """Create a reset token and invalidate previous unused tokens."""
+    import time
+
+        # Overall summary stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_calls,
+                SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) as failed_calls,
+                COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+                COALESCE(SUM(candidate_tokens), 0) as total_candidate_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
+                COALESCE(AVG(latency_ms), 0.0) as avg_latency_ms
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+        """, (f"-{days} days",))
+        summary_row = cursor.fetchone()
+
+        # Breakdown by endpoint
+        cursor.execute("""
+            SELECT
+                endpoint,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as endpoint_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as endpoint_cost,
+                COALESCE(AVG(latency_ms), 0.0) as endpoint_latency
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY endpoint
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        endpoints_data = [dict(r) for r in cursor.fetchall()]
+
+        # Breakdown by model
+        cursor.execute("""
+            SELECT
+                model_name,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as model_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as model_cost
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY model_name
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        models_data = [dict(r) for r in cursor.fetchall()]
+
+        # Recent 25 logs
+        cursor.execute("""
+            SELECT id, endpoint, model_name, prompt_tokens, candidate_tokens, total_tokens,
+                   estimated_cost_usd, latency_ms, status, error_message, created_at
+            FROM gemini_api_logs
+            ORDER BY created_at DESC
+            LIMIT 25
+        """)
+        recent_logs = [dict(r) for r in cursor.fetchall()]
+
+        total_calls = summary_row["total_calls"] if summary_row else 0
+        success_calls = summary_row["successful_calls"] if summary_row else 0
+        success_rate = round((success_calls / total_calls * 100), 1) if total_calls > 0 else 100.0
+
+        return {
+            "timeframe_days": days,
+            "total_calls": total_calls,
+            "successful_calls": success_calls,
+            "failed_calls": summary_row["failed_calls"] if summary_row else 0,
+            "success_rate_pct": success_rate,
+            "total_prompt_tokens": summary_row["total_prompt_tokens"] if summary_row else 0,
+            "total_candidate_tokens": summary_row["total_candidate_tokens"] if summary_row else 0,
+            "total_tokens": summary_row["total_tokens"] if summary_row else 0,
+            "total_cost_usd": round(summary_row["total_cost_usd"] if summary_row else 0.0, 4),
+            "avg_latency_ms": round(summary_row["avg_latency_ms"] if summary_row else 0.0, 1),
+            "endpoint_breakdown": endpoints_data,
+            "model_breakdown": models_data,
+            "recent_logs": recent_logs,
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving Gemini usage summary: {e}")
+        return {
+            "timeframe_days": days,
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "success_rate_pct": 100.0,
+            "total_prompt_tokens": 0,
+            "total_candidate_tokens": 0,
+            "total_tokens": 0,
+            "total_cost_usd": 0.0,
+            "avg_latency_ms": 0.0,
+            "endpoint_breakdown": [],
+            "model_breakdown": [],
+            "recent_logs": [],
+        }
+    finally:
+        conn.close()
+
+
+def record_preparation_activity(
+    student_id: str,
+    activity_type: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    activity_date: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Logs a meaningful placement preparation activity for the student on a specific date (#236).
+    Enforces that multiple activities on the same day do not falsely inflate the daily streak count.
+    Updates the candidate's current streak, longest streak, and total active days atomically.
+    """
+    import datetime
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        act_type = (activity_type or "general_practice").strip().lower()
+        target_date = (activity_date or datetime.date.today().isoformat()).strip()
+        meta_json = json.dumps(metadata or {})
+        rec_id = f"act-{uuid.uuid4().hex[:12]}"
+
+        # Insert or ignore activity for this type on this day
+        cursor.execute("""
+            INSERT OR IGNORE INTO preparation_activity_log (
+                id, student_id, activity_date, activity_type, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (rec_id, effective_student_id, target_date, act_type, meta_json))
+        conn.commit()
+
+        # Recalculate streak metrics based on unique active calendar days
+        streak_data = _recalculate_student_streak(cursor, effective_student_id)
+        conn.commit()
+        return streak_data
+    except Exception as e:
+        logger.error(f"Error recording preparation activity for {student_id}: {e}")
+        conn.rollback()
+        return get_student_streak(student_id)
+    finally:
+        conn.close()
+
+
+def _recalculate_student_streak(cursor: sqlite3.Cursor, student_id: str) -> Dict[str, Any]:
+    """
+    Internal calculation helper that computes current and longest streak across unique active days.
+    Guarantees that multiple activities on the same day only count as 1 active day.
+    """
+    import datetime
+    cursor.execute("""
+        SELECT DISTINCT activity_date
+        FROM preparation_activity_log
+        WHERE student_id = ?
+        ORDER BY activity_date ASC
+    """, (student_id,))
+    rows = cursor.fetchall()
+    active_dates = [r[0] for r in rows if r[0]]
+
+    if not active_dates:
+        cursor.execute("""
+            INSERT INTO student_streaks (
+                student_id, current_streak, longest_streak, last_activity_date, total_active_days, updated_at
+            ) VALUES (?, 0, 0, NULL, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id) DO UPDATE SET
+                current_streak = 0,
+                longest_streak = 0,
+                last_activity_date = NULL,
+                total_active_days = 0,
+                updated_at = CURRENT_TIMESTAMP
+        """, (student_id,))
+        return {
+            "student_id": student_id,
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_activity_date": None,
+            "total_active_days": 0,
+            "active_today": False,
+            "has_started": False
+        }
+
+    date_objs = []
+    for d_str in active_dates:
+        try:
+            date_objs.append(datetime.date.fromisoformat(d_str))
+        except ValueError:
+            continue
+    date_objs = sorted(set(date_objs))
+    dates_set = set(date_objs)
+
+    # 1. Calculate longest streak
+    longest = 0
+    cur_run = 0
+    prev_d = None
+    for d in date_objs:
+        if prev_d is None or (d - prev_d).days == 1:
+            cur_run += 1
+        else:
+            cur_run = 1
+        longest = max(longest, cur_run)
+        prev_d = d
+
+    # 2. Calculate current streak
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    active_today = today in dates_set
+
+    current_streak = 0
+    if active_today:
+        current_streak = 1
+        check_d = yesterday
+        while check_d in dates_set:
+            current_streak += 1
+            check_d -= datetime.timedelta(days=1)
+    elif yesterday in dates_set:
+        current_streak = 1
+        check_d = yesterday - datetime.timedelta(days=1)
+        while check_d in dates_set:
+            current_streak += 1
+            check_d -= datetime.timedelta(days=1)
+    else:
+        current_streak = 0
+
+    longest = max(longest, current_streak)
+    last_act_str = date_objs[-1].isoformat() if date_objs else None
+    total_days = len(date_objs)
+
+    cursor.execute("""
+        INSERT INTO student_streaks (
+            student_id, current_streak, longest_streak, last_activity_date, total_active_days, updated_at
+        ) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(student_id) DO UPDATE SET
+            current_streak = excluded.current_streak,
+            longest_streak = excluded.longest_streak,
+            last_activity_date = excluded.last_activity_date,
+            total_active_days = excluded.total_active_days,
+            updated_at = CURRENT_TIMESTAMP
+    """, (student_id, current_streak, longest, last_act_str, total_days))
+
+    return {
+        "student_id": student_id,
+        "current_streak": current_streak,
+        "longest_streak": longest,
+        "last_activity_date": last_act_str,
+        "total_active_days": total_days,
+        "active_today": active_today,
+        "has_started": total_days > 0
+    }
+
+
+def get_student_streak(student_id: str) -> Dict[str, Any]:
+    """
+    Retrieves current streak stats for a student, dynamically evaluating if streak broke (#236).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        return _recalculate_student_streak(cursor, effective_student_id)
+    except Exception as e:
+        logger.error(f"Error fetching student streak for {student_id}: {e}")
+        return {
+            "student_id": student_id,
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_activity_date": None,
+            "total_active_days": 0,
+            "active_today": False,
+            "has_started": False
+        }
+    finally:
+        conn.close()
+
+
+def get_streak_calendar(
+    student_id: str,
+    year: Optional[int] = None,
+    month: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Returns monthly calendar matrix indicating active preparation days for the visual tracker (#236).
+    """
+    import datetime
+    import calendar
+
+    effective_student_id = (student_id or "default_student").strip()
+    today = datetime.date.today()
+    target_year = year if year and 2020 <= year <= 2035 else today.year
+    target_month = month if month and 1 <= month <= 12 else today.month
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        month_prefix = f"{target_year:04d}-{target_month:02d}"
+        cursor.execute("""
+            SELECT activity_date, activity_type
+            FROM preparation_activity_log
+            WHERE student_id = ? AND activity_date LIKE ?
+            ORDER BY activity_date ASC
+        """, (effective_student_id, f"{month_prefix}%"))
+        rows = cursor.fetchall()
+
+        date_activities = {}
+        for r in rows:
+            d = r[0]
+            t = r[1]
+            if d not in date_activities:
+                date_activities[d] = []
+            if t not in date_activities[d]:
+                date_activities[d].append(t)
+    finally:
+        conn.close()
+
+    cal = calendar.Calendar(firstweekday=0)
+    weeks = cal.monthdatescalendar(target_year, target_month)
+
+    calendar_weeks = []
+    for week in weeks:
+        week_days = []
+        for d in week:
+            d_str = d.isoformat()
+            is_active = d_str in date_activities
+            week_days.append({
+                "date": d_str,
+                "day_number": d.day,
+                "is_current_month": d.month == target_month,
+                "is_today": d == today,
+                "is_active": is_active,
+                "activities": date_activities.get(d_str, []),
+                "activity_count": len(date_activities.get(d_str, []))
+            })
+        calendar_weeks.append(week_days)
+
+    month_name = calendar.month_name[target_month]
+
+    return {
+        "student_id": effective_student_id,
+        "year": target_year,
+        "month": target_month,
+        "month_name": month_name,
+        "active_days_in_month": len(date_activities),
+        "calendar_weeks": calendar_weeks,
+        "active_dates": list(date_activities.keys())
+    }
+
+
+def get_recent_preparation_activities(
+    student_id: str,
+    limit: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    Returns the recent preparation activity records for a candidate (#236).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        cursor.execute("""
+            SELECT id, student_id, activity_date, activity_type, metadata_json, created_at
+            FROM preparation_activity_log
+            WHERE student_id = ?
+            ORDER BY activity_date DESC, created_at DESC
+            LIMIT ?
+        """, (effective_student_id, limit))
+        activities = []
+        for r in cursor.fetchall():
+            rec = dict(r)
+            try:
+                rec["metadata"] = json.loads(rec.get("metadata_json") or "{}")
+            except Exception:
+                rec["metadata"] = {}
+            activities.append(rec)
+        return activities
+    except Exception as e:
+        logger.error(f"Error fetching recent preparation activities for {student_id}: {e}")
+        return []
     finally:
         conn.close()
 
