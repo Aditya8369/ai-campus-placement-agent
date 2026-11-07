@@ -24,10 +24,13 @@ else:
 UPLOAD_FOLDER = STORAGE_DIR / "uploads"
 REPORT_FOLDER = STORAGE_DIR / "reports"
 DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+BACKUP_DIR = STORAGE_DIR / "backups"
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-secret-key")
 
 # Ensure folders exist
 UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
 REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -36,6 +39,8 @@ if not FLASK_SECRET_KEY:
     if os.getenv("FLASK_ENV") == "production":
         raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
     FLASK_SECRET_KEY = "dev-secret-key-12345"
+
+ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
 
 # Centralized model setting
 GEMINI_MODEL = "gemini-2.5-flash"

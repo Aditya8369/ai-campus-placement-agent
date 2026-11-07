@@ -74,6 +74,45 @@
       {'category': 'Priority Action Item', 'text': (analysis.results.job_match.top_5_resume_changes[0] if (analysis.results.job_match is mapping and analysis.results.job_match.top_5_resume_changes and analysis.results.job_match.top_5_resume_changes|length > 0) else 'Align technical terminology and keywords with target job requirements.'), 'icon': 'fa-wand-magic-sparkles text-info'}
     ] %}
 
+    <!-- Daily Preparation Streak Tracker Summary Tile (#236) -->
+    {% if streak is defined and streak %}
+    <div class="card border-0 rounded-4 shadow-sm mb-4 streak-dashboard-card p-3" style="background: linear-gradient(135deg, rgba(255, 245, 235, 0.95) 0%, rgba(255, 255, 255, 0.98) 100%); border-left: 5px solid #ff5722 !important;">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="streak-flame-icon-box text-center p-2 rounded-circle" style="background: #fff3e0; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center;">
+            <span class="fs-2 {% if streak.current_streak > 0 %}streak-flame-active{% endif %}">🔥</span>
+          </div>
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <h5 class="fw-bold mb-0 text-dark">Daily Preparation Streak: <span class="text-danger fw-extrabold">{{ streak.current_streak }} {{ 'Day' if streak.current_streak == 1 else 'Days' }}</span></h5>
+              {% if streak.active_today %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-circle-check me-1"></i> Active Today
+                </span>
+              {% elif streak.has_started %}
+                <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-hourglass-half me-1"></i> Practice Today to Keep Streak Alive!
+                </span>
+              {% else %}
+                <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-sparkles me-1"></i> Ready to start streak
+                </span>
+              {% endif %}
+            </div>
+            <p class="text-muted small mb-0 mt-1">
+              Personal Best Longest Streak: <strong>{{ streak.longest_streak }} {{ 'day' if streak.longest_streak == 1 else 'days' }}</strong> &bull; Total Active Days: <strong>{{ streak.total_active_days }}</strong>
+            </p>
+          </div>
+        </div>
+        <div>
+          <a href="/streak" class="btn btn-outline-danger btn-sm rounded-pill px-3 fw-semibold shadow-sm">
+            <i class="fa-solid fa-calendar-days me-1"></i> View Streak Calendar
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="card glass-card p-4 mb-4 border-0 shadow-sm" id="placementReadinessSummaryCard">
       <!-- Executive Header -->
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2 pb-3 border-bottom">
