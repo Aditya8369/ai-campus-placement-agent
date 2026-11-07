@@ -27,6 +27,10 @@ import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
     get_student_preparation_summary_data,
+    record_preparation_activity,
+    get_student_streak,
+    get_streak_calendar,
+    get_recent_preparation_activities,
     record_viewed_job,
     get_recently_viewed_jobs,
     remove_recently_viewed_job,
@@ -82,6 +86,29 @@ from utils.database import (
     submit_user_feedback,
     get_user_feedback_list,
     get_feedback_metrics_summary,
+    save_coding_bookmark,
+    remove_coding_bookmark,
+    get_coding_bookmarks,
+    is_coding_bookmarked,
+    create_preparation_note,
+    get_preparation_notes,
+    get_preparation_note_by_id,
+    update_preparation_note,
+    delete_preparation_note,
+    get_note_category_counts,
+    create_password_reset_token,
+    get_valid_password_reset_token,
+    reset_user_password,
+    invalidate_password_reset_token,
+    get_user_data_export_manifest,
+    delete_user_account_and_personal_data,
+    generate_email_verification_token,
+    verify_user_email_token,
+    is_user_email_verified,
+    record_preparation_activity,
+    get_student_streak,
+    get_streak_calendar,
+    get_recent_preparation_activities,
     generate_email_verification_token,
     verify_user_email_token,
     is_user_email_verified,
@@ -1398,6 +1425,8 @@ def dashboard(analysis_id: str) -> str:
         "target_match": target_match
     }
 
+    streak_data = get_student_streak(student_id)
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -1415,7 +1444,8 @@ def dashboard(analysis_id: str) -> str:
         supported_roles=SUPPORTED_ROLES,
         readiness_summary=readiness_summary,
         skills_comparison=skills_comparison,
-        skills_comparison_json=json.dumps(skills_comparison)
+        skills_comparison_json=json.dumps(skills_comparison),
+        streak=streak_data
     )
 
 
@@ -1559,6 +1589,24 @@ def submit_interview_answer(analysis_id: str):
             answers_list=answers_list,
             completed=is_completed
         )
+
+        
+        # Record preparation activity for candidate streak tracking (#236)
+        try:
+            streak_student_id = (
+                flask_session.get("user_id")
+                or flask_session.get("user", {}).get("id")
+                or flask_session.get("student_id")
+                or analysis_record.get("student_id")
+                or "default_student"
+            )
+            record_preparation_activity(
+                student_id=streak_student_id,
+                activity_type="mock_interview",
+                metadata={"session_id": session_id, "question_index": question_index}
+            )
+        except Exception as e_streak:
+            logger.warning(f"Could not record streak for interview answer: {e_streak}")
 
         result_payload = {
             "evaluation": evaluation_results,
@@ -1852,7 +1900,8 @@ def skills_assessment_view():
         student_id=student_id
     )
 
-@app.route("/feedback", methods=["GET", "POST"])
+
+
 def feedback_view():
     """
     Renders and processes candidate platform experience feedback (#197).
@@ -1907,6 +1956,65 @@ def feedback_view():
         metrics=metrics,
         student_id=student_id
     )
+
+
+@app.route("/api/feedback", methods=["GET", "POST"])
+def api_feedback():
+    """
+    REST API endpoint for submitting and retrieving feedback (#197).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        cat = request.args.get("category")
+        limit = request.args.get("limit", 50)
+        try:
+            limit_val = int(limit)
+        except (ValueError, TypeError):
+            limit_val = 50
+        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
+        metrics = get_feedback_metrics_summary()
+        return jsonify({
+            "status": "success",
+            "total": len(items),
+            "metrics": metrics,
+            "feedback": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        rating_raw = payload.get("rating", 5)
+        category = payload.get("category", "General Experience")
+        comment = payload.get("comment", "").strip()
+
+        try:
+            rating = int(rating_raw)
+        except (ValueError, TypeError):
+            rating = 5
+
+        if not comment:
+            return jsonify({
+                "status": "error",
+                "message": "comment is required and cannot be empty."
+            }), 400
+
+        record = submit_user_feedback(
+            student_id=student_id,
+            rating=rating,
+            category=category,
+            comment=comment
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Feedback recorded successfully",
+            "feedback": record
+        }), 201
 
 
 @app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
@@ -4468,49 +4576,67 @@ def role_preparation_view():
         raw_skills = request.form.get("skills", raw_skills).strip()
         raw_gaps = request.form.get("skill_gaps", raw_gaps).strip()
 
-    analysis_record = None
-    existing_skills = []
-    skill_gaps = []
+        answers_recorded = session.get("answers", [])
+        if not answers_recorded:
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
+            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
+            return redirect(url_for("interview", analysis_id=analysis_id))
 
-    if analysis_id:
         analysis_record = get_analysis(analysis_id)
-        if analysis_record:
-            results = analysis_record.get("results") or {}
-            job_match = results.get("job_match") or {}
-            skill_gap_items = results.get("skill_gap") or []
-            existing_skills = job_match.get("matched_skills") or []
-            skill_gaps = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
-            if not company:
-                company = analysis_record.get("company_name", "General")
+        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
+        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
 
-    if not existing_skills and raw_skills:
-        existing_skills = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
-    if not skill_gaps and raw_gaps:
-        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_gaps) if s.strip()]
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
+        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
+        export_format = request.args.get("format", "pdf").strip().lower()
 
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=selected_role,
-        existing_skills=existing_skills,
-        skill_gaps=skill_gaps,
-        company_name=company or "General Campus Recruitment",
-        resume_text=analysis_record.get("resume_text", "") if analysis_record else None
-    )
+        if export_format in ("md", "markdown"):
+            md_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                md_content,
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
+            )
+        elif export_format in ("txt", "text"):
+            txt_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                txt_content,
+                mimetype="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
+            )
+        elif export_format == "json":
+            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
+        else:
+            # Default PDF
+            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+            pdf_filename = f"{filename_base}_{session_id}.pdf"
+            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
 
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(prep_data), 200
-
-    return render_template(
-        "role_preparation.html",
-        prep=prep_data,
-        prep_json=json.dumps(prep_data),
-        analysis=analysis_record,
-        analysis_id=analysis_id,
-        available_roles=SUPPORTED_ROLES,
-        selected_role=prep_data["target_role"],
-        company=company,
-        skills_input=", ".join(existing_skills),
-        gaps_input=", ".join(skill_gaps)
-    )
+            generate_interview_transcript_pdf(
+                session_data=session,
+                output_path=pdf_full_path,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return send_file(
+                pdf_full_path,
+                as_attachment=True,
+                download_name=f"{filename_base}.pdf",
+                mimetype="application/pdf",
+            )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
+        flash(f"Error compiling interview transcript: {str(e)}", "error")
+        return redirect(url_for("interview", analysis_id=analysis_id))
 
 
 @app.route("/certificate/<analysis_id>")
@@ -6232,6 +6358,17 @@ def api_toggle_checklist_task():
                 t["completed"] = completed
                 break
 
+    
+    if completed:
+        try:
+            record_preparation_activity(
+                student_id=student_id,
+                activity_type="checklist_task",
+                metadata={"company": company_name, "task_id": task_id, "category": category}
+            )
+        except Exception as e_streak:
+            logger.warning(f"Could not record streak for checklist task: {e_streak}")
+
     save_company_checklist(student_id, company_name, checklist)
     updated_info = get_company_checklist(student_id, company_name)
 
@@ -6469,6 +6606,143 @@ def api_run_migrations():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+
+
+@app.route("/streak", methods=["GET"])
+def streak_tracker_view():
+    """
+    Renders the Daily Preparation Streak Tracker page (#236).
+    Displays current streak, longest streak, active days, interactive monthly calendar,
+    consistency milestones, and recent preparation activity audit log.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    try:
+        req_year = int(request.args.get("year", 0))
+    except (ValueError, TypeError):
+        req_year = None
+
+    try:
+        req_month = int(request.args.get("month", 0))
+    except (ValueError, TypeError):
+        req_month = None
+
+    streak_data = get_student_streak(student_id)
+    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
+    recent_activities = get_recent_preparation_activities(student_id, limit=15)
+
+    informative_message = (
+        "You haven't started your preparation streak yet! Complete a meaningful activity "
+        "— like analyzing your resume, practicing DSA problems, completing a company checklist item, "
+        "or taking a mock interview — to ignite your streak today."
+    ) if not streak_data.get("has_started") else None
+
+    milestones = [
+        {"days": 3, "name": "3-Day Spark", "icon": "fa-bolt", "unlocked": streak_data["longest_streak"] >= 3},
+        {"days": 7, "name": "7-Day Flame", "icon": "fa-fire", "unlocked": streak_data["longest_streak"] >= 7},
+        {"days": 14, "name": "14-Day Torch", "icon": "fa-fire-flame-curved", "unlocked": streak_data["longest_streak"] >= 14},
+        {"days": 30, "name": "30-Day Firestorm", "icon": "fa-crown", "unlocked": streak_data["longest_streak"] >= 30},
+    ]
+
+    return render_template(
+        "streak.html",
+        streak=streak_data,
+        calendar=calendar_data,
+        recent_activities=recent_activities,
+        student_id=student_id,
+        informative_message=informative_message,
+        milestones=milestones
+    )
+
+
+@app.route("/api/streak", methods=["GET"])
+def api_get_student_streak():
+    """
+    JSON API returning student preparation streak statistics and status (#236).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    streak_data = get_student_streak(student_id)
+    return jsonify({
+        "success": True,
+        "streak": streak_data,
+        "message": "Streak retrieved successfully"
+    }), 200
+
+
+@app.route("/api/streak/calendar", methods=["GET"])
+def api_get_streak_calendar():
+    """
+    JSON API returning the monthly preparation calendar matrix (#236).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    try:
+        req_year = int(request.args.get("year", 0))
+    except (ValueError, TypeError):
+        req_year = None
+
+    try:
+        req_month = int(request.args.get("month", 0))
+    except (ValueError, TypeError):
+        req_month = None
+
+    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
+    return jsonify({
+        "success": True,
+        "calendar": calendar_data
+    }), 200
+
+
+@app.route("/api/streak/record-activity", methods=["POST"])
+def api_record_preparation_activity():
+    """
+    REST API endpoint allowing candidates to log meaningful preparation activity (#236).
+    Enforces same-day idempotency to prevent streak inflation.
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = (
+        payload.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    activity_type = (payload.get("activity_type") or "general_practice").strip()
+    metadata = payload.get("metadata") or {}
+    activity_date = payload.get("activity_date")
+
+    updated_streak = record_preparation_activity(
+        student_id=student_id,
+        activity_type=activity_type,
+        metadata=metadata,
+        activity_date=activity_date
+    )
+
+    return jsonify({
+        "success": True,
+        "message": f"Activity '{activity_type}' recorded successfully",
+        "streak": updated_streak
+    }), 200
 
 
 if __name__ == "__main__":
