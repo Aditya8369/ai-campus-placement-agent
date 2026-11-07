@@ -862,6 +862,15 @@ def verify_database_integrity() -> Dict[str, Any]:
         conn.close()
 
 
+def restore_database_backup(backup_filepath: str, admin_identifier: str = "admin") -> Dict[str, Any]:
+    """
+    Bridge function to execute database restoration via utils.backup_restoration (#245).
+    """
+    from utils.backup_restoration import restore_database_from_backup
+    return restore_database_from_backup(backup_identifier=backup_filepath, admin_user=admin_identifier)
+
+
+
 def save_batch_comparison(
     batch_id: str,
     student_id: str,
