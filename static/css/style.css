@@ -1514,144 +1514,433 @@ html {
 }
 
 /* ==========================================================================
-   Interview Preparation Notes Module (#235)
+   Coding Practice Question Bookmarking (#234)
    ========================================================================== */
 
-.note-card {
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
-  background-color: #ffffff;
-}
-
-.note-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
-}
-
-.note-description {
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 220px;
-  overflow-y: auto;
-  line-height: 1.55;
-}
-
-.note-description::-webkit-scrollbar {
-  width: 4px;
-}
-
-.note-description::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15);
-  border-radius: 4px;
-}
-
-/* Category Badges */
-.badge-note-technical {
-  background-color: rgba(13, 110, 253, 0.12) !important;
-  color: #0d6efd !important;
-  border: 1px solid rgba(13, 110, 253, 0.25) !important;
-}
-
-.badge-note-hr {
-  background-color: rgba(25, 135, 84, 0.12) !important;
-  color: #198754 !important;
-  border: 1px solid rgba(25, 135, 84, 0.25) !important;
-}
-
-.badge-note-dsa {
-  background-color: rgba(13, 202, 240, 0.15) !important;
-  color: #087990 !important;
-  border: 1px solid rgba(13, 202, 240, 0.3) !important;
-}
-
-.badge-note-company-preparation,
-.badge-note-company-prep {
-  background-color: rgba(255, 193, 7, 0.18) !important;
-  color: #856404 !important;
-  border: 1px solid rgba(255, 193, 7, 0.35) !important;
-}
-
-.btn-edit-note,
-.btn-delete-note {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
-  min-height: 34px;
+.btn-bookmark-question {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 50% !important;
-  transition: all 0.2s ease;
-  font-size: 0.85rem;
+  font-size: 0.95rem;
+  transition: all 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
-.btn-edit-note:hover {
-  background-color: #ffc107;
-  border-color: #ffc107;
-  color: #000000;
+.btn-bookmark-question:hover {
   transform: scale(1.08);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
 }
 
-.btn-delete-note:hover {
+.btn-bookmark-question:active {
+  transform: scale(0.94);
+}
+
+.btn-bookmark-question.active {
+  background-color: #ffc107 !important;
+  border-color: #ffc107 !important;
+  color: #1a1a1a !important;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.45);
+}
+
+.btn-bookmark-question.active:hover {
+  background-color: #ffca2c !important;
+  border-color: #ffc720 !important;
+  box-shadow: 0 4px 12px rgba(255, 193, 7, 0.55);
+}
+
+.btn-remove-bookmark {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50% !important;
+  font-size: 0.88rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.btn-remove-bookmark:hover {
   background-color: #dc3545;
-  border-color: #dc3545;
   color: #ffffff;
   transform: scale(1.08);
+  box-shadow: 0 3px 8px rgba(220, 53, 69, 0.35);
 }
 
-/* Dark Mode Adaptations */
-[data-bs-theme="dark"] .note-card {
+#savedQuestionsSection {
+  border-left: 4px solid #ffc107 !important;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+#noSavedQuestionsMessage {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  background-color: #f8f9fa;
+  transition: all 0.25s ease;
+}
+
+.saved-problem-item {
+  transition: transform 0.2s ease, opacity 0.25s ease;
+}
+
+.saved-problem-item .card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.saved-problem-item .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* Dark Mode Adaptations for Coding Bookmarks */
+[data-bs-theme="dark"] #savedQuestionsSection {
   background-color: #161b22 !important;
-  border: 1px solid #30363d !important;
+  border-color: #30363d !important;
+  border-left-color: #e3b341 !important;
   color: #f0f6fc;
 }
 
-[data-bs-theme="dark"] .note-title {
-  color: #f0f6fc !important;
-}
-
-[data-bs-theme="dark"] .note-description {
-  color: #8b949e !important;
-}
-
-[data-bs-theme="dark"] .note-description::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-[data-bs-theme="dark"] #noNotesMessage {
-  background-color: #161b22 !important;
+[data-bs-theme="dark"] #noSavedQuestionsMessage {
+  background-color: #0d1117 !important;
   border-color: #30363d !important;
   color: #8b949e;
 }
 
-[data-bs-theme="dark"] .modal-content {
+[data-bs-theme="dark"] .saved-problem-item .card {
   background-color: #161b22 !important;
+  border-color: #30363d !important;
   color: #f0f6fc;
-  border: 1px solid #30363d !important;
 }
 
-[data-bs-theme="dark"] .modal-content .form-control,
-[data-bs-theme="dark"] .modal-content .form-select {
-  background-color: #0d1117 !important;
-  border-color: #30363d !important;
+[data-bs-theme="dark"] .saved-problem-item .card h5 {
   color: #f0f6fc !important;
 }
 
-[data-bs-theme="dark"] .modal-content .form-control:focus,
-[data-bs-theme="dark"] .modal-content .form-select:focus {
-  border-color: #58a6ff !important;
-  box-shadow: 0 0 0 0.25rem rgba(88, 166, 255, 0.25) !important;
+[data-bs-theme="dark"] .saved-problem-item .card .text-muted {
+  color: #8b949e !important;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.btn-outline-secondary {
+  color: #8b949e;
+  border-color: #30363d;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.btn-outline-secondary:hover {
+  color: #f0f6fc;
+  background-color: #21262d;
+  border-color: #8b949e;
+}
+
+[data-bs-theme="dark"] .btn-bookmark-question.active {
+  background-color: #e3b341 !important;
+  border-color: #e3b341 !important;
+  color: #0d1117 !important;
+  box-shadow: 0 2px 10px rgba(227, 179, 65, 0.4);
 }
 
 @media (max-width: 767.98px) {
-  .btn-edit-note,
-  .btn-delete-note {
+  .btn-bookmark-question {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 1rem;
+  }
+  
+  .btn-remove-bookmark {
     width: 38px;
     height: 38px;
     min-width: 38px;
     min-height: 38px;
   }
 }
+
+
+/* ==========================================================================
+   Daily Preparation Streak Tracker (#236)
+   ========================================================================== */
+
+.streak-page {
+  min-height: 100vh;
+}
+
+.kpi-card-streak {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-top: 3px solid transparent;
+}
+
+.kpi-card-streak:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08) !important;
+}
+
+.current-streak-card {
+  border-top-color: #ff5722;
+  background: linear-gradient(180deg, rgba(255, 87, 34, 0.05) 0%, #ffffff 100%);
+}
+
+.longest-streak-card {
+  border-top-color: #ff9800;
+  background: linear-gradient(180deg, rgba(255, 152, 0, 0.05) 0%, #ffffff 100%);
+}
+
+.total-days-card {
+  border-top-color: #2196f3;
+  background: linear-gradient(180deg, rgba(33, 150, 243, 0.05) 0%, #ffffff 100%);
+}
+
+.today-status-card {
+  border-top-color: #4caf50;
+  background: linear-gradient(180deg, rgba(76, 175, 80, 0.05) 0%, #ffffff 100%);
+}
+
+.streak-flame-header {
+  display: inline-block;
+  animation: flame-bounce 2s infinite ease-in-out;
+}
+
+@keyframes flame-bounce {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15) rotate(3deg);
+  }
+}
+
+.streak-flame-active {
+  display: inline-block;
+  animation: flame-pulse 1.8s infinite ease-in-out;
+}
+
+@keyframes flame-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 2px rgba(255, 87, 34, 0.6));
+  }
+  50% {
+    transform: scale(1.2);
+    filter: drop-shadow(0 0 8px rgba(255, 87, 34, 0.9));
+  }
+}
+
+.pulse-warning {
+  animation: pulse-border 2s infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 193, 7, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 193, 7, 0);
+  }
+}
+
+/* Streak Calendar Grid */
+.streak-calendar-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.streak-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.streak-weekday {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #6c757d;
+  padding: 6px 0;
+}
+
+.streak-weekday.weekend {
+  color: #9e9e9e;
+}
+
+.streak-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+}
+
+.streak-day-cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.streak-day-cell:hover {
+  transform: translateY(-2px);
+  border-color: #adb5bd;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.streak-day-number {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #495057;
+  line-height: 1;
+}
+
+.streak-day-cell.other-month {
+  opacity: 0.35;
+  background-color: #fafafa;
+}
+
+.streak-day-cell.other-month .streak-day-number {
+  color: #adb5bd;
+}
+
+.streak-day-cell.today-cell {
+  border: 2px solid #ff5722 !important;
+  box-shadow: 0 0 0 2px rgba(255, 87, 34, 0.2);
+}
+
+.streak-day-cell.today-cell .streak-day-number {
+  font-weight: 800;
+  color: #ff5722;
+}
+
+.streak-day-cell.active-day {
+  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
+  border-color: #ffb74d;
+}
+
+.streak-day-cell.active-day .streak-day-number {
+  font-weight: 700;
+  color: #e65100;
+}
+
+.streak-day-flame {
+  margin-top: 3px;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.streak-day-dot.today-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #ff5722;
+  margin-top: 4px;
+}
+
+/* Calendar Legend */
+.streak-legend-box {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  margin-right: 2px;
+  vertical-align: middle;
+  font-size: 0.8rem;
+  line-height: 16px;
+  text-align: center;
+}
+
+.streak-legend-box.active-legend {
+  background-color: #ffe0b2;
+}
+
+.streak-legend-box.today-legend {
+  border: 2px solid #ff5722;
+  background-color: #ffffff;
+}
+
+.streak-legend-box.empty-legend {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+}
+
+/* Dark Mode Adaptations */
+[data-bs-theme="dark"] .streak-page {
+  background-color: #0d1117 !important;
+}
+
+[data-bs-theme="dark"] .card {
+  background-color: #161b22;
+  border-color: #30363d;
+}
+
+[data-bs-theme="dark"] .streak-day-cell {
+  background-color: #21262d;
+  border-color: #30363d;
+}
+
+[data-bs-theme="dark"] .streak-day-cell.other-month {
+  background-color: #161b22;
+  opacity: 0.25;
+}
+
+[data-bs-theme="dark"] .streak-day-number {
+  color: #c9d1d9;
+}
+
+[data-bs-theme="dark"] .streak-day-cell.active-day {
+  background: linear-gradient(135deg, rgba(255, 87, 34, 0.2) 0%, rgba(255, 152, 0, 0.3) 100%);
+  border-color: #ff9800;
+}
+
+[data-bs-theme="dark"] .streak-day-cell.active-day .streak-day-number {
+  color: #ffb74d;
+}
+
+[data-bs-theme="dark"] .streak-dashboard-card {
+  background: linear-gradient(135deg, rgba(255, 87, 34, 0.15) 0%, #161b22 100%) !important;
+}
+
+[data-bs-theme="dark"] .streak-flame-icon-box {
+  background: #21262d !important;
+}
+
+@media (max-width: 575.98px) {
+  .streak-calendar-days, .streak-calendar-weekdays {
+    gap: 4px;
+  }
+
+  .streak-day-cell {
+    min-height: 42px;
+    border-radius: 8px;
+    padding: 2px;
+  }
+
+  .streak-day-flame {
+    font-size: 0.85rem;
+  }
+
+  .streak-day-number {
+    font-size: 0.75rem;
+  }
+}
+
 
 
 

@@ -22,14 +22,34 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <!-- Multilingual Language Selector (#214) -->
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-sm btn-outline-secondary dropdown-toggle rounded-pill px-3 py-1 text-nowrap" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="{{ _t('select_language', 'Select Language') }}">
+            <i class="fa-solid fa-globe me-1"></i> <span class="fw-medium">{{ locale_names.get(current_locale, current_locale.upper()) }}</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="languageDropdown">
+            <li><h6 class="dropdown-header"><i class="fa-solid fa-language me-1"></i> {{ _t('select_language', 'Select Language') }}</h6></li>
+            {% for code, name in locale_names.items() %}
+            <li>
+              <a class="dropdown-item d-flex align-items-center justify-content-between {% if code == current_locale %}active{% endif %}" href="{{ url_for('set_language', lang_code=code) }}">
+                <span>{{ name }}</span>
+                {% if code == current_locale %}
+                <i class="fa-solid fa-check small ms-2"></i>
+                {% endif %}
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+
         {% if session.get('user_id') %}
-  <span class="text-primary fw-semibold">Hi, {{ session.get('user_name') }}</span>
+  <span class="text-primary fw-semibold">{{ _t('nav_greeting', 'Hi') }}, {{ session.get('user_name') }}</span>
   <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
-    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">Logout</button>
+    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">{{ _t('nav_logout', 'Logout') }}</button>
   </form>
 {% else %}
-  <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">Login</a>
-  <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">Register</a>
+  <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">{{ _t('nav_login', 'Login') }}</a>
+  <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">{{ _t('nav_register', 'Register') }}</a>
 {% endif %}
 
 <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Compare Versions</a>
@@ -60,6 +80,9 @@
         <a href="/role-preparation" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-user-gear me-1"></i> Role Prep
         </a>
+        <a href="/streak" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1 text-nowrap" title="Daily Preparation Streak Tracker">
+          <i class="fa-solid fa-fire text-danger me-1"></i> Streak Tracker
+        </a>
         <a href="/notes" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-note-sticky me-1 text-warning"></i> Prep Notes
         </a>
@@ -82,8 +105,15 @@
         </a>
         <a href="/skills-assessment" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-award me-1"></i> Skills Assessment
+        </a>
+        <a href="/admin/api-usage" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
+          <i class="fa-solid fa-chart-pie me-1"></i> API Cost Monitor
+        </a>
         <a href="/feedback" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 text-nowrap">
           <i class="fa-solid fa-comment-dots me-1"></i> Feedback
+        </a>
+        <a href="/download/preparation-summary" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap" title="Download placement preparation summary PDF">
+          <i class="fa-solid fa-file-pdf me-1"></i> Prep Summary
         </a>
         <button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap" data-bs-toggle="offcanvas"
           data-bs-target="#offcanvasRecentAnalyses" aria-controls="offcanvasRecentAnalyses" id="btnOpenRecentAnalyses">
@@ -105,20 +135,19 @@
     <div class="container">
       <div class="row align-items-center">
         <div class="col-lg-6 mb-5 mb-lg-0">
-          <h1 class="hero-title">Prepare Smart.<br>Get Placed Faster.</h1>
+          <h1 class="hero-title">{{ _t('hero_title', 'Prepare Smart. Get Placed Faster.') }}</h1>
           <p class="hero-subtitle">
-            An intelligent multi-agent placement mentor that analyzes your resume, checks job description matches,
-            suggests projects to bridge skill gaps, generates study roadmaps, and conducts interactive mock interviews.
+            {{ _t('hero_subtitle', 'An intelligent multi-agent placement mentor that analyzes your resume, checks job description matches, suggests projects to bridge skill gaps, generates study roadmaps, and conducts interactive mock interviews.') }}
           </p>
           <div class="d-flex flex-wrap gap-3">
             <div class="d-flex align-items-center gap-2 text-secondary me-3">
-              <i class="fa-solid fa-check text-success"></i> ATS Score Analysis
+              <i class="fa-solid fa-check text-success"></i> {{ _t('hero_badge_ats', 'ATS Score Analysis') }}
             </div>
             <div class="d-flex align-items-center gap-2 text-secondary me-3">
-              <i class="fa-solid fa-check text-success"></i> Skill Gap Projects
+              <i class="fa-solid fa-check text-success"></i> {{ _t('hero_badge_projects', 'Skill Gap Projects') }}
             </div>
             <div class="d-flex align-items-center gap-2 text-secondary">
-              <i class="fa-solid fa-check text-success"></i> Live AI Mock Interviews
+              <i class="fa-solid fa-check text-success"></i> {{ _t('hero_badge_interview', 'Live AI Mock Interviews') }}
             </div>
           </div>
         </div>
@@ -126,7 +155,7 @@
         <!-- Upload Form Container -->
         <div class="col-lg-6">
           <div class="card glass-card p-4">
-            <h4 class="fw-bold mb-4 text-center">Placement Analysis Workspace</h4>
+            <h4 class="fw-bold mb-4 text-center">{{ _t('workspace_title', 'Placement Analysis Workspace') }}</h4>
 
             <!-- Form Reset Confirmation Alert -->
             <div id="formResetAlert" class="alert alert-success alert-dismissible fade show d-none p-2 px-3 small d-flex align-items-center justify-content-between rounded-3 mb-3" role="alert">
@@ -368,50 +397,48 @@
   <!-- Multi-Agent Features Section -->
   <section class="py-5 border-top bg-white">
     <div class="container">
-      <h3 class="fw-bold text-center mb-5">Powered by Specialized AI Agents</h3>
+      <h3 class="fw-bold text-center mb-5">{{ _t('features_heading', 'Powered by Specialized AI Agents') }}</h3>
       <div class="row g-4">
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
             <div class="mb-3 text-primary fs-2"><i class="fa-solid fa-file-invoice"></i></div>
-            <h5 class="fw-bold">Resume Analysis Agent</h5>
-            <p class="text-secondary small mb-0">Analyzes resume formatting, projects, experiences, and calculates an
-              ATS compatibility score with targeted improvements.</p>
+            <h5 class="fw-bold">{{ _t('feature_resume_title', 'Resume Analysis Agent') }}</h5>
+            <p class="text-secondary small mb-0">{{ _t('feature_resume_desc', 'Analyzes resume formatting, projects, experiences, and calculates an ATS compatibility score with targeted improvements.') }}</p>
           </div>
         </div>
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
             <div class="mb-3 text-primary fs-2"><i class="fa-solid fa-code-merge"></i></div>
-            <h5 class="fw-bold">Job Matching Agent</h5>
-            <p class="text-secondary small mb-0">Compares your skills and projects with target role job descriptions,
-              generating exact match percentages and priority adjustments.</p>
+            <h5 class="fw-bold">{{ _t('feature_job_title', 'Job Matching Agent') }}</h5>
+            <p class="text-secondary small mb-0">{{ _t('feature_job_desc', 'Compares your skills and projects with target role job descriptions, generating exact match percentages and priority adjustments.') }}</p>
           </div>
         </div>
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
             <div class="mb-3 text-primary fs-2"><i class="fa-solid fa-triangle-exclamation"></i></div>
-            <h5 class="fw-bold">Skill Gap Agent</h5>
-            <p class="text-secondary small mb-0">Checks for missing skills, rates importance/learning complexity, and
-              recommends custom learning pathways and micro-projects.</p>
+            <h5 class="fw-bold">{{ _t('feature_skill_title', 'Skill Gap Agent') }}</h5>
+            <p class="text-secondary small mb-0">{{ _t('feature_skill_desc', 'Checks for missing skills, rates importance/learning complexity, and recommends custom learning pathways and micro-projects.') }}</p>
           </div>
         </div>
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
             <div class="mb-3 text-primary fs-2"><i class="fa-solid fa-route"></i></div>
-            <h5 class="fw-bold">Learning Roadmap Agent</h5>
-            <p class="text-secondary small mb-0">Compiles a personalized 6-week preparation curriculum with estimated
-              learning times, coding challenges, and weekly checkpoints.</p>
+            <h5 class="fw-bold">{{ _t('feature_roadmap_title', 'Learning Roadmap Agent') }}</h5>
+            <p class="text-secondary small mb-0">{{ _t('feature_roadmap_desc', 'Compiles a personalized 6-week preparation curriculum with estimated learning times, coding challenges, and weekly checkpoints.') }}</p>
           </div>
         </div>
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
             <div class="mb-3 text-primary fs-2"><i class="fa-solid fa-comments"></i></div>
-            <h5 class="fw-bold">Mock Interview Agent</h5>
-            <p class="text-secondary small mb-0">Generates 15 tailored interview questions and evaluates your answers in
+            <h5 class="fw-bold">{{ _t('feature_interview_title', 'Mock Interview Agent') }}</h5>
+            <p class="text-secondary small mb-0">{{ _t('feature_interview_desc', 'Generates tailored interview questions and evaluates your answers in real time with scoring.') }}</p>
+          </div>
+        </div>
               real time, grading your accuracy, communication, and confidence.</p>
           </div>
         </div>

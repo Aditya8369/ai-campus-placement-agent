@@ -33,7 +33,11 @@ class InternshipRecommendationAgent:
         Retrieves real internship opportunities and scores them against candidate skills.
         """
         try:
-            all_jobs = self.feed_service.get_all_jobs()
+            from utils.job_dedup_expiration import process_jobs_feed_with_expiration_and_dedup
+            raw_all_jobs = self.feed_service.get_all_jobs()
+            processed_feed = process_jobs_feed_with_expiration_and_dedup(raw_all_jobs, hide_expired=False)
+            all_jobs = processed_feed["jobs"]
+
             # Focus on internship listings
             internships = [
                 j for j in all_jobs
