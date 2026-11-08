@@ -3765,6 +3765,95 @@ def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
         """, (f"-{days} days",))
         summary_row = cursor.fetchone()
 
+        # Breakdown by endpoint
+        cursor.execute("""
+            SELECT
+                endpoint,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as endpoint_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as endpoint_cost,
+                COALESCE(AVG(latency_ms), 0.0) as endpoint_latency
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY endpoint
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        endpoints_data = [dict(r) for r in cursor.fetchall()]
+
+        # Breakdown by model
+        cursor.execute("""
+            SELECT
+                model_name,
+                COUNT(*) as call_count,
+                COALESCE(SUM(total_tokens), 0) as model_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as model_cost
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+            GROUP BY model_name
+            ORDER BY call_count DESC
+        """, (f"-{days} days",))
+        models_data = [dict(r) for r in cursor.fetchall()]
+
+        # Recent 25 logs
+        cursor.execute("""
+            SELECT id, endpoint, model_name, prompt_tokens, candidate_tokens, total_tokens,
+                   estimated_cost_usd, latency_ms, status, error_message, created_at
+            FROM gemini_api_logs
+            ORDER BY created_at DESC
+            LIMIT 25
+        """)
+        recent_logs = [dict(r) for r in cursor.fetchall()]
+
+        total_calls = summary_row["total_calls"] if summary_row else 0
+        success_calls = summary_row["successful_calls"] if summary_row else 0
+        success_rate = round((success_calls / total_calls * 100), 1) if total_calls > 0 else 100.0
+
+        return {
+            "timeframe_days": days,
+            "total_calls": total_calls,
+            "successful_calls": success_calls,
+            "failed_calls": summary_row["failed_calls"] if summary_row else 0,
+            "success_rate_pct": success_rate,
+            "total_prompt_tokens": summary_row["total_prompt_tokens"] if summary_row else 0,
+            "total_candidate_tokens": summary_row["total_candidate_tokens"] if summary_row else 0,
+            "total_tokens": summary_row["total_tokens"] if summary_row else 0,
+            "total_cost_usd": round(summary_row["total_cost_usd"] if summary_row else 0.0, 4),
+            "avg_latency_ms": round(summary_row["avg_latency_ms"] if summary_row else 0.0, 1),
+            "endpoint_breakdown": endpoints_data,
+            "model_breakdown": models_data,
+            "recent_logs": recent_logs,
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving Gemini usage summary: {e}")
+        return {
+            "timeframe_days": days,
+            "total_calls": 0,
+            "successful_calls": 0,
+            "failed_calls": 0,
+            "success_rate_pct": 100.0,
+            "total_prompt_tokens": 0,
+            "total_candidate_tokens": 0,
+            "total_tokens": 0,
+            "total_cost_usd": 0.0,
+            "avg_latency_ms": 0.0,
+            "endpoint_breakdown": [],
+            "model_breakdown": [],
+            "recent_logs": [],
+        }
+    finally:
+        conn.close()
+
+
+def create_password_reset_token(
+    user_id: str,
+    token_hash: str,
+    expires_at: int
+) -> bool:
+    """Create a reset token and invalidate previous unused tokens."""
+    import time
+
+    conn = get_db_connection()
+
     try:
         conn.execute("BEGIN IMMEDIATE")
         now = int(time.time())

@@ -250,6 +250,7 @@ class TestFlaskEndpointsAndTemplates:
     def test_api_role_prep_career_recommendations_not_found(self):
         """Tests /api/role-prep/career-recommendations/<analysis_id> with nonexistent ID."""
         from app import app
+        app.config["TESTING"] = True
         with app.test_client() as client:
             resp = client.get("/api/role-prep/career-recommendations/nonexistent_test_id")
             assert resp.status_code == 404
@@ -275,6 +276,7 @@ class TestFlaskEndpointsAndTemplates:
         }
 
         from app import app
+        app.config["TESTING"] = True
         with app.test_client() as client:
             resp = client.get("/api/role-prep/career-recommendations/test_rec_123")
             assert resp.status_code == 200
@@ -300,6 +302,7 @@ class TestFlaskEndpointsAndTemplates:
         }
 
         from app import app
+        app.config["TESTING"] = True
         with app.test_client() as client:
             resp = client.get("/api/role-prep/test_prep_456?role=Software%20Engineer")
             assert resp.status_code == 200

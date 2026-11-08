@@ -798,6 +798,12 @@ function initFormUpload() {
         batchModeSwitch.dispatchEvent(new Event("change"));
       }
 
+      // Reset review step switch if active
+      const reviewStepSwitch = document.getElementById("reviewStepSwitch");
+      if (reviewStepSwitch && reviewStepSwitch.checked) {
+        reviewStepSwitch.checked = false;
+      }
+
       // Switch back to the primary Upload PDF / DOCX tab
       const pdfTab = document.getElementById("pdf-tab");
       if (pdfTab) {
@@ -828,6 +834,25 @@ function initFormUpload() {
     });
   }
 
+  // Handle direct "Review Extracted Info" button click
+  const btnReviewResumeDirect = document.getElementById("btnReviewResumeDirect");
+  if (btnReviewResumeDirect) {
+    btnReviewResumeDirect.addEventListener("click", () => {
+      const textInput = document.getElementById("resumeTextInput");
+      const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+      const hasText = textInput && textInput.value.trim().length > 0;
+
+      if (!hasFile && !hasText) {
+        alert("Please upload a PDF or DOCX resume, or paste your resume text first to review extracted info.");
+        return;
+      }
+      const reviewSwitch = document.getElementById("reviewStepSwitch");
+      if (reviewSwitch) reviewSwitch.checked = true;
+      uploadForm.action = "/resume/review";
+      uploadForm.submit();
+    });
+  }
+
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -838,6 +863,14 @@ function initFormUpload() {
 
     if (!hasFile && !hasText) {
       alert("Please upload a PDF or DOCX resume, or paste your resume text first.");
+      return;
+    }
+
+    // Check if user selected the Resume Review & Correction step
+    const reviewStepSwitch = document.getElementById("reviewStepSwitch");
+    if (reviewStepSwitch && reviewStepSwitch.checked) {
+      uploadForm.action = "/resume/review";
+      uploadForm.submit();
       return;
     }
 
