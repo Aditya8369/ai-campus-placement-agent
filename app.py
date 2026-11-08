@@ -2578,7 +2578,6 @@ def api_feedback():
         }), 201
 
 
-<<<<<<< HEAD
 
 def export_interview_json(analysis_id: str):
     """
@@ -2709,9 +2708,6 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
-=======
-@app.route("/certificate/<analysis_id>")
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -4259,7 +4255,6 @@ def notification_settings_view():
 
     prefs = get_email_notification_preferences(student_id)
 
-<<<<<<< HEAD
     feedback_list = get_user_feedback_list(limit=25)
     metrics = get_feedback_metrics_summary()
 
@@ -4293,9 +4288,6 @@ def api_feedback():
             limit_val = 50
         items = get_user_feedback_list(category_filter=cat, limit=limit_val)
         metrics = get_feedback_metrics_summary()
-=======
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
         return jsonify({
             "success": True,
             "preferences": prefs
@@ -4466,7 +4458,6 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
-<<<<<<< HEAD
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -5382,59 +5373,10 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
-=======
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-<<<<<<< HEAD
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -6852,89 +6794,10 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
-=======
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-<<<<<<< HEAD
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -7062,13 +6925,10 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
-=======
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 
 
 
 
-<<<<<<< HEAD
 def notification_settings_view():
     """
     Candidate Email Notification Settings View and Preference Handler (#186).
@@ -7117,10 +6977,6 @@ def api_send_interview_reminder():
     round_type = payload.get("round_type", "Technical Round").strip()
     scheduled_time = payload.get("scheduled_time", "").strip()
     interview_link = payload.get("interview_link", "").strip()
-=======
-
-
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 
 
 
@@ -7450,7 +7306,6 @@ def api_toggle_checklist_task():
     }), 200
 
 
-<<<<<<< HEAD
 @app.route("/interview/<analysis_id>/export")
 def export_interview_json(analysis_id: str):
     """
@@ -7497,8 +7352,6 @@ def export_interview_json(analysis_id: str):
     return response
 
 
-=======
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 @app.route("/api/company-checklist/reset", methods=["POST"])
 def api_reset_checklist():
     """
@@ -7541,7 +7394,6 @@ def coding_submissions_view():
     return response
 
 
-<<<<<<< HEAD
 @app.route("/interview/<analysis_id>/transcript")
 @app.route("/download/interview-transcript/<analysis_id>")
 def download_interview_transcript(analysis_id: str):
@@ -9874,126 +9726,6 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
-=======
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
@@ -10728,7 +10460,6 @@ def redact_resume_pii_endpoint():
         "redaction": redacted_result
     }), 200
 
-<<<<<<< HEAD
 
 # JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
@@ -10823,8 +10554,6 @@ def redact_resume_pii_endpoint():
     if isinstance(redact_phones, str):
         redact_phones = redact_phones.lower() not in ("false", "0", "no")
 
-=======
->>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
     redact_addresses = data.get("redact_addresses", True)
     if isinstance(redact_addresses, str):
         redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
