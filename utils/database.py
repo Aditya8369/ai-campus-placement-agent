@@ -272,6 +272,10 @@ def init_db() -> None:
                 rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
                 category TEXT NOT NULL,
                 comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Table: Store Gemini API Usage & Cost Monitoring Logs (#215)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gemini_api_logs (

@@ -1944,3 +1944,112 @@ html {
 
 
 
+
+
+/* ==============================================================================
+   Password Strength Indicator & Toggle (#290)
+   ============================================================================== */
+.password-strength-container {
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 8px;
+  padding: 10px 12px;
+  transition: all 0.2s ease-in-out;
+}
+
+.password-strength-progress {
+  background-color: #e9ecef;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.strength-bar-weak {
+  background-color: #dc3545 !important;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.strength-bar-medium {
+  background-color: #fd7e14 !important;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.strength-bar-strong {
+  background-color: #198754 !important;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+
+.strength-badge-weak {
+  background-color: #dc3545 !important;
+  color: #ffffff !important;
+}
+
+.strength-badge-medium {
+  background-color: #fd7e14 !important;
+  color: #ffffff !important;
+}
+
+.strength-badge-strong {
+  background-color: #198754 !important;
+  color: #ffffff !important;
+}
+
+.password-requirements .req-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 2px;
+  font-size: 0.825rem;
+  transition: color 0.2s ease;
+}
+
+.password-requirements .req-met {
+  color: #198754 !important;
+  font-weight: 500;
+}
+
+.password-requirements .req-met i {
+  color: #198754 !important;
+}
+
+.password-requirements .req-unmet {
+  color: #6c757d !important;
+}
+
+.password-requirements .req-unmet i {
+  color: #adb5bd !important;
+}
+
+.btn-toggle-password {
+  border-color: #ced4da;
+  background-color: #ffffff;
+  color: #6c757d;
+  transition: all 0.2s ease;
+}
+
+.btn-toggle-password:hover,
+.btn-toggle-password:focus {
+  background-color: #f8f9fa;
+  color: #212529;
+  border-color: #adb5bd;
+}
+
+#passwordSuggestions ul li {
+  margin-bottom: 2px;
+  color: #6c757d;
+}
+
+[data-bs-theme="dark"] .password-strength-container {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-bs-theme="dark"] .btn-toggle-password {
+  background-color: #21262d;
+  border-color: #30363d;
+  color: #c9d1d9;
+}
+
+[data-bs-theme="dark"] .btn-toggle-password:hover,
+[data-bs-theme="dark"] .btn-toggle-password:focus {
+  background-color: #30363d;
+  color: #ffffff;
+}
