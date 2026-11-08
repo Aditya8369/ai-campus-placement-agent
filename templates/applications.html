@@ -163,7 +163,7 @@
     <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="fw-bold mb-0 text-dark">Tracked Application Pipeline</h5>
-        <span class="badge bg-secondary rounded-pill">{{ applications|length }} of {{ all_count }} matching</span>
+        <span class="badge bg-secondary rounded-pill" id="recordCountBadge">{% if pagination %}Showing {{ applications|length }} of {{ pagination.total_records }} matching{% else %}{{ applications|length }} of {{ all_count }} matching{% endif %}</span>
       </div>
 
       {% if applications %}
@@ -229,6 +229,7 @@
           </tbody>
         </table>
       </div>
+      {% include "pagination.html" %}
       {% else %}
       <div class="text-center py-5">
         <i class="fa-solid fa-filter-circle-xmark fa-3x text-secondary opacity-50 mb-3"></i>
