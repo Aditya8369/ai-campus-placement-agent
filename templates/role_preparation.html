@@ -164,6 +164,155 @@
       </div>
     </div>
 
+    <!-- AI Recommendation Explanation Card (#295) -->
+    {% set ai_rec = prep.ai_recommendation_explanation if prep and prep.ai_recommendation_explanation else {} %}
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="aiRoleRecommendationCard">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <div class="rounded-circle p-2 bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-0 text-dark">AI Recommendation Explanation</h5>
+            <span class="small text-muted">Why this career path is recommended for your profile</span>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge {{ 'bg-success text-white' if ai_rec.suitability_tier == 'Strong Match' else ('bg-primary text-white' if ai_rec.suitability_tier == 'Good Match' else 'bg-warning text-dark') }} rounded-pill px-3 py-2 fw-semibold" id="aiSuitabilityTierBadge">
+            {{ ai_rec.suitability_tier|default('Recommended') }}
+          </span>
+          <span class="badge bg-light text-secondary border rounded-pill small px-2 py-1">
+            <i class="fa-solid fa-shield-check text-success me-1"></i> Grounded in Profile
+          </span>
+        </div>
+      </div>
+
+      <!-- Recommendation Rationale Banner -->
+      <div class="p-3 bg-light rounded-4 border mb-3">
+        <div class="d-flex align-items-start gap-2">
+          <i class="fa-solid fa-lightbulb text-warning mt-1 fs-5"></i>
+          <div>
+            <h6 class="fw-bold mb-1 text-dark">Recommendation Rationale</h6>
+            <p class="text-secondary mb-0 small" id="aiRecReasonText">
+              {{ ai_rec.recommendation_reason|default('Analyzing profile match for target role.') }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Skills Breakdown Row -->
+      <div class="row g-3 mb-3">
+        <!-- Matching Skills -->
+        <div class="col-md-6 col-12">
+          <div class="p-3 bg-success-subtle bg-opacity-25 rounded-4 border border-success-subtle h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold text-success small">
+                <i class="fa-solid fa-circle-check me-1"></i> Matching Skills (<span id="aiMatchingSkillsCount">{{ ai_rec.matching_skills_count|default(0) }}</span>)
+              </span>
+              <span class="badge bg-success text-white rounded-pill small">Verified Strengths</span>
+            </div>
+            <p class="small text-secondary mb-2">Skills you already possess that directly meet this role's criteria:</p>
+            <div class="d-flex flex-wrap gap-1 mb-2" id="aiMatchingSkillsContainer">
+              {% for sk in ai_rec.matching_skills %}
+                <span class="badge bg-success text-white rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-check me-1 small"></i>{{ sk }}
+                </span>
+              {% else %}
+                <span class="text-muted small fst-italic">Foundational programming and analytical skills applied</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Missing Skills Affecting Suitability -->
+        <div class="col-md-6 col-12">
+          <div class="p-3 bg-warning-subtle bg-opacity-25 rounded-4 border border-warning-subtle h-100">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-bold text-dark small">
+                <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i> Missing Skills Affecting Suitability (<span id="aiMissingSkillsCount">{{ ai_rec.missing_skills_count|default(0) }}</span>)
+              </span>
+              <span class="badge bg-warning text-dark rounded-pill small">To Bridge</span>
+            </div>
+            <p class="small text-secondary mb-2" id="aiMissingSkillsImpact">
+              {{ ai_rec.missing_skills_impact|default('Bridging these skills will maximize your interview clearance probability.') }}
+            </p>
+            <div class="d-flex flex-wrap gap-1" id="aiMissingSkillsContainer">
+              {% for gap in ai_rec.missing_skills %}
+                <span class="badge bg-warning text-dark rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-plus me-1 small"></i>{{ gap }}
+                </span>
+              {% else %}
+                <span class="text-success small fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>All baseline skills met!</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Project & Experience Relevance -->
+      <div class="p-3 bg-light rounded-4 border mb-3">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="fa-solid fa-briefcase text-primary"></i>
+          <h6 class="fw-bold mb-0 text-dark">Project &amp; Experience Relevance</h6>
+        </div>
+        <p class="text-secondary small mb-2" id="aiProjectRelevanceText">
+          {{ ai_rec.project_experience_relevance.summary|default('Evaluation of practical project alignment.') }}
+        </p>
+        <ul class="small text-secondary ps-3 mb-0" id="aiProjectHighlightsList">
+          {% for highlight in (ai_rec.project_experience_relevance.highlights|default([])) %}
+            <li class="mb-1">{{ highlight }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <!-- Influencing Factors & Plain English Explanation -->
+      <div class="row g-3">
+        <!-- Key Influencing Factors -->
+        <div class="col-lg-7 col-12">
+          <div class="p-3 bg-white rounded-4 border h-100">
+            <h6 class="fw-bold text-dark mb-2 small text-uppercase">
+              <i class="fa-solid fa-sliders text-info me-1"></i> Key Factors Influencing Recommendation
+            </h6>
+            <div class="d-flex flex-column gap-2" id="aiInfluencingFactorsContainer">
+              {% for factor in (ai_rec.influencing_factors|default([])) %}
+                <div>
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-dark">{{ factor.factor }}</span>
+                    <span class="badge bg-{{ factor.badge_class }}-subtle text-{{ factor.badge_class }} rounded-pill small">{{ factor.score_pct }}% Match</span>
+                  </div>
+                  <div class="progress rounded-pill mb-1" style="height: 6px;">
+                    <div class="progress-bar bg-{{ factor.badge_class }}" role="progressbar" style="width: {{ factor.score_pct }}%" aria-valuenow="{{ factor.score_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+                  </div>
+                  <small class="text-muted d-block" style="font-size: 0.75rem;">{{ factor.description }}</small>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <!-- In Plain English Summary -->
+        <div class="col-lg-5 col-12">
+          <div class="p-3 bg-primary-subtle bg-opacity-25 rounded-4 border border-primary-subtle h-100 d-flex flex-column justify-content-between">
+            <div>
+              <span class="badge bg-primary text-white rounded-pill px-2 py-1 small mb-2">
+                <i class="fa-solid fa-comment-dots me-1"></i> In Plain English
+              </span>
+              <h6 class="fw-bold text-primary mb-2">What this means for you</h6>
+              <p class="small text-secondary mb-3" id="aiStudentSummaryText">
+                {{ ai_rec.student_friendly_summary|default('Follow the structured preparation plan to gain practical skills for campus interviews.') }}
+              </p>
+            </div>
+            <div class="pt-2 border-top">
+              <small class="text-muted d-block">
+                <i class="fa-solid fa-lightbulb text-warning me-1"></i>
+                Action: Follow the recommended curriculum below to become more suitable for this role.
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Role Content Navigation Tabs -->
     <ul class="nav nav-pills mb-4 gap-2" id="roleContentTab" role="tablist">
       <li class="nav-item" role="presentation">
@@ -477,6 +626,70 @@
           gapContainer.innerHTML = data.bridged_skill_gaps.length
             ? data.bridged_skill_gaps.map(g => `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">${g}</span>`).join(" ")
             : `<span class="text-muted small fst-italic">Focusing on core placement proficiencies</span>`;
+        }
+
+        // Update AI Recommendation Explanation (#295)
+        const aiRec = data.ai_recommendation_explanation;
+        if (aiRec) {
+          const tierBadge = document.getElementById("aiSuitabilityTierBadge");
+          if (tierBadge) {
+            tierBadge.innerText = aiRec.suitability_tier || "Recommended";
+            tierBadge.className = `badge ${aiRec.suitability_tier === 'Strong Match' ? 'bg-success text-white' : (aiRec.suitability_tier === 'Good Match' ? 'bg-primary text-white' : 'bg-warning text-dark')} rounded-pill px-3 py-2 fw-semibold`;
+          }
+
+          const reasonText = document.getElementById("aiRecReasonText");
+          if (reasonText) reasonText.innerText = aiRec.recommendation_reason || "";
+
+          const matchCount = document.getElementById("aiMatchingSkillsCount");
+          if (matchCount) matchCount.innerText = aiRec.matching_skills_count || 0;
+
+          const matchContainer = document.getElementById("aiMatchingSkillsContainer");
+          if (matchContainer) {
+            matchContainer.innerHTML = (aiRec.matching_skills && aiRec.matching_skills.length)
+              ? aiRec.matching_skills.map(s => `<span class="badge bg-success text-white rounded-pill px-2 py-1 small"><i class="fa-solid fa-check me-1 small"></i>${s}</span>`).join(" ")
+              : `<span class="text-muted small fst-italic">Foundational programming and analytical skills applied</span>`;
+          }
+
+          const missCount = document.getElementById("aiMissingSkillsCount");
+          if (missCount) missCount.innerText = aiRec.missing_skills_count || 0;
+
+          const missImpact = document.getElementById("aiMissingSkillsImpact");
+          if (missImpact) missImpact.innerText = aiRec.missing_skills_impact || "";
+
+          const missContainer = document.getElementById("aiMissingSkillsContainer");
+          if (missContainer) {
+            missContainer.innerHTML = (aiRec.missing_skills && aiRec.missing_skills.length)
+              ? aiRec.missing_skills.map(g => `<span class="badge bg-warning text-dark rounded-pill px-2 py-1 small"><i class="fa-solid fa-plus me-1 small"></i>${g}</span>`).join(" ")
+              : `<span class="text-success small fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>All baseline skills met!</span>`;
+          }
+
+          const projRelText = document.getElementById("aiProjectRelevanceText");
+          if (projRelText) projRelText.innerText = (aiRec.project_experience_relevance && aiRec.project_experience_relevance.summary) || "";
+
+          const projHighList = document.getElementById("aiProjectHighlightsList");
+          if (projHighList) {
+            const hls = (aiRec.project_experience_relevance && aiRec.project_experience_relevance.highlights) || [];
+            projHighList.innerHTML = hls.map(h => `<li class="mb-1">${h}</li>`).join("");
+          }
+
+          const factorsContainer = document.getElementById("aiInfluencingFactorsContainer");
+          if (factorsContainer && aiRec.influencing_factors) {
+            factorsContainer.innerHTML = aiRec.influencing_factors.map(f => `
+              <div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="small fw-semibold text-dark">${f.factor}</span>
+                  <span class="badge bg-${f.badge_class}-subtle text-${f.badge_class} rounded-pill small">${f.score_pct}% Match</span>
+                </div>
+                <div class="progress rounded-pill mb-1" style="height: 6px;">
+                  <div class="progress-bar bg-${f.badge_class}" role="progressbar" style="width: ${f.score_pct}%" aria-valuenow="${f.score_pct}" aria-valuemin="0" aria-valuemax="100"></div>
+                </div>
+                <small class="text-muted d-block" style="font-size: 0.75rem;">${f.description}</small>
+              </div>
+            `).join("");
+          }
+
+          const studentSum = document.getElementById("aiStudentSummaryText");
+          if (studentSum) studentSum.innerText = aiRec.student_friendly_summary || "";
         }
 
         // Update topics

@@ -15,6 +15,11 @@ import logging
 from typing import Dict, Any, List, Optional
 import config
 from utils.gemini import generate_json_response
+from utils.role_recommendation_explainer import (
+    explain_role_recommendation,
+    generate_all_roles_explanation_summary,
+    ROLE_SKILL_PROFILES
+)
 
 logger = logging.getLogger(__name__)
 
@@ -819,7 +824,8 @@ class RolePreparationAgent:
         existing_skills: Optional[List[str]] = None,
         skill_gaps: Optional[List[str]] = None,
         company_name: Optional[str] = None,
-        resume_text: Optional[str] = None
+        resume_text: Optional[str] = None,
+        analysis_record: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generates role-specific preparation content personalized with the candidate's skills and gaps.
@@ -943,6 +949,25 @@ class RolePreparationAgent:
         for w in personalized_roadmap:
             total_tasks += len(w.get("topics", [])) + len(w.get("coding_practice", [])) + len(w.get("mini_projects", [])) + len(w.get("interview_questions", []))
 
+        # 8. Generate AI Recommendation Explanation for the target role (#295)
+        ai_recommendation_explanation = explain_role_recommendation(
+            target_role=canonical_role,
+            existing_skills=existing_skills,
+            skill_gaps=skill_gaps,
+            resume_text=resume_text,
+            analysis_record=analysis_record,
+            company_name=company
+        )
+
+        # 9. Generate comparative summary across all supported roles (#295)
+        all_roles_summary = generate_all_roles_explanation_summary(
+            existing_skills=existing_skills,
+            skill_gaps=skill_gaps,
+            resume_text=resume_text,
+            analysis_record=analysis_record,
+            company_name=company
+        )
+
         result_payload = {
             "success": True,
             "target_role": canonical_role,
@@ -961,10 +986,31 @@ class RolePreparationAgent:
             "coding_questions": personalized_questions,
             "roadmap": personalized_roadmap,
             "total_roadmap_tasks": total_tasks,
-            "available_roles": SUPPORTED_ROLES
+            "available_roles": SUPPORTED_ROLES,
+            "ai_recommendation_explanation": ai_recommendation_explanation,
+            "all_recommended_roles_summary": all_roles_summary
         }
 
         return result_payload
+
+    def get_all_role_recommendations(
+        self,
+        existing_skills: Optional[List[str]] = None,
+        skill_gaps: Optional[List[str]] = None,
+        resume_text: Optional[str] = None,
+        analysis_record: Optional[Dict[str, Any]] = None,
+        company_name: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Computes recommendation reasons, matching skills, and suitability across all career roles (#295).
+        """
+        return generate_all_roles_explanation_summary(
+            existing_skills=existing_skills,
+            skill_gaps=skill_gaps,
+            resume_text=resume_text,
+            analysis_record=analysis_record,
+            company_name=company_name
+        )
 
 
 role_prep_agent = RolePreparationAgent()

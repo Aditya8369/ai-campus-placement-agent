@@ -3410,33 +3410,6 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
         summary["tables"]["analyses"] = cursor.fetchone()[0]
 
-        # Count in interviews (via analyses or direct analysis_ids)
-        cursor.execute("""
-            SELECT COUNT(*) FROM interviews
-            WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)
-        """, (student_id,))
-        summary["tables"]["interviews"] = cursor.fetchone()[0]
-
-        # Count in batch_comparisons
-        cursor.execute("SELECT COUNT(*) FROM batch_comparisons WHERE student_id = ?", (student_id,))
-        summary["tables"]["batch_comparisons"] = cursor.fetchone()[0]
-
-        # Count in job_applications
-        cursor.execute("SELECT COUNT(*) FROM job_applications WHERE student_id = ?", (student_id,))
-        summary["tables"]["job_applications"] = cursor.fetchone()[0]
-
-        # Count in email_notification_preferences
-        cursor.execute("SELECT COUNT(*) FROM email_notification_preferences WHERE student_id = ?", (student_id,))
-        summary["tables"]["email_notification_preferences"] = cursor.fetchone()[0]
-
-        # Count in interview_experiences
-        cursor.execute("SELECT COUNT(*) FROM interview_experiences WHERE student_id = ?", (student_id,))
-        summary["tables"]["interview_experiences"] = cursor.fetchone()[0]
-
-        # Count in preparation_calendar_events
-        cursor.execute("SELECT COUNT(*) FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
-        summary["tables"]["preparation_calendar_events"] = cursor.fetchone()[0]
-
         # Count in company_preparation_checklists
         cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
         summary["tables"]["company_preparation_checklists"] = cursor.fetchone()[0]
@@ -3553,17 +3526,6 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
         deleted_counts["users"] = cursor.rowcount
 
-        # Streak logs if exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='preparation_activity_log'")
-        if cursor.fetchone():
-            cursor.execute("DELETE FROM preparation_activity_log WHERE student_id = ?", (student_id,))
-            deleted_counts["preparation_activity_log"] = cursor.rowcount
-
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_streaks'")
-        if cursor.fetchone():
-            cursor.execute("DELETE FROM student_streaks WHERE student_id = ?", (student_id,))
-            deleted_counts["student_streaks"] = cursor.rowcount
-
         conn.commit()
         logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
 
@@ -3598,10 +3560,78 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         conn.close()
 
 
-def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Utilities (#215)
+# ==============================================================================
+
+# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
+# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
+# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
+COST_PER_PROMPT_TOKEN = 0.000000075
+COST_PER_CANDIDATE_TOKEN = 0.00000030
+
+
+def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
     """
-    Gathers student preparation summary data across resume analysis, coding practice,
-    mock interviews, completed checklist tasks, and identified skill gaps (#200).
+    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
+    """
+    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
+    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
+    return round(prompt_cost + candidate_cost, 6)
+
+
+def log_gemini_api_call(
+    endpoint: str,
+    model_name: str,
+    prompt_tokens: int = 0,
+    candidate_tokens: int = 0,
+    total_tokens: Optional[int] = None,
+    latency_ms: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+) -> str:
+    """
+    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
+    """
+    if total_tokens is None:
+        total_tokens = prompt_tokens + candidate_tokens
+
+    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
+    log_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO gemini_api_logs (
+                id, endpoint, model_name, prompt_tokens, candidate_tokens,
+                total_tokens, estimated_cost_usd, latency_ms, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_id,
+            endpoint,
+            model_name,
+            prompt_tokens,
+            candidate_tokens,
+            total_tokens,
+            cost,
+            latency_ms,
+            status,
+            error_message,
+        ))
+        conn.commit()
+        return log_id
+    except Exception as e:
+        logger.error(f"Error logging Gemini API call: {e}")
+        conn.rollback()
+        return ""
+    finally:
+        conn.close()
+
+
+def get_student_preparation_summary_data(student_id: str = None) -> Dict[str, Any]:
+    """
+    Aggregates student placement readiness summary data (#200).
     """
     s_id = (student_id or "default_student").strip()
     profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
@@ -3712,75 +3742,6 @@ def get_student_preparation_summary_data(student_id: str) -> Dict[str, Any]:
     }
 
 
-# ==============================================================================
-# Gemini API Usage & Cost Monitoring Utilities (#215)
-# ==============================================================================
-
-# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
-# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
-# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
-COST_PER_PROMPT_TOKEN = 0.000000075
-COST_PER_CANDIDATE_TOKEN = 0.00000030
-
-
-def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
-    """
-    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
-    """
-    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
-    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
-    return round(prompt_cost + candidate_cost, 6)
-
-
-def log_gemini_api_call(
-    endpoint: str,
-    model_name: str,
-    prompt_tokens: int = 0,
-    candidate_tokens: int = 0,
-    total_tokens: Optional[int] = None,
-    latency_ms: int = 0,
-    status: str = "success",
-    error_message: Optional[str] = None,
-) -> str:
-    """
-    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
-    """
-    if total_tokens is None:
-        total_tokens = prompt_tokens + candidate_tokens
-
-    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
-    log_id = f"glog-{uuid.uuid4().hex[:12]}"
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO gemini_api_logs (
-                id, endpoint, model_name, prompt_tokens, candidate_tokens,
-                total_tokens, estimated_cost_usd, latency_ms, status, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            log_id,
-            endpoint,
-            model_name,
-            prompt_tokens,
-            candidate_tokens,
-            total_tokens,
-            cost,
-            latency_ms,
-            status,
-            error_message,
-        ))
-        conn.commit()
-        return log_id
-    except Exception as e:
-        logger.error(f"Error logging Gemini API call: {e}")
-        conn.rollback()
-        return ""
-    finally:
-        conn.close()
-
-
 def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     """
     Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
@@ -3788,8 +3749,21 @@ def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-
-    conn = get_db_connection()
+        # Overall summary stats
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_calls,
+                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_calls,
+                SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) as failed_calls,
+                COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
+                COALESCE(SUM(candidate_tokens), 0) as total_candidate_tokens,
+                COALESCE(SUM(total_tokens), 0) as total_tokens,
+                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
+                COALESCE(AVG(latency_ms), 0.0) as avg_latency_ms
+            FROM gemini_api_logs
+            WHERE created_at >= datetime('now', ?)
+        """, (f"-{days} days",))
+        summary_row = cursor.fetchone()
 
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -4077,6 +4051,7 @@ def invalidate_password_reset_token(token_hash: str) -> bool:
 
     finally:
         conn.close()
+
 
 
 def record_preparation_activity(
