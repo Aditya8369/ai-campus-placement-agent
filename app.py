@@ -23,6 +23,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from utils.rate_limiter import rate_limit
+from utils.migrations import run_database_migrations, get_migration_status
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
@@ -540,6 +541,73 @@ def health_check():
         "latency_ms": latency_ms,
         "checks": checks,
     }), http_status
+
+@app.route("/set-language/<lang_code>", methods=["GET"], endpoint="set_language")
+def set_language(lang_code):
+    """Set the active UI locale for the current session."""
+    current_locale = flask_session.get("locale") or DEFAULT_LOCALE
+    normalized = (lang_code or "").strip().lower()
+
+    if normalized in SUPPORTED_LOCALES:
+        flask_session["locale"] = normalized
+    elif current_locale in SUPPORTED_LOCALES:
+        flask_session["locale"] = current_locale
+    else:
+        flask_session["locale"] = DEFAULT_LOCALE
+
+    flash(get_translation("lang_switch_success", locale=flask_session["locale"]), "success")
+    return redirect(request.referrer or url_for("index"))
+
+
+@app.route("/api/translations", methods=["GET"])
+@app.route("/api/translations/<locale>", methods=["GET"])
+def api_translations(locale=None):
+    """Return the translation catalog for the current or requested locale."""
+    request_locale = (locale or flask_session.get("locale") or DEFAULT_LOCALE).strip().lower()
+    if request_locale not in SUPPORTED_LOCALES:
+        request_locale = flask_session.get("locale") or DEFAULT_LOCALE
+    if request_locale not in SUPPORTED_LOCALES:
+        request_locale = DEFAULT_LOCALE
+
+    flask_session["locale"] = request_locale
+    return jsonify({
+        "status": "success",
+        "locale": request_locale,
+        "default_locale": DEFAULT_LOCALE,
+        "supported_locales": SUPPORTED_LOCALES,
+        "translations": get_all_translations_for_locale(request_locale),
+    })
+
+
+@app.route("/api/migrations/status", methods=["GET"])
+def api_migrations_status():
+    """Return the current migration status for the configured database."""
+    migration_info = get_migration_status(db_path=config.DATABASE_PATH)
+    return jsonify({
+        "status": "success",
+        "database_path": config.DATABASE_PATH,
+        "migration_info": migration_info,
+    })
+
+
+@app.route("/api/migrations/run", methods=["POST"])
+def api_migrations_run():
+    """Execute all pending migrations against the configured database."""
+    try:
+        result = run_database_migrations(db_path=config.DATABASE_PATH)
+        return jsonify({
+            "status": "success",
+            "message": "Database migrations processed successfully.",
+            **result,
+        })
+    except Exception as exc:
+        logger.exception("Database migration run failed")
+        return jsonify({
+            "status": "error",
+            "message": "Database migration execution failed.",
+            "error": str(exc),
+        }), 500
+
 
 @app.route("/logout", methods=["POST"])
 def logout():
@@ -2195,7 +2263,6 @@ def feedback_view():
     )
 
 
-@app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
     """
     REST API endpoint for submitting and retrieving feedback (#197).
@@ -2255,7 +2322,6 @@ def api_feedback():
 
 
 
-@app.route("/interview/<analysis_id>/export")
 def export_interview_json(analysis_id: str):
     """
     Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
@@ -2301,8 +2367,11 @@ def export_interview_json(analysis_id: str):
     return response
 
 
-@app.route("/certificate/<analysis_id>/download")
-def download_certificate_pdf(analysis_id: str):
+def download_interview_transcript(analysis_id: str):
+    """
+    Exports the mock interview transcript, per-question scores, AI feedback,
+    and aggregate performance summary as a downloadable PDF, Markdown, or plain text file (#161).
+    Works after at least one question has been answered.
     """
     try:
         session_id = (
@@ -2382,7 +2451,6 @@ def download_certificate_pdf(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
-@app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -2399,7 +2467,6 @@ def certificate(analysis_id: str):
     )
 
 
-@app.route("/certificate/<analysis_id>/download")
 def download_certificate_pdf(analysis_id: str):
     """
     Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
@@ -2430,7 +2497,6 @@ def download_certificate_pdf(analysis_id: str):
 
 
 
-@app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
@@ -2466,7 +2532,6 @@ def download_pdf_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/download/skills-gap/<analysis_id>")
 def download_skills_gap_report(analysis_id: str):
     """
     Compiles identified candidate skill gaps and upskilling roadmaps into a standalone PDF report (#136).
@@ -2501,7 +2566,6 @@ def download_skills_gap_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
 @rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
@@ -2543,8 +2607,6 @@ def api_generate_outreach(analysis_id: str):
         }), 500
 
 
-@app.route("/api/outreach/download", methods=["POST"])
-@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
 def api_download_outreach(analysis_id: str = None):
     """
     Downloads generated application outreach assets as formatted .docx or plain .txt files.
@@ -2639,7 +2701,6 @@ def api_download_outreach(analysis_id: str = None):
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
 
-@app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
     Returns a list of recent placement analyses ordered by timestamp descending.
@@ -2662,7 +2723,6 @@ def api_recent_analyses():
             "message": "Failed to retrieve recent analyses."
         }), 500
 
-@app.route("/api/analysis/<analysis_id>", methods=["DELETE"])
 def api_delete_analysis(analysis_id: str):
     """
     Deletes an analysis session and related mock interview records.
@@ -2695,7 +2755,6 @@ def api_delete_analysis(analysis_id: str):
             "message": "Failed to delete analysis record."
         }), 500
 
-@app.route("/api/progress/<student_id>", methods=["GET"])
 def api_student_progress(student_id: str):
     """
     Returns a candidate's full longitudinal version history and trend metrics.
@@ -2720,7 +2779,6 @@ def api_student_progress(student_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/api/progress/diff/<id_a>/<id_b>", methods=["GET"])
 def api_progress_diff(id_a: str, id_b: str):
     """
     Generates side-by-side comparison metrics between any two specific resume analyses.
@@ -2749,7 +2807,6 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/compare-resumes", methods=["GET", "POST"])
 def compare_resumes_view():
     """
     Dedicated view and handler for comparing two resume versions directly (#140).
@@ -2815,7 +2872,6 @@ def compare_resumes_view():
         return redirect(url_for("compare_resumes_view"))
 
 
-@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
 def api_job_recommendations(analysis_id: str):
     """
     Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
@@ -2889,7 +2945,6 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
-@app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
     Returns database integrity verification status and table statistics.
@@ -2902,7 +2957,6 @@ def api_database_integrity():
     }), status_code
 
 
-@app.route("/api/admin/database/backup", methods=["POST"])
 def api_database_backup():
     """
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
@@ -2929,7 +2983,6 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/admin/database/backups", methods=["GET"])
 def api_admin_list_backups():
     """
     Lists all available database backups for administrator inspection (#245).
@@ -2949,7 +3002,6 @@ def api_admin_list_backups():
     }), 200
 
 
-@app.route("/api/admin/database/backups/validate", methods=["POST"])
 def api_admin_validate_backup():
     """
     Pre-validates a backup candidate before restoration (#245).
@@ -2977,7 +3029,6 @@ def api_admin_validate_backup():
     }), (200 if result.get("valid") else 400)
 
 
-@app.route("/api/admin/database/restore", methods=["POST"])
 def api_admin_restore_database():
     """
     Restores the application database from an authorized backup file (#245).
@@ -3021,7 +3072,6 @@ def api_admin_restore_database():
 
 
 
-@app.route("/api/admin/retention/run", methods=["POST"])
 def api_admin_run_retention():
     """
     Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
@@ -3044,7 +3094,6 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/github-analyzer", methods=["GET", "POST"])
 def github_analyzer_view():
     """
     Evaluates public candidate developer profiles from GitHub (#141).
@@ -3069,7 +3118,6 @@ def github_analyzer_view():
         return jsonify(analysis), (200 if analysis.get("success") else 400)
 
     return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
-@app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
     Interactive student internship recommendation engine (#142).
@@ -3116,8 +3164,6 @@ def internships_view():
         current_location=location_filter,
         search_query=search_query
     )
-@app.route("/applications", methods=["GET", "POST"])
-@app.route("/api/applications", methods=["GET"])
 def job_applications_tracker():
     """
     Candidate Job Application Tracker view and management handler (#143, #193).
@@ -3234,7 +3280,6 @@ def job_applications_tracker():
     )
 
 
-@app.route("/api/applications/<app_id>/status", methods=["POST"])
 def api_update_application_status(app_id: str):
     """
     Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
@@ -3273,7 +3318,6 @@ def api_update_application_status(app_id: str):
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
-@app.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
     Deletes an application record owned by student_id.
@@ -3283,8 +3327,6 @@ def api_delete_application(app_id: str):
     return jsonify({"success": deleted}), (200 if deleted else 404)
 
 
-@app.route("/applications/export", methods=["GET"])
-@app.route("/api/applications/export", methods=["GET"])
 def export_job_applications():
     """
     Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
@@ -3334,7 +3376,6 @@ def export_job_applications():
     return response
 
 
-@app.route("/api/applications/export-summary", methods=["GET"])
 def api_applications_export_summary():
     """
     Returns application export summary and readiness stats for candidate (#196).
@@ -3352,7 +3393,6 @@ def api_applications_export_summary():
         "export_metadata": summary
     }), 200
 
-@app.route("/interview-history")
 def interview_history_view():
     """
     Mock Interview Performance History view (#144).
@@ -3382,7 +3422,6 @@ def interview_history_view():
     )
 
 
-@app.route("/api/interview-history")
 def api_interview_history():
     """
     API endpoint returning historical mock interview attempts and analytics (#144).
@@ -3412,7 +3451,6 @@ def api_interview_history():
     })
 
 
-@app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """
     LinkedIn Profile Analyzer View and API endpoint (#146).
@@ -3475,7 +3513,6 @@ def linkedin_analyzer():
     )
 
 
-@app.route("/coding-practice", methods=["GET", "POST"])
 def _get_current_student_id() -> str:
     """
     Resolves the authenticated student's unique identifier from session (#235).
@@ -3537,7 +3574,6 @@ def coding_practice_view():
     )
 
 
-@app.route("/api/coding-practice/recommendations")
 def api_coding_practice_recommendations():
     """
     API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
@@ -3559,7 +3595,6 @@ def api_coding_practice_recommendations():
     }), 200
 
 
-@app.route("/api/coding-practice/bookmarks", methods=["GET"])
 def api_get_coding_bookmarks():
     """
     Returns the student's bookmarked coding questions (#234).
@@ -3574,7 +3609,6 @@ def api_get_coding_bookmarks():
     }), 200
 
 
-@app.route("/api/coding-practice/bookmark", methods=["POST"])
 def api_save_coding_bookmark():
     """
     Bookmarks a coding practice question for a candidate (#234).
@@ -3609,7 +3643,6 @@ def api_save_coding_bookmark():
     }), (200 if saved else 500)
 
 
-@app.route("/api/coding-practice/bookmark/<problem_id>", methods=["DELETE", "POST"])
 def api_remove_coding_bookmark(problem_id: str):
     """
     Removes a bookmarked coding question for a candidate (#234).
@@ -3622,7 +3655,6 @@ def api_remove_coding_bookmark(problem_id: str):
     }), 200
 
 
-@app.route("/api/coding-practice/bookmark/toggle", methods=["POST"])
 def api_toggle_coding_bookmark():
     """
     Toggles bookmark state for a coding question (#234).
@@ -3665,7 +3697,6 @@ def api_toggle_coding_bookmark():
         }), 200
 
 
-@app.route("/my-reports")
 def user_placement_history_view():
     """
     Save and Retrieve Previous Placement Analysis History View (#149).
@@ -3696,7 +3727,6 @@ def user_placement_history_view():
     )
 
 
-@app.route("/api/user/analyses")
 def api_user_placement_analyses():
     """
     API endpoint to retrieve placement analysis history for a specific candidate (#149).
@@ -3716,7 +3746,6 @@ def api_user_placement_analyses():
     }), 200
 
 
-@app.route("/history", methods=["GET"])
 def history_view():
     """
     Renders the dedicated History page listing past placement analyses (#159).
@@ -3755,8 +3784,6 @@ def history_view():
         return render_template("history.html", analyses=[], paginated_analyses=[], pagination=empty_pagination)
 
 
-@app.route("/history/delete/<analysis_id>", methods=["POST"])
-@app.route("/delete-analysis/<analysis_id>", methods=["POST"])
 def delete_analysis_action(analysis_id: str):
     """
     Removes a past analysis record and its associated data (#159).
@@ -3785,7 +3812,6 @@ def delete_analysis_action(analysis_id: str):
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-@app.route("/api/role-prep/roles")
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -3796,7 +3822,6 @@ def api_role_prep_roles():
     }), 200
 
 
-@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
 def api_role_prep_for_analysis(analysis_id: str):
     """
     Generates role-based preparation curriculum and recommendations for a student analysis.
@@ -3831,7 +3856,6 @@ def api_role_prep_for_analysis(analysis_id: str):
     return jsonify(prep_data), 200
 
 
-@app.route("/api/role-prep/career-recommendations/<analysis_id>", methods=["GET"])
 def api_all_career_recommendations(analysis_id: str):
     """
     Returns AI recommendation explanations across all supported career roles (#295).
@@ -3856,7 +3880,6 @@ def api_all_career_recommendations(analysis_id: str):
     return jsonify(recommendations), 200
 
 
-@app.route("/api/role-prep/generate", methods=["POST"])
 def api_role_prep_generate():
     """
     Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
@@ -3880,7 +3903,6 @@ def api_role_prep_generate():
     return jsonify(prep_data), 200
 
 
-@app.route("/role-preparation", methods=["GET", "POST"])
 def role_preparation_view():
     """
     Role-Based Preparation Mode View (#154).
@@ -3947,7 +3969,6 @@ def role_preparation_view():
 
 
 
-@app.route("/notification-settings", methods=["GET", "POST"])
 def notification_settings_view():
     """
     Candidate Email Notification Settings View and Preference Handler (#186).
@@ -3992,7 +4013,6 @@ def notification_settings_view():
     )
 
 
-@app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
     """
     REST API endpoint for submitting and retrieving feedback (#197).
@@ -4134,7 +4154,6 @@ def api_feedback():
 
 
 
-@app.route("/interview/<analysis_id>/export")
 def export_interview_json(analysis_id: str):
     """
     Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
@@ -4180,8 +4199,6 @@ def export_interview_json(analysis_id: str):
     return response
 
 
-@app.route("/interview/<analysis_id>/transcript")
-@app.route("/download/interview-transcript/<analysis_id>")
 def download_interview_transcript(analysis_id: str):
     """
     Exports the mock interview transcript, per-question scores, AI feedback,
@@ -4266,7 +4283,6 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
-@app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -4283,7 +4299,6 @@ def certificate(analysis_id: str):
     )
 
 
-@app.route("/certificate/<analysis_id>/download")
 def download_certificate_pdf(analysis_id: str):
     """
     Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
@@ -4312,7 +4327,6 @@ def download_certificate_pdf(analysis_id: str):
         flash("Failed to generate certificate PDF. Please try printing directly.", "error")
         return redirect(url_for("certificate", analysis_id=analysis_id))
 
-@app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
@@ -4346,7 +4360,6 @@ def download_pdf_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/download/skills-gap/<analysis_id>")
 def download_skills_gap_report(analysis_id: str):
     """
     Compiles identified candidate skill gaps and upskilling roadmaps into a standalone PDF report (#136).
@@ -4379,7 +4392,6 @@ def download_skills_gap_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
 @rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
@@ -4421,8 +4433,6 @@ def api_generate_outreach(analysis_id: str):
         }), 500
 
 
-@app.route("/api/outreach/download", methods=["POST"])
-@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
 def api_download_outreach(analysis_id: str = None):
     """
     Downloads generated application outreach assets as formatted .docx or plain .txt files.
@@ -4517,7 +4527,6 @@ def api_download_outreach(analysis_id: str = None):
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
 
-@app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
     Returns a list of recent placement analyses ordered by timestamp descending.
@@ -4540,7 +4549,6 @@ def api_recent_analyses():
             "message": "Failed to retrieve recent analyses."
         }), 500
 
-@app.route("/api/analysis/<analysis_id>", methods=["DELETE"])
 def api_delete_analysis(analysis_id: str):
     """
     Deletes an analysis session and related mock interview records.
@@ -4573,7 +4581,6 @@ def api_delete_analysis(analysis_id: str):
             "message": "Failed to delete analysis record."
         }), 500
 
-@app.route("/api/progress/<student_id>", methods=["GET"])
 def api_student_progress(student_id: str):
     """
     Returns a candidate's full longitudinal version history and trend metrics.
@@ -4598,7 +4605,6 @@ def api_student_progress(student_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/api/progress/diff/<id_a>/<id_b>", methods=["GET"])
 def api_progress_diff(id_a: str, id_b: str):
     """
     Generates side-by-side comparison metrics between any two specific resume analyses.
@@ -4627,7 +4633,6 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/compare-resumes", methods=["GET", "POST"])
 def compare_resumes_view():
     """
     Dedicated view and handler for comparing two resume versions directly (#140).
@@ -4693,7 +4698,6 @@ def compare_resumes_view():
         return redirect(url_for("compare_resumes_view"))
 
 
-@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
 def api_job_recommendations(analysis_id: str):
     """
     Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
@@ -4767,7 +4771,6 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
-@app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
     Returns database integrity verification status and table statistics.
@@ -4780,7 +4783,6 @@ def api_database_integrity():
     }), status_code
 
 
-@app.route("/api/admin/database/backup", methods=["POST"])
 def api_database_backup():
     """
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
@@ -4805,7 +4807,6 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/admin/retention/run", methods=["POST"])
 def api_admin_run_retention():
     """
     Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
@@ -4828,7 +4829,6 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/github-analyzer", methods=["GET", "POST"])
 def github_analyzer_view():
     """
     Evaluates public candidate developer profiles from GitHub (#141).
@@ -4853,7 +4853,6 @@ def github_analyzer_view():
         return jsonify(analysis), (200 if analysis.get("success") else 400)
 
     return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
-@app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
     Interactive student internship recommendation engine (#142).
@@ -4886,7 +4885,6 @@ def internships_view():
         current_location=location_filter,
         search_query=search_query
     )
-@app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
     Candidate Job Application Tracker view and management handler (#143).
@@ -4939,7 +4937,6 @@ def job_applications_tracker():
     )
 
 
-@app.route("/api/applications/<app_id>/status", methods=["POST"])
 def api_update_application_status(app_id: str):
     """
     Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
@@ -4955,7 +4952,6 @@ def api_update_application_status(app_id: str):
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
-@app.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
     Deletes an application record owned by student_id.
@@ -4963,7 +4959,6 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
-@app.route("/interview-history")
 def interview_history_view():
     """
     Mock Interview Performance History view (#144).
@@ -4974,7 +4969,6 @@ def interview_history_view():
     return render_template("interview_history.html", analytics=analytics, student_id=student_id)
 
 
-@app.route("/api/interview-history")
 def api_interview_history():
     """
     API endpoint returning historical mock interview attempts and analytics (#144).
@@ -4988,7 +4982,6 @@ def api_interview_history():
     })
 
 
-@app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """
     LinkedIn Profile Analyzer View and API endpoint (#146).
@@ -5051,7 +5044,6 @@ def linkedin_analyzer():
     )
 
 
-@app.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """
     Personalized Coding Practice Recommendation View and Endpoint (#147).
@@ -5090,7 +5082,6 @@ def coding_practice_view():
     )
 
 
-@app.route("/api/coding-practice/recommendations")
 def api_coding_practice_recommendations():
     """
     API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
@@ -5112,7 +5103,6 @@ def api_coding_practice_recommendations():
     }), 200
 
 
-@app.route("/my-reports")
 def user_placement_history_view():
     """
     Save and Retrieve Previous Placement Analysis History View (#149).
@@ -5143,7 +5133,6 @@ def user_placement_history_view():
     )
 
 
-@app.route("/api/user/analyses")
 def api_user_placement_analyses():
     """
     API endpoint to retrieve placement analysis history for a specific candidate (#149).
@@ -5163,7 +5152,6 @@ def api_user_placement_analyses():
     }), 200
 
 
-@app.route("/history", methods=["GET"])
 def history_view():
     """
     Renders the dedicated History page listing past placement analyses (#159).
@@ -5186,8 +5174,6 @@ def history_view():
         return render_template("history.html", analyses=[])
 
 
-@app.route("/history/delete/<analysis_id>", methods=["POST"])
-@app.route("/delete-analysis/<analysis_id>", methods=["POST"])
 def delete_analysis_action(analysis_id: str):
     """
     Removes a past analysis record and its associated data (#159).
@@ -5216,7 +5202,6 @@ def delete_analysis_action(analysis_id: str):
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-@app.route("/api/role-prep/roles")
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -5227,7 +5212,6 @@ def api_role_prep_roles():
     }), 200
 
 
-@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
 def api_role_prep_for_analysis(analysis_id: str):
     """
     Generates role-based preparation curriculum and recommendations for a student analysis.
@@ -5261,7 +5245,6 @@ def api_role_prep_for_analysis(analysis_id: str):
     return jsonify(prep_data), 200
 
 
-@app.route("/api/role-prep/generate", methods=["POST"])
 def api_role_prep_generate():
     """
     Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
@@ -5285,7 +5268,6 @@ def api_role_prep_generate():
     return jsonify(prep_data), 200
 
 
-@app.route("/role-preparation", methods=["GET", "POST"])
 def role_preparation_view():
     """
     Role-Based Preparation Mode View (#154).
@@ -5349,7 +5331,6 @@ def role_preparation_view():
     )
 
 
-@app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -5366,7 +5347,6 @@ def certificate(analysis_id: str):
     )
 
 
-@app.route("/certificate/<analysis_id>/download")
 def download_certificate_pdf(analysis_id: str):
     """
     Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
@@ -5400,7 +5380,6 @@ def download_certificate_pdf(analysis_id: str):
         flash("Failed to generate certificate PDF. Please try printing directly.", "error")
         return redirect(url_for("certificate", analysis_id=analysis_id))
 
-@app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
@@ -5436,7 +5415,6 @@ def download_pdf_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/download/skills-gap/<analysis_id>")
 def download_skills_gap_report(analysis_id: str):
     """
     Compiles identified candidate skill gaps and upskilling roadmaps into a standalone PDF report (#136).
@@ -5471,7 +5449,6 @@ def download_skills_gap_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
 @rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
@@ -5513,8 +5490,6 @@ def api_generate_outreach(analysis_id: str):
         }), 500
 
 
-@app.route("/api/outreach/download", methods=["POST"])
-@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
 def api_download_outreach(analysis_id: str = None):
     """
     Downloads generated application outreach assets as formatted .docx or plain .txt files.
@@ -5609,7 +5584,6 @@ def api_download_outreach(analysis_id: str = None):
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
 
-@app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
     Returns a list of recent placement analyses ordered by timestamp descending.
@@ -5632,7 +5606,6 @@ def api_recent_analyses():
             "message": "Failed to retrieve recent analyses."
         }), 500
 
-@app.route("/api/analysis/<analysis_id>", methods=["DELETE"])
 def api_delete_analysis(analysis_id: str):
     """
     Deletes an analysis session and related mock interview records.
@@ -5665,7 +5638,6 @@ def api_delete_analysis(analysis_id: str):
             "message": "Failed to delete analysis record."
         }), 500
 
-@app.route("/api/progress/<student_id>", methods=["GET"])
 def api_student_progress(student_id: str):
     """
     Returns a candidate's full longitudinal version history and trend metrics.
@@ -5690,7 +5662,6 @@ def api_student_progress(student_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/api/progress/diff/<id_a>/<id_b>", methods=["GET"])
 def api_progress_diff(id_a: str, id_b: str):
     """
     Generates side-by-side comparison metrics between any two specific resume analyses.
@@ -5719,7 +5690,6 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/compare-resumes", methods=["GET", "POST"])
 def compare_resumes_view():
     """
     Dedicated view and handler for comparing two resume versions directly (#140).
@@ -5785,7 +5755,6 @@ def compare_resumes_view():
         return redirect(url_for("compare_resumes_view"))
 
 
-@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
 def api_job_recommendations(analysis_id: str):
     """
     Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
@@ -5859,7 +5828,6 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
-@app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
     Returns database integrity verification status and table statistics.
@@ -5872,7 +5840,6 @@ def api_database_integrity():
     }), status_code
 
 
-@app.route("/api/admin/database/backup", methods=["POST"])
 def api_database_backup():
     """
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
@@ -5899,7 +5866,6 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/admin/database/backups", methods=["GET"])
 def api_admin_list_backups():
     """
     Lists all available database backups for administrator inspection (#245).
@@ -5919,7 +5885,6 @@ def api_admin_list_backups():
     }), 200
 
 
-@app.route("/api/admin/database/backups/validate", methods=["POST"])
 def api_admin_validate_backup():
     """
     Pre-validates a backup candidate before restoration (#245).
@@ -5947,7 +5912,6 @@ def api_admin_validate_backup():
     }), (200 if result.get("valid") else 400)
 
 
-@app.route("/api/admin/database/restore", methods=["POST"])
 def api_admin_restore_database():
     """
     Restores the application database from an authorized backup file (#245).
@@ -5991,7 +5955,6 @@ def api_admin_restore_database():
 
 
 
-@app.route("/api/admin/retention/run", methods=["POST"])
 def api_admin_run_retention():
     """
     Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
@@ -6014,7 +5977,6 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/github-analyzer", methods=["GET", "POST"])
 def github_analyzer_view():
     """
     Evaluates public candidate developer profiles from GitHub (#141).
@@ -6039,7 +6001,6 @@ def github_analyzer_view():
         return jsonify(analysis), (200 if analysis.get("success") else 400)
 
     return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
-@app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
     Interactive student internship recommendation engine (#142).
@@ -6086,7 +6047,6 @@ def internships_view():
         current_location=location_filter,
         search_query=search_query
     )
-@app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
     Candidate Job Application Tracker view and management handler (#143, #193).
@@ -6182,7 +6142,6 @@ def job_applications_tracker():
     )
 
 
-@app.route("/api/applications/<app_id>/status", methods=["POST"])
 def api_update_application_status(app_id: str):
     """
     Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
@@ -6221,7 +6180,6 @@ def api_update_application_status(app_id: str):
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
-@app.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
     Deletes an application record owned by student_id.
@@ -6231,8 +6189,6 @@ def api_delete_application(app_id: str):
     return jsonify({"success": deleted}), (200 if deleted else 404)
 
 
-@app.route("/applications/export", methods=["GET"])
-@app.route("/api/applications/export", methods=["GET"])
 def export_job_applications():
     """
     Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
@@ -6282,7 +6238,6 @@ def export_job_applications():
     return response
 
 
-@app.route("/api/applications/export-summary", methods=["GET"])
 def api_applications_export_summary():
     """
     Returns application export summary and readiness stats for candidate (#196).
@@ -6300,7 +6255,6 @@ def api_applications_export_summary():
         "export_metadata": summary
     }), 200
 
-@app.route("/interview-history")
 def interview_history_view():
     """
     Mock Interview Performance History view (#144).
@@ -6311,7 +6265,6 @@ def interview_history_view():
     return render_template("interview_history.html", analytics=analytics, student_id=student_id)
 
 
-@app.route("/api/interview-history")
 def api_interview_history():
     """
     API endpoint returning historical mock interview attempts and analytics (#144).
@@ -6325,7 +6278,6 @@ def api_interview_history():
     })
 
 
-@app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """
     LinkedIn Profile Analyzer View and API endpoint (#146).
@@ -6388,7 +6340,6 @@ def linkedin_analyzer():
     )
 
 
-@app.route("/coding-practice", methods=["GET", "POST"])
 def _get_current_student_id() -> str:
     """
     Resolves the authenticated student's unique identifier from session (#235).
@@ -6450,7 +6401,6 @@ def coding_practice_view():
     )
 
 
-@app.route("/api/coding-practice/recommendations")
 def api_coding_practice_recommendations():
     """
     API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
@@ -6472,7 +6422,6 @@ def api_coding_practice_recommendations():
     }), 200
 
 
-@app.route("/api/coding-practice/bookmarks", methods=["GET"])
 def api_get_coding_bookmarks():
     """
     Returns the student's bookmarked coding questions (#234).
@@ -6487,7 +6436,6 @@ def api_get_coding_bookmarks():
     }), 200
 
 
-@app.route("/api/coding-practice/bookmark", methods=["POST"])
 def api_save_coding_bookmark():
     """
     Bookmarks a coding practice question for a candidate (#234).
@@ -6522,7 +6470,6 @@ def api_save_coding_bookmark():
     }), (200 if saved else 500)
 
 
-@app.route("/api/coding-practice/bookmark/<problem_id>", methods=["DELETE", "POST"])
 def api_remove_coding_bookmark(problem_id: str):
     """
     Removes a bookmarked coding question for a candidate (#234).
@@ -6535,7 +6482,6 @@ def api_remove_coding_bookmark(problem_id: str):
     }), 200
 
 
-@app.route("/api/coding-practice/bookmark/toggle", methods=["POST"])
 def api_toggle_coding_bookmark():
     """
     Toggles bookmark state for a coding question (#234).
@@ -6578,7 +6524,6 @@ def api_toggle_coding_bookmark():
         }), 200
 
 
-@app.route("/my-reports")
 def user_placement_history_view():
     """
     Save and Retrieve Previous Placement Analysis History View (#149).
@@ -6609,7 +6554,6 @@ def user_placement_history_view():
     )
 
 
-@app.route("/api/user/analyses")
 def api_user_placement_analyses():
     """
     API endpoint to retrieve placement analysis history for a specific candidate (#149).
@@ -6629,7 +6573,6 @@ def api_user_placement_analyses():
     }), 200
 
 
-@app.route("/history", methods=["GET"])
 def history_view():
     """
     Renders the dedicated History page listing past placement analyses (#159).
@@ -6652,8 +6595,6 @@ def history_view():
         return render_template("history.html", analyses=[])
 
 
-@app.route("/history/delete/<analysis_id>", methods=["POST"])
-@app.route("/delete-analysis/<analysis_id>", methods=["POST"])
 def delete_analysis_action(analysis_id: str):
     """
     Removes a past analysis record and its associated data (#159).
@@ -6682,7 +6623,6 @@ def delete_analysis_action(analysis_id: str):
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-@app.route("/api/role-prep/roles")
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -6693,7 +6633,6 @@ def api_role_prep_roles():
     }), 200
 
 
-@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
 def api_role_prep_for_analysis(analysis_id: str):
     """
     Generates role-based preparation curriculum and recommendations for a student analysis.
@@ -6727,7 +6666,6 @@ def api_role_prep_for_analysis(analysis_id: str):
     return jsonify(prep_data), 200
 
 
-@app.route("/api/role-prep/generate", methods=["POST"])
 def api_role_prep_generate():
     """
     Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
@@ -6751,7 +6689,6 @@ def api_role_prep_generate():
     return jsonify(prep_data), 200
 
 
-@app.route("/role-preparation", methods=["GET", "POST"])
 def role_preparation_view():
     """
     Role-Based Preparation Mode View (#154).
@@ -6817,7 +6754,6 @@ def role_preparation_view():
 
 
 
-@app.route("/notification-settings", methods=["GET", "POST"])
 def notification_settings_view():
     """
     Candidate Email Notification Settings View and Preference Handler (#186).
@@ -6856,7 +6792,6 @@ def notification_settings_view():
     return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
 
 
-@app.route("/api/notifications/remind-interview", methods=["POST"])
 def api_send_interview_reminder():
     """
     API endpoint to dispatch on-demand or scheduled interview reminders (#186).
@@ -6890,7 +6825,6 @@ def api_send_interview_reminder():
 
 
 
-@app.route("/interview-experiences", methods=["GET", "POST"])
 def interview_experiences_view():
     """
     Company-Wise Interview Experiences View and Submission Handler (#189).
@@ -7252,6 +7186,10 @@ def export_interview_json(analysis_id: str):
     safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_"))
     response.headers["Content-Disposition"] = (
         f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
+    )
+    return response
+
+
 @app.route("/api/company-checklist/reset", methods=["POST"])
 def api_reset_checklist():
     """
@@ -7380,7 +7318,6 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
-@app.route("/certificate/<analysis_id>")
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -7397,7 +7334,6 @@ def certificate(analysis_id: str):
     )
 
 
-@app.route("/certificate/<analysis_id>/download")
 def download_certificate_pdf(analysis_id: str):
     """
     Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
@@ -7426,7 +7362,6 @@ def download_certificate_pdf(analysis_id: str):
         flash("Failed to generate certificate PDF. Please try printing directly.", "error")
         return redirect(url_for("certificate", analysis_id=analysis_id))
 
-@app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
@@ -7460,7 +7395,6 @@ def download_pdf_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/download/skills-gap/<analysis_id>")
 def download_skills_gap_report(analysis_id: str):
     """
     Compiles identified candidate skill gaps and upskilling roadmaps into a standalone PDF report (#136).
@@ -7493,7 +7427,6 @@ def download_skills_gap_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
-@app.route("/api/generate-outreach/<analysis_id>", methods=["POST"])
 @rate_limit(scope="generate_outreach", is_api=True)
 def api_generate_outreach(analysis_id: str):
     """
@@ -7535,8 +7468,6 @@ def api_generate_outreach(analysis_id: str):
         }), 500
 
 
-@app.route("/api/outreach/download", methods=["POST"])
-@app.route("/api/outreach/<analysis_id>/download", methods=["GET", "POST"])
 def api_download_outreach(analysis_id: str = None):
     """
     Downloads generated application outreach assets as formatted .docx or plain .txt files.
@@ -7631,7 +7562,6 @@ def api_download_outreach(analysis_id: str = None):
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
 
-@app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
     """
     Returns a list of recent placement analyses ordered by timestamp descending.
@@ -7654,7 +7584,6 @@ def api_recent_analyses():
             "message": "Failed to retrieve recent analyses."
         }), 500
 
-@app.route("/api/analysis/<analysis_id>", methods=["DELETE"])
 def api_delete_analysis(analysis_id: str):
     """
     Deletes an analysis session and related mock interview records.
@@ -7687,7 +7616,6 @@ def api_delete_analysis(analysis_id: str):
             "message": "Failed to delete analysis record."
         }), 500
 
-@app.route("/api/progress/<student_id>", methods=["GET"])
 def api_student_progress(student_id: str):
     """
     Returns a candidate's full longitudinal version history and trend metrics.
@@ -7712,7 +7640,6 @@ def api_student_progress(student_id: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/api/progress/diff/<id_a>/<id_b>", methods=["GET"])
 def api_progress_diff(id_a: str, id_b: str):
     """
     Generates side-by-side comparison metrics between any two specific resume analyses.
@@ -7741,7 +7668,6 @@ def api_progress_diff(id_a: str, id_b: str):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/compare-resumes", methods=["GET", "POST"])
 def compare_resumes_view():
     """
     Dedicated view and handler for comparing two resume versions directly (#140).
@@ -7807,7 +7733,6 @@ def compare_resumes_view():
         return redirect(url_for("compare_resumes_view"))
 
 
-@app.route("/api/jobs/recommendations/<analysis_id>", methods=["GET"])
 def api_job_recommendations(analysis_id: str):
     """
     Retrieves and returns tailored campus recruitment drive recommendations for a candidate,
@@ -7881,7 +7806,6 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
-@app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
     Returns database integrity verification status and table statistics.
@@ -7894,7 +7818,6 @@ def api_database_integrity():
     }), status_code
 
 
-@app.route("/api/admin/database/backup", methods=["POST"])
 def api_database_backup():
     """
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
@@ -7919,7 +7842,6 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/admin/retention/run", methods=["POST"])
 def api_admin_run_retention():
     """
     Trigger automated data retention and cleanup pass for expired storage artifacts and historical records.
@@ -7942,7 +7864,6 @@ def api_admin_run_retention():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/github-analyzer", methods=["GET", "POST"])
 def github_analyzer_view():
     """
     Evaluates public candidate developer profiles from GitHub (#141).
@@ -7967,7 +7888,6 @@ def github_analyzer_view():
         return jsonify(analysis), (200 if analysis.get("success") else 400)
 
     return render_template("github_analyzer.html", analysis=analysis, query_username=target_username)
-@app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
     Interactive student internship recommendation engine (#142).
@@ -8000,7 +7920,6 @@ def internships_view():
         current_location=location_filter,
         search_query=search_query
     )
-@app.route("/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
     Candidate Job Application Tracker view and management handler (#143).
@@ -8053,7 +7972,6 @@ def job_applications_tracker():
     )
 
 
-@app.route("/api/applications/<app_id>/status", methods=["POST"])
 def api_update_application_status(app_id: str):
     """
     Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
@@ -8069,7 +7987,6 @@ def api_update_application_status(app_id: str):
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
-@app.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
     Deletes an application record owned by student_id.
@@ -8077,7 +7994,6 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
-@app.route("/interview-history")
 def interview_history_view():
     """
     Mock Interview Performance History view (#144).
@@ -8088,7 +8004,6 @@ def interview_history_view():
     return render_template("interview_history.html", analytics=analytics, student_id=student_id)
 
 
-@app.route("/api/interview-history")
 def api_interview_history():
     """
     API endpoint returning historical mock interview attempts and analytics (#144).
@@ -8102,7 +8017,6 @@ def api_interview_history():
     })
 
 
-@app.route("/linkedin-analyzer", methods=["GET", "POST"])
 def linkedin_analyzer():
     """
     LinkedIn Profile Analyzer View and API endpoint (#146).
@@ -8204,7 +8118,6 @@ def coding_practice_view():
     )
 
 
-@app.route("/api/coding-practice/recommendations")
 def api_coding_practice_recommendations():
     """
     API endpoint returning tailored DSA practice problems for candidate placement prep (#147).
@@ -8226,7 +8139,6 @@ def api_coding_practice_recommendations():
     }), 200
 
 
-@app.route("/my-reports")
 def user_placement_history_view():
     """
     Save and Retrieve Previous Placement Analysis History View (#149).
@@ -8257,7 +8169,6 @@ def user_placement_history_view():
     )
 
 
-@app.route("/api/user/analyses")
 def api_user_placement_analyses():
     """
     API endpoint to retrieve placement analysis history for a specific candidate (#149).
@@ -8277,7 +8188,6 @@ def api_user_placement_analyses():
     }), 200
 
 
-@app.route("/history", methods=["GET"])
 def history_view():
     """
     Renders the dedicated History page listing past placement analyses (#159).
@@ -8300,8 +8210,6 @@ def history_view():
         return render_template("history.html", analyses=[])
 
 
-@app.route("/history/delete/<analysis_id>", methods=["POST"])
-@app.route("/delete-analysis/<analysis_id>", methods=["POST"])
 def delete_analysis_action(analysis_id: str):
     """
     Removes a past analysis record and its associated data (#159).
@@ -9367,7 +9275,6 @@ def linkedin_analyzer():
     )
 
 
-@app.route("/coding-practice", methods=["GET", "POST"])
 def _get_current_student_id() -> str:
     """
     Resolves the authenticated student's unique identifier from session (#235).
@@ -10063,7 +9970,6 @@ def download_student_preparation_summary_pdf(student_id: str = None):
         return redirect(url_for("index"))
 
 
-@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
 def api_recently_viewed_jobs():
     """
     REST API endpoints to manage recently viewed jobs for candidates (#201).
@@ -10143,7 +10049,6 @@ def api_recently_viewed_jobs():
 # INTERVIEW EXPERIENCE ADVANCED SEARCH AND FILTER ENDPOINTS (#254)
 # ============================================================================
 
-@app.route("/api/interview-experiences/search", methods=["GET"])
 def api_search_interview_experiences_endpoint():
     """
     Advanced multi-facet search endpoint for campus interview experiences.
@@ -10180,7 +10085,6 @@ def api_search_interview_experiences_endpoint():
     }), 200
 
 
-@app.route("/api/interview-experiences/facets", methods=["GET"])
 def api_interview_experience_facets_endpoint():
     """
     Returns unique aggregations and metrics for populating dynamic frontend filters.
@@ -10196,7 +10100,6 @@ def api_interview_experience_facets_endpoint():
 # CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
 # ============================================================================
 
-@app.route("/api/coding/folders", methods=["GET", "POST"])
 def coding_bookmark_folders_collection_endpoint():
     """
     GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
@@ -10236,7 +10139,6 @@ def coding_bookmark_folders_collection_endpoint():
             return jsonify({"status": "error", "message": f"Creation failed: {str(e)}"}), 500
 
 
-@app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
 def coding_bookmark_folder_detail_endpoint(folder_id: str):
     """
     GET: Retrieves folder metadata and bookmarked problems inside.
@@ -10316,7 +10218,6 @@ def move_coding_bookmark_endpoint(problem_id: str):
 # INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
 # ============================================================================
 
-@app.route("/api/admin/moderation/experiences", methods=["GET"])
 def admin_moderation_queue_endpoint():
     """
     Administrative queue for inspecting submitted interview experiences,
@@ -10352,7 +10253,6 @@ def admin_moderation_queue_endpoint():
     }), 200
 
 
-@app.route("/api/admin/moderation/experiences/<exp_id>/action", methods=["POST"])
 def admin_moderate_experience_action_endpoint(exp_id: str):
     """
     Executes a moderation decision (approve, reject, flag, dismiss_report) on a submission.
@@ -10625,7 +10525,6 @@ def admin_experience_moderation_logs_endpoint(exp_id: str):
 # JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
 
-@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
 def student_deadline_reminders_endpoint():
     """
     GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
@@ -10643,12 +10542,6 @@ def student_deadline_reminders_endpoint():
             "count": len(reminders),
             "reminders": reminders
         }), 200
-    except KeyError as ke:
-        return jsonify({"status": "error", "message": str(ke)}), 404
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
 
     # GET: Scan and fetch
     scan_and_generate_student_reminders(student_id)
@@ -10828,7 +10721,6 @@ def company_profile_detail_endpoint(profile_id: str):
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
-@app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
     Scans submitted resume text or uploaded resume file for Personally Identifiable
@@ -10869,7 +10761,6 @@ def scan_resume_pii_endpoint():
     }), 200
 
 
-@app.route("/api/resume/redact-pii", methods=["POST"])
 def redact_resume_pii_endpoint():
     """
     Applies configurable redaction rules to sensitive PII entities within resume text.
@@ -10950,7 +10841,6 @@ def student_deadline_reminders_endpoint():
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
-@app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
     Scans submitted resume text or uploaded resume file for Personally Identifiable
@@ -10991,7 +10881,6 @@ def scan_resume_pii_endpoint():
     }), 200
 
 
-@app.route("/api/resume/redact-pii", methods=["POST"])
 def redact_resume_pii_endpoint():
     """
     Applies configurable redaction rules to sensitive PII entities within resume text.

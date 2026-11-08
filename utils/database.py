@@ -3742,64 +3742,6 @@ def get_student_preparation_summary_data(student_id: str = None) -> Dict[str, An
     }
 
 
-def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
-    """
-    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        # Overall summary stats
-        cursor.execute("""
-            SELECT
-                COUNT(*) as total_calls,
-                SUM(CASE WHEN status = 'success' THEN 1 ELSE 0 END) as successful_calls,
-                SUM(CASE WHEN status != 'success' THEN 1 ELSE 0 END) as failed_calls,
-                COALESCE(SUM(prompt_tokens), 0) as total_prompt_tokens,
-                COALESCE(SUM(candidate_tokens), 0) as total_candidate_tokens,
-                COALESCE(SUM(total_tokens), 0) as total_tokens,
-                COALESCE(SUM(estimated_cost_usd), 0.0) as total_cost_usd,
-                COALESCE(AVG(latency_ms), 0.0) as avg_latency_ms
-            FROM gemini_api_logs
-            WHERE created_at >= datetime('now', ?)
-        """, (f"-{days} days",))
-        summary_row = cursor.fetchone()
-
-    try:
-        conn.execute("BEGIN IMMEDIATE")
-        now = int(time.time())
-
-        # Invalidate previous unused tokens for this user
-        conn.execute("""
-            UPDATE password_reset_tokens
-            SET used_at = ?
-            WHERE user_id = ? AND used_at IS NULL
-        """, (now, user_id))
-
-        conn.execute("""
-            INSERT INTO password_reset_tokens
-            (id, user_id, token_hash, expires_at, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        """, (
-            str(uuid.uuid4()),
-            user_id,
-            token_hash,
-            expires_at,
-            now
-        ))
-
-        conn.commit()
-        return True
-
-    except sqlite3.Error:
-        conn.rollback()
-        logger.exception("Failed to create password reset token")
-        return False
-
-    finally:
-        conn.close()
-
-
 def get_valid_password_reset_token(
     token_hash: str
 ) -> Optional[Dict[str, Any]]:
