@@ -157,6 +157,9 @@ from utils.progress_tracker import (
     generate_side_by_side_diff,
     compare_two_resume_texts
 )
+from utils.password_security import evaluate_password_strength
+from utils.pagination import Pagination
+from utils.cohort_analytics import CohortAnalyticsService
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -744,6 +747,22 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+@app.route("/api/auth/password-strength", methods=["POST"])
+def api_password_strength():
+    """
+    Evaluates password strength across length, casing, numbers, and symbols (#290).
+    Returns rating level, criteria pass flags, and improvement suggestions.
+    Does not log or store the password.
+    """
+    payload = request.get_json(silent=True) or request.form
+    password = payload.get("password", "") if payload else ""
+    evaluation = evaluate_password_strength(password)
+    return jsonify({
+        "status": "success",
+        "evaluation": evaluation
+    }), 200
 
 
 @app.route("/verify-email/<token>", methods=["GET"])
@@ -1510,6 +1529,96 @@ def dashboard(analysis_id: str) -> str:
     )
 
 
+@app.route("/leaderboard", methods=["GET"])
+def leaderboard():
+    """
+    Renders the anonymized campus placement leaderboard showcasing
+    cohort statistics, top 3 podium, and department/batch standings with pagination (#152).
+    """
+    branch = request.args.get("branch", "all").strip()
+    year = request.args.get("year", "all").strip()
+    search = request.args.get("search", "").strip()
+    current_analysis_id = request.args.get("analysis_id", "").strip() or None
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
+    cohort_service = CohortAnalyticsService()
+    view_data = cohort_service.get_leaderboard_view(
+        department=branch if branch != "all" else None,
+        grad_year=int(year) if year.isdigit() else None,
+        search=search,
+        current_analysis_id=current_analysis_id
+    )
+
+    all_leaderboard_rows = view_data.get("leaderboard", [])
+    pagination = Pagination(
+        items=all_leaderboard_rows,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/leaderboard"
+    )
+
+    candidate_percentile = None
+    if current_analysis_id:
+        try:
+            candidate_percentile = cohort_service.calculate_percentile_rank(current_analysis_id)
+        except Exception:
+            candidate_percentile = None
+
+    return render_template(
+        "leaderboard.html",
+        stats=view_data.get("stats", {}),
+        podium=view_data.get("podium", []),
+        leaderboard=pagination.items,
+        pagination=pagination,
+        total_ranked=view_data.get("total_ranked", 0),
+        filters=view_data.get("filters", {}),
+        current_analysis_id=current_analysis_id,
+        candidate_percentile=candidate_percentile
+    )
+
+
+@app.route("/api/leaderboard", methods=["GET"])
+def api_leaderboard():
+    """
+    Returns JSON payload of anonymized cohort benchmarks and ranking metrics with pagination (#152).
+    """
+    branch = request.args.get("branch", "all").strip()
+    year = request.args.get("year", "all").strip()
+    search = request.args.get("search", "").strip()
+    current_analysis_id = request.args.get("analysis_id", "").strip() or None
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
+    cohort_service = CohortAnalyticsService()
+    view_data = cohort_service.get_leaderboard_view(
+        department=branch if branch != "all" else None,
+        grad_year=int(year) if year.isdigit() else None,
+        search=search,
+        current_analysis_id=current_analysis_id
+    )
+
+    all_leaderboard_rows = view_data.get("leaderboard", [])
+    pagination = Pagination(
+        items=all_leaderboard_rows,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/api/leaderboard"
+    )
+
+    return jsonify({
+        "success": True,
+        "stats": view_data.get("stats", {}),
+        "podium": view_data.get("podium", []),
+        "leaderboard": pagination.items,
+        "pagination": pagination.to_dict(),
+        "total_ranked": view_data.get("total_ranked", 0),
+        "filters": view_data.get("filters", {}),
+    }), 200
+
+
 @app.route("/interview/<analysis_id>")
 def interview(analysis_id: str) -> str:
     """
@@ -1963,6 +2072,73 @@ def skills_assessment_view():
 
 
 
+
+@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
+def api_skills_assessment():
+    """
+    REST API endpoint for managing student technical skill self-assessments.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "GET":
+        items = get_student_skill_self_assessments(student_id)
+        return jsonify({
+            "status": "success",
+            "student_id": student_id,
+            "total": len(items),
+            "skills": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        skill_name = payload.get("skill_name", "").strip()
+        category = payload.get("category", "General").strip()
+        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
+        years_experience = payload.get("years_experience", 0.0)
+        notes = payload.get("notes", "").strip()
+
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+
+        try:
+            exp_val = float(years_experience)
+        except (ValueError, TypeError):
+            exp_val = 0.0
+
+        saved = save_skill_self_assessment(
+            student_id=student_id,
+            skill_name=skill_name,
+            category=category,
+            proficiency_level=proficiency_level,
+            years_experience=exp_val,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Skill '{skill_name}' assessment saved",
+            "skill": saved
+        }), 201
+
+    if request.method == "DELETE":
+        payload = request.get_json(silent=True) or request.args
+        skill_name = (payload.get("skill_name") or "").strip()
+        if not skill_name:
+            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
+        deleted = delete_skill_self_assessment(student_id, skill_name)
+        return jsonify({
+            "status": "success" if deleted else "not_found",
+            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
+        }), 200 if deleted else 404
+
+
+
+@app.route("/feedback", methods=["GET", "POST"])
 def feedback_view():
     """
     Renders and processes candidate platform experience feedback (#197).
@@ -2078,72 +2254,155 @@ def api_feedback():
         }), 201
 
 
-@app.route("/api/skills-assessment", methods=["GET", "POST", "DELETE"])
-def api_skills_assessment():
+
+@app.route("/interview/<analysis_id>/export")
+def export_interview_json(analysis_id: str):
     """
-    REST API endpoint for managing student technical skill self-assessments.
+    Exports the mock interview Q&A transcript and dynamic evaluations as a JSON download.
     """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
+    session_id = (
+        request.args.get("session_id")
+        or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
+        or analysis_id
     )
+    session = get_interview_session(session_id)
+    if not session and session_id != analysis_id:
+        session_id = analysis_id
+        session = get_interview_session(session_id)
 
-    if request.method == "GET":
-        items = get_student_skill_self_assessments(student_id)
-        return jsonify({
-            "status": "success",
-            "student_id": student_id,
-            "total": len(items),
-            "skills": items
-        }), 200
+    analysis_record = get_analysis(analysis_id)
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        skill_name = payload.get("skill_name", "").strip()
-        category = payload.get("category", "General").strip()
-        proficiency_level = payload.get("proficiency_level", "Intermediate").strip()
-        years_experience = payload.get("years_experience", 0.0)
-        notes = payload.get("notes", "").strip()
+    if not analysis_record or analysis_record.get("student_id") != flask_session["user_id"]:
+        return jsonify({"error": "Interview session not found."}), 404
 
-        if not skill_name:
-            return jsonify({"status": "error", "message": "skill_name is required"}), 400
+    if not session:
+        flash("Interview session not found.", "error")
+        return redirect(url_for("index"))
 
-        try:
-            exp_val = float(years_experience)
-        except (ValueError, TypeError):
-            exp_val = 0.0
+    company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
+    answers_recorded = session.get("answers", [])
+    session_summary = live_interview_agent.calculate_session_summary(answers_recorded) if answers_recorded else {}
 
-        saved = save_skill_self_assessment(
-            student_id=student_id,
-            skill_name=skill_name,
-            category=category,
-            proficiency_level=proficiency_level,
-            years_experience=exp_val,
-            notes=notes
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Skill '{skill_name}' assessment saved",
-            "skill": saved
-        }), 201
+    export_data = {
+        "analysis_id": analysis_id,
+        "company_name": company_name,
+        "completed": bool(session.get("completed", 0)),
+        "total_questions": len(session.get("questions", [])),
+        "answers_recorded": len(answers_recorded),
+        "session_summary": session_summary,
+        "transcript": answers_recorded,
+    }
 
-    if request.method == "DELETE":
-        payload = request.get_json(silent=True) or request.args
-        skill_name = (payload.get("skill_name") or "").strip()
-        if not skill_name:
-            return jsonify({"status": "error", "message": "skill_name is required for deletion"}), 400
-        deleted = delete_skill_self_assessment(student_id, skill_name)
-        return jsonify({
-            "status": "success" if deleted else "not_found",
-            "message": f"Deleted skill '{skill_name}'" if deleted else "Skill entry not found"
-        }), 200 if deleted else 404
+    response = jsonify(export_data)
+    safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_"))
+    response.headers["Content-Disposition"] = (
+        f"attachment; filename=Mock_Interview_{safe_company}_{analysis_id[:8]}.json"
+    )
+    return response
 
 
 @app.route("/certificate/<analysis_id>/download")
 def download_certificate_pdf(analysis_id: str):
+    """
+    try:
+        session_id = (
+            request.args.get("session_id")
+            or (f"{analysis_id}_{request.args.get('round', '').lower()}" if request.args.get('round') else None)
+            or analysis_id
+        )
+        session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
+        if not session:
+            flash("Interview session not found.", "error")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        answers_recorded = session.get("answers", [])
+        if not answers_recorded:
+            if request.headers.get("Accept") == "application/json":
+                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
+            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
+            return redirect(url_for("interview", analysis_id=analysis_id))
+
+        analysis_record = get_analysis(analysis_id)
+        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
+        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
+
+        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
+        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
+        export_format = request.args.get("format", "pdf").strip().lower()
+
+        if export_format in ("md", "markdown"):
+            md_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                md_content,
+                mimetype="text/markdown",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
+            )
+        elif export_format in ("txt", "text"):
+            txt_content = generate_interview_transcript_markdown(
+                session_data=session,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return Response(
+                txt_content,
+                mimetype="text/plain",
+                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
+            )
+        elif export_format == "json":
+            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
+        else:
+            # Default PDF
+            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+            pdf_filename = f"{filename_base}_{session_id}.pdf"
+            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
+
+            generate_interview_transcript_pdf(
+                session_data=session,
+                output_path=pdf_full_path,
+                company_name=company_name,
+                summary_data=session_summary,
+            )
+            return send_file(
+                pdf_full_path,
+                as_attachment=True,
+                download_name=f"{filename_base}.pdf",
+                mimetype="application/pdf",
+            )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
+        flash(f"Error compiling interview transcript: {str(e)}", "error")
+        return redirect(url_for("interview", analysis_id=analysis_id))
+
+
+@app.route("/certificate/<analysis_id>")
+def certificate(analysis_id: str):
+    """
+    Renders printable placement readiness completion certificate.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("The requested placement analysis report could not be found.", "error")
+            return redirect(url_for("index"))
+
+    return render_template(
+        "certificate.html",
+        analysis=analysis_record,
+        analysis_id=analysis_id,
+    )
+
+
+@app.route("/certificate/<analysis_id>/download")
+def download_certificate_pdf(analysis_id: str):
+    """
+    Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
     """
     try:
         analysis_record = get_analysis(analysis_id)
@@ -2169,6 +2428,8 @@ def download_certificate_pdf(analysis_id: str):
         flash("Failed to generate certificate PDF. Please try printing directly.", "error")
         return redirect(url_for("certificate", analysis_id=analysis_id))
 
+
+
 @app.route("/download/<analysis_id>")
 def download_pdf_report(analysis_id: str):
     """
@@ -2185,9 +2446,11 @@ def download_pdf_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_pdf_report(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_pdf_report,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type="Placement Readiness Comprehensive Report"
             )
 
         return send_file(
@@ -2218,9 +2481,11 @@ def download_skills_gap_report(analysis_id: str):
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
-            generate_skills_gap_pdf(
-                analysis_data=analysis_record,
-                output_path=pdf_full_path
+            safe_generate_report_with_recovery(
+                generator_func=generate_skills_gap_pdf,
+                data=analysis_record,
+                output_path=pdf_full_path,
+                report_type="Skills Gap and Upskilling Roadmap"
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -2624,32 +2889,6 @@ def api_job_recommendations(analysis_id: str):
         }), 500
 
 
-@app.route("/api/jobs/feed/dedup", methods=["GET"])
-def api_jobs_feed_dedup():
-    """
-    Returns curated campus placement opportunities processed with duplicate filtering and deadline expiration (#248).
-    """
-    hide_expired = request.args.get("hide_expired", "false").lower() in ("true", "1", "yes")
-    from utils.job_feed_service import JobFeedService
-    from utils.job_dedup_expiration import process_jobs_feed_with_expiration_and_dedup
-
-    feed_service = JobFeedService()
-    raw_jobs = feed_service.get_all_jobs()
-    processed = process_jobs_feed_with_expiration_and_dedup(raw_jobs, hide_expired=hide_expired)
-    return jsonify({
-        "success": True,
-        "feed_summary": {
-            "total_raw": processed["total_raw"],
-            "deduplicated_count": processed["deduplicated_count"],
-            "duplicates_removed": processed["duplicates_removed"],
-            "expired_count": processed["expired_count"],
-            "active_count": processed["active_count"],
-        },
-        "jobs": processed["jobs"]
-    }), 200
-
-
-
 @app.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
@@ -2669,8 +2908,10 @@ def api_database_backup():
     Triggers an atomic online hot backup of the SQLite database and returns metadata.
     """
     try:
+        from utils.backup_restoration import get_backup_storage_directory
+        backup_dir = get_backup_storage_directory()
         backup_filename = f"placement_backup_{int(time.time())}.db"
-        backup_path = os.path.join(config.BASE_DIR, backup_filename)
+        backup_path = os.path.join(backup_dir, backup_filename)
         create_database_backup(backup_path)
 
         file_size = os.path.getsize(backup_path) if os.path.exists(backup_path) else 0
@@ -2688,47 +2929,96 @@ def api_database_backup():
         }), 500
 
 
-@app.route("/api/admin/database/backup/retention", methods=["GET", "POST"])
-def api_admin_backup_retention():
+@app.route("/api/admin/database/backups", methods=["GET"])
+def api_admin_list_backups():
     """
-    Manages database backup retention policy evaluation and pruning (#247).
-    GET: Evaluates backup inventory, age, and reclaimable space without deleting.
-    POST: Prunes expired backups older than retention window while preserving recent backups.
+    Lists all available database backups for administrator inspection (#245).
     """
     admin_header = request.headers.get("X-Admin-Key")
     admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
-    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret-key"):
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        # Deny unauthorized access
         return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    from utils.backup_retention import evaluate_backup_retention, prune_expired_backups
+    from utils.backup_restoration import list_available_backups
+    backups = list_available_backups()
+    return jsonify({
+        "success": True,
+        "count": len(backups),
+        "backups": backups
+    }), 200
 
-    if request.method == "GET":
-        retention_days = int(request.args.get("retention_days", 7))
-        min_preserved = int(request.args.get("min_preserved", 3))
-        eval_result = evaluate_backup_retention(
-            retention_days=retention_days,
-            min_preserved=min_preserved
-        )
+
+@app.route("/api/admin/database/backups/validate", methods=["POST"])
+def api_admin_validate_backup():
+    """
+    Pre-validates a backup candidate before restoration (#245).
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    payload = request.get_json(silent=True) or request.form
+    filename = payload.get("filename") or payload.get("backup_identifier")
+    if not filename:
+        return jsonify({"success": False, "error": "Backup filename or path is required."}), 400
+
+    from utils.backup_restoration import get_backup_storage_directory, validate_backup_file
+    backup_dir = get_backup_storage_directory()
+    target_path = os.path.join(backup_dir, os.path.basename(filename))
+    if not os.path.exists(target_path) and os.path.isabs(filename):
+        target_path = filename
+
+    result = validate_backup_file(target_path)
+    return jsonify({
+        "success": result.get("valid", False),
+        "validation": result
+    }), (200 if result.get("valid") else 400)
+
+
+@app.route("/api/admin/database/restore", methods=["POST"])
+def api_admin_restore_database():
+    """
+    Restores the application database from an authorized backup file (#245).
+    Enforces administrator authorization, creates safety snapshot, and validates structure.
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_user = flask_session.get("user", {}).get("email") or "admin"
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
+        logger.warning(f"Unauthorized restoration attempt from IP {request.remote_addr}")
+        return jsonify({"success": False, "error": "Unauthorized: Administrator privileges required to restore database."}), 403
+
+    payload = request.get_json(silent=True) or request.form
+    backup_identifier = payload.get("backup_identifier") or payload.get("filename")
+
+    if not backup_identifier:
         return jsonify({
-            "success": True,
-            "data": eval_result
-        }), 200
+            "success": False,
+            "error": "Missing backup_identifier in request payload."
+        }), 400
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        retention_days = int(payload.get("retention_days", 7))
-        min_preserved = int(payload.get("min_preserved", 3))
-        dry_run = bool(payload.get("dry_run", False))
-
-        prune_result = prune_expired_backups(
-            retention_days=retention_days,
-            min_preserved=min_preserved,
-            dry_run=dry_run
+    from utils.backup_restoration import restore_database_from_backup, BackupRestorationError
+    try:
+        restore_result = restore_database_from_backup(
+            backup_identifier=str(backup_identifier).strip(),
+            admin_user=admin_user
         )
+        return jsonify(restore_result), 200
+    except BackupRestorationError as b_err:
+        logger.error(f"Backup restoration failed with operational error: {b_err}")
         return jsonify({
-            "success": True,
-            "prune_result": prune_result
-        }), 200
+            "success": False,
+            "error": str(b_err)
+        }), 400
+    except Exception as exc:
+        logger.critical(f"Unexpected restoration error: {exc}")
+        return jsonify({
+            "success": False,
+            "error": f"Internal system failure during restoration: {exc}"
+        }), 500
+
 
 
 @app.route("/api/admin/retention/run", methods=["POST"])
@@ -2790,6 +3080,14 @@ def internships_view():
     location_filter = request.args.get("location") or request.form.get("location", "All")
     search_query = request.args.get("search") or request.form.get("search", "")
 
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
     candidate_skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else [
         "Python", "SQL", "Git", "Data Structures", "Java"
     ]
@@ -2801,25 +3099,37 @@ def internships_view():
         search_query=search_query
     )
 
+    recently_viewed = get_recently_viewed_jobs(student_id=student_id, limit=6)
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(recommendations_data), 200
+        res_data = dict(recommendations_data)
+        res_data["recently_viewed"] = recently_viewed
+        return jsonify(res_data), 200
 
     return render_template(
         "internships.html",
         data=recommendations_data,
+        recently_viewed=recently_viewed,
+        student_id=student_id,
         skills_str=",".join(candidate_skills),
         current_role=role_filter,
         current_location=location_filter,
         search_query=search_query
     )
 @app.route("/applications", methods=["GET", "POST"])
+@app.route("/api/applications", methods=["GET"])
 def job_applications_tracker():
     """
-    Candidate Job Application Tracker view and management handler (#143).
-    Enforces per-student data segregation and allows creating, updating, and filtering applications.
+    Candidate Job Application Tracker view and management handler (#143, #193).
+    Enforces per-student data segregation and provides advanced multi-parameter search & filtering.
     """
     student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
     status_filter = request.args.get("status", "All")
+    search_query = request.args.get("search", "").strip()
+    location_filter = request.args.get("location", "All").strip()
+    job_type_filter = request.args.get("job_type", "All").strip()
+    exp_filter = request.args.get("experience_level", "All").strip()
+    sort_by = request.args.get("sort", "recent").strip()
 
     if request.method == "POST":
         company = request.form.get("company_name", "").strip()
@@ -2828,6 +3138,9 @@ def job_applications_tracker():
         app_date = request.form.get("application_date", "").strip()
         job_url = request.form.get("job_url", "").strip()
         notes = request.form.get("notes", "").strip()
+        location = request.form.get("location", "Remote").strip()
+        job_type = request.form.get("job_type", "Full-Time").strip()
+        exp_level = request.form.get("experience_level", "Entry-Level").strip()
 
         if not company or not role:
             flash("Company name and job role are required.", "error")
@@ -2842,26 +3155,82 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
-            notes=notes
+            notes=notes,
+            location=location,
+            job_type=job_type,
+            experience_level=exp_level
         )
+
+        # Notify candidate via email if preference enabled (#186)
+        try:
+            prefs = get_email_notification_preferences(student_id)
+            if prefs.get("email_enabled") and prefs.get("notify_application_created"):
+                user_email = prefs.get("email") or request.form.get("email") or f"{student_id}@student.campus.edu"
+                email_service.send_application_created_email(
+                    recipient_email=user_email,
+                    student_name=student_id,
+                    company_name=company,
+                    role_title=role,
+                    applied_date=app_date or "Today"
+                )
+        except Exception as mail_err:
+            logger.warning(f"Error sending application creation email: {mail_err}")
+
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
 
-    applications = get_job_applications(student_id=student_id, status_filter=status_filter)
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
 
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+    all_matching_apps = get_job_applications(
+        student_id=student_id,
+        status_filter=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        experience_level_filter=exp_filter,
+        sort_by=sort_by
+    )
+
+    all_user_apps = get_job_applications(student_id=student_id)
+
+    is_api_call = (
+        request.path == "/api/applications"
+        or request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        or request.headers.get("Accept") == "application/json"
+    )
+
+    pagination = Pagination(
+        items=all_matching_apps,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/api/applications" if request.path == "/api/applications" else "/applications"
+    )
+    paginated_applications = pagination.items
+
+    if is_api_call:
         return jsonify({
             "success": True,
             "student_id": student_id,
-            "count": len(applications),
-            "applications": applications
+            "count": len(paginated_applications),
+            "applications": paginated_applications,
+            "pagination": pagination.to_dict()
         }), 200
 
     return render_template(
         "applications.html",
-        applications=applications,
+        applications=paginated_applications,
+        pagination=pagination,
+        all_count=len(all_user_apps),
         student_id=student_id,
-        current_status=status_filter
+        current_status=status_filter,
+        search_query=search_query,
+        location_filter=location_filter,
+        job_type_filter=job_type_filter,
+        exp_filter=exp_filter,
+        sort_by=sort_by
     )
 
 
@@ -2878,6 +3247,29 @@ def api_update_application_status(app_id: str):
         return jsonify({"success": False, "error": "New status is required."}), 400
 
     updated = update_job_application_status(app_id=app_id, student_id=student_id, new_status=new_status)
+    
+    # Notify candidate of application status update via email (#186)
+    if updated:
+        try:
+            prefs = get_email_notification_preferences(student_id)
+            if prefs.get("email_enabled") and prefs.get("notify_status_change"):
+                apps = get_job_applications(student_id=student_id)
+                target_app = next((a for a in apps if a.get("id") == app_id), None)
+                comp = target_app.get("company_name", "Target Company") if target_app else "Target Company"
+                role = target_app.get("role_title", "Candidate Role") if target_app else "Role"
+                user_email = prefs.get("email") or f"{student_id}@student.campus.edu"
+                email_service.send_status_change_email(
+                    recipient_email=user_email,
+                    student_name=student_id,
+                    company_name=comp,
+                    role_title=role,
+                    previous_status="Previous Stage",
+                    new_status=new_status,
+                    notes=payload.get("notes") or request.form.get("notes")
+                )
+        except Exception as mail_err:
+            logger.warning(f"Failed to dispatch application status change email: {mail_err}")
+
     return jsonify({"success": updated}), (200 if updated else 404)
 
 
@@ -2889,6 +3281,77 @@ def api_delete_application(app_id: str):
     student_id = request.args.get("student_id") or "default_student"
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@app.route("/applications/export", methods=["GET"])
+@app.route("/api/applications/export", methods=["GET"])
+def export_job_applications():
+    """
+    Exports a candidate's job applications data as a downloadable CSV or JSON file (#196).
+    Supports format selection via ?format=csv (default) or ?format=json.
+    Respects active ?status= filter and candidate data segregation.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    status_filter = request.args.get("status", "All")
+    export_format = request.args.get("format", "csv").strip().lower()
+
+    if export_format == "json":
+        data = export_job_applications_json(student_id=student_id, status_filter=status_filter)
+        res = jsonify(data)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        res.headers["Content-Disposition"] = f"attachment; filename=job_applications_{safe_student}.json"
+        return res
+
+    if export_format in ("md", "markdown"):
+        md_content = export_job_applications_markdown(student_id=student_id, status_filter=status_filter)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            md_content,
+            mimetype="text/markdown",
+            headers={
+                "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.md",
+                "Content-Type": "text/markdown; charset=utf-8"
+            }
+        )
+
+    # Default CSV
+    csv_content = export_job_applications_csv(student_id=student_id, status_filter=status_filter)
+    safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+    response = Response(
+        csv_content,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=job_applications_{safe_student}.csv",
+            "Content-Type": "text/csv; charset=utf-8"
+        }
+    )
+    return response
+
+
+@app.route("/api/applications/export-summary", methods=["GET"])
+def api_applications_export_summary():
+    """
+    Returns application export summary and readiness stats for candidate (#196).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    summary = get_job_applications_export_summary(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "export_metadata": summary
+    }), 200
+
 @app.route("/interview-history")
 def interview_history_view():
     """
@@ -2896,8 +3359,27 @@ def interview_history_view():
     Displays historical mock interview attempts, scores by question type, and score progression trends.
     """
     student_id = request.args.get("student_id", "default_student").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
     analytics = get_student_interview_performance_analytics(student_id=student_id)
-    return render_template("interview_history.html", analytics=analytics, student_id=student_id)
+    all_sessions = analytics.get("sessions", [])
+
+    pagination = Pagination(
+        items=all_sessions,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/interview-history"
+    )
+    analytics["paginated_sessions"] = pagination.items
+
+    return render_template(
+        "interview_history.html",
+        analytics=analytics,
+        pagination=pagination,
+        student_id=student_id
+    )
 
 
 @app.route("/api/interview-history")
@@ -2906,11 +3388,27 @@ def api_interview_history():
     API endpoint returning historical mock interview attempts and analytics (#144).
     """
     student_id = request.args.get("student_id", "default_student").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+
     analytics = get_student_interview_performance_analytics(student_id=student_id)
+    all_sessions = analytics.get("sessions", [])
+
+    pagination = Pagination(
+        items=all_sessions,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/api/interview-history"
+    )
+    paginated_analytics = dict(analytics)
+    paginated_analytics["sessions"] = pagination.items
+
     return jsonify({
         "success": True,
         "student_id": student_id,
-        "analytics": analytics
+        "analytics": paginated_analytics,
+        "pagination": pagination.to_dict()
     })
 
 
@@ -2978,18 +3476,26 @@ def linkedin_analyzer():
 
 
 @app.route("/coding-practice", methods=["GET", "POST"])
+def _get_current_student_id() -> str:
+    """
+    Resolves the authenticated student's unique identifier from session (#235).
+    Guarantees strict privacy: students cannot access another student's private notes or data.
+    """
+    return (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+
 def coding_practice_view():
     """
     Personalized Coding Practice Recommendation View and Endpoint (#147, #234).
     Recommends targeted LeetCode/DSA problems based on detected skill gaps, target companies, and difficulty.
     Includes student's bookmarked questions and bookmark IDs.
     """
-    student_id = (
-        flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
+    student_id = _get_current_student_id()
 
     target_company = request.args.get("company", "").strip()
     difficulty = request.args.get("difficulty", "All").strip()
@@ -3058,12 +3564,7 @@ def api_get_coding_bookmarks():
     """
     Returns the student's bookmarked coding questions (#234).
     """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or "default_student"
-    )
+    student_id = _get_current_student_id()
     bookmarks = get_coding_bookmarks(student_id)
     return jsonify({
         "success": True,
@@ -3079,12 +3580,7 @@ def api_save_coding_bookmark():
     Bookmarks a coding practice question for a candidate (#234).
     """
     payload = request.get_json(silent=True) or request.form
-    student_id = (
-        payload.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or "default_student"
-    )
+    student_id = _get_current_student_id()
     problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
 
     if not problem_id:
@@ -3118,13 +3614,7 @@ def api_remove_coding_bookmark(problem_id: str):
     """
     Removes a bookmarked coding question for a candidate (#234).
     """
-    student_id = (
-        request.args.get("student_id")
-        or (request.get_json(silent=True) or {}).get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or "default_student"
-    )
+    student_id = _get_current_student_id()
     removed = remove_coding_bookmark(student_id, problem_id)
     return jsonify({
         "success": removed,
@@ -3138,12 +3628,7 @@ def api_toggle_coding_bookmark():
     Toggles bookmark state for a coding question (#234).
     """
     payload = request.get_json(silent=True) or request.form
-    student_id = (
-        payload.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or "default_student"
-    )
+    student_id = _get_current_student_id()
     problem_id = (payload.get("problem_id") or payload.get("id") or "").strip()
 
     if not problem_id:
@@ -3240,18 +3725,34 @@ def history_view():
     """
     try:
         analyses = get_analyses_history()
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 6, type=int)
+        pagination = Pagination(
+            items=analyses,
+            page=page,
+            per_page=per_page,
+            endpoint_args=request.args.to_dict(),
+            base_url="/history"
+        )
         if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({
                 "success": True,
-                "analyses": analyses,
-                "total": len(analyses)
+                "analyses": pagination.items,
+                "total": len(analyses),
+                "pagination": pagination.to_dict()
             }), 200
 
-        return render_template("history.html", analyses=analyses)
+        return render_template(
+            "history.html",
+            analyses=analyses,
+            paginated_analyses=pagination.items,
+            pagination=pagination
+        )
     except Exception as e:
         logger.error(f"Error loading analyses history: {str(e)}")
         flash("Failed to load analysis history.", "error")
-        return render_template("history.html", analyses=[])
+        empty_pagination = Pagination(items=[], page=1, per_page=6, base_url="/history")
+        return render_template("history.html", analyses=[], paginated_analyses=[], pagination=empty_pagination)
 
 
 @app.route("/history/delete/<analysis_id>", methods=["POST"])
@@ -3444,33 +3945,23 @@ def role_preparation_view():
     )
 
 
-@app.route("/feedback", methods=["GET", "POST"])
-def feedback_view():
-    """
-    Renders and processes candidate platform experience feedback (#197).
-    Allows students to rate features, provide structured reviews, and view satisfaction statistics.
-    """
-    student_id = (
-        flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
 
-    categories = [
-        "Resume Analysis & ATS Scoring",
-        "Mock Interview Simulator",
-        "Job Application Tracker",
-        "Role Preparation & Roadmaps",
-        "Coding Practice & DSA",
-        "UI & Performance",
-        "General Experience"
-    ]
+
+@app.route("/notification-settings", methods=["GET", "POST"])
+def notification_settings_view():
+    """
+    Candidate Email Notification Settings View and Preference Handler (#186).
+    Allows students to enable/disable transactional emails and schedule interview reminders.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
 
     if request.method == "POST":
-        rating_raw = request.form.get("rating", "5")
-        category = request.form.get("category", "General Experience").strip()
-        comment = request.form.get("comment", "").strip()
+        email = request.form.get("email", "").strip()
+        email_enabled = request.form.get("email_enabled") == "on"
+        notify_welcome = request.form.get("notify_welcome") == "on"
+        notify_application_created = request.form.get("notify_application_created") == "on"
+        notify_status_change = request.form.get("notify_status_change") == "on"
+        notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
 
         try:
             rating = int(rating_raw)
@@ -6283,16 +6774,29 @@ def interview_experiences_view():
         search_query=search_query
     )
 
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    pagination = Pagination(
+        items=experiences,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/interview-experiences"
+    )
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "count": len(experiences),
-            "experiences": experiences
+            "count": len(pagination.items),
+            "total": len(experiences),
+            "experiences": pagination.items,
+            "pagination": pagination.to_dict()
         }), 200
 
     return render_template(
         "interview_experiences.html",
-        experiences=experiences,
+        experiences=pagination.items,
+        pagination=pagination,
         company_filter=company_filter,
         category_filter=category_filter,
         search_query=search_query,
@@ -6364,18 +6868,31 @@ def placement_calendar_view():
     tasks_count = sum(1 for e in all_events if e.get("event_type") == "preparation")
     deadlines_count = sum(1 for e in all_events if e.get("event_type") == "deadline")
 
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
+    pagination = Pagination(
+        items=events,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/calendar"
+    )
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
             "month": month_filter,
-            "count": len(events),
-            "events": events
+            "count": len(pagination.items),
+            "total": len(events),
+            "events": pagination.items,
+            "pagination": pagination.to_dict()
         }), 200
 
     return render_template(
         "calendar.html",
-        events=events,
+        events=pagination.items,
         all_events=all_events,
+        pagination=pagination,
         student_id=student_id,
         current_month=month_filter,
         current_type=type_filter,
@@ -6533,13 +7050,24 @@ def coding_submissions_view():
     question_filter = request.args.get("question", "").strip()
     language_filter = request.args.get("language", "All").strip()
     status_filter = request.args.get("status", "All").strip()
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 10, type=int)
 
-    submissions = get_coding_submissions(
+    all_matching_submissions = get_coding_submissions(
         student_id=student_id,
         question_title=question_filter or None,
         language_filter=language_filter,
         status_filter=status_filter
     )
+
+    pagination = Pagination(
+        items=all_matching_submissions,
+        page=page,
+        per_page=per_page,
+        endpoint_args=request.args.to_dict(),
+        base_url="/coding-submissions"
+    )
+    submissions = pagination.items
 
     all_user_subs = get_coding_submissions(student_id=student_id)
     passed_count = sum(1 for s in all_user_subs if s.get("passed"))
@@ -6550,12 +7078,14 @@ def coding_submissions_view():
         return jsonify({
             "success": True,
             "count": len(submissions),
-            "submissions": submissions
+            "submissions": submissions,
+            "pagination": pagination.to_dict()
         }), 200
 
     return render_template(
         "coding_submissions.html",
         submissions=submissions,
+        pagination=pagination,
         student_id=student_id,
         question_filter=question_filter,
         language_filter=language_filter,
@@ -7049,6 +7579,129 @@ def company_profile_detail_endpoint(profile_id: str):
             "status": "success" if archived else "error",
             "message": f"Archived company profile '{profile['company_name']}'."
         }), 200
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
+    """
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
+    return jsonify({
+        "status": "success",
+        "scan": scan_result
+    }), 200
+
+
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
+    """
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
+
+    if not raw_text or not raw_text.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
+
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+
+    return jsonify({
+        "status": "success",
+        "redaction": redacted_result
+    }), 200
+
+
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
+# ============================================================================
+
+@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
+def student_deadline_reminders_endpoint():
+    """
+    GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
+    POST: Triggers an on-demand scan and synchronization of reminders for the candidate.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    urgency_filter = request.args.get("urgency")
+    include_acknowledged = request.args.get("include_acknowledged", "false").lower() == "true"
+
+    if request.method == "POST":
+        reminders = scan_and_generate_student_reminders(student_id)
+        return jsonify({
+            "status": "success",
+            "message": f"Scanned and updated deadline reminders for student '{student_id}'.",
+            "count": len(reminders),
+            "reminders": reminders
+        }), 200
 
 
 # ============================================================================
@@ -7157,41 +7810,37 @@ def redact_resume_pii_endpoint():
 @app.route("/api/coding/folders", methods=["GET", "POST"])
 def coding_bookmark_folders_collection_endpoint():
     """
-    GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
-    POST: Creates a new bookmark folder.
+    Administrative queue for inspecting submitted interview experiences,
+    flagged content, and moderation metrics. Requires administrative privileges.
     """
-    student_id = flask_session.get("user_id") or "default_student"
-
-    if request.method == "GET":
-        data = list_student_bookmark_folders(student_id)
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
         return jsonify({
-            "status": "success",
-            "data": data
-        }), 200
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required to access moderation queue."
+        }), 403
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form.to_dict()
-        folder_name = payload.get("name")
-        if not folder_name or not folder_name.strip():
-            return jsonify({"status": "error", "message": "Folder name is required."}), 400
+    status_filter = request.args.get("status")
+    flagged_only = request.args.get("flagged_only", "false").lower() == "true"
+    company_filter = request.args.get("company")
+    search_query = request.args.get("search")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
 
-        try:
-            folder = create_bookmark_folder(
-                student_id=student_id,
-                name=folder_name,
-                description=payload.get("description"),
-                color_hex=payload.get("color_hex", "#3b82f6"),
-                icon_name=payload.get("icon_name", "fa-folder")
-            )
-            return jsonify({
-                "status": "success",
-                "message": f"Folder '{folder_name}' created.",
-                "folder": folder
-            }), 201
-        except ValueError as ve:
-            return jsonify({"status": "error", "message": str(ve)}), 400
-        except Exception as e:
-            return jsonify({"status": "error", "message": f"Creation failed: {str(e)}"}), 500
+    queue_data = get_moderation_queue(
+        status_filter=status_filter,
+        flagged_only=flagged_only,
+        company_filter=company_filter,
+        search_query=search_query,
+        limit=limit,
+        offset=offset
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": queue_data
+    }), 200
 
 
 @app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
