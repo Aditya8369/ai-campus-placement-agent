@@ -4158,9 +4158,10 @@ function initAccessibility() {
   const uploadArea = document.getElementById("uploadArea");
   const resumeInput = document.getElementById("resumeInput");
   if (uploadArea && resumeInput) {
-    if (!uploadArea.hasAttribute("role")) {
-      uploadArea.setAttribute("role", "button");
-    }
+  // role="button" semantics are required for keyboard and assistive-technology access.
+  if (!uploadArea.hasAttribute("role")) {
+    uploadArea.setAttribute("role", "button");
+  }
     if (!uploadArea.hasAttribute("tabindex")) {
       uploadArea.setAttribute("tabindex", "0");
     }

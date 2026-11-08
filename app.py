@@ -655,6 +655,50 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/account/delete", methods=["GET", "POST"])
+def delete_account():
+    """Render and process the GDPR-style account deletion confirmation page."""
+    student_id = flask_session.get("user_id") or request.args.get("student_id") or "default_student"
+    if not student_id or student_id.strip() == "":
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    manifest = get_user_data_export_manifest(student_id)
+
+    if request.method == "POST":
+        confirm_phrase = (request.form.get("confirm_phrase") or "").strip()
+        password = request.form.get("password") or ""
+
+        if confirm_phrase != "DELETE MY ACCOUNT":
+            flash("Please type 'DELETE MY ACCOUNT' exactly as shown.", "error")
+            return render_template("delete_account.html", manifest=manifest)
+
+        user = get_user_by_id(student_id)
+        password_hash = user.get("password_hash") if user else None
+        if user is None or not password_hash or not check_password_hash(password_hash, password):
+            flash("Incorrect password.", "error")
+            return render_template("delete_account.html", manifest=manifest)
+
+        result = delete_user_account_and_personal_data(student_id)
+        flask_session.clear()
+        flash(f"Your account and {result.get('total_deleted', 0)} associated data records have been permanently removed.", "success")
+        return redirect(url_for("index"))
+
+    return render_template("delete_account.html", manifest=manifest)
+
+
+@app.route("/api/account/export-manifest")
+def api_account_export_manifest():
+    """Return the per-student GDPR export manifest for auditing and deletion review."""
+    student_id = flask_session.get("user_id") or request.args.get("student_id") or "default_student"
+    if not student_id or student_id.strip() == "":
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+    manifest = get_user_data_export_manifest(student_id)
+    return jsonify({"status": "success", "student_id": student_id, "manifest": manifest})
+
+
 @app.route("/forgot-password", methods=["GET", "POST"])
 @rate_limit(max_requests=5, window_seconds=900, scope="forgot_password", is_api=False)
 def forgot_password():

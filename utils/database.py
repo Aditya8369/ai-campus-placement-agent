@@ -590,6 +590,76 @@ def get_previous_analysis(student_id: str, current_version: int) -> Optional[Dic
     finally:
         conn.close()
 
+def save_interview_session(
+    session_id: str,
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    interview_type: str,
+    overall_score: float,
+    strengths: Optional[List[str]] = None,
+    improvements: Optional[List[str]] = None,
+    rounds: Optional[List[Dict[str, Any]]] = None,
+    analysis_id: Optional[str] = None,
+) -> None:
+    """Creates a synthetic interview-history record for pagination and reporting tests."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_analysis_id = analysis_id or session_id
+        cursor.execute(
+            "SELECT 1 FROM analyses WHERE id = ? AND student_id = ?",
+            (effective_analysis_id, (student_id or "default_student").strip()),
+        )
+        if cursor.fetchone() is None:
+            cursor.execute(
+                """
+                    INSERT INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    effective_analysis_id,
+                    f"{company_name or 'Interview'}_{effective_analysis_id}.pdf",
+                    company_name or "General",
+                    role_title or "Interview",
+                    json.dumps({
+                        "summary": {
+                            "interview_type": interview_type or "Technical",
+                            "overall_score": float(overall_score or 0.0),
+                            "strengths": strengths or [],
+                            "improvements": improvements or [],
+                            "rounds": rounds or [],
+                        }
+                    }),
+                    (student_id or "default_student").strip(),
+                )
+            )
+
+        questions_payload = []
+        if rounds:
+            for idx, round_info in enumerate(rounds):
+                entry = {"index": idx, "type": interview_type or "Technical"}
+                if isinstance(round_info, dict):
+                    entry.update(round_info)
+                questions_payload.append(entry)
+        if not questions_payload:
+            questions_payload = [{"index": 0, "type": interview_type or "Technical", "question": f"{role_title or 'Interview'} review"}]
+
+        cursor.execute(
+            """
+                INSERT OR REPLACE INTO interviews (id, analysis_id, current_question_index, questions_json, answers_json, completed)
+                VALUES (?, ?, 0, ?, ?, 1)
+            """,
+            (session_id, effective_analysis_id, json.dumps(questions_payload), json.dumps([])),
+        )
+        conn.commit()
+    except Exception as e:
+        logger.error(f"Error saving interview session {session_id}: {str(e)}")
+        raise e
+    finally:
+        conn.close()
+
+
 def create_interview_session(interview_id: str, analysis_id: str, questions_list: list) -> None:
     """
     Creates a new mock interview session referencing an analysis.
@@ -1750,12 +1820,12 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
 
 
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
-    """Retrieve a user by their ID"""
+    """Retrieve a user by their ID."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT id, name, email, created_at FROM users WHERE id = ?",
+            "SELECT * FROM users WHERE id = ?",
             (user_id,)
         )
         row = cursor.fetchone()
@@ -3409,6 +3479,18 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         # Count in analyses
         cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
         summary["tables"]["analyses"] = cursor.fetchone()[0]
+
+        # Count in interviews (linked to student's analyses)
+        cursor.execute("SELECT COUNT(*) FROM interviews WHERE analysis_id IN (SELECT id FROM analyses WHERE student_id = ?)", (student_id,))
+        summary["tables"]["interviews"] = cursor.fetchone()[0]
+
+        # Count in job_applications
+        cursor.execute("SELECT COUNT(*) FROM job_applications WHERE student_id = ?", (student_id,))
+        summary["tables"]["job_applications"] = cursor.fetchone()[0]
+
+        # Count in preparation_calendar_events
+        cursor.execute("SELECT COUNT(*) FROM preparation_calendar_events WHERE student_id = ?", (student_id,))
+        summary["tables"]["preparation_calendar_events"] = cursor.fetchone()[0]
 
         # Count in company_preparation_checklists
         cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
