@@ -12,6 +12,8 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -20,7 +22,7 @@
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
-        <button type="button" id="btnResetSession" class="btn btn-outline-danger btn-sm rounded-pill px-2 px-sm-3" title="Reset this round and restart from Question 1">
+        <button type="button" id="btnResetSession" class="btn btn-outline-danger btn-sm rounded-pill px-2 px-sm-3" title="Reset this round and restart from Question 1" aria-label="Reset this round and restart from Question 1">
           <i class="fa-solid fa-rotate-left me-1"></i> <span class="d-none d-sm-inline">Restart</span> Round
         </button>
         {% set has_answers = interview.answers and interview.answers|length > 0 %}
@@ -39,7 +41,7 @@
                   aria-expanded="false"
                   id="btnDownloadTranscriptDropdown"
                   title="Choose transcript format"
-                  {% if not has_answers %}disabled aria-disabled="true"{% endif %}>
+                  {% if not has_answers %}disabled aria-disabled="true"{% endif %} aria-label="Choose transcript format">
             <span class="visually-hidden">Toggle Dropdown</span>
           </button>
           <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="btnDownloadTranscriptDropdown">
@@ -83,7 +85,7 @@
   </nav>
 
   <!-- Main Interview Simulator -->
-  <main class="container py-5 fade-in" data-analysis-id="{{ analysis_id }}" data-company-name="{{ company_name|default('Placement', true) }}">
+  <main class="container py-5 fade-in" id="main-content" tabindex="-1" data-analysis-id="{{ analysis_id }}" data-company-name="{{ company_name|default('Placement', true) }}">
     
     <!-- Interview Mode Switcher: Q&A Interview vs Live DSA Coding Sandbox -->
     <div class="d-flex justify-content-between align-items-center mb-4 p-2 bg-light rounded-pill border flex-wrap gap-2">
@@ -147,7 +149,7 @@
             <div class="chat-bubble chat-bubble-agent">
               <div class="d-flex justify-content-between align-items-start mb-1">
                 <b>Interview Agent:</b>
-                <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read message aloud" data-tts="Welcome to your AI mock placement interview! I have compiled 15 tailored questions based on your target company and skills. Speak clearly, explain your logic, and let's practice.">
+                <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read message aloud" data-tts="Welcome to your AI mock placement interview! I have compiled 15 tailored questions based on your target company and skills. Speak clearly, explain your logic, and let's practice." aria-label="Read message aloud">
                   <i class="fa-solid fa-volume-high me-1"></i> Listen
                 </button>
               </div>
@@ -161,7 +163,7 @@
                   <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
                     <i class="fa-solid fa-circle-question me-1"></i> Question {{ ans.question_index + 1 }} &bull; {{ ans.type }}
                   </span>
-                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ ans.question|escape }}">
+                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ ans.question|escape }}" aria-label="Read question aloud">
                     <i class="fa-solid fa-volume-high me-1"></i> Listen
                   </button>
                 </div>
@@ -196,7 +198,7 @@
                     <div>
                       <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> {{ ans.evaluation.star_method_analysis.feedback }}
                     </div>
-                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ ans.evaluation.star_method_analysis.feedback|e }}" title="Copy STAR feedback">
+                    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ ans.evaluation.star_method_analysis.feedback|e }}" title="Copy STAR feedback" aria-label="Copy STAR feedback">
                       <i class="fa-regular fa-copy"></i>
                     </button>
                   </div>
@@ -206,7 +208,7 @@
                   {% for sug in ans.evaluation.suggestions %}
                     <li class="mb-1 p-2 bg-white rounded-3 border d-flex justify-content-between align-items-center gap-2">
                       <span class="small text-dark">{{ sug }}</span>
-                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ sug|e }}" title="Copy suggestion">
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ sug|e }}" title="Copy suggestion" aria-label="Copy suggestion">
                         <i class="fa-regular fa-copy"></i>
                       </button>
                     </li>
@@ -223,7 +225,7 @@
                   <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
                     <i class="fa-solid fa-play me-1"></i> Active Question {{ current_q.index + 1 }} &bull; {{ current_q.type }}
                   </span>
-                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ current_q.question|escape }}">
+                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ current_q.question|escape }}" aria-label="Read question aloud">
                     <i class="fa-solid fa-volume-high me-1"></i> Listen
                   </button>
                 </div>
@@ -699,7 +701,7 @@
                 </select>
               </div>
               <div class="d-flex align-items-center gap-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnResetCode" title="Reset to starter boilerplate">
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnResetCode" title="Reset to starter boilerplate" aria-label="Reset to starter boilerplate">
                   <i class="fa-solid fa-rotate-left me-1"></i> Reset
                 </button>
                 <button type="button" class="btn btn-sm btn-success rounded-pill px-4 fw-semibold shadow-sm" id="btnRunCode">
@@ -789,7 +791,7 @@
   </main>
 
   <!-- Completion Modal -->
-  <div class="modal fade" id="completionModal" tabindex="-1" aria-labelledby="completionModalLabel" aria-hidden="true">
+  <div class="modal fade" id="completionModal" tabindex="-1" aria-labelledby="completionModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content rounded-4 border-0 shadow">
         <div class="modal-header border-0 pb-0">

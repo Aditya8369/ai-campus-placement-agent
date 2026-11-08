@@ -17,6 +17,9 @@
 </head>
 
 <body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -34,7 +37,7 @@
     </div>
   </nav>
 
-  <div class="container py-4 py-md-5">
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
     <!-- Header -->
     <div class="row align-items-center mb-4">
       <div class="col-md-8">
@@ -181,7 +184,7 @@
                 {% endif %}
               </td>
               <td>
-                <button class="btn btn-outline-danger btn-sm rounded-circle p-2 btn-delete-evt" data-evt-id="{{ evt.id }}" title="Delete Event">
+                <button class="btn btn-outline-danger btn-sm rounded-circle p-2 btn-delete-evt" data-evt-id="{{ evt.id }}" title="Delete Event" aria-label="Delete event: {{ evt.title }}">
                   <i class="fa-regular fa-trash-can"></i>
                 </button>
               </td>
@@ -201,10 +204,10 @@
       </div>
       {% endif %}
     </div>
-  </div>
+  </main>
 
   <!-- Add Event Modal -->
-  <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true">
+  <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content rounded-4 border-0 shadow">
         <div class="modal-header border-bottom">
@@ -216,21 +219,21 @@
         <form method="POST" action="/calendar">
           <div class="modal-body p-4">
             <div class="mb-3">
-              <label class="form-label fw-semibold">Activity Title *</label>
-              <input type="text" name="title" class="form-control rounded-3" placeholder="e.g. Google Technical Round 1, LeetCode Trees Practice" required>
+              <label for="evtTitle" class="form-label fw-semibold">Activity Title *</label>
+              <input type="text" id="evtTitle" name="title" class="form-control rounded-3" placeholder="e.g. Google Technical Round 1, LeetCode Trees Practice" required>
             </div>
             <div class="row g-2 mb-3">
               <div class="col-6">
-                <label class="form-label fw-semibold">Event Type</label>
-                <select name="event_type" class="form-select rounded-3">
+                <label for="evtType" class="form-label fw-semibold">Event Type</label>
+                <select id="evtType" name="event_type" class="form-select rounded-3">
                   <option value="interview">Interview Round</option>
                   <option value="preparation" selected>Preparation Task</option>
                   <option value="deadline">Application Deadline</option>
                 </select>
               </div>
               <div class="col-6">
-                <label class="form-label fw-semibold">Priority</label>
-                <select name="priority" class="form-select rounded-3">
+                <label for="evtPriority" class="form-label fw-semibold">Priority</label>
+                <select id="evtPriority" name="priority" class="form-select rounded-3">
                   <option value="High">High</option>
                   <option value="Medium" selected>Medium</option>
                   <option value="Low">Low</option>
@@ -239,21 +242,21 @@
             </div>
             <div class="row g-2 mb-3">
               <div class="col-7">
-                <label class="form-label fw-semibold">Date *</label>
-                <input type="date" name="event_date" class="form-control rounded-3" value="{{ today_date }}" required>
+                <label for="evtDate" class="form-label fw-semibold">Date *</label>
+                <input type="date" id="evtDate" name="event_date" class="form-control rounded-3" value="{{ today_date }}" required>
               </div>
               <div class="col-5">
-                <label class="form-label fw-semibold">Time</label>
-                <input type="time" name="event_time" class="form-control rounded-3">
+                <label for="evtTime" class="form-label fw-semibold">Time</label>
+                <input type="time" id="evtTime" name="event_time" class="form-control rounded-3">
               </div>
             </div>
             <div class="mb-3">
-              <label class="form-label fw-semibold">Target Company</label>
-              <input type="text" name="company_name" class="form-control rounded-3" placeholder="e.g. Amazon, Google, Microsoft">
+              <label for="evtCompany" class="form-label fw-semibold">Target Company</label>
+              <input type="text" id="evtCompany" name="company_name" class="form-control rounded-3" placeholder="e.g. Amazon, Google, Microsoft">
             </div>
             <div class="mb-0">
-              <label class="form-label fw-semibold">Notes / Objectives</label>
-              <textarea name="description" class="form-control rounded-3" rows="2" placeholder="e.g. Review graphs and dynamic programming questions..."></textarea>
+              <label for="evtDesc" class="form-label fw-semibold">Notes / Objectives</label>
+              <textarea id="evtDesc" name="description" class="form-control rounded-3" rows="2" placeholder="e.g. Review graphs and dynamic programming questions..."></textarea>
             </div>
           </div>
           <div class="modal-footer border-top">

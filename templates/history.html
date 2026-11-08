@@ -24,6 +24,8 @@
 </head>
 
 <body class="bg-light min-vh-100 d-flex flex-column">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -53,7 +55,7 @@
   </nav>
 
   <!-- Main Content -->
-  <main class="container py-4 py-md-5 flex-grow-1">
+  <main class="container py-4 py-md-5 flex-grow-1" id="main-content" tabindex="-1">
     <!-- Flash Messages -->
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -174,7 +176,7 @@
                 <i class="fa-solid fa-chart-pie me-1"></i> Open Dashboard
               </a>
               <form method="POST" action="/history/delete/{{ analysis.id }}" class="d-inline m-0" onsubmit="return confirm('Are you sure you want to permanently delete this analysis and all related interview data?');">
-                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill delete-analysis-btn" data-id="{{ analysis.id }}" title="Delete Analysis">
+                <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill delete-analysis-btn" data-id="{{ analysis.id }}" title="Delete Analysis" aria-label="Delete analysis for {{ analysis.company_name|default('General') }}">
                   <i class="fa-solid fa-trash-can me-1"></i> Delete
                 </button>
               </form>

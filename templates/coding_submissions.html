@@ -11,6 +11,9 @@
 </head>
 
 <body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -28,7 +31,7 @@
     </div>
   </nav>
 
-  <div class="container py-4 py-md-5">
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
     <!-- Header -->
     <div class="row align-items-center mb-4">
       <div class="col-md-8">
@@ -162,7 +165,7 @@
             </tr>
 
             <!-- Code Modal -->
-            <div class="modal fade" id="subModal-{{ sub.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal fade" id="subModal-{{ sub.id }}" tabindex="-1" aria-hidden="true" role="dialog" aria-modal="true" aria-label="Code submission for {{ sub.question_title }}">
               <div class="modal-dialog modal-lg modal-dialog-centered">
                 <div class="modal-content rounded-4 border-0 shadow">
                   <div class="modal-header border-bottom">
@@ -200,6 +203,7 @@
       </div>
       {% endif %}
     </div>
+  </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

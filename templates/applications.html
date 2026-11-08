@@ -12,6 +12,8 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -31,7 +33,7 @@
   </nav>
 
   <!-- Main Container -->
-  <main class="container py-4 py-md-5">
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
     <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4">
       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
         <div>
@@ -199,7 +201,7 @@
                 </td>
                 <td class="text-secondary small">{{ app.application_date }}</td>
                 <td>
-                  <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}">
+                  <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}" aria-label="Update application status for {{ app.company_name }} - {{ app.role_title }}">
                     <option value="Applied" {% if app.status == 'Applied' %}selected{% endif %}>Applied</option>
                     <option value="Assessment" {% if app.status == 'Assessment' %}selected{% endif %}>Assessment</option>
                     <option value="Interview" {% if app.status == 'Interview' %}selected{% endif %}>Interview</option>
@@ -209,7 +211,7 @@
                 </td>
                 <td>
                   {% if app.job_url %}
-                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 me-1">
+                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 me-1" aria-label="Open job posting for {{ app.company_name }}">
                       <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </a>
                   {% endif %}
@@ -220,7 +222,7 @@
                   {% endif %}
                 </td>
                 <td class="text-end">
-                  <button class="btn btn-sm btn-outline-danger rounded-circle p-1 px-2 btn-delete-app" data-app-id="{{ app.id }}" title="Delete">
+                  <button class="btn btn-sm btn-outline-danger rounded-circle p-1 px-2 btn-delete-app" data-app-id="{{ app.id }}" title="Delete application" aria-label="Delete application for {{ app.company_name }}">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
                 </td>
@@ -243,7 +245,7 @@
   </main>
 
   <!-- Add Application Modal -->
-  <div class="modal fade" id="newApplicationModal" tabindex="-1" aria-labelledby="newApplicationModalLabel" aria-hidden="true">
+  <div class="modal fade" id="newApplicationModal" tabindex="-1" aria-labelledby="newApplicationModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content rounded-4 border-0 shadow">
         <form method="POST" action="/applications" id="newAppForm">
