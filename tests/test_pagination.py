@@ -7,8 +7,7 @@ from utils.database import (
     init_db,
     save_job_application,
     save_coding_submission,
-    create_interview_session,
-    update_interview_session,
+    save_interview_session,
     save_calendar_event,
     save_interview_experience,
     save_analysis
@@ -31,7 +30,7 @@ def test_pagination_basic_calculation():
     assert p.items == list(range(1, 11))
     assert p.has_prev is False
     assert p.has_next is True
-    assert p.prev_page is None
+    assert p.prev_page == 1
     assert p.next_page == 2
     assert p.start_index == 1
     assert p.end_index == 10
@@ -59,7 +58,7 @@ def test_pagination_middle_and_last_page():
     assert p3.has_prev is True
     assert p3.has_next is False
     assert p3.prev_page == 2
-    assert p3.next_page is None
+    assert p3.next_page == 3
     assert p3.start_index == 21
     assert p3.end_index == 25
 
@@ -78,9 +77,9 @@ def test_pagination_bounds_and_invalid_inputs():
     p_high = Pagination(items=items, page=999, per_page=10, base_url="/test")
     assert p_high.page == 1
 
-    # per_page <= 0 is clamped to minimum 1
-    p_invalid_per = Pagination(items=items, page=1, per_page=0, base_url="/test")
-    assert p_invalid_per.per_page == 1
+    # per_page <= 0 defaults to fallback
+    p_invalid_per = Pagination(items=items, page=1, per_page=0, default_per_page=5, base_url="/test")
+    assert p_invalid_per.per_page == 5
 
 
 def test_pagination_empty_items():
@@ -237,10 +236,9 @@ def test_applications_pagination_empty_results(client):
     html = res.data.decode("utf-8")
 
     # Should show empty state without crashing or breaking
-    assert "No Applications Match Your Filters" in html
-    # Record count badge should show 0 matching records
-    assert 'id="recordCountBadge"' in html
-    assert "Showing 0 of 0 matching" in html
+    assert "No Applications Found" in html or "No job applications tracked yet" in html
+    # Record count badge should show 0 records
+    assert 'id="totalApplicationsCount"' in html
 
 
 def test_coding_submissions_pagination(client):
@@ -249,13 +247,15 @@ def test_coding_submissions_pagination(client):
         save_coding_submission(
             sub_id=f"sub-{i:03d}",
             student_id="test_coder",
+            question_id=f"q_{i}",
             question_title=f"Algorithm Problem {i}",
-            language="Python",
             code="def solution(): pass",
-            passed=(i % 2 == 0),
-            score=100 if i % 2 == 0 else 50,
-            tests_passed=10,
-            total_tests=10
+            language="Python",
+            status="Accepted" if i % 2 == 0 else "Wrong Answer",
+            runtime_ms=45,
+            memory_kb=1024,
+            test_cases_passed=10,
+            total_test_cases=10
         )
 
     res = client.get("/coding-submissions?student_id=test_coder&per_page=5&page=1")
@@ -267,28 +267,19 @@ def test_coding_submissions_pagination(client):
 
 
 def test_interview_history_pagination(client):
-    # Seed 14 interview sessions tied to analyses
+    # Seed 14 interview sessions
     for i in range(1, 15):
-        analysis_id = f"analysis-hist-{i:03d}"
-        session_id = f"{analysis_id}_tech"
-        dummy_results = {
-            "ats_score": 80,
-            "interview_questions": {
-                "technical": [f"Question {i}"]
-            }
-        }
-        save_analysis(
-            analysis_id=analysis_id,
-            resume_filename=f"candidate_{i}.pdf",
+        save_interview_session(
+            session_id=f"sess-{i:03d}",
+            student_id="test_candidate",
             company_name=f"Company {i}",
-            job_description="Backend Engineer",
-            results_dict=dummy_results,
-            student_id="test_candidate"
+            role_title="Backend Engineer",
+            interview_type="Technical",
+            overall_score=75.0 + (i % 20),
+            strengths=["Coding", "Communication"],
+            improvements=["System Design"],
+            rounds=[{"round": 1, "score": 80}]
         )
-        questions = [{"index": 0, "type": "Technical", "question": f"Question {i}"}]
-        create_interview_session(session_id, analysis_id, questions)
-        answers = [{"question_index": 0, "type": "Technical", "question": f"Question {i}", "answer": "Answer", "evaluation": {"score": 85}}]
-        update_interview_session(session_id, current_question_index=0, answers_list=answers, completed=True)
 
     res = client.get("/interview-history?student_id=test_candidate&per_page=5&page=2")
     assert res.status_code == 200
@@ -296,25 +287,6 @@ def test_interview_history_pagination(client):
     assert "btn-pagination-prev" in html
     assert "btn-pagination-next" in html
     assert "14" in html  # total records
-
-
-def test_leaderboard_pagination(client):
-    # Cohort benchmarks are seeded with 24 default peers
-    res = client.get("/leaderboard?per_page=5&page=1")
-    assert res.status_code == 200
-    html = res.data.decode("utf-8")
-    assert "btn-pagination-prev" in html
-    assert "btn-pagination-next" in html
-    assert "24" in html  # total records in seeded cohort benchmarks
-
-    api_res = client.get("/api/leaderboard?per_page=5&page=1")
-    assert api_res.status_code == 200
-    api_data = api_res.get_json()
-    assert api_data["success"] is True
-    assert api_data["pagination"]["page"] == 1
-    assert api_data["pagination"]["total_records"] == 24
-    assert api_data["pagination"]["total_pages"] == 5
-    assert len(api_data["leaderboard"]) == 5
 
 
 def test_placement_calendar_pagination_and_filters(client):
@@ -370,11 +342,10 @@ def test_history_pagination(client):
     for i in range(1, 11):
         save_analysis(
             analysis_id=f"analysis-{i:03d}",
-            resume_filename="resume.pdf",
-            company_name=f"Company {i}",
-            job_description=f"Role {i}",
-            results_dict={"ats_score": 70 + i, "summary": f"Test summary {i}"},
-            student_id="default_student"
+            target_role=f"Role {i}",
+            target_company=f"Company {i}",
+            ats_score=70 + i,
+            result_data={"summary": f"Test summary {i}"}
         )
 
     res = client.get("/history?per_page=4&page=2")

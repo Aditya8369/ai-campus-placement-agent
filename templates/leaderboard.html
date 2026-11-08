@@ -12,6 +12,8 @@
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -39,7 +41,7 @@
   </nav>
 
   <!-- Main Container -->
-  <main class="container py-5 fade-in">
+  <main class="container py-5 fade-in" id="main-content" tabindex="-1">
     
     <!-- Hero Header Card -->
     <div class="card glass-card p-4 p-md-5 mb-4 border-0">
@@ -208,12 +210,12 @@
               <span class="input-group-text bg-white border-end-0 rounded-start-pill text-muted">
                 <i class="fa-solid fa-magnifying-glass"></i>
               </span>
-              <input type="text" name="search" id="leaderboardSearch" class="form-control border-start-0 rounded-end-pill" placeholder="Search student handle or company..." value="{{ filters.search if filters.search != 'all' else '' }}">
+              <input type="text" name="search" id="leaderboardSearch" class="form-control border-start-0 rounded-end-pill" placeholder="Search student handle or company..." value="{{ filters.search if filters.search != 'all' else '' }}" aria-label="Search student handle or company">
             </div>
           </div>
           <!-- Department Filter -->
           <div class="col-md-4 col-6">
-            <select name="branch" id="filterBranch" class="form-select form-select-sm rounded-pill px-3" onchange="this.form.submit()">
+            <select name="branch" id="filterBranch" class="form-select form-select-sm rounded-pill px-3" onchange="this.form.submit()" aria-label="Filter cohort by department">
               <option value="all" {{ 'selected' if filters.department == 'all' }}>🎓 All Departments</option>
               <option value="Computer Science" {{ 'selected' if filters.department|lower == 'computer science' }}>Computer Science (CSE)</option>
               <option value="Information Technology" {{ 'selected' if filters.department|lower == 'information technology' }}>Information Technology (IT)</option>
@@ -225,7 +227,7 @@
           </div>
           <!-- Graduation Year Filter -->
           <div class="col-md-2 col-6">
-            <select name="year" id="filterYear" class="form-select form-select-sm rounded-pill px-3" onchange="this.form.submit()">
+            <select name="year" id="filterYear" class="form-select form-select-sm rounded-pill px-3" onchange="this.form.submit()" aria-label="Filter cohort by graduation year">
               <option value="all" {{ 'selected' if filters.grad_year == 'all' }}>📅 All Batches</option>
               <option value="2025" {{ 'selected' if filters.grad_year|string == '2025' }}>2025 Batch</option>
               <option value="2026" {{ 'selected' if filters.grad_year|string == '2026' }}>2026 Batch</option>

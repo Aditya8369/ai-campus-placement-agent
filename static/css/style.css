@@ -1941,117 +1941,137 @@ html {
   }
 }
 
-/* ==========================================================================
-   Table Pagination Controls & Mobile Responsiveness
-   ========================================================================== */
-.pagination-container {
-  min-height: 48px;
-}
-
-.pagination .page-link {
-  min-width: 38px;
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--bs-primary, #0d6efd);
-  background-color: #ffffff;
-  border: 1px solid #dee2e6;
-  transition: all 0.15s ease-in-out;
-}
-
-.pagination .page-link:hover:not(.disabled) {
-  background-color: #f8f9fa;
-  border-color: #c6cdd5;
-  color: #0b5ed7;
-}
-
-.pagination .page-item.active .page-link {
-  background-color: var(--bs-primary, #0d6efd);
-  border-color: var(--bs-primary, #0d6efd);
-  color: #ffffff;
-}
-
-.pagination .page-item.disabled .page-link {
-  color: #adb5bd;
-  background-color: #f8f9fa;
-  border-color: #dee2e6;
-  cursor: not-allowed;
-  pointer-events: none;
-}
-
-[data-bs-theme="dark"] .pagination .page-link {
-  background-color: #21262d;
-  border-color: #30363d;
-  color: #58a6ff;
-}
-
-[data-bs-theme="dark"] .pagination .page-link:hover:not(.disabled) {
-  background-color: #30363d;
-  border-color: #8b949e;
-  color: #79c0ff;
-}
-
-[data-bs-theme="dark"] .pagination .page-item.active .page-link {
-  background-color: #1f6feb;
-  border-color: #1f6feb;
-  color: #ffffff;
-}
-
-[data-bs-theme="dark"] .pagination .page-item.disabled .page-link {
-  color: #484f58;
-  background-color: #161b22;
-  border-color: #21262d;
-}
-
-@media (max-width: 575.98px) {
-  .pagination-container {
-    flex-direction: column;
-    align-items: center !important;
-    text-align: center;
-    gap: 0.75rem;
-  }
-
-  .pagination .page-link {
-    min-height: 38px;
-    padding: 0.35rem 0.75rem;
-    font-size: 0.82rem;
-  }
-
-  .pagination-info {
-    font-size: 0.82rem;
-  }
-}
-
-
-
-
-
-
-
 /* ==============================================================================
-   Password Strength Indicator & Toggle (#290)
+   Accessibility & Keyboard Navigation Enhancements (WCAG 2.1 AA)
    ============================================================================== */
-.password-strength-container {
-  background: rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+
+/* Skip to main content link for keyboard users */
+.skip-link {
+  position: absolute;
+  top: -60px;
+  left: 16px;
+  background-color: var(--primary-blue, #1a73e8);
+  color: #ffffff !important;
+  padding: 10px 18px;
   border-radius: 8px;
-  padding: 10px 12px;
-  transition: all 0.2s ease-in-out;
+  z-index: 10000;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  transition: top 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.password-strength-progress {
-  background-color: #e9ecef;
+.skip-link:focus,
+.skip-link:focus-visible {
+  top: 16px;
+  outline: 3px solid #ffffff !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.6);
+}
+
+/* Global High-Visibility Focus Ring for Keyboard Users */
+:focus-visible {
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.25) !important;
+}
+
+[data-bs-theme="dark"] :focus-visible {
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(110, 168, 254, 0.35) !important;
+}
+
+/* Specific Focus Treatments for Interactive Elements */
+.btn:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.3) !important;
+}
+
+[data-bs-theme="dark"] .btn:focus-visible,
+[data-bs-theme="dark"] button:focus-visible,
+[data-bs-theme="dark"] [role="button"]:focus-visible {
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(110, 168, 254, 0.4) !important;
+}
+
+/* Form Controls Keyboard Focus */
+.form-control:focus-visible,
+.form-select:focus-visible,
+.form-check-input:focus-visible,
+textarea:focus-visible {
+  border-color: var(--primary-blue, #1a73e8) !important;
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .form-control:focus-visible,
+[data-bs-theme="dark"] .form-select:focus-visible,
+[data-bs-theme="dark"] .form-check-input:focus-visible,
+[data-bs-theme="dark"] textarea:focus-visible {
+  border-color: #6ea8fe !important;
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 1px !important;
+  box-shadow: 0 0 0 4px rgba(110, 168, 254, 0.3) !important;
+}
+
+/* Resume upload drop-zone keyboard focus */
+.upload-area:focus-visible {
+  border-color: var(--primary-blue, #1a73e8) !important;
+  background-color: var(--secondary-light, #e8f0fe) !important;
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 3px !important;
+}
+
+[data-bs-theme="dark"] .upload-area:focus-visible {
+  border-color: #6ea8fe !important;
+  background-color: rgba(110, 168, 254, 0.1) !important;
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 3px !important;
+}
+
+/* Navigation & Dropdown Keyboard Focus */
+.nav-link:focus-visible,
+.dropdown-item:focus-visible,
+.page-link:focus-visible,
+.navbar-brand:focus-visible {
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 2px !important;
   border-radius: 4px;
-  overflow: hidden;
 }
 
-.strength-bar-weak {
-  background-color: #dc3545 !important;
-  transition: width 0.3s ease, background-color 0.3s ease;
+[data-bs-theme="dark"] .nav-link:focus-visible,
+[data-bs-theme="dark"] .dropdown-item:focus-visible,
+[data-bs-theme="dark"] .page-link:focus-visible,
+[data-bs-theme="dark"] .navbar-brand:focus-visible {
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 2px !important;
 }
+
+/* Modal close and dialog focus styling */
+.btn-close:focus-visible {
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.25) !important;
+  opacity: 1 !important;
+}
+
+[data-bs-theme="dark"] .btn-close:focus-visible {
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 3px rgba(110, 168, 254, 0.35) !important;
+}
+
+/* Target main content when focused via skip-link */
+#main-content:focus {
+  outline: none !important;
+}
+
 
 .strength-bar-medium {
   background-color: #fd7e14 !important;

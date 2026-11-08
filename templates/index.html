@@ -14,6 +14,8 @@
 </head>
 
 <body>
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
@@ -131,6 +133,7 @@
   </nav>
 
   <!-- Hero Section -->
+  <main id="main-content" tabindex="-1">
   <section class="hero-section">
     <div class="container">
       <div class="row align-items-center">
@@ -199,13 +202,13 @@
 
                 <div class="tab-content">
                   <div class="tab-pane fade show active" id="pdf-pane" role="tabpanel">
-                    <div class="upload-area" id="uploadArea">
+                    <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-label="Upload resume file in PDF or DOCX format. Drag and drop or press enter to browse files.">
                       <i class="fa-solid fa-cloud-arrow-up upload-icon" id="uploadIcon"></i>
                       <p class="mb-1 fw-medium text-dark" id="uploadPromptText">Drag and drop your PDF or DOCX resume
                         here, or click to browse</p>
                       <span class="text-muted small" id="uploadSubText">Supports text-based .pdf and .docx
                         formats</span>
-                      <input type="file" name="resume" id="resumeInput"
+                      <input type="file" name="resume" id="resumeInput" aria-label="Choose resume file (PDF or DOCX)"
                         accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                         class="d-none">
                     </div>
@@ -268,6 +271,7 @@
                   </div>
                   <div class="tab-pane fade" id="text-pane" role="tabpanel">
                     <textarea name="resume_text" id="resumeTextInput" rows="5" class="form-control rounded-3"
+                      aria-label="Paste complete resume text here"
                       placeholder="Paste your complete resume text here (education, skills, projects, experience)..."></textarea>
                     <div class="d-flex justify-content-between align-items-center mt-1 px-1">
                       <span id="resumeTextFeedback" class="small text-muted">
@@ -348,7 +352,7 @@
                   <div class="d-flex flex-wrap gap-2 mb-2" id="companyPillBadgesGroup">
                     {% for c in companies %}
                     <label class="company-pill-badge border rounded-pill px-3 py-1 small fw-semibold cursor-pointer user-select-none d-flex align-items-center gap-1 transition-all" data-company="{{ c }}" style="cursor: pointer;">
-                      <input type="checkbox" name="batch_companies" value="{{ c }}" class="form-check-input d-none company-pill-check" {% if loop.index <= 4 %}checked{% endif %}>
+                      <input type="checkbox" name="batch_companies" value="{{ c }}" class="form-check-input d-none company-pill-check" {% if loop.index <= 4 %}checked{% endif %} aria-label="Select target company {{ c }}">
                       <span class="pill-check-icon"><i class="fa-solid fa-check text-primary"></i></span>
                       <span class="pill-name">{{ c }}</span>
                     </label>
@@ -455,6 +459,7 @@
       </div>
     </div>
   </section>
+  </main>
 
   <!-- Agent Progress Panel Overlay (Hidden by Default) -->
   <div id="progressOverlay" class="progress-overlay d-none">
@@ -510,7 +515,7 @@
   </div>
 
   <!-- Company Explorer Modal -->
-  <div class="modal fade" id="companyModal" tabindex="-1" aria-labelledby="companyModalLabel" aria-hidden="true">
+  <div class="modal fade" id="companyModal" tabindex="-1" aria-labelledby="companyModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content rounded-4 border-0 shadow">
         <div class="modal-header border-0 pb-0">

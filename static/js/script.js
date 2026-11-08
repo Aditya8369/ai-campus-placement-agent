@@ -47,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initBackToTop();
   initCodingBookmarks();
   initStreakTracker();
-  initPasswordStrengthIndicator();
+  initAccessibility();
 });
 
 /**
@@ -4082,6 +4082,215 @@ function initStreakTracker() {
       loadCalendar(now.getFullYear(), now.getMonth() + 1);
     });
   }
+}
+
+/**
+ * Accessibility & Keyboard Navigation Suite (#WCAG-2.1)
+ * Ensures all interactive elements can be operated with keyboard alone,
+ * traps focus within open modals/dialogs, restores focus upon closing,
+ * enables Escape-to-close on all modals/drawers, and supports custom buttons.
+ */
+function initAccessibility() {
+  // 1. Skip-To-Main-Content Keyboard Link
+  const skipLinks = document.querySelectorAll(".skip-link");
+  skipLinks.forEach((skipLink) => {
+    skipLink.addEventListener("click", (e) => {
+      const targetId = skipLink.getAttribute("href");
+      if (targetId && targetId.startsWith("#")) {
+        const target = document.querySelector(targetId);
+        if (target) {
+          e.preventDefault();
+          target.setAttribute("tabindex", "-1");
+          target.focus();
+        }
+      }
+    });
+  });
+
+  // 2. Custom Buttons & Interactive Roles (Enter / Space activation)
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      const target = e.target;
+      if (!target) return;
+      const role = target.getAttribute("role");
+      const isCustomButton = role === "button" || target.classList.contains("custom-btn");
+      if (isCustomButton && target.tagName !== "BUTTON" && target.tagName !== "A" && target.tagName !== "INPUT") {
+        e.preventDefault();
+        target.click();
+      }
+    }
+  });
+
+  // 3. Accessible Resume File Upload Area
+  const uploadArea = document.getElementById("uploadArea");
+  const resumeInput = document.getElementById("resumeInput");
+  if (uploadArea && resumeInput) {
+    if (!uploadArea.hasAttribute("role")) {
+      uploadArea.setAttribute("role", "button");
+    }
+    if (!uploadArea.hasAttribute("tabindex")) {
+      uploadArea.setAttribute("tabindex", "0");
+    }
+    if (!uploadArea.hasAttribute("aria-label")) {
+      uploadArea.setAttribute("aria-label", "Upload resume file in PDF or DOCX format. Drag and drop or press enter to browse files.");
+    }
+    uploadArea.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (e.target.closest("#btnRemoveFile")) return;
+        e.preventDefault();
+        resumeInput.click();
+      }
+    });
+  }
+
+  // 4. Modal Dialogs: Focus Preservation, Trapping, and Escape Handling
+  const focusableSelector = 'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not(.btn-close), .btn-close, a[href], [tabindex]:not([tabindex="-1"])';
+
+  // Save element that had focus prior to opening modal
+  document.addEventListener("show.bs.modal", (e) => {
+    const modal = e.target;
+    if (modal) {
+      modal._triggerElement = document.activeElement;
+      modal.setAttribute("aria-modal", "true");
+      modal.setAttribute("role", "dialog");
+    }
+  });
+
+  // Shift focus to first interactive field upon modal display
+  document.addEventListener("shown.bs.modal", (e) => {
+    const modal = e.target;
+    if (modal) {
+      const firstFocusable = modal.querySelector(focusableSelector);
+      if (firstFocusable) {
+        firstFocusable.focus();
+      } else {
+        modal.setAttribute("tabindex", "-1");
+        modal.focus();
+      }
+    }
+  });
+
+  // Restore focus back to original trigger button when modal closes
+  document.addEventListener("hidden.bs.modal", (e) => {
+    const modal = e.target;
+    if (modal && modal._triggerElement && typeof modal._triggerElement.focus === "function") {
+      setTimeout(() => {
+        try {
+          modal._triggerElement.focus();
+        } catch (_) {}
+      }, 50);
+    }
+  });
+
+  // 5. Offcanvas Drawers: Focus Preservation, Trapping, and Escape Handling
+  document.addEventListener("show.bs.offcanvas", (e) => {
+    const offcanvas = e.target;
+    if (offcanvas) {
+      offcanvas._triggerElement = document.activeElement;
+      offcanvas.setAttribute("aria-modal", "true");
+      offcanvas.setAttribute("role", "dialog");
+    }
+  });
+
+  document.addEventListener("shown.bs.offcanvas", (e) => {
+    const offcanvas = e.target;
+    if (offcanvas) {
+      const firstFocusable = offcanvas.querySelector(focusableSelector);
+      if (firstFocusable) {
+        firstFocusable.focus();
+      } else {
+        offcanvas.setAttribute("tabindex", "-1");
+        offcanvas.focus();
+      }
+    }
+  });
+
+  document.addEventListener("hidden.bs.offcanvas", (e) => {
+    const offcanvas = e.target;
+    if (offcanvas && offcanvas._triggerElement && typeof offcanvas._triggerElement.focus === "function") {
+      setTimeout(() => {
+        try {
+          offcanvas._triggerElement.focus();
+        } catch (_) {}
+      }, 50);
+    }
+  });
+
+  // 6. Global Escape Key & Focus Trap within Modals and Drawers
+  document.addEventListener("keydown", (e) => {
+    // Escape key handling
+    if (e.key === "Escape" || e.keyCode === 27) {
+      const openModal = document.querySelector(".modal.show");
+      if (openModal) {
+        e.preventDefault();
+        const bsModal = (window.bootstrap && window.bootstrap.Modal) ? window.bootstrap.Modal.getInstance(openModal) : null;
+        if (bsModal) {
+          bsModal.hide();
+        } else {
+          const closeBtn = openModal.querySelector('[data-bs-dismiss="modal"]');
+          if (closeBtn) closeBtn.click();
+        }
+        return;
+      }
+
+      const openOffcanvas = document.querySelector(".offcanvas.show");
+      if (openOffcanvas) {
+        e.preventDefault();
+        const bsOffcanvas = (window.bootstrap && window.bootstrap.Offcanvas) ? window.bootstrap.Offcanvas.getInstance(openOffcanvas) : null;
+        if (bsOffcanvas) {
+          bsOffcanvas.hide();
+        } else {
+          const closeBtn = openOffcanvas.querySelector('[data-bs-dismiss="offcanvas"]');
+          if (closeBtn) closeBtn.click();
+        }
+        return;
+      }
+    }
+
+    // Tab key trap inside open modal
+    if (e.key === "Tab") {
+      const openModal = document.querySelector(".modal.show");
+      if (openModal) {
+        const rawFocusables = Array.from(openModal.querySelectorAll(focusableSelector));
+        const focusables = rawFocusables.filter((el) => {
+          return el.offsetParent !== null || el === document.activeElement;
+        });
+
+        if (focusables.length > 0) {
+          const firstFocusable = focusables[0];
+          const lastFocusable = focusables[focusables.length - 1];
+
+          if (e.shiftKey) {
+            if (document.activeElement === firstFocusable || !openModal.contains(document.activeElement)) {
+              e.preventDefault();
+              lastFocusable.focus();
+            }
+          } else {
+            if (document.activeElement === lastFocusable || !openModal.contains(document.activeElement)) {
+              e.preventDefault();
+              firstFocusable.focus();
+            }
+          }
+        }
+      }
+    }
+  });
+
+  // 7. Accessibility Enhancements for Icon-Only Buttons and Accordions
+  const iconButtons = document.querySelectorAll("button");
+  iconButtons.forEach((btn) => {
+    // If button has title but no aria-label, copy title to aria-label
+    if (btn.hasAttribute("title") && !btn.hasAttribute("aria-label")) {
+      const title = btn.getAttribute("title").trim();
+      if (title) {
+        btn.setAttribute("aria-label", title);
+      }
+    }
+    // If close button missing aria-label
+    if (btn.classList.contains("btn-close") && !btn.hasAttribute("aria-label")) {
+      btn.setAttribute("aria-label", "Close");
+    }
+  });
 }
 
 
