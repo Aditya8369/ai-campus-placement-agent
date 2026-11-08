@@ -1,0 +1,63 @@
+{% if pagination and pagination.total_records > 0 %}
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-center gap-3 pt-3 border-top mt-3 pagination-container" data-testid="pagination-toolbar">
+  <!-- Record Counter & Current Page Indicator -->
+  <div class="text-muted small text-center text-md-start pagination-info" data-testid="pagination-info">
+    Showing <span class="fw-semibold text-dark">{{ pagination.start_index }}</span>
+    to <span class="fw-semibold text-dark">{{ pagination.end_index }}</span>
+    of <span class="fw-semibold text-dark">{{ pagination.total_records }}</span> records
+    <span class="badge bg-light text-secondary border rounded-pill ms-1 pagination-page-badge">
+      Page <span class="current-page-num">{{ pagination.page }}</span> of <span class="total-pages-num">{{ pagination.total_pages }}</span>
+    </span>
+  </div>
+
+  <!-- Pagination Controls Navigation -->
+  {% if pagination.total_pages >= 1 %}
+  <nav aria-label="Table records navigation" class="w-100 w-md-auto d-flex justify-content-center justify-content-md-end">
+    <ul class="pagination pagination-sm mb-0 flex-wrap justify-content-center shadow-none">
+      <!-- Previous Button -->
+      <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}" id="pagination-prev-item">
+        {% if pagination.has_prev %}
+          <a class="page-link rounded-start-pill px-3 py-1 btn-pagination-prev" href="{{ pagination.url_for_page(pagination.prev_page) }}" aria-label="Previous Page" title="Go to previous page">
+            <i class="fa-solid fa-chevron-left me-1"></i> Previous
+          </a>
+        {% else %}
+          <span class="page-link rounded-start-pill px-3 py-1 btn-pagination-prev disabled" aria-disabled="true" tabindex="-1">
+            <i class="fa-solid fa-chevron-left me-1"></i> Previous
+          </span>
+        {% endif %}
+      </li>
+
+      <!-- Page Number Buttons (Desktop & Tablet) -->
+      {% for p in pagination.page_range() %}
+        {% if p is none %}
+          <li class="page-item disabled d-none d-sm-inline-block">
+            <span class="page-link border-0 text-muted px-2">&hellip;</span>
+          </li>
+        {% elif p == pagination.page %}
+          <li class="page-item active" aria-current="page">
+            <span class="page-link fw-bold px-3 py-1">{{ p }}</span>
+          </li>
+        {% else %}
+          <li class="page-item d-none d-sm-inline-block">
+            <a class="page-link px-3 py-1" href="{{ pagination.url_for_page(p) }}" title="Go to page {{ p }}">{{ p }}</a>
+          </li>
+        {% endif %}
+      {% endfor %}
+
+      <!-- Next Button -->
+      <li class="page-item {% if not pagination.has_next %}disabled{% endif %}" id="pagination-next-item">
+        {% if pagination.has_next %}
+          <a class="page-link rounded-end-pill px-3 py-1 btn-pagination-next" href="{{ pagination.url_for_page(pagination.next_page) }}" aria-label="Next Page" title="Go to next page">
+            Next <i class="fa-solid fa-chevron-right ms-1"></i>
+          </a>
+        {% else %}
+          <span class="page-link rounded-end-pill px-3 py-1 btn-pagination-next disabled" aria-disabled="true" tabindex="-1">
+            Next <i class="fa-solid fa-chevron-right ms-1"></i>
+          </span>
+        {% endif %}
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+</div>
+{% endif %}
