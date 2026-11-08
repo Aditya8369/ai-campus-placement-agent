@@ -11,6 +11,9 @@
 </head>
 
 <body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -28,7 +31,7 @@
     </div>
   </nav>
 
-  <div class="container py-4">
+  <main class="container py-4" id="main-content" tabindex="-1">
     <!-- Header -->
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 pb-2 border-bottom">
       <div>
@@ -148,7 +151,9 @@
                     <td class="small text-muted">{{ item.updated_at }}</td>
                     <td class="text-end">
                       <button class="btn btn-outline-danger btn-sm py-0 px-2"
-                              onclick="deleteSkill('{{ item.skill_name }}')">
+                              onclick="deleteSkill('{{ item.skill_name }}')"
+                              title="Delete skill assessment"
+                              aria-label="Delete assessment for {{ item.skill_name }}">
                         <i class="fa-solid fa-trash"></i>
                       </button>
                     </td>
@@ -206,10 +211,10 @@
         </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <!-- Modal: Add / Update Skill Assessment -->
-  <div class="modal fade" id="addSkillModal" tabindex="-1" aria-labelledby="addSkillModalLabel" aria-hidden="true">
+  <div class="modal fade" id="addSkillModal" tabindex="-1" aria-labelledby="addSkillModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog">
       <div class="modal-content">
         <form action="/skills-assessment" method="POST">

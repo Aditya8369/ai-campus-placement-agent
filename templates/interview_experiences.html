@@ -11,6 +11,9 @@
 </head>
 
 <body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
   <!-- Navigation -->
   <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
@@ -28,7 +31,7 @@
     </div>
   </nav>
 
-  <div class="container py-4 py-md-5">
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
     <!-- Header -->
     <div class="row align-items-center mb-4">
       <div class="col-md-8">
@@ -166,11 +169,10 @@
       </div>
       {% endfor %}
     </div>
-    {% include "pagination.html" %}
-  </div>
+  </main>
 
   <!-- Share Experience Modal -->
-  <div class="modal fade" id="shareExperienceModal" tabindex="-1" aria-labelledby="shareExperienceModalLabel" aria-hidden="true">
+  <div class="modal fade" id="shareExperienceModal" tabindex="-1" aria-labelledby="shareExperienceModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal-dialog modal-lg modal-dialog-centered">
       <div class="modal-content rounded-4 border-0 shadow">
         <div class="modal-header border-bottom">
@@ -183,36 +185,36 @@
           <div class="modal-body p-4">
             <div class="row g-3">
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Company Name *</label>
-                <input type="text" name="company_name" class="form-control rounded-3" placeholder="e.g. Google, Microsoft, TCS" required>
+                <label for="expCompany" class="form-label fw-semibold">Company Name *</label>
+                <input type="text" id="expCompany" name="company_name" class="form-control rounded-3" placeholder="e.g. Google, Microsoft, TCS" required>
               </div>
               <div class="col-md-6">
-                <label class="form-label fw-semibold">Job Role *</label>
-                <input type="text" name="role_title" class="form-control rounded-3" placeholder="e.g. Software Engineer, SDE-1" required>
+                <label for="expRole" class="form-label fw-semibold">Job Role *</label>
+                <input type="text" id="expRole" name="role_title" class="form-control rounded-3" placeholder="e.g. Software Engineer, SDE-1" required>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold">Interview Date *</label>
-                <input type="date" name="interview_date" class="form-control rounded-3" required>
+                <label for="expDate" class="form-label fw-semibold">Interview Date *</label>
+                <input type="date" id="expDate" name="interview_date" class="form-control rounded-3" required>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold">Result / Verdict</label>
-                <select name="overall_verdict" class="form-select rounded-3">
+                <label for="expVerdict" class="form-label fw-semibold">Result / Verdict</label>
+                <select id="expVerdict" name="overall_verdict" class="form-select rounded-3">
                   <option value="Offer">Offer Received</option>
                   <option value="Rejected">Rejected</option>
                   <option value="Pending">Pending / Awaiting Result</option>
                 </select>
               </div>
               <div class="col-md-4">
-                <label class="form-label fw-semibold">Difficulty Level</label>
-                <select name="difficulty_level" class="form-select rounded-3">
+                <label for="expDifficulty" class="form-label fw-semibold">Difficulty Level</label>
+                <select id="expDifficulty" name="difficulty_level" class="form-select rounded-3">
                   <option value="Easy">Easy</option>
                   <option value="Medium" selected>Medium</option>
                   <option value="Hard">Hard</option>
                 </select>
               </div>
               <div class="col-md-12">
-                <label class="form-label fw-semibold">Display Alias (Private Info Protected)</label>
-                <input type="text" name="candidate_name" class="form-control rounded-3" placeholder="e.g. CS Senior '26 (Do not include email or phone)">
+                <label for="expAlias" class="form-label fw-semibold">Display Alias (Private Info Protected)</label>
+                <input type="text" id="expAlias" name="candidate_name" class="form-control rounded-3" placeholder="e.g. CS Senior '26 (Do not include email or phone)">
                 <div class="form-text">Your private contact details will never be exposed.</div>
               </div>
 
