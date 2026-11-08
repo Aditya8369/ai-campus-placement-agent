@@ -8,6 +8,7 @@ import re
 import secrets
 import hashlib
 from pathlib import Path
+from typing import Dict, Any, Optional, List, Tuple
 from flask import (
     Flask,
     render_template,
@@ -161,6 +162,11 @@ from utils.progress_tracker import (
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
+from utils.resume_info_extractor import (
+    extract_resume_information,
+    validate_reviewed_information,
+    reconstruct_resume_markdown
+)
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -1069,6 +1075,22 @@ def analyze():
             extracted_resume_text = redaction_res["redacted_text"]
             logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
 
+        # Resume Information Review & Correction Step
+        review_step = request.form.get("review_step") in ("true", "1", "on", "yes")
+        if review_step:
+            review_data = extract_resume_information(extracted_resume_text, filename=resume_filename, file_uuid=file_uuid)
+            review_data["target_company"] = selected_company
+            review_data["job_description"] = job_description
+            save_resume_review_cache(file_uuid, review_data)
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({
+                    "success": True,
+                    "review_required": True,
+                    "file_uuid": file_uuid,
+                    "redirect_url": url_for("resume_review_by_uuid", file_uuid=file_uuid)
+                }), 200
+            return redirect(url_for("resume_review_by_uuid", file_uuid=file_uuid))
+
         # Multi-company batch comparison request
         batch_companies = request.form.getlist("batch_companies")
         if not batch_companies:
@@ -1194,6 +1216,22 @@ def start_analysis_async():
             )
             extracted_resume_text = redaction_res["redacted_text"]
             logger.info(f"Resume PII sanitized for student {student_id}: {redaction_res['total_redactions']} entities replaced.")
+
+        # Resume Information Review & Correction Step
+        review_step = request.form.get("review_step") in ("true", "1", "on", "yes")
+        if review_step:
+            review_data = extract_resume_information(extracted_resume_text, filename=resume_filename, file_uuid=file_uuid)
+            review_data["target_company"] = selected_company
+            review_data["job_description"] = job_description
+            save_resume_review_cache(file_uuid, review_data)
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({
+                    "success": True,
+                    "review_required": True,
+                    "file_uuid": file_uuid,
+                    "redirect_url": url_for("resume_review_by_uuid", file_uuid=file_uuid)
+                }), 200
+            return redirect(url_for("resume_review_by_uuid", file_uuid=file_uuid))
 
         task = create_analysis_task(
             company_name=selected_company,
@@ -1384,6 +1422,225 @@ def api_get_batch_compare(batch_id: str):
         "batch_id": batch_id,
         "data": record.get("results", {})
     }), 200
+
+
+# ============================================================================
+# RESUME INFORMATION REVIEW AND CORRECTION ENDPOINTS
+# ============================================================================
+
+_RESUME_REVIEW_CACHE: Dict[str, Dict[str, Any]] = {}
+
+
+def save_resume_review_cache(file_uuid: str, review_data: Dict[str, Any]) -> None:
+    """Stores candidate resume review data in-memory and persists JSON cache to disk."""
+    _RESUME_REVIEW_CACHE[file_uuid] = review_data
+    try:
+        cache_path = os.path.join(config.UPLOAD_FOLDER, f"review_{file_uuid}.json")
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(review_data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not persist review cache file for {file_uuid}: {e}")
+
+
+def get_resume_review_cache(file_uuid: str) -> Optional[Dict[str, Any]]:
+    """Retrieves resume review data from memory, disk cache, or re-extracts from saved upload."""
+    if file_uuid in _RESUME_REVIEW_CACHE:
+        return _RESUME_REVIEW_CACHE[file_uuid]
+
+    cache_path = os.path.join(config.UPLOAD_FOLDER, f"review_{file_uuid}.json")
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                _RESUME_REVIEW_CACHE[file_uuid] = data
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to read review cache file for {file_uuid}: {e}")
+
+    # Check for original uploaded file starting with file_uuid
+    try:
+        if os.path.exists(config.UPLOAD_FOLDER):
+            for fname in os.listdir(config.UPLOAD_FOLDER):
+                if fname.startswith(f"{file_uuid}_"):
+                    full_path = os.path.join(config.UPLOAD_FOLDER, fname)
+                    original_name = fname[len(file_uuid) + 1:]
+                    txt = extract_text_from_file(full_path)
+                    data = extract_resume_information(txt, filename=original_name, file_uuid=file_uuid)
+                    save_resume_review_cache(file_uuid, data)
+                    return data
+    except Exception as e:
+        logger.warning(f"Failed to rebuild review cache from uploaded file for {file_uuid}: {e}")
+
+    return None
+
+
+@app.route("/resume/review", methods=["GET", "POST"])
+def resume_review_view():
+    """
+    Renders the interactive Resume Information Review and Correction step.
+    Allows candidate to verify extracted details, edit incorrect information,
+    add missing information, and see visual highlights for low-confidence/missing fields.
+    Preserves original uploaded documents without modification.
+    """
+    if request.method == "POST":
+        extracted_text, filename, file_uuid, val_err = _extract_and_validate_resume(request)
+        if val_err:
+            flash(val_err, "error")
+            return redirect(url_for("index"))
+
+        target_company = request.form.get("company", "General").strip()
+        job_description = request.form.get("job_description", "").strip()
+
+        review_data = extract_resume_information(extracted_text, filename=filename, file_uuid=file_uuid)
+        review_data["target_company"] = target_company
+        review_data["job_description"] = job_description
+
+        save_resume_review_cache(file_uuid, review_data)
+        return render_template(
+            "resume_review.html",
+            review_data=review_data,
+            target_company=target_company,
+            job_description=job_description
+        )
+
+    # GET request
+    file_uuid = request.args.get("file_uuid")
+    if file_uuid:
+        review_data = get_resume_review_cache(file_uuid)
+        if review_data:
+            return render_template(
+                "resume_review.html",
+                review_data=review_data,
+                target_company=review_data.get("target_company", "General"),
+                job_description=review_data.get("job_description", "")
+            )
+
+    flash("Please upload a resume first to review extracted details.", "info")
+    return redirect(url_for("index"))
+
+
+@app.route("/resume/review/<file_uuid>", methods=["GET"])
+def resume_review_by_uuid(file_uuid: str):
+    """
+    Direct route to review and correct extracted details for a specific uploaded resume.
+    """
+    review_data = get_resume_review_cache(file_uuid)
+    if not review_data:
+        flash("Resume review session expired or not found. Please re-upload.", "warning")
+        return redirect(url_for("index"))
+
+    return render_template(
+        "resume_review.html",
+        review_data=review_data,
+        target_company=review_data.get("target_company", "General"),
+        job_description=review_data.get("job_description", "")
+    )
+
+
+@app.route("/api/resume/parse-preview", methods=["POST"])
+def api_resume_parse_preview():
+    """
+    REST endpoint to upload/submit a resume, extract structured sections,
+    and return review details with extraction status flags and review URL.
+    Original document is safely preserved in uploads/.
+    """
+    extracted_text, filename, file_uuid, val_err = _extract_and_validate_resume(request)
+    if val_err:
+        return jsonify({"success": False, "error": val_err}), 400
+
+    target_company = request.form.get("company", "General").strip()
+    job_description = request.form.get("job_description", "").strip()
+
+    review_data = extract_resume_information(extracted_text, filename=filename, file_uuid=file_uuid)
+    review_data["target_company"] = target_company
+    review_data["job_description"] = job_description
+    save_resume_review_cache(file_uuid, review_data)
+
+    return jsonify({
+        "success": True,
+        "file_uuid": file_uuid,
+        "review_data": review_data,
+        "review_url": url_for("resume_review_by_uuid", file_uuid=file_uuid),
+        "total_review_items": review_data.get("total_review_items", 0),
+        "original_filename": filename
+    }), 200
+
+
+@app.route("/api/resume/validate-info", methods=["POST"])
+def api_validate_resume_info():
+    """
+    Validates candidate-reviewed information before submission.
+    Returns status and dictionary of field validation errors.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    is_valid, errors = validate_reviewed_information(payload)
+    return jsonify({
+        "success": True,
+        "is_valid": is_valid,
+        "errors": errors
+    }), 200
+
+
+@app.route("/api/resume/confirm-analysis", methods=["POST"])
+def api_confirm_resume_analysis():
+    """
+    Validates corrected resume information, reconstructs standardized markdown,
+    feeds the verified resume text to the coordinator agent, and persists the analysis.
+    The original uploaded document is preserved unaltered.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    if not payload:
+        return jsonify({"success": False, "error": "No review data submitted."}), 400
+
+    is_valid, errors = validate_reviewed_information(payload)
+    if not is_valid:
+        return jsonify({
+            "success": False,
+            "error": "Validation failed on reviewed resume data.",
+            "errors": errors
+        }), 400
+
+    file_uuid = payload.get("file_uuid") or str(uuid.uuid4())
+    original_filename = payload.get("original_filename") or "Resume.pdf"
+    target_company = payload.get("target_company") or "General"
+    job_description = payload.get("job_description") or ""
+    student_id = flask_session.get("user_id") or "default_student"
+
+    # Reconstruct standardized, clean markdown from student-verified data
+    reconstructed_resume_text = reconstruct_resume_markdown(payload)
+
+    # Trigger multi-agent placement analysis using the reviewed information
+    try:
+        analysis_payload = coordinator_agent.analyze(
+            resume_text=reconstructed_resume_text,
+            job_description=job_description,
+            company_name=target_company
+        )
+
+        save_analysis(
+            analysis_id=file_uuid,
+            resume_filename=original_filename,
+            company_name=target_company,
+            job_description=job_description,
+            results_dict=analysis_payload,
+            student_id=student_id
+        )
+
+        # Update cache to indicate review completed
+        payload["status"] = "reviewed_and_analyzed"
+        save_resume_review_cache(file_uuid, payload)
+
+        return jsonify({
+            "success": True,
+            "analysis_id": file_uuid,
+            "redirect_url": url_for("dashboard", analysis_id=file_uuid),
+            "message": "Placement analysis completed using verified resume profile."
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error analyzing verified resume: {str(e)}")
+        friendly_message = format_ai_error_for_user(e)
+        return jsonify({"success": False, "error": friendly_message}), 500
 
 
 @app.route("/dashboard/<analysis_id>")
@@ -2321,6 +2578,7 @@ def api_feedback():
         }), 201
 
 
+<<<<<<< HEAD
 
 def export_interview_json(analysis_id: str):
     """
@@ -2451,6 +2709,9 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
+=======
+@app.route("/certificate/<analysis_id>")
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -3984,23 +4245,21 @@ def notification_settings_view():
         notify_status_change = request.form.get("notify_status_change") == "on"
         notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
 
-        try:
-            rating = int(rating_raw)
-        except (ValueError, TypeError):
-            rating = 5
+        update_email_notification_preferences(
+            student_id=student_id,
+            email=email or None,
+            email_enabled=email_enabled,
+            notify_welcome=notify_welcome,
+            notify_application_created=notify_application_created,
+            notify_status_change=notify_status_change,
+            notify_interview_reminder=notify_interview_reminder
+        )
+        flash("Email notification preferences updated successfully!", "success")
+        return redirect(url_for("notification_settings_view", student_id=student_id))
 
-        if not comment:
-            flash("Please enter feedback comments before submitting.", "danger")
-        else:
-            submit_user_feedback(
-                student_id=student_id,
-                rating=rating,
-                category=category,
-                comment=comment
-            )
-            flash("Thank you! Your feedback has been submitted successfully.", "success")
-        return redirect("/feedback")
+    prefs = get_email_notification_preferences(student_id)
 
+<<<<<<< HEAD
     feedback_list = get_user_feedback_list(limit=25)
     metrics = get_feedback_metrics_summary()
 
@@ -4034,123 +4293,47 @@ def api_feedback():
             limit_val = 50
         items = get_user_feedback_list(category_filter=cat, limit=limit_val)
         metrics = get_feedback_metrics_summary()
+=======
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
         return jsonify({
-            "status": "success",
-            "total": len(items),
-            "metrics": metrics,
-            "feedback": items
+            "success": True,
+            "preferences": prefs
         }), 200
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        rating_raw = payload.get("rating", 5)
-        category = payload.get("category", "General Experience")
-        comment = payload.get("comment", "").strip()
+    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
 
-        try:
-            rating = int(rating_raw)
-        except (ValueError, TypeError):
-            rating = 5
 
-        if not comment:
-            return jsonify({
-                "status": "error",
-                "message": "comment is required and cannot be empty."
-            }), 400
+@app.route("/api/notifications/remind-interview", methods=["POST"])
+def api_send_interview_reminder():
+    """
+    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or "default_student"
+    company_name = payload.get("company_name", "").strip()
+    round_type = payload.get("round_type", "Technical Round").strip()
+    scheduled_time = payload.get("scheduled_time", "").strip()
+    interview_link = payload.get("interview_link", "").strip()
 
-        record = submit_user_feedback(
-            student_id=student_id,
-            rating=rating,
-            category=category,
-            comment=comment
-        )
-        return jsonify({
-            "status": "success",
-            "message": "Feedback recorded successfully",
-            "feedback": record
-        }), 201
+    if not company_name or not scheduled_time:
+        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
 
-        if not comment:
-            flash("Please enter feedback comments before submitting.", "danger")
-        else:
-            submit_user_feedback(
-                student_id=student_id,
-                rating=rating,
-                category=category,
-                comment=comment
-            )
-            flash("Thank you! Your feedback has been submitted successfully.", "success")
-        return redirect("/feedback")
+    prefs = get_email_notification_preferences(student_id)
+    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
+        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
 
-    feedback_list = get_user_feedback_list(limit=25)
-    metrics = get_feedback_metrics_summary()
-
-    return render_template(
-        "feedback.html",
-        categories=categories,
-        feedback_list=feedback_list,
-        metrics=metrics,
-        student_id=student_id
+    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
+    sent = email_service.send_interview_reminder_email(
+        recipient_email=recipient_email,
+        student_name=student_id,
+        company_name=company_name,
+        interview_round=round_type,
+        scheduled_time=scheduled_time,
+        interview_link=interview_link or None
     )
 
-
-@app.route("/api/feedback", methods=["GET", "POST"])
-def api_feedback():
-    """
-    REST API endpoint for submitting and retrieving feedback (#197).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
-
-    if request.method == "GET":
-        cat = request.args.get("category")
-        limit = request.args.get("limit", 50)
-        try:
-            limit_val = int(limit)
-        except (ValueError, TypeError):
-            limit_val = 50
-        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
-        metrics = get_feedback_metrics_summary()
-        return jsonify({
-            "status": "success",
-            "total": len(items),
-            "metrics": metrics,
-            "feedback": items
-        }), 200
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        rating_raw = payload.get("rating", 5)
-        category = payload.get("category", "General Experience")
-        comment = payload.get("comment", "").strip()
-
-        try:
-            rating = int(rating_raw)
-        except (ValueError, TypeError):
-            rating = 5
-
-        if not comment:
-            return jsonify({
-                "status": "error",
-                "message": "comment is required and cannot be empty."
-            }), 400
-
-        record = submit_user_feedback(
-            student_id=student_id,
-            rating=rating,
-            category=category,
-            comment=comment
-        )
-        return jsonify({
-            "status": "success",
-            "message": "Feedback recorded successfully",
-            "feedback": record
-        }), 201
+    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
 
 
 
@@ -4283,6 +4466,7 @@ def download_interview_transcript(analysis_id: str):
         return redirect(url_for("interview", analysis_id=analysis_id))
 
 
+<<<<<<< HEAD
 def certificate(analysis_id: str):
     """
     Renders printable placement readiness completion certificate.
@@ -5198,10 +5382,59 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
+=======
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
+<<<<<<< HEAD
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -6619,10 +6852,89 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
+=======
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
+<<<<<<< HEAD
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -6750,10 +7062,13 @@ def role_preparation_view():
         skills_input=", ".join(existing_skills),
         gaps_input=", ".join(skill_gaps)
     )
+=======
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 
 
 
 
+<<<<<<< HEAD
 def notification_settings_view():
     """
     Candidate Email Notification Settings View and Preference Handler (#186).
@@ -6802,25 +7117,16 @@ def api_send_interview_reminder():
     round_type = payload.get("round_type", "Technical Round").strip()
     scheduled_time = payload.get("scheduled_time", "").strip()
     interview_link = payload.get("interview_link", "").strip()
+=======
 
-    if not company_name or not scheduled_time:
-        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
 
-    prefs = get_email_notification_preferences(student_id)
-    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
-        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 
-    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
-    sent = email_service.send_interview_reminder_email(
-        recipient_email=recipient_email,
-        student_name=student_id,
-        company_name=company_name,
-        interview_round=round_type,
-        scheduled_time=scheduled_time,
-        interview_link=interview_link or None
-    )
 
-    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+
+
+
+
 
 
 
@@ -7144,6 +7450,7 @@ def api_toggle_checklist_task():
     }), 200
 
 
+<<<<<<< HEAD
 @app.route("/interview/<analysis_id>/export")
 def export_interview_json(analysis_id: str):
     """
@@ -7190,6 +7497,8 @@ def export_interview_json(analysis_id: str):
     return response
 
 
+=======
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 @app.route("/api/company-checklist/reset", methods=["POST"])
 def api_reset_checklist():
     """
@@ -7232,6 +7541,7 @@ def coding_submissions_view():
     return response
 
 
+<<<<<<< HEAD
 @app.route("/interview/<analysis_id>/transcript")
 @app.route("/download/interview-transcript/<analysis_id>")
 def download_interview_transcript(analysis_id: str):
@@ -9564,351 +9874,148 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
+=======
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
 # ==============================================================================
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
-@app.route("/api/role-prep/roles")
-def api_role_prep_roles():
-    """
-    Returns the list of supported placement roles with descriptions and icons.
-    """
-    return jsonify({
-        "success": True,
-        "roles": SUPPORTED_ROLES
-    }), 200
-
-
-@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
-def api_role_prep_for_analysis(analysis_id: str):
-    """
-    Generates role-based preparation curriculum and recommendations for a student analysis.
-    Supports switching target roles dynamically (Python Developer, Data Analyst, Data Scientist, Software Engineer).
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
-        return jsonify({"success": False, "error": "Analysis record not found"}), 404
-
-    target_role = request.args.get("role")
-    if not target_role and request.is_json:
-        target_role = (request.get_json() or {}).get("role")
-    if not target_role and request.form:
-        target_role = request.form.get("role")
-    target_role = (target_role or "Software Engineer").strip()
-
-    results = analysis_record.get("results") or {}
-    job_match = results.get("job_match") or {}
-    skill_gap_items = results.get("skill_gap") or []
-
-    existing_skills = job_match.get("matched_skills") or []
-    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
-
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=target_role,
-        existing_skills=existing_skills,
-        skill_gaps=gap_names,
-        company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", ""),
-        analysis_record=analysis_record
-    )
-    return jsonify(prep_data), 200
-
-
-@app.route("/api/role-prep/career-recommendations/<analysis_id>", methods=["GET"])
-def api_all_career_recommendations(analysis_id: str):
-    """
-    Returns AI recommendation explanations across all supported career roles (#295).
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
-        return jsonify({"success": False, "error": "Analysis record not found"}), 404
-
-    results = analysis_record.get("results") or {}
-    job_match = results.get("job_match") or {}
-    skill_gap_items = results.get("skill_gap") or []
-    existing_skills = job_match.get("matched_skills") or []
-    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
-
-    recommendations = role_prep_agent.get_all_role_recommendations(
-        existing_skills=existing_skills,
-        skill_gaps=gap_names,
-        resume_text=analysis_record.get("resume_text", ""),
-        analysis_record=analysis_record,
-        company_name=analysis_record.get("company_name", "General")
-    )
-    return jsonify(recommendations), 200
-
-
-@app.route("/api/role-prep/generate", methods=["POST"])
-def api_role_prep_generate():
-    """
-    Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
-    """
-    body = request.get_json() or {}
-    target_role = body.get("role") or request.form.get("role") or "Software Engineer"
-    skills = body.get("skills") or []
-    if isinstance(skills, str):
-        skills = [s.strip() for s in re.split(r"[,;\n]+", skills) if s.strip()]
-    skill_gaps = body.get("skill_gaps") or []
-    if isinstance(skill_gaps, str):
-        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", skill_gaps) if s.strip()]
-    company = body.get("company") or request.form.get("company") or "General"
-
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=target_role,
-        existing_skills=skills,
-        skill_gaps=skill_gaps,
-        company_name=company
-    )
-    return jsonify(prep_data), 200
-
-
-@app.route("/role-preparation", methods=["GET", "POST"])
-def role_preparation_view():
-    """
-    Role-Based Preparation Mode View (#154).
-    Enables students to explore tailored learning tracks for Python Developer, Data Analyst,
-    Data Scientist, and Software Engineer roles with personalized skill gap bridging.
-    """
-    analysis_id = request.args.get("analysis_id", "").strip()
-    selected_role = request.args.get("role", "Software Engineer").strip()
-    company = request.args.get("company", "").strip()
-    raw_skills = request.args.get("skills", "").strip()
-    raw_gaps = request.args.get("skill_gaps", "").strip()
-
-    if request.method == "POST":
-        selected_role = request.form.get("role", selected_role).strip()
-        company = request.form.get("company", company).strip()
-        raw_skills = request.form.get("skills", raw_skills).strip()
-        raw_gaps = request.form.get("skill_gaps", raw_gaps).strip()
-
-    analysis_record = None
-    existing_skills = []
-    skill_gaps = []
-
-    if analysis_id:
-        analysis_record = get_analysis(analysis_id)
-        if analysis_record:
-            results = analysis_record.get("results") or {}
-            job_match = results.get("job_match") or {}
-            skill_gap_items = results.get("skill_gap") or []
-            existing_skills = job_match.get("matched_skills") or []
-            skill_gaps = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
-            if not company:
-                company = analysis_record.get("company_name", "General")
-
-    if not existing_skills and raw_skills:
-        existing_skills = [s.strip() for s in re.split(r"[,;\n]+", raw_skills) if s.strip()]
-    if not skill_gaps and raw_gaps:
-        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", raw_gaps) if s.strip()]
-
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=selected_role,
-        existing_skills=existing_skills,
-        skill_gaps=skill_gaps,
-        company_name=company or "General Campus Recruitment",
-        resume_text=analysis_record.get("resume_text", "") if analysis_record else None,
-        analysis_record=analysis_record
-    )
-
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify(prep_data), 200
-
-    return render_template(
-        "role_preparation.html",
-        prep=prep_data,
-        prep_json=json.dumps(prep_data),
-        analysis=analysis_record,
-        analysis_id=analysis_id,
-        available_roles=SUPPORTED_ROLES,
-        selected_role=prep_data["target_role"],
-        company=company,
-        skills_input=", ".join(existing_skills),
-        gaps_input=", ".join(skill_gaps)
-    )
 
 
 
 
-@app.route("/notification-settings", methods=["GET", "POST"])
-def notification_settings_view():
-    """
-    Candidate Email Notification Settings View and Preference Handler (#186).
-    Allows students to enable/disable transactional emails and schedule interview reminders.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        email_enabled = request.form.get("email_enabled") == "on"
-        notify_welcome = request.form.get("notify_welcome") == "on"
-        notify_application_created = request.form.get("notify_application_created") == "on"
-        notify_status_change = request.form.get("notify_status_change") == "on"
-        notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
-
-        update_email_notification_preferences(
-            student_id=student_id,
-            email=email or None,
-            email_enabled=email_enabled,
-            notify_welcome=notify_welcome,
-            notify_application_created=notify_application_created,
-            notify_status_change=notify_status_change,
-            notify_interview_reminder=notify_interview_reminder
-        )
-        flash("Email notification preferences updated successfully!", "success")
-        return redirect(url_for("notification_settings_view", student_id=student_id))
-
-    prefs = get_email_notification_preferences(student_id)
-
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({
-            "success": True,
-            "preferences": prefs
-        }), 200
-
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
-
-
-@app.route("/api/notifications/remind-interview", methods=["POST"])
-def api_send_interview_reminder():
-    """
-    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
-    """
-    payload = request.get_json(silent=True) or {}
-    student_id = payload.get("student_id") or "default_student"
-    company_name = payload.get("company_name", "").strip()
-    round_type = payload.get("round_type", "Technical Round").strip()
-    scheduled_time = payload.get("scheduled_time", "").strip()
-    interview_link = payload.get("interview_link", "").strip()
-
-    if not company_name or not scheduled_time:
-        return jsonify({"success": False, "error": "Company name and scheduled time are required."}), 400
-
-    prefs = get_email_notification_preferences(student_id)
-    if not prefs.get("email_enabled") or not prefs.get("notify_interview_reminder"):
-        return jsonify({"success": False, "message": "Email notifications are disabled in user settings."}), 200
-
-    recipient_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
-    sent = email_service.send_interview_reminder_email(
-        recipient_email=recipient_email,
-        student_name=student_id,
-        company_name=company_name,
-        interview_round=round_type,
-        scheduled_time=scheduled_time,
-        interview_link=interview_link or None
-    )
-
-    return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
 
 
 
 
-@app.route("/interview-experiences", methods=["GET", "POST"])
-def interview_experiences_view():
-    """
-    Company-Wise Interview Experiences View and Submission Handler (#189).
-    Enables students to learn from real campus placement interview rounds (Coding, Technical, HR)
-    and submit their own verified candidate experiences anonymously.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
-    company_filter = request.args.get("company", "").strip()
-    category_filter = request.args.get("category", "All").strip()
-    search_query = request.args.get("search", "").strip()
 
-    if request.method == "POST":
-        company_name = request.form.get("company_name", "").strip()
-        role_title = request.form.get("role_title", "").strip()
-        interview_date = request.form.get("interview_date", "").strip()
-        overall_verdict = request.form.get("overall_verdict", "Offer").strip()
-        difficulty_level = request.form.get("difficulty_level", "Medium").strip()
-        tips = request.form.get("tips_and_preparation", "").strip()
-        candidate_name = request.form.get("candidate_name", "").strip() or "Anonymous Candidate"
 
-        if not company_name or not role_title or not interview_date:
-            flash("Company name, job role, and interview date are required.", "error")
-            return redirect(url_for("interview_experiences_view"))
 
-        # Parse submitted rounds (Coding, Technical, HR)
-        round_categories = request.form.getlist("round_category[]")
-        round_descriptions = request.form.getlist("round_description[]")
-        round_questions = request.form.getlist("round_questions[]")
 
-        rounds = []
-        for idx in range(len(round_categories)):
-            cat = round_categories[idx].strip() if idx < len(round_categories) else "Technical"
-            desc = round_descriptions[idx].strip() if idx < len(round_descriptions) else ""
-            q_text = round_questions[idx].strip() if idx < len(round_questions) else ""
-            if cat or desc or q_text:
-                rounds.append({
-                    "round_number": idx + 1,
-                    "category": cat or "Technical",
-                    "description": desc,
-                    "questions": [q.strip() for q in q_text.split("\n") if q.strip()]
-                })
 
-        if not rounds:
-            # Fallback default round if omitted
-            rounds.append({
-                "round_number": 1,
-                "category": "Technical",
-                "description": "Standard placement interview round.",
-                "questions": []
-            })
 
-        exp_id = f"exp-{uuid.uuid4().hex[:12]}"
-        save_interview_experience(
-            exp_id=exp_id,
-            student_id=student_id,
-            candidate_name=candidate_name,
-            company_name=company_name,
-            role_title=role_title,
-            interview_date=interview_date,
-            rounds=rounds,
-            overall_verdict=overall_verdict,
-            difficulty_level=difficulty_level,
-            tips_and_preparation=tips
-        )
-        flash("Thank you! Your interview experience was shared successfully.", "success")
-        return redirect(url_for("interview_experiences_view", company=company_name))
 
-    experiences = get_interview_experiences(
-        company_name=company_filter,
-        category_filter=category_filter,
-        search_query=search_query
-    )
 
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
-    pagination = Pagination(
-        items=experiences,
-        page=page,
-        per_page=per_page,
-        endpoint_args=request.args.to_dict(),
-        base_url="/interview-experiences"
-    )
 
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({
-            "success": True,
-            "count": len(pagination.items),
-            "total": len(experiences),
-            "experiences": pagination.items,
-            "pagination": pagination.to_dict()
-        }), 200
 
-    return render_template(
-        "coding_submissions.html",
-        submissions=submissions,
-        pagination=pagination,
-        student_id=student_id,
-        question_filter=question_filter,
-        language_filter=language_filter,
-        status_filter=status_filter,
-        total_count=len(all_user_subs),
-        passed_count=passed_count,
-        failed_count=failed_count,
-        avg_score=avg_score
-    )
 
 
 @app.route("/api/coding-submissions")
@@ -10292,214 +10399,22 @@ def admin_moderate_experience_action_endpoint(exp_id: str):
         return redirect(url_for("index"))
 
 
-@app.route("/api/jobs/viewed", methods=["GET", "POST", "DELETE"])
-def api_recently_viewed_jobs():
-    """
-    REST API endpoints to manage recently viewed jobs for candidates (#201).
-    Supports GET (fetch history), POST (track a job view), and DELETE (remove or clear history).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
-
-    if request.method == "GET":
-        limit = request.args.get("limit", 10)
-        try:
-            limit_val = int(limit)
-        except (ValueError, TypeError):
-            limit_val = 10
-        viewed_jobs = get_recently_viewed_jobs(student_id=student_id, limit=limit_val)
-        return jsonify({
-            "status": "success",
-            "student_id": student_id,
-            "total": len(viewed_jobs),
-            "jobs": viewed_jobs
-        }), 200
-
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        job_id = str(payload.get("job_id", "")).strip()
-        company_name = str(payload.get("company_name", "")).strip()
-        role_title = str(payload.get("role_title", "")).strip()
-        location = str(payload.get("location", "Remote")).strip()
-        salary_range = payload.get("salary_range")
-        apply_url = payload.get("apply_url")
-
-        if not job_id or not company_name or not role_title:
-            return jsonify({
-                "status": "error",
-                "message": "job_id, company_name, and role_title are required fields."
-            }), 400
-
-        record = record_viewed_job(
-            student_id=student_id,
-            job_id=job_id,
-            company_name=company_name,
-            role_title=role_title,
-            location=location,
-            salary_range=salary_range,
-            apply_url=apply_url
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Recorded view for job '{role_title}' at '{company_name}'.",
-            "viewed_job": record
-        }), 201
-
-    if request.method == "DELETE":
-        payload = request.get_json(silent=True) or request.args
-        job_id = payload.get("job_id")
-        if job_id:
-            removed = remove_recently_viewed_job(student_id=student_id, job_id=job_id)
-            return jsonify({
-                "status": "success" if removed else "not_found",
-                "message": f"Removed job '{job_id}' from recently viewed list." if removed else "Job not found in history."
-            }), (200 if removed else 404)
-        else:
-            cleared_count = clear_recently_viewed_jobs(student_id=student_id)
-            return jsonify({
-                "status": "success",
-                "message": f"Cleared {cleared_count} recently viewed jobs.",
-                "cleared_count": cleared_count
-            }), 200
 
 
 # ============================================================================
 # INTERVIEW EXPERIENCE ADVANCED SEARCH AND FILTER ENDPOINTS (#254)
 # ============================================================================
 
-@app.route("/api/interview-experiences/search", methods=["GET"])
-def api_search_interview_experiences_endpoint():
-    """
-    Advanced multi-facet search endpoint for campus interview experiences.
-    Supports filtering by company, role, verdict, difficulty, round category, year,
-    and sorting with pagination.
-    """
-    company_name = request.args.get("company")
-    role_title = request.args.get("role")
-    verdict = request.args.get("verdict")
-    difficulty = request.args.get("difficulty")
-    category_filter = request.args.get("category")
-    year_filter = request.args.get("year")
-    search_query = request.args.get("q") or request.args.get("search")
-    sort_by = request.args.get("sort", "date_desc")
-    page = int(request.args.get("page", 1))
-    page_size = int(request.args.get("page_size", 20))
-
-    result = search_and_filter_interview_experiences(
-        company_name=company_name,
-        role_title=role_title,
-        verdict=verdict,
-        difficulty=difficulty,
-        category_filter=category_filter,
-        year_filter=year_filter,
-        search_query=search_query,
-        sort_by=sort_by,
-        page=page,
-        page_size=page_size
-    )
-
-    return jsonify({
-        "status": "success",
-        "data": result
-    }), 200
 
 
-@app.route("/api/interview-experiences/facets", methods=["GET"])
-def api_interview_experience_facets_endpoint():
-    """
-    Returns unique aggregations and metrics for populating dynamic frontend filters.
-    """
-    facets = get_interview_filter_facets()
-    return jsonify({
-        "status": "success",
-        "facets": facets
-    }), 200
 
 
 # ============================================================================
 # INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
 # ============================================================================
 
-@app.route("/api/admin/moderation/experiences", methods=["GET"])
-def admin_moderation_queue_endpoint():
-    """
-    Administrative queue for inspecting submitted interview experiences,
-    flagged content, and moderation metrics. Requires administrative privileges.
-    """
-    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
-    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
-    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
-        return jsonify({
-            "status": "error",
-            "message": "Unauthorized. Administrative privilege required to access moderation queue."
-        }), 403
-
-    status_filter = request.args.get("status")
-    flagged_only = request.args.get("flagged_only", "false").lower() == "true"
-    company_filter = request.args.get("company")
-    search_query = request.args.get("search")
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-
-    queue_data = get_moderation_queue(
-        status_filter=status_filter,
-        flagged_only=flagged_only,
-        company_filter=company_filter,
-        search_query=search_query,
-        limit=limit,
-        offset=offset
-    )
-
-    return jsonify({
-        "status": "success",
-        "data": queue_data
-    }), 200
 
 
-@app.route("/api/admin/moderation/experiences/<exp_id>/action", methods=["POST"])
-def admin_moderate_experience_action_endpoint(exp_id: str):
-    """
-    Executes a moderation decision (approve, reject, flag, dismiss_report) on a submission.
-    """
-    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
-    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
-    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
-        return jsonify({
-            "status": "error",
-            "message": "Unauthorized. Administrative privilege required to perform moderation actions."
-        }), 403
-
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    action = payload.get("action")
-    if not action:
-        return jsonify({"status": "error", "message": "Moderation 'action' is required."}), 400
-
-    reason = payload.get("reason", "")
-    moderator_id = flask_session.get("user_id") or "admin"
-
-    try:
-        updated_experience = moderate_interview_experience(
-            experience_id=exp_id,
-            action=action,
-            moderator_id=str(moderator_id),
-            reason=reason
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
-            "experience": updated_experience
-        }), 200
-    except KeyError as ke:
-        return jsonify({"status": "error", "message": str(ke)}), 404
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
 
 
 @app.route("/api/admin/moderation/experiences/<exp_id>/logs", methods=["GET"])
@@ -10813,6 +10728,7 @@ def redact_resume_pii_endpoint():
         "redaction": redacted_result
     }), 200
 
+<<<<<<< HEAD
 
 # JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
@@ -10907,6 +10823,8 @@ def redact_resume_pii_endpoint():
     if isinstance(redact_phones, str):
         redact_phones = redact_phones.lower() not in ("false", "0", "no")
 
+=======
+>>>>>>> 86e28c0aff63cbecfcf9e1d2606e8594a130da9d
     redact_addresses = data.get("redact_addresses", True)
     if isinstance(redact_addresses, str):
         redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
@@ -10934,147 +10852,33 @@ def redact_resume_pii_endpoint():
     }), 200
 
 
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
-# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
-# ============================================================================
 
-@app.route("/api/coding/folders", methods=["GET", "POST"])
-def coding_bookmark_folders_collection_endpoint():
-    """
-    Administrative queue for inspecting submitted interview experiences,
-    flagged content, and moderation metrics. Requires administrative privileges.
-    """
-    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
-    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
-    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
-        return jsonify({
-            "status": "error",
-            "message": "Unauthorized. Administrative privilege required to access moderation queue."
-        }), 403
-
-    status_filter = request.args.get("status")
-    flagged_only = request.args.get("flagged_only", "false").lower() == "true"
-    company_filter = request.args.get("company")
-    search_query = request.args.get("search")
-    limit = int(request.args.get("limit", 50))
-    offset = int(request.args.get("offset", 0))
-
-    queue_data = get_moderation_queue(
-        status_filter=status_filter,
-        flagged_only=flagged_only,
-        company_filter=company_filter,
-        search_query=search_query,
-        limit=limit,
-        offset=offset
-    )
-
-    return jsonify({
-        "status": "success",
-        "data": queue_data
-    }), 200
-
-
-@app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
-def coding_bookmark_folder_detail_endpoint(folder_id: str):
-    """
-    GET: Retrieves student's deadline reminder preferences.
-    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-
-    if request.method == "GET":
-        prefs = get_student_deadline_preferences(student_id)
-        return jsonify({
-            "status": "success",
-            "preferences": prefs
-        }), 200
-
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    updated = update_student_deadline_preferences(
-        student_id=student_id,
-        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
-        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
-        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
-        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
-    )
-    return jsonify({
-        "status": "success",
-        "message": "Updated deadline reminder preferences.",
-        "preferences": updated
-    }), 200
 
 
 # ============================================================================
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
-@app.route("/api/resume/scan-pii", methods=["POST"])
-def scan_resume_pii_endpoint():
-    """
-    Scans submitted resume text or uploaded resume file for Personally Identifiable
-    Information (PII) including email addresses, phone numbers, addresses,
-    and government identifiers (PAN, Aadhaar, SSN).
-    """
-    if "user_id" not in flask_session:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
-
-    text_to_scan = ""
-    # Option 1: JSON payload
-    if request.is_json:
-        data = request.get_json(silent=True) or {}
-        text_to_scan = data.get("text", "")
-    elif "resume" in request.files:
-        # Option 2: Uploaded file
-        uploaded_file = request.files["resume"]
-        if uploaded_file and uploaded_file.filename != "":
-            try:
-                text_to_scan, _, _, err = _extract_and_validate_resume(request)
-                if err:
-                    return jsonify({"status": "error", "message": err}), 400
-            except Exception as e:
-                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
-    else:
-        text_to_scan = request.form.get("text", "")
-
-    if not text_to_scan or not text_to_scan.strip():
-        return jsonify({
-            "status": "error",
-            "message": "No resume text provided for PII scanning."
-        }), 400
-
-    scan_result = pii_service.detect_pii(text_to_scan)
-    return jsonify({
-        "status": "success",
-        "scan": scan_result
-    }), 200
 
 
-@app.route("/api/resume/redact-pii", methods=["POST"])
-def redact_resume_pii_endpoint():
-    """
-    Applies configurable redaction rules to sensitive PII entities within resume text.
-    Allows candidate granular control to redact emails, phone numbers, addresses,
-    government IDs, or custom sensitive terms.
-    """
-    if "user_id" not in flask_session:
-        return jsonify({"status": "error", "message": "Authentication required."}), 401
 
-    data = request.get_json(silent=True) or request.form
-    raw_text = data.get("text", "")
 
-    if not raw_text or not raw_text.strip():
-        return jsonify({
-            "status": "error",
-            "message": "No resume text provided for redaction."
-        }), 400
+# ============================================================================
+# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
+# ============================================================================
 
-    redact_emails = data.get("redact_emails", True)
-    if isinstance(redact_emails, str):
-        redact_emails = redact_emails.lower() not in ("false", "0", "no")
 
-    redact_phones = data.get("redact_phones", True)
-    if isinstance(redact_phones, str):
-        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+
+
+# ============================================================================
+# RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
+# ============================================================================
+
+
+
 
 
 if __name__ == "__main__":

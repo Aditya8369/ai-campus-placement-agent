@@ -1,0 +1,950 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review & Correct Resume Details - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .review-section-card {
+      border-radius: 1rem;
+      border: 1px solid #e2e8f0;
+      background: #ffffff;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+      transition: all 0.2s ease-in-out;
+    }
+    .review-section-card:hover {
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04);
+    }
+    .needs-review-field {
+      border: 1.5px solid #f59e0b !important;
+      background-color: #fffbeb !important;
+    }
+    .needs-review-badge {
+      background-color: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fcd34d;
+    }
+    .extracted-badge {
+      background-color: #ecfdf5;
+      color: #065f46;
+      border: 1px solid #a7f3d0;
+    }
+    .skill-tag {
+      background-color: #eff6ff;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+      border-radius: 9999px;
+      padding: 0.35rem 0.75rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.15s ease;
+    }
+    .skill-tag .btn-remove-skill {
+      cursor: pointer;
+      color: #ef4444;
+      border: none;
+      background: transparent;
+      padding: 0;
+      font-size: 0.85rem;
+      line-height: 1;
+    }
+    .skill-tag .btn-remove-skill:hover {
+      color: #b91c1c;
+    }
+    .dynamic-item-card {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    .dynamic-item-card.has-warning {
+      border-color: #f59e0b;
+      background-color: #fffdf5;
+    }
+    .step-pill {
+      font-size: 0.85rem;
+      padding: 0.4rem 0.85rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> Back to Upload
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 my-2" style="max-width: 960px;">
+    <!-- Step Breadcrumb / Header -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-4 pb-2 border-bottom">
+      <div>
+        <h2 class="fw-bold text-dark mb-1 d-flex align-items-center gap-2">
+          <i class="fa-solid fa-user-pen text-primary"></i> Review & Correct Resume Details
+        </h2>
+        <p class="text-secondary small mb-0">
+          Verify and refine your extracted details before the AI models analyze your career readiness.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="step-pill bg-light text-muted border">1. Upload</span>
+        <span class="text-muted"><i class="fa-solid fa-chevron-right small"></i></span>
+        <span class="step-pill bg-primary text-white shadow-sm">2. Review &amp; Correct</span>
+        <span class="text-muted"><i class="fa-solid fa-chevron-right small"></i></span>
+        <span class="step-pill bg-light text-muted border">3. Placement Analysis</span>
+      </div>
+    </div>
+
+    <!-- Original Document Preservation Banner (Requirement 7) -->
+    <div class="alert alert-info border-info-subtle bg-info-subtle text-dark d-flex align-items-center justify-content-between flex-wrap gap-2 rounded-3 mb-4 p-3" role="alert">
+      <div class="d-flex align-items-center gap-3">
+        <div class="p-2 bg-white rounded-circle text-info shadow-sm fs-5">
+          <i class="fa-solid fa-shield-halved text-primary"></i>
+        </div>
+        <div>
+          <span class="fw-bold d-block text-dark">Original Document Preserved Unaltered</span>
+          <span class="small text-secondary">
+            Your original file <strong>{{ review_data.original_filename }}</strong> has been safely stored in your session workspace without modification.
+          </span>
+        </div>
+      </div>
+      <span class="badge bg-white text-primary border rounded-pill px-3 py-2 small shadow-sm">
+        <i class="fa-solid fa-lock me-1"></i> Read-Only Master
+      </span>
+    </div>
+
+    <!-- Highlighting alert for fields needing review (Requirement 3) -->
+    {% if review_data.total_review_items > 0 %}
+    <div class="alert alert-warning border-warning-subtle bg-warning-subtle text-dark rounded-3 mb-4 p-3" id="reviewAttentionAlert" role="alert">
+      <div class="d-flex align-items-start gap-3">
+        <div class="p-2 bg-white rounded-circle text-warning shadow-sm fs-5 mt-1">
+          <i class="fa-solid fa-triangle-exclamation text-warning"></i>
+        </div>
+        <div>
+          <h6 class="fw-bold mb-1 text-warning-emphasis">
+            {{ review_data.total_review_items }} Field{{ 's' if review_data.total_review_items > 1 else '' }} Require Attention
+          </h6>
+          <p class="small text-secondary mb-1">
+            Some sections could not be completely parsed from your resume. Sections highlighted in yellow have missing or ambiguous information. Please verify, correct, or add missing information below.
+          </p>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="alert alert-success border-success-subtle bg-success-subtle text-dark rounded-3 mb-4 p-3" role="alert">
+      <div class="d-flex align-items-center gap-3">
+        <div class="p-2 bg-white rounded-circle text-success shadow-sm fs-5">
+          <i class="fa-solid fa-circle-check text-success"></i>
+        </div>
+        <div>
+          <h6 class="fw-bold mb-0 text-success-emphasis">All Core Sections Successfully Extracted!</h6>
+          <span class="small text-secondary">Review your information below, make any custom tweaks if desired, and proceed to placement readiness analysis.</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Validation Error Alert Banner (Hidden by default, shown by JS validation) -->
+    <div id="validationErrorAlert" class="alert alert-danger d-none rounded-3 mb-4 p-3 shadow-sm" role="alert">
+      <div class="d-flex align-items-center gap-2">
+        <i class="fa-solid fa-circle-exclamation fs-5 text-danger"></i>
+        <div>
+          <strong class="d-block" id="validationErrorTitle">Please resolve the following errors:</strong>
+          <ul class="mb-0 ps-3 small" id="validationErrorsList"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Review Form -->
+    <form id="resumeReviewForm" novalidate>
+      <input type="hidden" name="file_uuid" id="fileUuidInput" value="{{ review_data.file_uuid }}">
+      <input type="hidden" name="original_filename" id="originalFilenameInput" value="{{ review_data.original_filename }}">
+      <input type="hidden" name="target_company" id="targetCompanyInput" value="{{ target_company|default('General') }}">
+      <input type="hidden" name="job_description" id="jobDescriptionInput" value="{{ job_description|default('') }}">
+
+      <!-- SECTION 1: Personal & Contact Information -->
+      <div class="review-section-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+          <h5 class="fw-bold text-dark mb-0 d-flex align-items-center gap-2">
+            <i class="fa-solid fa-id-card text-primary"></i> 1. Personal &amp; Contact Details
+          </h5>
+          {% if review_data.review_flags.candidate_name.status == 'needs_review' %}
+          <span class="badge needs-review-badge rounded-pill px-3 py-1">
+            <i class="fa-solid fa-triangle-exclamation me-1"></i> Verify Name
+          </span>
+          {% else %}
+          <span class="badge extracted-badge rounded-pill px-3 py-1">
+            <i class="fa-solid fa-check me-1"></i> Extracted
+          </span>
+          {% endif %}
+        </div>
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="candidateNameInput" class="form-label fw-semibold small text-secondary">
+              Full Name <span class="text-danger">*</span>
+            </label>
+            <input type="text"
+                   class="form-control rounded-3 {% if review_data.review_flags.candidate_name.status == 'needs_review' %}needs-review-field{% endif %}"
+                   id="candidateNameInput"
+                   name="candidate_name"
+                   value="{{ review_data.candidate_name }}"
+                   placeholder="e.g. John Doe"
+                   required>
+            {% if review_data.review_flags.candidate_name.status == 'needs_review' %}
+            <div class="form-text text-warning-emphasis small mt-1">
+              <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.candidate_name.message }}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6">
+            <label for="emailInput" class="form-label fw-semibold small text-secondary">
+              Email Address
+            </label>
+            <input type="email"
+                   class="form-control rounded-3 {% if review_data.review_flags.email.status == 'needs_review' %}needs-review-field{% endif %}"
+                   id="emailInput"
+                   name="email"
+                   value="{{ review_data.email }}"
+                   placeholder="e.g. student@college.edu">
+            {% if review_data.review_flags.email.status == 'needs_review' %}
+            <div class="form-text text-warning-emphasis small mt-1">
+              <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.email.message }}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="col-md-6">
+            <label for="phoneInput" class="form-label fw-semibold small text-secondary">
+              Phone Number
+            </label>
+            <input type="tel"
+                   class="form-control rounded-3 {% if review_data.review_flags.phone.status == 'needs_review' %}needs-review-field{% endif %}"
+                   id="phoneInput"
+                   name="phone"
+                   value="{{ review_data.phone }}"
+                   placeholder="e.g. +91 9876543210">
+            {% if review_data.review_flags.phone.status == 'needs_review' %}
+            <div class="form-text text-warning-emphasis small mt-1">
+              <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.phone.message }}
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="col-12">
+            <label for="summaryInput" class="form-label fw-semibold small text-secondary">
+              Professional Summary / Career Objective
+            </label>
+            <textarea class="form-control rounded-3 {% if review_data.review_flags.summary.status == 'needs_review' %}needs-review-field{% endif %}"
+                      id="summaryInput"
+                      name="summary"
+                      rows="3"
+                      placeholder="Brief overview of your background, career interests, and placement aspirations...">{{ review_data.summary }}</textarea>
+            {% if review_data.review_flags.summary.status == 'needs_review' %}
+            <div class="form-text text-warning-emphasis small mt-1">
+              <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.summary.message }}
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION 2: Education & Qualifications -->
+      <div class="review-section-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="fw-bold text-dark mb-0">
+              <i class="fa-solid fa-graduation-cap text-primary"></i> 2. Education &amp; Qualifications
+            </h5>
+            {% if review_data.review_flags.education.status == 'needs_review' %}
+            <span class="badge needs-review-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Incomplete
+            </span>
+            {% else %}
+            <span class="badge extracted-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-check me-1"></i> Extracted
+            </span>
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnAddEducation">
+            <i class="fa-solid fa-plus me-1"></i> Add Education
+          </button>
+        </div>
+
+        {% if review_data.review_flags.education.status == 'needs_review' %}
+        <div class="alert alert-warning py-2 px-3 small rounded-3 mb-3">
+          <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.education.message }}
+        </div>
+        {% endif %}
+
+        <div id="educationContainer">
+          {% for edu in review_data.education %}
+          <div class="dynamic-item-card {% if edu.is_incomplete %}has-warning{% endif %}" data-index="{{ loop.index0 }}">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-semibold small text-primary">
+                <i class="fa-solid fa-landmark me-1"></i> Credential #<span class="item-number">{{ loop.index }}</span>
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete entry">
+                <i class="fa-solid fa-trash-can small"></i>
+              </button>
+            </div>
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Institution / University</label>
+                <input type="text" class="form-control form-control-sm rounded-2 edu-institution"
+                       value="{{ edu.institution }}" placeholder="e.g. Stanford University or ABC Institute of Tech">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Degree / Certificate</label>
+                <input type="text" class="form-control form-control-sm rounded-2 edu-degree"
+                       value="{{ edu.degree }}" placeholder="e.g. B.Tech, M.S., High School">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1">Field of Study / Major</label>
+                <input type="text" class="form-control form-control-sm rounded-2 edu-field"
+                       value="{{ edu.field_of_study }}" placeholder="e.g. Computer Science">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1">Graduation Year / Period</label>
+                <input type="text" class="form-control form-control-sm rounded-2 edu-year"
+                       value="{{ edu.graduation_year }}" placeholder="e.g. 2024 or 2020-2024">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small text-secondary mb-1">Score / CGPA / %</label>
+                <input type="text" class="form-control form-control-sm rounded-2 edu-score"
+                       value="{{ edu.score }}" placeholder="e.g. 8.6 CGPA or 85%">
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- SECTION 3: Technical & Core Skills -->
+      <div class="review-section-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="fw-bold text-dark mb-0">
+              <i class="fa-solid fa-code text-primary"></i> 3. Technical &amp; Core Skills <span class="text-danger">*</span>
+            </h5>
+            {% if review_data.review_flags.skills.status == 'needs_review' %}
+            <span class="badge needs-review-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Review Needed
+            </span>
+            {% else %}
+            <span class="badge extracted-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-check me-1"></i> {{ review_data.skills|length }} Extracted
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <p class="text-secondary small mb-2">
+          These technical competencies directly drive your ATS alignment score, job match percentage, and customized learning roadmap.
+        </p>
+
+        {% if review_data.review_flags.skills.status == 'needs_review' %}
+        <div class="alert alert-warning py-2 px-3 small rounded-3 mb-3">
+          <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.skills.message }}
+        </div>
+        {% endif %}
+
+        <!-- Skill Tag Input Box -->
+        <div class="input-group mb-3">
+          <span class="input-group-text bg-white border-end-0 text-muted"><i class="fa-solid fa-plus"></i></span>
+          <input type="text" class="form-control border-start-0 ps-1" id="skillInputField"
+                 placeholder="Type a skill (e.g. Python, Docker, React, Machine Learning) and press Enter or Add...">
+          <button class="btn btn-outline-primary px-4 fw-medium" type="button" id="btnAddSkillBtn">
+            Add Skill
+          </button>
+        </div>
+
+        <!-- Rendered Skill Pills -->
+        <div class="d-flex flex-wrap gap-2 p-3 bg-light rounded-3 border" id="skillsBadgeContainer" style="min-height: 80px;">
+          {% for skill in review_data.skills %}
+          <span class="skill-tag" data-skill="{{ skill }}">
+            <span>{{ skill }}</span>
+            <button type="button" class="btn-remove-skill" aria-label="Remove {{ skill }}" title="Remove skill">&times;</button>
+          </span>
+          {% endfor %}
+        </div>
+        <div class="form-text small text-muted mt-1">
+          Click the <span class="text-danger">&times;</span> on any skill to remove it, or use the input box above to add missing tools and frameworks.
+        </div>
+      </div>
+
+      <!-- SECTION 4: Projects & Portfolio -->
+      <div class="review-section-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="fw-bold text-dark mb-0">
+              <i class="fa-solid fa-diagram-project text-primary"></i> 4. Key Projects &amp; Portfolio
+            </h5>
+            {% if review_data.review_flags.projects.status == 'needs_review' %}
+            <span class="badge needs-review-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Check Details
+            </span>
+            {% else %}
+            <span class="badge extracted-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-check me-1"></i> {{ review_data.projects|length }} Extracted
+            </span>
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnAddProject">
+            <i class="fa-solid fa-plus me-1"></i> Add Project
+          </button>
+        </div>
+
+        {% if review_data.review_flags.projects.status == 'needs_review' %}
+        <div class="alert alert-warning py-2 px-3 small rounded-3 mb-3">
+          <i class="fa-solid fa-circle-info me-1"></i> {{ review_data.review_flags.projects.message }}
+        </div>
+        {% endif %}
+
+        <div id="projectsContainer">
+          {% for proj in review_data.projects %}
+          <div class="dynamic-item-card {% if proj.is_incomplete %}has-warning{% endif %}" data-index="{{ loop.index0 }}">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-semibold small text-primary">
+                <i class="fa-solid fa-code-fork me-1"></i> Project #<span class="item-number">{{ loop.index }}</span>
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete project">
+                <i class="fa-solid fa-trash-can small"></i>
+              </button>
+            </div>
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Project Title</label>
+                <input type="text" class="form-control form-control-sm rounded-2 proj-title"
+                       value="{{ proj.title }}" placeholder="e.g. Distributed Task Queue or AI Placement Bot">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Tech Stack &amp; Libraries</label>
+                <input type="text" class="form-control form-control-sm rounded-2 proj-tech"
+                       value="{{ proj.technologies }}" placeholder="e.g. Python, FastAPI, Redis, Docker">
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-secondary mb-1">Description &amp; Key Highlights</label>
+                <textarea class="form-control form-control-sm rounded-2 proj-desc" rows="2"
+                          placeholder="Describe the problem solved, implementation architecture, and quantifiable outcomes...">{{ proj.description }}</textarea>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- SECTION 5: Work Experience & Internships -->
+      <div class="review-section-card p-4 mb-4">
+        <div class="d-flex align-items-center justify-content-between mb-3 border-bottom pb-2">
+          <div class="d-flex align-items-center gap-2">
+            <h5 class="fw-bold text-dark mb-0">
+              <i class="fa-solid fa-briefcase text-primary"></i> 5. Work Experience &amp; Internships
+            </h5>
+            {% if review_data.review_flags.experience.status == 'needs_review' and review_data.experience|length > 0 %}
+            <span class="badge needs-review-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Incomplete
+            </span>
+            {% elif review_data.experience|length > 0 %}
+            <span class="badge extracted-badge rounded-pill px-3 py-1">
+              <i class="fa-solid fa-check me-1"></i> {{ review_data.experience|length }} Extracted
+            </span>
+            {% else %}
+            <span class="badge bg-light text-muted border rounded-pill px-3 py-1">
+              Optional for Freshers
+            </span>
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnAddExperience">
+            <i class="fa-solid fa-plus me-1"></i> Add Experience
+          </button>
+        </div>
+
+        {% if review_data.experience|length == 0 %}
+        <p class="text-muted small mb-3">
+          No professional work experience detected. If you completed internships or freelance projects, click <strong>Add Experience</strong> to include them, or leave empty if you are a fresh graduate.
+        </p>
+        {% endif %}
+
+        <div id="experienceContainer">
+          {% for exp in review_data.experience %}
+          <div class="dynamic-item-card {% if exp.is_incomplete %}has-warning{% endif %}" data-index="{{ loop.index0 }}">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <span class="fw-semibold small text-primary">
+                <i class="fa-solid fa-building me-1"></i> Experience #<span class="item-number">{{ loop.index }}</span>
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete entry">
+                <i class="fa-solid fa-trash-can small"></i>
+              </button>
+            </div>
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Job Title / Role</label>
+                <input type="text" class="form-control form-control-sm rounded-2 exp-role"
+                       value="{{ exp.role }}" placeholder="e.g. Software Engineer Intern">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Company / Organization</label>
+                <input type="text" class="form-control form-control-sm rounded-2 exp-company"
+                       value="{{ exp.company }}" placeholder="e.g. Tech Innovations Corp">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small text-secondary mb-1">Duration / Period</label>
+                <input type="text" class="form-control form-control-sm rounded-2 exp-duration"
+                       value="{{ exp.duration }}" placeholder="e.g. Jun 2023 - Aug 2023">
+              </div>
+              <div class="col-12">
+                <label class="form-label small text-secondary mb-1">Responsibilities &amp; Impact</label>
+                <textarea class="form-control form-control-sm rounded-2 exp-resp" rows="2"
+                          placeholder="Summarize key features shipped, technologies leveraged, and results achieved...">{{ exp.responsibilities }}</textarea>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 pt-3 mb-5">
+        <a href="/" class="btn btn-outline-secondary rounded-pill px-4 py-2 text-nowrap">
+          <i class="fa-solid fa-arrow-left me-1"></i> Cancel &amp; Re-upload
+        </a>
+
+        <div class="d-flex align-items-center gap-2 w-100 w-sm-auto justify-content-end">
+          <button type="button" id="btnPreviewConfirmation" class="btn btn-custom-primary rounded-pill px-5 py-3 fs-5 shadow-sm fw-bold w-100 w-sm-auto">
+            <i class="fa-solid fa-wand-magic-sparkles me-2"></i> Submit &amp; Proceed to Analysis
+          </button>
+        </div>
+      </div>
+    </form>
+  </main>
+
+  <!-- CONFIRMATION MODAL (Requirement 8) -->
+  <div class="modal fade" id="reviewConfirmationModal" tabindex="-1" aria-labelledby="confirmationModalTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4 border-0 shadow-lg">
+        <div class="modal-header border-0 pb-0">
+          <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2" id="confirmationModalTitle">
+            <i class="fa-solid fa-circle-check text-success"></i> Confirm Verified Profile
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <div class="modal-body py-3">
+          <p class="text-secondary small mb-3">
+            Please review the summary of your verified resume information below. These details will be used to calibrate your ATS evaluation, job match alignment, and custom learning path.
+          </p>
+
+          <div class="card bg-light border-0 rounded-3 p-3 mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="text-muted small">Candidate Name:</span>
+              <strong class="text-dark" id="modalConfirmName">—</strong>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="text-muted small">Email Address:</span>
+              <span class="text-dark" id="modalConfirmEmail">—</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="text-muted small">Total Technical Skills:</span>
+              <span class="badge bg-primary rounded-pill" id="modalConfirmSkillCount">0 Skills</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="text-muted small">Education Credentials:</span>
+              <span class="badge bg-info text-dark rounded-pill" id="modalConfirmEduCount">0 Degrees</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="text-muted small">Projects Configured:</span>
+              <span class="badge bg-secondary rounded-pill" id="modalConfirmProjCount">0 Projects</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-muted small">Work / Internships:</span>
+              <span class="badge bg-light text-dark border rounded-pill" id="modalConfirmExpCount">0 Experiences</span>
+            </div>
+          </div>
+
+          <div class="alert alert-info py-2 px-3 small rounded-3 mb-0 d-flex align-items-center gap-2">
+            <i class="fa-solid fa-shield-halved text-primary"></i>
+            <span>Your original file <strong>{{ review_data.original_filename }}</strong> remains stored untouched on the server.</span>
+          </div>
+        </div>
+
+        <div class="modal-footer border-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">
+            <i class="fa-solid fa-pen-to-square me-1"></i> Go Back &amp; Edit
+          </button>
+          <button type="button" class="btn btn-primary rounded-pill px-4 fw-bold" id="btnFinalConfirmAnalysis">
+            <span id="confirmBtnSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status"></span>
+            <span id="confirmBtnText"><i class="fa-solid fa-rocket me-1"></i> Confirm &amp; Start Analysis</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Review & Correction Page Script -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const skillsContainer = document.getElementById("skillsBadgeContainer");
+      const skillInput = document.getElementById("skillInputField");
+      const addSkillBtn = document.getElementById("btnAddSkillBtn");
+
+      const educationContainer = document.getElementById("educationContainer");
+      const btnAddEducation = document.getElementById("btnAddEducation");
+
+      const projectsContainer = document.getElementById("projectsContainer");
+      const btnAddProject = document.getElementById("btnAddProject");
+
+      const experienceContainer = document.getElementById("experienceContainer");
+      const btnAddExperience = document.getElementById("btnAddExperience");
+
+      const btnPreviewConfirmation = document.getElementById("btnPreviewConfirmation");
+      const confirmationModalEl = document.getElementById("reviewConfirmationModal");
+      const confirmationModal = new bootstrap.Modal(confirmationModalEl);
+      const btnFinalConfirmAnalysis = document.getElementById("btnFinalConfirmAnalysis");
+
+      // 1. SKILLS MANAGEMENT
+      function getActiveSkills() {
+        const tags = skillsContainer.querySelectorAll(".skill-tag");
+        return Array.from(tags).map(t => t.getAttribute("data-skill")).filter(Boolean);
+      }
+
+      function addSkill(skillName) {
+        const clean = skillName.trim();
+        if (!clean) return;
+        const current = getActiveSkills().map(s => s.toLowerCase());
+        if (current.includes(clean.toLowerCase())) return;
+
+        const tag = document.createElement("span");
+        tag.className = "skill-tag";
+        tag.setAttribute("data-skill", clean);
+        tag.innerHTML = `<span>${clean}</span><button type="button" class="btn-remove-skill" aria-label="Remove ${clean}">&times;</button>`;
+        skillsContainer.appendChild(tag);
+        attachSkillRemoveListener(tag.querySelector(".btn-remove-skill"));
+      }
+
+      function attachSkillRemoveListener(btn) {
+        btn.addEventListener("click", function (e) {
+          e.preventDefault();
+          const parent = btn.closest(".skill-tag");
+          if (parent) parent.remove();
+        });
+      }
+
+      skillsContainer.querySelectorAll(".btn-remove-skill").forEach(attachSkillRemoveListener);
+
+      addSkillBtn.addEventListener("click", function () {
+        const val = skillInput.value;
+        if (val.includes(",")) {
+          val.split(",").forEach(s => addSkill(s));
+        } else {
+          addSkill(val);
+        }
+        skillInput.value = "";
+      });
+
+      skillInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addSkillBtn.click();
+        }
+      });
+
+      // 2. DYNAMIC ITEM REMOVAL HELPER
+      function attachItemRemoveListener(container) {
+        container.querySelectorAll(".btn-remove-item").forEach(btn => {
+          btn.onclick = function () {
+            const card = btn.closest(".dynamic-item-card");
+            if (card) {
+              card.remove();
+              updateItemIndices(container);
+            }
+          };
+        });
+      }
+
+      function updateItemIndices(container) {
+        container.querySelectorAll(".dynamic-item-card").forEach((card, idx) => {
+          const numSpan = card.querySelector(".item-number");
+          if (numSpan) numSpan.textContent = idx + 1;
+        });
+      }
+
+      attachItemRemoveListener(educationContainer);
+      attachItemRemoveListener(projectsContainer);
+      attachItemRemoveListener(experienceContainer);
+
+      // 3. ADD EDUCATION
+      btnAddEducation.addEventListener("click", function () {
+        const count = educationContainer.querySelectorAll(".dynamic-item-card").length + 1;
+        const card = document.createElement("div");
+        card.className = "dynamic-item-card";
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold small text-primary">
+              <i class="fa-solid fa-landmark me-1"></i> Credential #<span class="item-number">${count}</span>
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete entry">
+              <i class="fa-solid fa-trash-can small"></i>
+            </button>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Institution / University</label>
+              <input type="text" class="form-control form-control-sm rounded-2 edu-institution" placeholder="e.g. Stanford University or ABC Institute of Tech">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Degree / Certificate</label>
+              <input type="text" class="form-control form-control-sm rounded-2 edu-degree" placeholder="e.g. B.Tech, M.S., High School">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-secondary mb-1">Field of Study / Major</label>
+              <input type="text" class="form-control form-control-sm rounded-2 edu-field" placeholder="e.g. Computer Science">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-secondary mb-1">Graduation Year / Period</label>
+              <input type="text" class="form-control form-control-sm rounded-2 edu-year" placeholder="e.g. 2024 or 2020-2024">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small text-secondary mb-1">Score / CGPA / %</label>
+              <input type="text" class="form-control form-control-sm rounded-2 edu-score" placeholder="e.g. 8.6 CGPA or 85%">
+            </div>
+          </div>
+        `;
+        educationContainer.appendChild(card);
+        attachItemRemoveListener(educationContainer);
+      });
+
+      // 4. ADD PROJECT
+      btnAddProject.addEventListener("click", function () {
+        const count = projectsContainer.querySelectorAll(".dynamic-item-card").length + 1;
+        const card = document.createElement("div");
+        card.className = "dynamic-item-card";
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold small text-primary">
+              <i class="fa-solid fa-code-fork me-1"></i> Project #<span class="item-number">${count}</span>
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete project">
+              <i class="fa-solid fa-trash-can small"></i>
+            </button>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Project Title</label>
+              <input type="text" class="form-control form-control-sm rounded-2 proj-title" placeholder="e.g. Distributed Task Queue">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Tech Stack &amp; Libraries</label>
+              <input type="text" class="form-control form-control-sm rounded-2 proj-tech" placeholder="e.g. Python, FastAPI, Redis, Docker">
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-secondary mb-1">Description &amp; Key Highlights</label>
+              <textarea class="form-control form-control-sm rounded-2 proj-desc" rows="2" placeholder="Describe the problem solved, implementation architecture, and quantifiable outcomes..."></textarea>
+            </div>
+          </div>
+        `;
+        projectsContainer.appendChild(card);
+        attachItemRemoveListener(projectsContainer);
+      });
+
+      // 5. ADD EXPERIENCE
+      btnAddExperience.addEventListener("click", function () {
+        const count = experienceContainer.querySelectorAll(".dynamic-item-card").length + 1;
+        const card = document.createElement("div");
+        card.className = "dynamic-item-card";
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold small text-primary">
+              <i class="fa-solid fa-building me-1"></i> Experience #<span class="item-number">${count}</span>
+            </span>
+            <button type="button" class="btn btn-sm btn-outline-danger btn-remove-item rounded-pill px-2 py-0" title="Delete entry">
+              <i class="fa-solid fa-trash-can small"></i>
+            </button>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Job Title / Role</label>
+              <input type="text" class="form-control form-control-sm rounded-2 exp-role" placeholder="e.g. Software Engineer Intern">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Company / Organization</label>
+              <input type="text" class="form-control form-control-sm rounded-2 exp-company" placeholder="e.g. Tech Innovations Corp">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small text-secondary mb-1">Duration / Period</label>
+              <input type="text" class="form-control form-control-sm rounded-2 exp-duration" placeholder="e.g. Jun 2023 - Aug 2023">
+            </div>
+            <div class="col-12">
+              <label class="form-label small text-secondary mb-1">Responsibilities &amp; Impact</label>
+              <textarea class="form-control form-control-sm rounded-2 exp-resp" rows="2" placeholder="Summarize key features shipped, technologies leveraged, and results achieved..."></textarea>
+            </div>
+          </div>
+        `;
+        experienceContainer.appendChild(card);
+        attachItemRemoveListener(experienceContainer);
+      });
+
+      // 6. COLLECT PAYLOAD
+      function serializeReviewPayload() {
+        const name = document.getElementById("candidateNameInput").value.trim();
+        const email = document.getElementById("emailInput").value.trim();
+        const phone = document.getElementById("phoneInput").value.trim();
+        const summary = document.getElementById("summaryInput").value.trim();
+        const file_uuid = document.getElementById("fileUuidInput").value;
+        const original_filename = document.getElementById("originalFilenameInput").value;
+        const target_company = document.getElementById("targetCompanyInput").value || "General";
+        const job_description = document.getElementById("jobDescriptionInput").value || "";
+
+        const skills = getActiveSkills();
+
+        const education = [];
+        educationContainer.querySelectorAll(".dynamic-item-card").forEach(card => {
+          education.push({
+            institution: card.querySelector(".edu-institution") ? card.querySelector(".edu-institution").value.trim() : "",
+            degree: card.querySelector(".edu-degree") ? card.querySelector(".edu-degree").value.trim() : "",
+            field_of_study: card.querySelector(".edu-field") ? card.querySelector(".edu-field").value.trim() : "",
+            graduation_year: card.querySelector(".edu-year") ? card.querySelector(".edu-year").value.trim() : "",
+            score: card.querySelector(".edu-score") ? card.querySelector(".edu-score").value.trim() : ""
+          });
+        });
+
+        const projects = [];
+        projectsContainer.querySelectorAll(".dynamic-item-card").forEach(card => {
+          projects.push({
+            title: card.querySelector(".proj-title") ? card.querySelector(".proj-title").value.trim() : "",
+            technologies: card.querySelector(".proj-tech") ? card.querySelector(".proj-tech").value.trim() : "",
+            description: card.querySelector(".proj-desc") ? card.querySelector(".proj-desc").value.trim() : ""
+          });
+        });
+
+        const experience = [];
+        experienceContainer.querySelectorAll(".dynamic-item-card").forEach(card => {
+          experience.push({
+            role: card.querySelector(".exp-role") ? card.querySelector(".exp-role").value.trim() : "",
+            company: card.querySelector(".exp-company") ? card.querySelector(".exp-company").value.trim() : "",
+            duration: card.querySelector(".exp-duration") ? card.querySelector(".exp-duration").value.trim() : "",
+            responsibilities: card.querySelector(".exp-resp") ? card.querySelector(".exp-resp").value.trim() : ""
+          });
+        });
+
+        return {
+          file_uuid,
+          original_filename,
+          candidate_name: name,
+          email,
+          phone,
+          summary,
+          skills,
+          education,
+          projects,
+          experience,
+          target_company,
+          job_description
+        };
+      }
+
+      // 7. VALIDATION
+      function validatePayload(payload) {
+        const errors = [];
+        if (!payload.candidate_name || payload.candidate_name.length < 2) {
+          errors.push("Candidate Name is required (minimum 2 characters).");
+        }
+        if (!payload.skills || payload.skills.length === 0) {
+          errors.push("At least one technical skill is required.");
+        }
+        return errors;
+      }
+
+      // 8. SHOW CONFIRMATION MODAL (Requirement 8)
+      btnPreviewConfirmation.addEventListener("click", function () {
+        const payload = serializeReviewPayload();
+        const errors = validatePayload(payload);
+
+        const errorAlert = document.getElementById("validationErrorAlert");
+        const errorList = document.getElementById("validationErrorsList");
+
+        if (errors.length > 0) {
+          errorList.innerHTML = errors.map(err => `<li>${err}</li>`).join("");
+          errorAlert.classList.remove("d-none");
+          errorAlert.scrollIntoView({ behavior: "smooth", block: "center" });
+          return;
+        }
+
+        errorAlert.classList.add("d-none");
+
+        // Populate confirmation modal stats
+        document.getElementById("modalConfirmName").textContent = payload.candidate_name;
+        document.getElementById("modalConfirmEmail").textContent = payload.email || "Not specified";
+        document.getElementById("modalConfirmSkillCount").textContent = `${payload.skills.length} Skill${payload.skills.length === 1 ? '' : 's'}`;
+        document.getElementById("modalConfirmEduCount").textContent = `${payload.education.length} Credential${payload.education.length === 1 ? '' : 's'}`;
+        document.getElementById("modalConfirmProjCount").textContent = `${payload.projects.length} Project${payload.projects.length === 1 ? '' : 's'}`;
+        document.getElementById("modalConfirmExpCount").textContent = `${payload.experience.length} Experience${payload.experience.length === 1 ? '' : 's'}`;
+
+        confirmationModal.show();
+      });
+
+      // 9. SUBMIT CONFIRMED INFORMATION FOR ANALYSIS
+      btnFinalConfirmAnalysis.addEventListener("click", async function () {
+        const payload = serializeReviewPayload();
+        const spinner = document.getElementById("confirmBtnSpinner");
+        const btnText = document.getElementById("confirmBtnText");
+
+        btnFinalConfirmAnalysis.disabled = true;
+        spinner.classList.remove("d-none");
+        btnText.innerHTML = "Submitting for Analysis...";
+
+        try {
+          const response = await fetch("/api/resume/confirm-analysis", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"
+            },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || "Analysis submission failed.");
+          }
+
+          // Redirect to the generated placement analysis dashboard
+          window.location.href = data.redirect_url;
+        } catch (err) {
+          btnFinalConfirmAnalysis.disabled = false;
+          spinner.classList.add("d-none");
+          btnText.innerHTML = `<i class="fa-solid fa-rocket me-1"></i> Confirm &amp; Start Analysis`;
+          alert("Error submitting reviewed resume: " + err.message);
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>
