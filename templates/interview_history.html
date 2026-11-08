@@ -146,12 +146,13 @@
 
     <!-- Historical Sessions List -->
     <div class="card border-0 shadow-sm rounded-4 p-4">
+      {% set display_sessions = analytics.paginated_sessions if analytics.paginated_sessions is defined else analytics.sessions %}
       <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="fw-bold mb-0"><i class="fa-solid fa-list-check text-primary me-2"></i>Past Interview Attempts</h5>
-        <span class="badge bg-secondary rounded-pill">{{ analytics.sessions|length }} records</span>
+        <span class="badge bg-secondary rounded-pill">{% if pagination %}Showing {{ display_sessions|length }} of {{ pagination.total_records }} records{% else %}{{ analytics.sessions|length }} records{% endif %}</span>
       </div>
 
-      {% if analytics.sessions %}
+      {% if display_sessions %}
       <div class="table-responsive">
         <table class="table table-hover align-middle">
           <thead class="table-light">
@@ -168,7 +169,7 @@
             </tr>
           </thead>
           <tbody>
-            {% for s in analytics.sessions %}
+            {% for s in display_sessions %}
             <tr>
               <td class="fw-semibold text-truncate" style="max-width: 150px;">
                 <i class="fa-solid fa-building text-secondary me-1"></i> {{ s.company_name }}
@@ -202,6 +203,7 @@
           </tbody>
         </table>
       </div>
+      {% include "pagination.html" %}
       {% else %}
       <div class="text-center py-5">
         <i class="fa-solid fa-comments fa-3x text-secondary opacity-50 mb-3"></i>
