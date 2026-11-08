@@ -157,6 +157,7 @@ from utils.progress_tracker import (
     generate_side_by_side_diff,
     compare_two_resume_texts
 )
+from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
 
@@ -746,6 +747,22 @@ def register():
         return redirect(url_for("login"))
 
     return render_template("register.html")
+
+
+@app.route("/api/auth/password-strength", methods=["POST"])
+def api_password_strength():
+    """
+    Evaluates password strength across length, casing, numbers, and symbols (#290).
+    Returns rating level, criteria pass flags, and improvement suggestions.
+    Does not log or store the password.
+    """
+    payload = request.get_json(silent=True) or request.form
+    password = payload.get("password", "") if payload else ""
+    evaluation = evaluate_password_strength(password)
+    return jsonify({
+        "status": "success",
+        "evaluation": evaluation
+    }), 200
 
 
 @app.route("/verify-email/<token>", methods=["GET"])
