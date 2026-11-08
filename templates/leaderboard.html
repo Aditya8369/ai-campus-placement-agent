@@ -254,7 +254,7 @@
           <i class="fa-solid fa-list-ol text-primary me-2"></i> Ranked Candidate Standings
         </h4>
         <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-semibold">
-          Showing {{ total_ranked }} Evaluated Peers
+          {% if pagination %}Showing {{ leaderboard|length }} of {{ pagination.total_records }} Evaluated Peers{% else %}Showing {{ total_ranked }} Evaluated Peers{% endif %}
         </span>
       </div>
 
@@ -345,6 +345,7 @@
           </tbody>
         </table>
       </div>
+      {% include "pagination.html" %}
     </div>
 
     <!-- Call to Action Banner -->

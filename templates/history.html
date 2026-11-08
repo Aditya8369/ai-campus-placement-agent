@@ -116,8 +116,9 @@
       </div>
 
       <!-- Analyses Grid (Newest First) -->
+      {% set display_analyses = paginated_analyses if paginated_analyses is defined else analyses %}
       <div class="row g-4" id="historyGrid">
-        {% for analysis in analyses %}
+        {% for analysis in display_analyses %}
         <div class="col-md-6 col-lg-4 history-item" id="analysis-card-{{ analysis.id }}">
           <div class="card history-card border-0 shadow-sm rounded-4 h-100 p-4 d-flex flex-column justify-content-between bg-white">
             <div>
@@ -185,6 +186,7 @@
         </div>
         {% endfor %}
       </div>
+      {% include "pagination.html" %}
 
     {% else %}
       <!-- Empty State -->
