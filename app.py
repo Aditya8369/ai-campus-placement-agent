@@ -120,6 +120,7 @@ from utils.batch_analyzer import run_batch_company_comparison
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
+)
 from utils.bookmark_folders import (
     create_bookmark_folder,
     list_student_bookmark_folders,
@@ -1346,7 +1347,8 @@ def dashboard(analysis_id: str) -> str:
         existing_skills=existing_skills,
         skill_gaps=gap_names,
         company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", "")
+        resume_text=analysis_record.get("resume_text", ""),
+        analysis_record=analysis_record
     )
     # Prepare verified Placement Readiness Summary data
     results = analysis_record.get("results") or {}
@@ -2140,10 +2142,8 @@ def api_skills_assessment():
         }), 200 if deleted else 404
 
 
-@app.route("/api/feedback", methods=["GET", "POST"])
-def api_feedback():
-    """
-    Generates and serves a downloadable, formal placement readiness completion certificate in PDF format.
+@app.route("/certificate/<analysis_id>/download")
+def download_certificate_pdf(analysis_id: str):
     """
     try:
         analysis_record = get_analysis(analysis_id)
@@ -3324,9 +3324,35 @@ def api_role_prep_for_analysis(analysis_id: str):
         existing_skills=existing_skills,
         skill_gaps=gap_names,
         company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", "")
+        resume_text=analysis_record.get("resume_text", ""),
+        analysis_record=analysis_record
     )
     return jsonify(prep_data), 200
+
+
+@app.route("/api/role-prep/career-recommendations/<analysis_id>", methods=["GET"])
+def api_all_career_recommendations(analysis_id: str):
+    """
+    Returns AI recommendation explanations across all supported career roles (#295).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record:
+        return jsonify({"success": False, "error": "Analysis record not found"}), 404
+
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    recommendations = role_prep_agent.get_all_role_recommendations(
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        resume_text=analysis_record.get("resume_text", ""),
+        analysis_record=analysis_record,
+        company_name=analysis_record.get("company_name", "General")
+    )
+    return jsonify(recommendations), 200
 
 
 @app.route("/api/role-prep/generate", methods=["POST"])
@@ -3397,7 +3423,8 @@ def role_preparation_view():
         existing_skills=existing_skills,
         skill_gaps=skill_gaps,
         company_name=company or "General Campus Recruitment",
-        resume_text=analysis_record.get("resume_text", "") if analysis_record else None
+        resume_text=analysis_record.get("resume_text", "") if analysis_record else None,
+        analysis_record=analysis_record
     )
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -4612,159 +4639,6 @@ def delete_analysis_action(analysis_id: str):
             return jsonify({"success": False, "error": "Internal server error deleting analysis."}), 500
         flash("An error occurred while deleting the analysis.", "error")
         return redirect(url_for("history_view"))
-# ==============================================================================
-# Role-Based Preparation Mode Routes (#154)
-# ==============================================================================
-
-@app.route("/api/role-prep/roles")
-def api_role_prep_roles():
-    """
-    Returns the list of supported placement roles with descriptions and icons.
-    """
-    return jsonify({
-        "success": True,
-        "roles": SUPPORTED_ROLES
-    }), 200
-
-
-@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
-def api_role_prep_for_analysis(analysis_id: str):
-    """
-    Generates role-based preparation curriculum and recommendations for a student analysis.
-    Supports switching target roles dynamically (Python Developer, Data Analyst, Data Scientist, Software Engineer).
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record:
-        return jsonify({"success": False, "error": "Analysis record not found"}), 404
-
-    target_role = request.args.get("role")
-    if not target_role and request.is_json:
-        target_role = (request.get_json() or {}).get("role")
-    if not target_role and request.form:
-        target_role = request.form.get("role")
-    target_role = (target_role or "Software Engineer").strip()
-
-    results = analysis_record.get("results") or {}
-    job_match = results.get("job_match") or {}
-    skill_gap_items = results.get("skill_gap") or []
-
-    existing_skills = job_match.get("matched_skills") or []
-    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
-
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=target_role,
-        existing_skills=existing_skills,
-        skill_gaps=gap_names,
-        company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", "")
-    )
-    return jsonify(prep_data), 200
-
-
-@app.route("/api/role-prep/generate", methods=["POST"])
-def api_role_prep_generate():
-    """
-    Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
-    """
-    body = request.get_json() or {}
-    target_role = body.get("role") or request.form.get("role") or "Software Engineer"
-    skills = body.get("skills") or []
-    if isinstance(skills, str):
-        skills = [s.strip() for s in re.split(r"[,;\n]+", skills) if s.strip()]
-    skill_gaps = body.get("skill_gaps") or []
-    if isinstance(skill_gaps, str):
-        skill_gaps = [s.strip() for s in re.split(r"[,;\n]+", skill_gaps) if s.strip()]
-    company = body.get("company") or request.form.get("company") or "General"
-
-    prep_data = role_prep_agent.generate_role_preparation(
-        target_role=target_role,
-        existing_skills=skills,
-        skill_gaps=skill_gaps,
-        company_name=company
-    )
-    return jsonify(prep_data), 200
-
-
-@app.route("/role-preparation", methods=["GET", "POST"])
-def role_preparation_view():
-    """
-    Role-Based Preparation Mode View (#154).
-    Enables students to explore tailored learning tracks for Python Developer, Data Analyst,
-    Data Scientist, and Software Engineer roles with personalized skill gap bridging.
-    """
-    analysis_id = request.args.get("analysis_id", "").strip()
-    selected_role = request.args.get("role", "Software Engineer").strip()
-    company = request.args.get("company", "").strip()
-    raw_skills = request.args.get("skills", "").strip()
-    raw_gaps = request.args.get("skill_gaps", "").strip()
-
-    if request.method == "POST":
-        selected_role = request.form.get("role", selected_role).strip()
-        company = request.form.get("company", company).strip()
-        raw_skills = request.form.get("skills", raw_skills).strip()
-        raw_gaps = request.form.get("skill_gaps", raw_gaps).strip()
-
-        answers_recorded = session.get("answers", [])
-        if not answers_recorded:
-            if request.headers.get("Accept") == "application/json":
-                return jsonify({"error": "No answers recorded yet. Submit at least one answer to download the transcript."}), 400
-            flash("No interview answers recorded yet. Please submit at least one answer before downloading the transcript.", "warning")
-            return redirect(url_for("interview", analysis_id=analysis_id))
-
-        analysis_record = get_analysis(analysis_id)
-        company_name = analysis_record.get("company_name", "General") if analysis_record else "General"
-        session_summary = live_interview_agent.calculate_session_summary(answers_recorded)
-
-        safe_company = "".join(c for c in company_name if c.isalnum() or c in ("-", "_")) or "Placement"
-        filename_base = f"Interview_Transcript_{safe_company}_{analysis_id[:8]}"
-        export_format = request.args.get("format", "pdf").strip().lower()
-
-        if export_format in ("md", "markdown"):
-            md_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                md_content,
-                mimetype="text/markdown",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.md"},
-            )
-        elif export_format in ("txt", "text"):
-            txt_content = generate_interview_transcript_markdown(
-                session_data=session,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return Response(
-                txt_content,
-                mimetype="text/plain",
-                headers={"Content-Disposition": f"attachment; filename={filename_base}.txt"},
-            )
-        elif export_format == "json":
-            return redirect(url_for("export_interview_json", analysis_id=analysis_id, session_id=session_id))
-        else:
-            # Default PDF
-            os.makedirs(config.REPORT_FOLDER, exist_ok=True)
-            pdf_filename = f"{filename_base}_{session_id}.pdf"
-            pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
-
-            generate_interview_transcript_pdf(
-                session_data=session,
-                output_path=pdf_full_path,
-                company_name=company_name,
-                summary_data=session_summary,
-            )
-            return send_file(
-                pdf_full_path,
-                as_attachment=True,
-                download_name=f"{filename_base}.pdf",
-                mimetype="application/pdf",
-            )
-    except Exception as e:
-        logger.error(f"Failed to generate and serve interview transcript: {str(e)}")
-        flash(f"Error compiling interview transcript: {str(e)}", "error")
-        return redirect(url_for("interview", analysis_id=analysis_id))
 
 
 @app.route("/certificate/<analysis_id>")
@@ -6140,9 +6014,35 @@ def api_role_prep_for_analysis(analysis_id: str):
         existing_skills=existing_skills,
         skill_gaps=gap_names,
         company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", "")
+        resume_text=analysis_record.get("resume_text", ""),
+        analysis_record=analysis_record
     )
     return jsonify(prep_data), 200
+
+
+@app.route("/api/role-prep/career-recommendations/<analysis_id>", methods=["GET"])
+def api_all_career_recommendations(analysis_id: str):
+    """
+    Returns AI recommendation explanations across all supported career roles (#295).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record:
+        return jsonify({"success": False, "error": "Analysis record not found"}), 404
+
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or {}
+    skill_gap_items = results.get("skill_gap") or []
+    existing_skills = job_match.get("matched_skills") or []
+    gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
+
+    recommendations = role_prep_agent.get_all_role_recommendations(
+        existing_skills=existing_skills,
+        skill_gaps=gap_names,
+        resume_text=analysis_record.get("resume_text", ""),
+        analysis_record=analysis_record,
+        company_name=analysis_record.get("company_name", "General")
+    )
+    return jsonify(recommendations), 200
 
 
 @app.route("/api/role-prep/generate", methods=["POST"])
@@ -6213,7 +6113,8 @@ def role_preparation_view():
         existing_skills=existing_skills,
         skill_gaps=skill_gaps,
         company_name=company or "General Campus Recruitment",
-        resume_text=analysis_record.get("resume_text", "") if analysis_record else None
+        resume_text=analysis_record.get("resume_text", "") if analysis_record else None,
+        analysis_record=analysis_record
     )
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -6851,11 +6752,10 @@ def api_interview_experience_facets_endpoint():
     return jsonify({
         "status": "success",
         "facets": facets
-# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
-# ============================================================================
+    }), 200
 
-@app.route("/api/coding/folders", methods=["GET", "POST"])
-def coding_bookmark_folders_collection_endpoint():
+
+# ============================================================================
 # INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
 # ============================================================================
 
@@ -6912,6 +6812,50 @@ def admin_moderate_experience_action_endpoint(exp_id: str):
     action = payload.get("action")
     if not action:
         return jsonify({"status": "error", "message": "Moderation 'action' is required."}), 400
+
+    reason = payload.get("reason", "")
+    moderator_id = flask_session.get("user_id") or "admin"
+
+    try:
+        updated_experience = moderate_interview_experience(
+            experience_id=exp_id,
+            action=action,
+            moderator_id=str(moderator_id),
+            reason=reason
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
+            "experience": updated_experience
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
+
+
+@app.route("/api/admin/moderation/experiences/<exp_id>/logs", methods=["GET"])
+def admin_experience_moderation_logs_endpoint(exp_id: str):
+    """Retrieves full audit trail of moderation actions for a specific interview experience."""
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
+        return jsonify({
+            "status": "error",
+            "message": "Unauthorized. Administrative privilege required."
+        }), 403
+
+    logs = get_experience_moderation_logs(exp_id)
+    return jsonify({
+        "status": "success",
+        "experience_id": exp_id,
+        "logs": logs
+    }), 200
+
+
+# ============================================================================
 # JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
 # ============================================================================
 
@@ -6947,6 +6891,52 @@ def student_deadline_reminders_endpoint():
         "count": len(reminders),
         "reminders": reminders
     }), 200
+
+
+@app.route("/api/reminders/deadlines/<reminder_id>/acknowledge", methods=["POST"])
+def acknowledge_deadline_reminder_endpoint(reminder_id: str):
+    """Marks an upcoming deadline reminder as acknowledged/dismissed."""
+    student_id = flask_session.get("user_id") or "default_student"
+    success = acknowledge_deadline_reminder(student_id=student_id, reminder_id=reminder_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Reminder not found or already acknowledged."}), 404
+    return jsonify({
+        "status": "success",
+        "message": "Deadline reminder acknowledged successfully."
+    }), 200
+
+
+@app.route("/api/reminders/preferences", methods=["GET", "PUT", "PATCH"])
+def student_reminder_preferences_endpoint():
+    """
+    GET: Retrieves student's deadline reminder preferences.
+    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        prefs = get_student_deadline_preferences(student_id)
+        return jsonify({
+            "status": "success",
+            "preferences": prefs
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    updated = update_student_deadline_preferences(
+        student_id=student_id,
+        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
+        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
+        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
+        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
+    )
+    return jsonify({
+        "status": "success",
+        "message": "Updated deadline reminder preferences.",
+        "preferences": updated
+    }), 200
+
+
+# ============================================================================
 # COMPANY PROFILE UPDATE MANAGEMENT SYSTEM (#250)
 # ============================================================================
 
@@ -7059,46 +7049,113 @@ def company_profile_detail_endpoint(profile_id: str):
             "status": "success" if archived else "error",
             "message": f"Archived company profile '{profile['company_name']}'."
         }), 200
+
+
+# ============================================================================
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
-@app.route("/api/reminders/deadlines/<reminder_id>/acknowledge", methods=["POST"])
-def acknowledge_deadline_reminder_endpoint(reminder_id: str):
-    """Marks an upcoming deadline reminder as acknowledged/dismissed."""
-    student_id = flask_session.get("user_id") or "default_student"
-    success = acknowledge_deadline_reminder(student_id=student_id, reminder_id=reminder_id)
-    if not success:
-        return jsonify({"status": "error", "message": "Reminder not found or already acknowledged."}), 404
+@app.route("/api/resume/scan-pii", methods=["POST"])
+def scan_resume_pii_endpoint():
+    """
+    Scans submitted resume text or uploaded resume file for Personally Identifiable
+    Information (PII) including email addresses, phone numbers, addresses,
+    and government identifiers (PAN, Aadhaar, SSN).
+    """
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
+
+    text_to_scan = ""
+    # Option 1: JSON payload
+    if request.is_json:
+        data = request.get_json(silent=True) or {}
+        text_to_scan = data.get("text", "")
+    elif "resume" in request.files:
+        # Option 2: Uploaded file
+        uploaded_file = request.files["resume"]
+        if uploaded_file and uploaded_file.filename != "":
+            try:
+                text_to_scan, _, _, err = _extract_and_validate_resume(request)
+                if err:
+                    return jsonify({"status": "error", "message": err}), 400
+            except Exception as e:
+                return jsonify({"status": "error", "message": f"Failed to extract text: {str(e)}"}), 400
+    else:
+        text_to_scan = request.form.get("text", "")
+
+    if not text_to_scan or not text_to_scan.strip():
+        return jsonify({
+            "status": "error",
+            "message": "No resume text provided for PII scanning."
+        }), 400
+
+    scan_result = pii_service.detect_pii(text_to_scan)
     return jsonify({
         "status": "success",
-        "message": "Deadline reminder acknowledged successfully."
+        "scan": scan_result
     }), 200
 
 
-@app.route("/api/reminders/preferences", methods=["GET", "PUT", "PATCH"])
-def student_reminder_preferences_endpoint():
+@app.route("/api/resume/redact-pii", methods=["POST"])
+def redact_resume_pii_endpoint():
     """
-    GET: Retrieves student's deadline reminder preferences.
-    PUT/PATCH: Updates alert lead days, email toggle, dashboard alert settings.
+    Applies configurable redaction rules to sensitive PII entities within resume text.
+    Allows candidate granular control to redact emails, phone numbers, addresses,
+    government IDs, or custom sensitive terms.
     """
-    student_id = flask_session.get("user_id") or "default_student"
+    if "user_id" not in flask_session:
+        return jsonify({"status": "error", "message": "Authentication required."}), 401
 
-    if request.method == "GET":
-        prefs = get_student_deadline_preferences(student_id)
+    data = request.get_json(silent=True) or request.form
+    raw_text = data.get("text", "")
+
+    if not raw_text or not raw_text.strip():
         return jsonify({
-            "status": "success",
-            "preferences": prefs
-        }), 200
+            "status": "error",
+            "message": "No resume text provided for redaction."
+        }), 400
 
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    updated = update_student_deadline_preferences(
-        student_id=student_id,
-        alert_lead_days=int(payload["alert_lead_days"]) if "alert_lead_days" in payload else None,
-        email_alerts_enabled=payload.get("email_alerts_enabled") in (True, "true", "1") if "email_alerts_enabled" in payload else None,
-        dashboard_alerts_enabled=payload.get("dashboard_alerts_enabled") in (True, "true", "1") if "dashboard_alerts_enabled" in payload else None,
-        urgency_threshold_hours=int(payload["urgency_threshold_hours"]) if "urgency_threshold_hours" in payload else None
-@app.route("/api/resume/scan-pii", methods=["POST"])
-def scan_resume_pii_endpoint():
+    redact_emails = data.get("redact_emails", True)
+    if isinstance(redact_emails, str):
+        redact_emails = redact_emails.lower() not in ("false", "0", "no")
+
+    redact_phones = data.get("redact_phones", True)
+    if isinstance(redact_phones, str):
+        redact_phones = redact_phones.lower() not in ("false", "0", "no")
+
+    redact_addresses = data.get("redact_addresses", True)
+    if isinstance(redact_addresses, str):
+        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
+
+    redact_gov_ids = data.get("redact_gov_ids", True)
+    if isinstance(redact_gov_ids, str):
+        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
+
+    custom_tokens = data.get("custom_redact_values", [])
+    if isinstance(custom_tokens, str):
+        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
+
+    redacted_result = pii_service.redact_pii(
+        raw_text,
+        redact_emails=redact_emails,
+        redact_phones=redact_phones,
+        redact_addresses=redact_addresses,
+        redact_gov_ids=redact_gov_ids,
+        custom_redact_values=custom_tokens
+    )
+
+    return jsonify({
+        "status": "success",
+        "redaction": redacted_result
+    }), 200
+
+
+# ============================================================================
+# CODING BOOKMARK FOLDER MANAGEMENT SYSTEM ENDPOINTS (#253)
+# ============================================================================
+
+@app.route("/api/coding/folders", methods=["GET", "POST"])
+def coding_bookmark_folders_collection_endpoint():
     """
     GET: Lists all custom bookmark folders for the student, including counts and unassigned count.
     POST: Creates a new bookmark folder.
@@ -7139,47 +7196,6 @@ def scan_resume_pii_endpoint():
 
 @app.route("/api/coding/folders/<folder_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
 def coding_bookmark_folder_detail_endpoint(folder_id: str):
-    reason = payload.get("reason", "")
-    moderator_id = flask_session.get("user_id") or "admin"
-
-    try:
-        updated_experience = moderate_interview_experience(
-            experience_id=exp_id,
-            action=action,
-            moderator_id=str(moderator_id),
-            reason=reason
-        )
-        return jsonify({
-            "status": "success",
-            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
-            "experience": updated_experience
-        }), 200
-    except KeyError as ke:
-        return jsonify({"status": "error", "message": str(ke)}), 404
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": f"Moderation failed: {str(e)}"}), 500
-
-
-@app.route("/api/admin/moderation/experiences/<exp_id>/logs", methods=["GET"])
-def admin_experience_moderation_logs_endpoint(exp_id: str):
-    """Retrieves full audit trail of moderation actions for a specific interview experience."""
-    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
-    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
-    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin":
-        return jsonify({
-            "status": "error",
-            "message": "Unauthorized. Administrative privilege required."
-        }), 403
-
-    logs = get_experience_moderation_logs(exp_id)
-    return jsonify({
-        "status": "success",
-        "experience_id": exp_id,
-        "logs": logs
-@app.route("/api/resume/redact-pii", methods=["POST"])
-def redact_resume_pii_endpoint():
     """
     GET: Retrieves folder metadata and bookmarked problems inside.
     PUT/PATCH: Updates folder name, description, color, or icon.
@@ -7255,40 +7271,6 @@ def move_coding_bookmark_endpoint(problem_id: str):
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": f"Move failed: {str(e)}"}), 500
-    redact_emails = data.get("redact_emails", True)
-    if isinstance(redact_emails, str):
-        redact_emails = redact_emails.lower() not in ("false", "0", "no")
-
-    redact_phones = data.get("redact_phones", True)
-    if isinstance(redact_phones, str):
-        redact_phones = redact_phones.lower() not in ("false", "0", "no")
-
-    redact_addresses = data.get("redact_addresses", True)
-    if isinstance(redact_addresses, str):
-        redact_addresses = redact_addresses.lower() not in ("false", "0", "no")
-
-    redact_gov_ids = data.get("redact_gov_ids", True)
-    if isinstance(redact_gov_ids, str):
-        redact_gov_ids = redact_gov_ids.lower() not in ("false", "0", "no")
-
-    custom_tokens = data.get("custom_redact_values", [])
-    if isinstance(custom_tokens, str):
-        custom_tokens = [t.strip() for t in custom_tokens.split(",") if t.strip()]
-
-    redacted_result = pii_service.redact_pii(
-        raw_text,
-        redact_emails=redact_emails,
-        redact_phones=redact_phones,
-        redact_addresses=redact_addresses,
-        redact_gov_ids=redact_gov_ids,
-        custom_redact_values=custom_tokens
-    )
-    return jsonify({
-        "status": "success",
-        "message": "Updated deadline reminder preferences.",
-        "preferences": updated
-        "redaction": redacted_result
-    }), 200
 
 
 if __name__ == "__main__":

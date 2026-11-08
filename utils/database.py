@@ -272,6 +272,10 @@ def init_db() -> None:
                 rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
                 category TEXT NOT NULL,
                 comment TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         # Table: Store Gemini API Usage & Cost Monitoring Logs (#215)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gemini_api_logs (
@@ -3456,16 +3460,6 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         # Count in analyses
         cursor.execute("SELECT COUNT(*) FROM analyses WHERE student_id = ?", (student_id,))
         summary["tables"]["analyses"] = cursor.fetchone()[0]
-# ==============================================================================
-# Gemini API Usage & Cost Monitoring Utilities (#215)
-# ==============================================================================
-
-# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
-# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
-# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
-COST_PER_PROMPT_TOKEN = 0.000000075
-COST_PER_CANDIDATE_TOKEN = 0.00000030
-
 
         # Count in company_preparation_checklists
         cursor.execute("SELECT COUNT(*) FROM company_preparation_checklists WHERE student_id = ?", (student_id,))
@@ -3498,30 +3492,12 @@ COST_PER_CANDIDATE_TOKEN = 0.00000030
 
 
 def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
-def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
     """
-    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
+    Permanently deletes a student account and cascades removal across all personal placement records (#207).
+    Complies with personal data erasure requirements and returns deletion audit log.
     """
-    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
-    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
-    return round(prompt_cost + candidate_cost, 6)
-
-
-def log_gemini_api_call(
-    endpoint: str,
-    model_name: str,
-    prompt_tokens: int = 0,
-    candidate_tokens: int = 0,
-    total_tokens: Optional[int] = None,
-    latency_ms: int = 0,
-    status: str = "success",
-    error_message: Optional[str] = None,
-) -> str:
-    """
-    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
-    """
-    if total_tokens is None:
-        total_tokens = prompt_tokens + candidate_tokens
+    if not student_id or not student_id.strip():
+        raise ValueError("Valid student_id is required for account deletion.")
 
     conn = get_db_connection()
     try:
@@ -3601,48 +3577,6 @@ def log_gemini_api_call(
         cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
         deleted_counts["users"] = cursor.rowcount
 
-        
-        cursor.execute("DELETE FROM preparation_activity_log WHERE student_id = ?", (student_id,))
-        deleted_counts["preparation_activity_log"] = cursor.rowcount
-        total_deleted += cursor.rowcount
-
-        cursor.execute("DELETE FROM student_streaks WHERE student_id = ?", (student_id,))
-        deleted_counts["student_streaks"] = cursor.rowcount
-        total_deleted += cursor.rowcount
-
-    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
-    log_id = str(uuid.uuid4())
-
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO gemini_api_logs (
-                id, endpoint, model_name, prompt_tokens, candidate_tokens,
-                total_tokens, estimated_cost_usd, latency_ms, status, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            log_id,
-            endpoint,
-            model_name,
-            prompt_tokens,
-            candidate_tokens,
-            total_tokens,
-            cost,
-            latency_ms,
-            status,
-            error_message,
-        ))
-        conn.commit()
-        return log_id
-    except Exception as e:
-        logger.error(f"Error logging Gemini API call: {e}")
-        conn.rollback()
-        return ""
-    finally:
-        conn.close()
-        s_id = (student_id or "default_student").strip()
-        cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (s_id,))
         conn.commit()
         logger.info(f"Successfully purged account and personal data for student {student_id}: {deleted_counts}")
 
@@ -3677,9 +3611,78 @@ def log_gemini_api_call(
         conn.close()
 
 
-def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
+# ==============================================================================
+# Gemini API Usage & Cost Monitoring Utilities (#215)
+# ==============================================================================
+
+# Estimated pricing per 1M tokens in USD (Gemini 2.5 Flash / Flash standard tier benchmarks)
+# Input / Prompt: $0.075 per 1M tokens ($0.000000075 / token)
+# Output / Candidate: $0.30 per 1M tokens ($0.00000030 / token)
+COST_PER_PROMPT_TOKEN = 0.000000075
+COST_PER_CANDIDATE_TOKEN = 0.00000030
+
+
+def calculate_gemini_call_cost(prompt_tokens: int, candidate_tokens: int) -> float:
     """
-    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
+    Calculates estimated cost in USD based on prompt and candidate token counts (#215).
+    """
+    prompt_cost = max(0, prompt_tokens) * COST_PER_PROMPT_TOKEN
+    candidate_cost = max(0, candidate_tokens) * COST_PER_CANDIDATE_TOKEN
+    return round(prompt_cost + candidate_cost, 6)
+
+
+def log_gemini_api_call(
+    endpoint: str,
+    model_name: str,
+    prompt_tokens: int = 0,
+    candidate_tokens: int = 0,
+    total_tokens: Optional[int] = None,
+    latency_ms: int = 0,
+    status: str = "success",
+    error_message: Optional[str] = None,
+) -> str:
+    """
+    Logs a single Gemini API execution call with token usage, latency, and estimated cost (#215).
+    """
+    if total_tokens is None:
+        total_tokens = prompt_tokens + candidate_tokens
+
+    cost = calculate_gemini_call_cost(prompt_tokens, candidate_tokens)
+    log_id = str(uuid.uuid4())
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO gemini_api_logs (
+                id, endpoint, model_name, prompt_tokens, candidate_tokens,
+                total_tokens, estimated_cost_usd, latency_ms, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            log_id,
+            endpoint,
+            model_name,
+            prompt_tokens,
+            candidate_tokens,
+            total_tokens,
+            cost,
+            latency_ms,
+            status,
+            error_message,
+        ))
+        conn.commit()
+        return log_id
+    except Exception as e:
+        logger.error(f"Error logging Gemini API call: {e}")
+        conn.rollback()
+        return ""
+    finally:
+        conn.close()
+
+
+def get_student_preparation_summary_data(student_id: str = None) -> Dict[str, Any]:
+    """
+    Aggregates student placement readiness summary data (#200).
     """
     s_id = (student_id or "default_student").strip()
     profile = get_student_profile(s_id) if "get_student_profile" in globals() else {}
@@ -3790,14 +3793,13 @@ def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
     }
 
 
-def create_password_reset_token(
-    user_id: str,
-    token_hash: str,
-    expires_at: int
-) -> bool:
-    """Create a reset token and invalidate previous unused tokens."""
-    import time
-
+def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
+    """
+    Retrieves aggregated Gemini API usage and cost monitoring metrics (#215).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
         # Overall summary stats
         cursor.execute("""
             SELECT
@@ -3891,6 +3893,157 @@ def create_password_reset_token(
         }
     finally:
         conn.close()
+
+
+def create_password_reset_token(
+    user_id: str,
+    token_hash: str,
+    expires_at: int
+) -> bool:
+    """Create a reset token and invalidate previous unused tokens."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+
+        # Invalidate previous unused tokens for this user
+        conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        conn.execute("""
+            INSERT INTO password_reset_tokens
+            (id, user_id, token_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            str(uuid.uuid4()),
+            user_id,
+            token_hash,
+            expires_at,
+            now
+        ))
+
+        conn.commit()
+        return True
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to create password reset token")
+        return False
+
+    finally:
+        conn.close()
+
+
+def get_valid_password_reset_token(
+    token_hash: str
+) -> Optional[Dict[str, Any]]:
+    """Retrieve an unused, non-expired reset token."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        row = conn.execute("""
+            SELECT id, user_id, token_hash, expires_at
+            FROM password_reset_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+        """, (token_hash, int(time.time()))).fetchone()
+
+        return dict(row) if row else None
+
+    finally:
+        conn.close()
+
+
+def reset_user_password(
+    token_hash: str,
+    new_password_hash: str
+) -> bool:
+    """Update password and consume the reset token atomically."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        now = int(time.time())
+
+        token = conn.execute("""
+            SELECT user_id
+            FROM password_reset_tokens
+            WHERE token_hash = ?
+              AND used_at IS NULL
+              AND expires_at > ?
+        """, (token_hash, now)).fetchone()
+
+        if not token:
+            conn.rollback()
+            return False
+
+        user_id = token["user_id"]
+
+        updated = conn.execute("""
+            UPDATE users
+            SET password_hash = ?
+            WHERE id = ?
+        """, (new_password_hash, user_id))
+
+        if updated.rowcount != 1:
+            conn.rollback()
+            return False
+
+        # Consume all outstanding reset tokens for this user
+        conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        conn.commit()
+        return True
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to reset user password")
+        return False
+
+    finally:
+        conn.close()
+
+
+def invalidate_password_reset_token(token_hash: str) -> bool:
+    """Invalidate a password reset token."""
+    import time
+
+    conn = get_db_connection()
+
+    try:
+        cursor = conn.execute("""
+            UPDATE password_reset_tokens
+            SET used_at = ?
+            WHERE token_hash = ?
+              AND used_at IS NULL
+        """, (int(time.time()), token_hash))
+
+        conn.commit()
+        return cursor.rowcount > 0
+
+    except sqlite3.Error:
+        conn.rollback()
+        logger.exception("Failed to invalidate password reset token")
+        return False
+
+    finally:
+        conn.close()
+
 
 
 def record_preparation_activity(

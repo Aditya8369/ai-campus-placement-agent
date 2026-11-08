@@ -1506,6 +1506,145 @@
           </div>
         </div>
 
+        <!-- AI Recommendation Explanation Card (#295) -->
+        {% set dash_ai_rec = role_p.ai_recommendation_explanation if role_p and role_p.ai_recommendation_explanation else {} %}
+        <div class="card p-3 p-md-4 border-0 rounded-4 bg-light-subtle border mb-4 shadow-sm" id="dashAiRecommendationCard">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom gap-2">
+            <div class="d-flex align-items-center gap-2">
+              <div class="rounded-circle p-2 bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 34px; height: 34px;">
+                <i class="fa-solid fa-wand-magic-sparkles small"></i>
+              </div>
+              <div>
+                <h6 class="fw-bold mb-0 text-dark">AI Recommendation Explanation</h6>
+                <small class="text-muted">Why this career role was recommended for you</small>
+              </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge {{ 'bg-success text-white' if dash_ai_rec.suitability_tier == 'Strong Match' else ('bg-primary text-white' if dash_ai_rec.suitability_tier == 'Good Match' else 'bg-warning text-dark') }} rounded-pill px-3 py-1 fw-semibold small" id="dashAiSuitabilityTierBadge">
+                {{ dash_ai_rec.suitability_tier|default('Recommended') }}
+              </span>
+              <span class="badge bg-white text-secondary border rounded-pill small py-1 px-2">
+                <i class="fa-solid fa-shield-check text-success me-1"></i> Grounded in Profile
+              </span>
+            </div>
+          </div>
+
+          <!-- Reason Callout -->
+          <div class="p-3 bg-white rounded-3 border mb-3">
+            <div class="d-flex align-items-start gap-2">
+              <i class="fa-solid fa-lightbulb text-warning mt-1"></i>
+              <div>
+                <strong class="d-block text-dark small mb-1">Recommendation Rationale:</strong>
+                <p class="text-secondary mb-0 small" id="dashAiRecReasonText">
+                  {{ dash_ai_rec.recommendation_reason|default('Analyzing profile match for target role.') }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Matching vs Missing Skills -->
+          <div class="row g-3 mb-3">
+            <div class="col-md-6 col-12">
+              <div class="p-3 bg-white rounded-3 border h-100">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="fw-bold text-success small">
+                    <i class="fa-solid fa-circle-check me-1"></i> Matching Skills (<span id="dashAiMatchingSkillsCount">{{ dash_ai_rec.matching_skills_count|default(0) }}</span>)
+                  </span>
+                  <span class="badge bg-success-subtle text-success small rounded-pill">Verified</span>
+                </div>
+                <div class="d-flex flex-wrap gap-1 mt-2" id="dashAiMatchingSkillsContainer">
+                  {% for sk in (dash_ai_rec.matching_skills|default([])) %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">{{ sk }}</span>
+                  {% else %}
+                    <span class="text-muted small fst-italic">Core programming knowledge applied</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6 col-12">
+              <div class="p-3 bg-white rounded-3 border h-100">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="fw-bold text-dark small">
+                    <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i> Missing Skills Affecting Suitability (<span id="dashAiMissingSkillsCount">{{ dash_ai_rec.missing_skills_count|default(0) }}</span>)
+                  </span>
+                  <span class="badge bg-warning-subtle text-warning small rounded-pill">To Bridge</span>
+                </div>
+                <p class="small text-secondary mb-2" style="font-size: 0.775rem;" id="dashAiMissingSkillsImpact">
+                  {{ dash_ai_rec.missing_skills_impact|default('Bridging these skills will maximize your interview clearance probability.') }}
+                </p>
+                <div class="d-flex flex-wrap gap-1" id="dashAiMissingSkillsContainer">
+                  {% for gap in (dash_ai_rec.missing_skills|default([])) %}
+                    <span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">{{ gap }}</span>
+                  {% else %}
+                    <span class="text-success small fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>All baseline skills met!</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Project & Experience Relevance -->
+          <div class="p-3 bg-white rounded-3 border mb-3">
+            <strong class="d-block text-dark small mb-1">
+              <i class="fa-solid fa-briefcase text-primary me-1"></i> Project &amp; Experience Relevance:
+            </strong>
+            <p class="text-secondary small mb-2" id="dashAiProjectRelevanceText">
+              {{ dash_ai_rec.project_experience_relevance.summary|default('Evaluation of practical project alignment.') }}
+            </p>
+            <ul class="small text-secondary ps-3 mb-0" id="dashAiProjectHighlightsList">
+              {% for highlight in (dash_ai_rec.project_experience_relevance.highlights|default([])) %}
+                <li class="mb-1">{{ highlight }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <!-- Influencing Factors & Plain English Explanation -->
+          <div class="row g-3">
+            <div class="col-lg-7 col-12">
+              <div class="p-3 bg-white rounded-3 border h-100">
+                <strong class="d-block text-dark small mb-2 text-uppercase">
+                  <i class="fa-solid fa-sliders text-info me-1"></i> Influencing Recommendation Factors
+                </strong>
+                <div class="d-flex flex-column gap-2" id="dashAiInfluencingFactorsContainer">
+                  {% for factor in (dash_ai_rec.influencing_factors|default([])) %}
+                    <div>
+                      <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-semibold text-dark">{{ factor.factor }}</span>
+                        <span class="badge bg-{{ factor.badge_class }}-subtle text-{{ factor.badge_class }} rounded-pill small">{{ factor.score_pct }}% Match</span>
+                      </div>
+                      <div class="progress rounded-pill mb-1" style="height: 5px;">
+                        <div class="progress-bar bg-{{ factor.badge_class }}" role="progressbar" style="width: {{ factor.score_pct }}%"></div>
+                      </div>
+                      <small class="text-muted d-block" style="font-size: 0.725rem;">{{ factor.description }}</small>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="col-lg-5 col-12">
+              <div class="p-3 bg-primary-subtle bg-opacity-25 rounded-3 border border-primary-subtle h-100 d-flex flex-column justify-content-between">
+                <div>
+                  <span class="badge bg-primary text-white rounded-pill px-2 py-1 small mb-1">
+                    <i class="fa-solid fa-comment-dots me-1"></i> In Plain English
+                  </span>
+                  <strong class="d-block text-primary small mb-1">What this means:</strong>
+                  <p class="small text-secondary mb-2" id="dashAiStudentSummaryText">
+                    {{ dash_ai_rec.student_friendly_summary|default('Follow the structured preparation plan to gain practical skills for campus interviews.') }}
+                  </p>
+                </div>
+                <div class="pt-2 border-top">
+                  <small class="text-muted d-block" style="font-size: 0.75rem;">
+                    <i class="fa-solid fa-circle-info text-primary me-1"></i>
+                    Action: Follow the study roadmap below to become more suitable for this role.
+                  </small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Role Preparation Tabs -->
         <ul class="nav nav-pills mb-3 gap-2" id="dashRolePillsTab" role="tablist">
           <li class="nav-item" role="presentation">

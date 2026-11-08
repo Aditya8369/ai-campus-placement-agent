@@ -3311,6 +3311,70 @@ function initRoleBasedPrep() {
         : `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">Role Skills</span>`;
     }
 
+    // 3b. AI Recommendation Explanation Updates (#295)
+    const aiRec = data.ai_recommendation_explanation;
+    if (aiRec) {
+      const tierBadge = document.getElementById("dashAiSuitabilityTierBadge");
+      if (tierBadge) {
+        tierBadge.innerText = aiRec.suitability_tier || "Recommended";
+        tierBadge.className = `badge ${aiRec.suitability_tier === 'Strong Match' ? 'bg-success text-white' : (aiRec.suitability_tier === 'Good Match' ? 'bg-primary text-white' : 'bg-warning text-dark')} rounded-pill px-3 py-1 fw-semibold small`;
+      }
+
+      const recReason = document.getElementById("dashAiRecReasonText");
+      if (recReason) recReason.innerText = aiRec.recommendation_reason || "";
+
+      const matchCount = document.getElementById("dashAiMatchingSkillsCount");
+      if (matchCount) matchCount.innerText = aiRec.matching_skills_count || 0;
+
+      const matchCont = document.getElementById("dashAiMatchingSkillsContainer");
+      if (matchCont) {
+        matchCont.innerHTML = (aiRec.matching_skills && aiRec.matching_skills.length)
+          ? aiRec.matching_skills.map((s) => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">${escapeHtml(s)}</span>`).join(" ")
+          : `<span class="text-muted small fst-italic">Core programming knowledge applied</span>`;
+      }
+
+      const missCount = document.getElementById("dashAiMissingSkillsCount");
+      if (missCount) missCount.innerText = aiRec.missing_skills_count || 0;
+
+      const missImpact = document.getElementById("dashAiMissingSkillsImpact");
+      if (missImpact) missImpact.innerText = aiRec.missing_skills_impact || "";
+
+      const missCont = document.getElementById("dashAiMissingSkillsContainer");
+      if (missCont) {
+        missCont.innerHTML = (aiRec.missing_skills && aiRec.missing_skills.length)
+          ? aiRec.missing_skills.map((g) => `<span class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill small py-1 px-2">${escapeHtml(g)}</span>`).join(" ")
+          : `<span class="text-success small fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>All baseline skills met!</span>`;
+      }
+
+      const projRel = document.getElementById("dashAiProjectRelevanceText");
+      if (projRel) projRel.innerText = (aiRec.project_experience_relevance && aiRec.project_experience_relevance.summary) || "";
+
+      const projList = document.getElementById("dashAiProjectHighlightsList");
+      if (projList) {
+        const hls = (aiRec.project_experience_relevance && aiRec.project_experience_relevance.highlights) || [];
+        projList.innerHTML = hls.map((h) => `<li class="mb-1">${escapeHtml(h)}</li>`).join("");
+      }
+
+      const factCont = document.getElementById("dashAiInfluencingFactorsContainer");
+      if (factCont && aiRec.influencing_factors) {
+        factCont.innerHTML = aiRec.influencing_factors.map((f) => `
+          <div>
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="small fw-semibold text-dark">${escapeHtml(f.factor)}</span>
+              <span class="badge bg-${f.badge_class}-subtle text-${f.badge_class} rounded-pill small">${f.score_pct}% Match</span>
+            </div>
+            <div class="progress rounded-pill mb-1" style="height: 5px;">
+              <div class="progress-bar bg-${f.badge_class}" role="progressbar" style="width: ${f.score_pct}%"></div>
+            </div>
+            <small class="text-muted d-block" style="font-size: 0.725rem;">${escapeHtml(f.description)}</small>
+          </div>
+        `).join("");
+      }
+
+      const studSum = document.getElementById("dashAiStudentSummaryText");
+      if (studSum) studSum.innerText = aiRec.student_friendly_summary || "";
+    }
+
     // 4. Technical Topics Grid
     const topicsGrid = document.getElementById("dashTechnicalTopicsGrid");
     if (topicsGrid && data.technical_topics) {
