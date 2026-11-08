@@ -83,7 +83,8 @@ ROLE_SKILL_PROFILES: Dict[str, Dict[str, Any]] = {
 
 def _normalize_token(text: str) -> str:
     """Normalize text into clean lowercase alphanumeric tokens."""
-    return re.sub(r"[^\w\s\+\#]", " ", (text or "").lower()).strip()
+    clean = re.sub(r"[^\w\s\+\#]", " ", (text or "").lower()).strip()
+    return re.sub(r"\s+", " ", clean)
 
 
 def _skill_matches(candidate_skill: str, role_skill: str) -> bool:
@@ -109,10 +110,12 @@ def _skill_matches(candidate_skill: str, role_skill: str) -> bool:
         "powerbi": ["power bi", "business intelligence"],
     }
 
+    c_words = c_norm.split()
+    r_words = r_norm.split()
     for syn_key, syn_targets in synonyms.items():
-        if syn_key in c_norm and any(t in r_norm for t in syn_targets):
+        if syn_key in c_words and any(t in r_norm for t in syn_targets):
             return True
-        if syn_key in r_norm and any(t in c_norm for t in syn_targets):
+        if syn_key in r_words and any(t in c_norm for t in syn_targets):
             return True
 
     return False

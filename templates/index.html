@@ -379,6 +379,24 @@
                   longitudinal ATS improvements.</div>
               </div>
 
+              <!-- Resume Information Review & Correction Option (#ReviewStep) -->
+              <div class="mb-4 p-3 bg-light rounded-3 border">
+                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="reviewStepSwitch" name="review_step" value="true">
+                    <label class="form-check-label fw-semibold text-dark small" for="reviewStepSwitch">
+                      <i class="fa-solid fa-user-pen text-primary me-1"></i> Review &amp; Correct Resume Details Before AI Analysis
+                    </label>
+                  </div>
+                  <button type="button" id="btnReviewResumeDirect" class="btn btn-sm btn-outline-primary rounded-pill px-3 fw-semibold">
+                    <i class="fa-solid fa-file-signature me-1"></i> Review Extracted Info
+                  </button>
+                </div>
+                <div class="text-muted small mt-1">
+                  Verify and edit extracted education, skills, and projects before AI generates your placement analysis. Original document remains unaltered.
+                </div>
+              </div>
+
               <!-- Action Buttons: Analyze Readiness & Clear All -->
               <div class="d-flex flex-column flex-sm-row gap-2 mt-3">
                 <button type="submit" id="btnSubmitAnalysis"
