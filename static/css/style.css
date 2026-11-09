@@ -2183,3 +2183,20 @@ textarea:focus-visible {
     font-size: 0.75rem;
   }
 }
+
+/* Skill Evidence Mapping Styling (#250) */
+.sem-skill-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  background-color: var(--card-solid-bg, #ffffff);
+}
+
+.sem-skill-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-bs-theme="dark"] .sem-skill-card {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-color);
+}
+

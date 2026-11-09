@@ -1132,6 +1132,135 @@
       </div>
     </div>
 
+    <!-- Skill Evidence Mapping Section (#250) -->
+    {% set sem = skill_evidence if skill_evidence is defined and skill_evidence else none %}
+    <div class="card glass-card p-4 border-0 mb-4" id="skillEvidenceSection" data-evidence='{{ (skill_evidence_json if skill_evidence_json is defined else sem|tojson)|safe }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Resume Evidence Verification</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-magnifying-glass-chart text-primary me-2"></i> Skill Evidence Mapping
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          {% if sem and sem.total_skills > 0 %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold" id="semSupportedBadge">
+              <i class="fa-solid fa-circle-check me-1"></i> {{ sem.supported_skills_count }} Supported
+            </span>
+            {% if sem.unsupported_skills_count > 0 %}
+              <span class="badge bg-warning-subtle text-dark border border-warning-subtle px-3 py-2 rounded-pill fw-semibold" id="semUnsupportedBadge">
+                <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i> {{ sem.unsupported_skills_count }} Need Evidence
+              </span>
+            {% endif %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-semibold">
+              <i class="fa-solid fa-shield-halved me-1"></i> {{ sem.evidence_score }}% Evidence Score
+            </span>
+          {% endif %}
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-3">
+        Shows where your skills are demonstrated in your resume sections (Projects, Work Experience) and highlights skills that are merely listed without concrete supporting evidence.
+      </p>
+
+      {% if sem and sem.total_skills > 0 %}
+        <!-- Evidence Overview Bar & Filter Controls -->
+        <div class="p-3 bg-light rounded-4 border mb-4">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <span class="small text-secondary fw-semibold">
+              <i class="fa-solid fa-chart-simple text-primary me-1"></i> Evidence Coverage: {{ sem.evidence_score }}% Verified
+            </span>
+            <span class="small text-muted">{{ sem.summary }}</span>
+          </div>
+          <div class="progress rounded-pill shadow-xs mb-3" style="height: 10px;">
+            <div class="progress-bar bg-success" role="progressbar" style="width: {{ sem.evidence_score }}%" aria-valuenow="{{ sem.evidence_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+            <div class="progress-bar bg-warning" role="progressbar" style="width: {{ 100 - sem.evidence_score }}%" aria-valuenow="{{ 100 - sem.evidence_score }}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+
+          <!-- Filter Pills -->
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="small fw-semibold text-muted me-1">Filter Evidence:</span>
+            <button type="button" class="btn btn-sm btn-dark rounded-pill px-3 py-1 sem-filter-btn active" data-filter="all">
+              All Skills ({{ sem.total_skills }})
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-warning rounded-pill px-3 py-1 sem-filter-btn" data-filter="unsupported">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Needs Evidence ({{ sem.unsupported_skills_count }})
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 sem-filter-btn" data-filter="supported">
+              <i class="fa-solid fa-circle-check me-1"></i> Supported ({{ sem.supported_skills_count }})
+            </button>
+          </div>
+        </div>
+
+        <!-- Skills Evidence Grid -->
+        <div class="row g-3" id="skillEvidenceCardsGrid">
+          {% for sk in sem.skills %}
+            <div class="col-md-6 col-12 sem-skill-col" data-status="{{ sk.status }}">
+              <div class="p-3 rounded-4 border h-100 bg-white shadow-xs d-flex flex-column justify-content-between sem-skill-card {{ 'border-warning border-2' if sk.status != 'supported' else 'border-light-subtle' }}">
+                <div>
+                  <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div class="d-flex align-items-center gap-2">
+                      <h6 class="fw-bold text-dark mb-0 fs-6">{{ sk.skill }}</h6>
+                      <span class="badge bg-{{ sk.badge_class }}-subtle text-{{ sk.badge_class }} border border-{{ sk.badge_class }}-subtle rounded-pill small py-1 px-2">
+                        <i class="fa-solid {{ sk.badge_icon }} me-1"></i> {{ sk.evidence_level }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p class="text-secondary small mb-2">{{ sk.evidence_summary }}</p>
+
+                  <!-- Evidence Locations (Where found) -->
+                  {% if sk.evidence_locations and sk.evidence_locations|length > 0 %}
+                    <div class="bg-light rounded-3 p-2 mb-2">
+                      <span class="small fw-semibold text-muted d-block mb-1" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-location-crosshairs me-1 text-primary"></i> Resume Evidence Mentions:
+                      </span>
+                      {% for loc in sk.evidence_locations %}
+                        <div class="small text-secondary mb-1 ps-2 border-start border-2 border-primary">
+                          <span class="fw-semibold text-dark">{{ loc.section }}:</span>
+                          <span class="text-muted fst-italic">"{{ loc.snippet }}"</span>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+
+                  <!-- Actionable Suggestions for Unsupported Skills -->
+                  {% if sk.status != 'supported' %}
+                    <div class="p-2 rounded-3 bg-warning-subtle border border-warning-subtle small mt-2">
+                      <span class="fw-semibold text-dark d-block mb-1">
+                        <i class="fa-solid fa-lightbulb text-warning me-1"></i> How to add practical evidence:
+                      </span>
+                      {% if sk.recommended_project %}
+                        <div class="mb-1 text-secondary">
+                          <strong>Suggested Project:</strong> {{ sk.recommended_project }}
+                        </div>
+                      {% endif %}
+                      {% if sk.example_bullet %}
+                        <div class="text-secondary">
+                          <strong>Sample Resume Bullet:</strong>
+                          <div class="d-flex align-items-center justify-content-between gap-1 mt-1 p-2 bg-white rounded border">
+                            <span class="fst-italic text-dark">{{ sk.example_bullet }}</span>
+                            <button type="button" class="btn btn-sm btn-link p-0 text-secondary btn-copy-suggestion" data-copy-text="{{ sk.example_bullet|e }}" title="Copy sample bullet" aria-label="Copy sample bullet">
+                              <i class="fa-regular fa-copy small"></i>
+                            </button>
+                          </div>
+                        </div>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="p-4 bg-light rounded-4 text-center text-muted">
+          <i class="fa-solid fa-magnifying-glass mb-2 fa-2x text-secondary opacity-50"></i>
+          <p class="mb-0 small">Skill evidence mapping will appear once technical skills are extracted from your resume.</p>
+        </div>
+      {% endif %}
+    </div>
+
     <!-- Skill Gap Analysis Table -->
     <div class="card glass-card p-4 border-0 mb-4" id="skillGapSection">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
@@ -2076,5 +2205,42 @@
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      // Skill Evidence Mapping Filter
+      const semFilterBtns = document.querySelectorAll(".sem-filter-btn");
+      const semCols = document.querySelectorAll(".sem-skill-col");
+
+      semFilterBtns.forEach(btn => {
+        btn.addEventListener("click", function() {
+          semFilterBtns.forEach(b => {
+            b.classList.remove("active", "btn-dark");
+            if (b.dataset.filter === "unsupported") b.className = "btn btn-sm btn-outline-warning rounded-pill px-3 py-1 sem-filter-btn";
+            else if (b.dataset.filter === "supported") b.className = "btn btn-sm btn-outline-success rounded-pill px-3 py-1 sem-filter-btn";
+            else b.className = "btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 sem-filter-btn";
+          });
+
+          this.classList.add("active");
+          if (this.dataset.filter === "unsupported") this.className = "btn btn-sm btn-warning rounded-pill px-3 py-1 sem-filter-btn active";
+          else if (this.dataset.filter === "supported") this.className = "btn btn-sm btn-success rounded-pill px-3 py-1 sem-filter-btn active";
+          else this.className = "btn btn-sm btn-dark rounded-pill px-3 py-1 sem-filter-btn active";
+
+          const filter = this.dataset.filter;
+          semCols.forEach(col => {
+            const status = col.dataset.status;
+            if (filter === "all") {
+              col.classList.remove("d-none");
+            } else if (filter === "unsupported") {
+              if (status === "unsupported" || status === "partial") col.classList.remove("d-none");
+              else col.classList.add("d-none");
+            } else if (filter === "supported") {
+              if (status === "supported") col.classList.remove("d-none");
+              else col.classList.add("d-none");
+            }
+          });
+        });
+      });
+    });
+  </script>
 </body>
 </html>
