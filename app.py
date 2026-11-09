@@ -61,7 +61,11 @@ from utils.database import (
     get_user_by_id,
     save_job_application,
     get_job_applications,
+    get_job_application_by_id,
+    update_job_application,
     delete_job_application,
+    update_job_application_status,
+    get_application_stage_counts,
     get_email_notification_preferences,
     update_email_notification_preferences,
     save_interview_experience,
@@ -9179,13 +9183,28 @@ def internships_view():
         current_location=location_filter,
         search_query=search_query
     )
+APPLICATION_STAGES = ["Applied", "Assessment", "Interview", "Selected", "Rejected"]
+
+
 @app.route("/applications", methods=["GET", "POST"])
+@app.route("/api/applications", methods=["GET", "POST"])
 def job_applications_tracker():
     """
     Candidate Job Application Tracker view and management handler (#143, #193).
     Enforces per-student data segregation and provides advanced multi-parameter search & filtering.
     """
-    student_id = request.args.get("student_id") or request.form.get("student_id", "default_student")
+    json_body = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_body, dict):
+        json_body = {}
+    student_id = (
+        request.args.get("student_id")
+        or json_body.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or (flask_session.get("user", {}).get("id") if isinstance(flask_session.get("user"), dict) else None)
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
     status_filter = request.args.get("status", "All")
     search_query = request.args.get("search", "").strip()
     location_filter = request.args.get("location", "All").strip()
@@ -9193,18 +9212,34 @@ def job_applications_tracker():
     exp_filter = request.args.get("experience_level", "All").strip()
     sort_by = request.args.get("sort", "recent").strip()
 
+    is_api_request = (
+        request.path == "/api/applications"
+        or request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
     if request.method == "POST":
-        company = request.form.get("company_name", "").strip()
-        role = request.form.get("role_title", "").strip()
-        status = request.form.get("status", "Applied").strip()
-        app_date = request.form.get("application_date", "").strip()
-        job_url = request.form.get("job_url", "").strip()
-        notes = request.form.get("notes", "").strip()
-        location = request.form.get("location", "Remote").strip()
-        job_type = request.form.get("job_type", "Full-Time").strip()
-        exp_level = request.form.get("experience_level", "Entry-Level").strip()
+        payload = request.get_json(silent=True) or request.form
+        company = (payload.get("company_name") or payload.get("company") or "").strip()
+        role = (payload.get("role_title") or payload.get("role") or "").strip()
+        raw_status = (payload.get("status") or "Applied").strip()
+        status = "Selected" if raw_status == "Offered" else raw_status
+        if status not in APPLICATION_STAGES:
+            status = "Applied"
+
+        app_date = (payload.get("application_date") or "").strip()
+        job_url = (payload.get("job_url") or payload.get("url") or "").strip()
+        notes = (payload.get("notes") or "").strip()
+        location = (payload.get("location") or "Remote").strip()
+        job_type = (payload.get("job_type") or "Full-Time").strip()
+        exp_level = (payload.get("experience_level") or "Entry-Level").strip()
 
         if not company or not role:
+            if is_api_request:
+                return jsonify({
+                    "success": False,
+                    "error": "Company name and job role are required."
+                }), 400
             flash("Company name and job role are required.", "error")
             return redirect(url_for("job_applications_tracker", student_id=student_id))
 
@@ -9227,7 +9262,7 @@ def job_applications_tracker():
         try:
             prefs = get_email_notification_preferences(student_id)
             if prefs.get("email_enabled") and prefs.get("notify_application_created"):
-                user_email = prefs.get("email") or request.form.get("email") or f"{student_id}@student.campus.edu"
+                user_email = prefs.get("email") or payload.get("email") or f"{student_id}@student.campus.edu"
                 email_service.send_application_created_email(
                     recipient_email=user_email,
                     student_name=student_id,
@@ -9237,6 +9272,15 @@ def job_applications_tracker():
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
+
+        if is_api_request:
+            created_app = get_job_application_by_id(app_id, student_id)
+            return jsonify({
+                "success": True,
+                "message": f"Application for '{role}' at '{company}' added successfully.",
+                "app_id": app_id,
+                "application": created_app
+            }), 201
 
         flash("Application record saved successfully!", "success")
         return redirect(url_for("job_applications_tracker", student_id=student_id))
@@ -9252,12 +9296,16 @@ def job_applications_tracker():
     )
 
     all_user_apps = get_job_applications(student_id=student_id)
+    stage_counts = get_application_stage_counts(student_id)
 
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+    if is_api_request:
         return jsonify({
             "success": True,
             "student_id": student_id,
             "count": len(applications),
+            "total": len(all_user_apps),
+            "stage_counts": stage_counts,
+            "stages": APPLICATION_STAGES,
             "applications": applications
         }), 200
 
@@ -9265,6 +9313,8 @@ def job_applications_tracker():
         "applications.html",
         applications=applications,
         all_count=len(all_user_apps),
+        stage_counts=stage_counts,
+        stages=APPLICATION_STAGES,
         student_id=student_id,
         current_status=status_filter,
         search_query=search_query,
@@ -9275,17 +9325,122 @@ def job_applications_tracker():
     )
 
 
+@app.route("/api/applications/stats", methods=["GET"])
+def api_applications_stats():
+    """
+    Returns pipeline breakdown counts across all application stages.
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+    counts = get_application_stage_counts(student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "stages": APPLICATION_STAGES,
+        "stage_counts": counts,
+        "counts": counts
+    }), 200
+
+
+@app.route("/api/applications/<app_id>", methods=["GET", "PUT", "POST"])
+def api_application_detail_operations(app_id: str):
+    """
+    Retrieves, updates, or deletes a specific candidate application record.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    if request.method == "GET":
+        app_record = get_job_application_by_id(app_id, student_id)
+        if not app_record:
+            return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+        return jsonify({"success": True, "application": app_record}), 200
+
+    if request.method in ["PUT", "POST"]:
+        payload = request.get_json(silent=True) or request.form
+        existing = get_job_application_by_id(app_id, student_id)
+        if not existing:
+            return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+
+        company = (payload.get("company_name") or payload.get("company") or existing["company_name"]).strip()
+        role = (payload.get("role_title") or payload.get("role") or existing["role_title"]).strip()
+        raw_status = (payload.get("status") or existing["status"]).strip()
+        status = "Selected" if raw_status == "Offered" else raw_status
+        if status not in APPLICATION_STAGES:
+            status = existing["status"]
+
+        app_date = payload.get("application_date") or existing.get("application_date")
+        job_url = payload.get("job_url") if payload.get("job_url") is not None else existing.get("job_url")
+        notes = payload.get("notes") if payload.get("notes") is not None else existing.get("notes")
+        location = payload.get("location") or existing.get("location") or "Remote"
+        job_type = payload.get("job_type") or existing.get("job_type") or "Full-Time"
+        exp_level = payload.get("experience_level") or existing.get("experience_level") or "Entry-Level"
+
+        updated = update_job_application(
+            app_id=app_id,
+            student_id=student_id,
+            company_name=company,
+            role_title=role,
+            status=status,
+            application_date=app_date,
+            job_url=job_url,
+            notes=notes,
+            location=location,
+            job_type=job_type,
+            experience_level=exp_level
+        )
+        if updated:
+            refreshed = get_job_application_by_id(app_id, student_id)
+            return jsonify({
+                "success": True,
+                "message": "Application updated successfully.",
+                "application": refreshed
+            }), 200
+        return jsonify({"success": False, "error": "Failed to update application."}), 500
+
+    if request.method == "DELETE":
+        deleted = delete_job_application(app_id=app_id, student_id=student_id)
+        return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
 @app.route("/api/applications/<app_id>/status", methods=["POST"])
 def api_update_application_status(app_id: str):
     """
     Updates the stage of an application (Applied, Assessment, Interview, Selected, Rejected).
     """
     payload = request.get_json(silent=True) or {}
-    new_status = payload.get("status") or request.form.get("status", "")
-    student_id = payload.get("student_id") or request.form.get("student_id", "default_student")
+    raw_status = payload.get("status") or request.form.get("status", "")
+    new_status = "Selected" if raw_status == "Offered" else raw_status.strip()
+    student_id = (
+        request.args.get("student_id")
+        or payload.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
 
     if not new_status:
         return jsonify({"success": False, "error": "New status is required."}), 400
+
+    if new_status not in APPLICATION_STAGES:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid stage '{new_status}'. Allowed stages: {', '.join(APPLICATION_STAGES)}."
+        }), 400
 
     updated = update_job_application_status(app_id=app_id, student_id=student_id, new_status=new_status)
     
@@ -9311,7 +9466,11 @@ def api_update_application_status(app_id: str):
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
 
-    return jsonify({"success": updated}), (200 if updated else 404)
+    return jsonify({
+        "success": updated,
+        "status": new_status,
+        "message": f"Application status updated to '{new_status}'."
+    }), (200 if updated else 404)
 
 
 @app.route("/api/applications/<app_id>", methods=["DELETE"])
@@ -9319,7 +9478,12 @@ def api_delete_application(app_id: str):
     """
     Deletes an application record owned by student_id.
     """
-    student_id = request.args.get("student_id") or "default_student"
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
 
