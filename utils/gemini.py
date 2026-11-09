@@ -30,9 +30,17 @@ logger = logging.getLogger(__name__)
 class AIAnalysisError(Exception):
     """Base exception for all AI analysis processing failures."""
     def __init__(self, message: str, user_friendly_message: Optional[str] = None, retryable: bool = False):
-        super().__init__(message)
-        self.message = message
-        self.user_friendly_message = user_friendly_message or (
+        try:
+            from utils.prompt_security import redact_sensitive_information
+            clean_message = redact_sensitive_information(message)
+            clean_user_message = redact_sensitive_information(user_friendly_message) if user_friendly_message else None
+        except Exception:
+            clean_message = message
+            clean_user_message = user_friendly_message
+
+        super().__init__(clean_message)
+        self.message = clean_message
+        self.user_friendly_message = clean_user_message or (
             "We encountered an issue while communicating with the AI mentor. "
             "Please try again in a few moments."
         )
@@ -123,8 +131,13 @@ def format_ai_error_for_user(exc: Exception) -> str:
     Translates raw exceptions into friendly, actionable user messages for flash alerts.
     Guarantees that raw exceptions, internal traces, or stack traces are never exposed to the user.
     """
+    try:
+        from utils.prompt_security import redact_sensitive_information
+    except Exception:
+        def redact_sensitive_information(x): return x
+
     if isinstance(exc, AIAnalysisError):
-        return exc.user_friendly_message
+        return redact_sensitive_information(exc.user_friendly_message)
 
     err_str = str(exc).lower()
     if "rate limit" in err_str or "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
@@ -505,6 +518,12 @@ def generate_json_response(
             if not isinstance(parsed_data, (dict, list)):
                 raise AIResponseFormatError("Parsed AI output is neither a dictionary nor a list.")
 
+            try:
+                from utils.prompt_security import redact_sensitive_information
+                parsed_data = redact_sensitive_information(parsed_data)
+            except Exception:
+                pass
+
             return parsed_data
 
         except json.JSONDecodeError as jde:
@@ -521,6 +540,7 @@ def generate_json_response(
             # Log failure to database if attempts are exhausted or non-retryable (#215)
             try:
                 from utils.database import log_gemini_api_call
+                from utils.prompt_security import redact_sensitive_information
                 latency_ms = int((time.time() - start_time) * 1000)
                 log_gemini_api_call(
                     endpoint="generate_json_response",
@@ -530,7 +550,7 @@ def generate_json_response(
                     total_tokens=max(1, len(prompt) // 4),
                     latency_ms=latency_ms,
                     status="failed",
-                    error_message=str(e)[:300],
+                    error_message=redact_sensitive_information(str(e))[:300],
                 )
             except Exception:
                 pass

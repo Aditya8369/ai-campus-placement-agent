@@ -1130,6 +1130,107 @@ def update_job_application_status(app_id: str, student_id: str, new_status: str)
         conn.close()
 
 
+def get_job_application_by_id(app_id: str, student_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single job application record owned by student_id.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM job_applications WHERE id = ? AND student_id = ?",
+            (app_id.strip(), student_id.strip() if student_id else "default_student")
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error(f"Error retrieving job application {app_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_job_application(
+    app_id: str,
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    status: str = "Applied",
+    application_date: Optional[str] = None,
+    job_url: Optional[str] = None,
+    job_description: Optional[str] = None,
+    notes: Optional[str] = None,
+    location: str = "Remote",
+    job_type: str = "Full-Time",
+    experience_level: str = "Entry-Level"
+) -> bool:
+    """
+    Updates an existing job application record with new details.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE job_applications SET
+                company_name = ?,
+                role_title = ?,
+                status = ?,
+                application_date = ?,
+                job_url = ?,
+                job_description = ?,
+                notes = ?,
+                location = ?,
+                job_type = ?,
+                experience_level = ?
+            WHERE id = ? AND student_id = ?
+        """, (
+            company_name.strip(),
+            role_title.strip(),
+            status.strip(),
+            application_date,
+            (job_url or "").strip(),
+            (job_description or "").strip(),
+            (notes or "").strip(),
+            (location or "Remote").strip(),
+            (job_type or "Full-Time").strip(),
+            (experience_level or "Entry-Level").strip(),
+            app_id.strip(),
+            student_id.strip() if student_id else "default_student"
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating job application {app_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_application_stage_counts(student_id: str) -> Dict[str, int]:
+    """
+    Returns pipeline counts for all application stages (Applied, Assessment, Interview, Selected, Rejected).
+    """
+    counts = {
+        "Applied": 0,
+        "Assessment": 0,
+        "Interview": 0,
+        "Selected": 0,
+        "Rejected": 0,
+        "Total": 0
+    }
+    apps = get_job_applications(student_id=student_id)
+    for a in apps:
+        st = (a.get("status") or "Applied").strip()
+        if st == "Offered":
+            st = "Selected"
+        if st in counts:
+            counts[st] += 1
+        else:
+            counts["Applied"] += 1
+    counts["Total"] = len(apps)
+    return counts
+
+
 def export_job_applications_csv(
     student_id: str,
     status_filter: Optional[str] = None
