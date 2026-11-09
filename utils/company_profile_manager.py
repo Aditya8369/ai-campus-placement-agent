@@ -16,7 +16,7 @@ Key Capabilities:
 import sqlite3
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
 import uuid
 
@@ -53,6 +53,19 @@ def ensure_company_profiles_table(conn: sqlite3.Connection) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_prof_name ON company_profiles(company_name)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_prof_tier ON company_profiles(hiring_tier)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_prof_active ON company_profiles(is_active)")
+
+    # Migration: add source & last_updated columns if not present
+    cursor.execute("PRAGMA table_info(company_profiles)")
+    existing_cols = {row["name"] if isinstance(row, (sqlite3.Row, dict)) else row[1] for row in cursor.fetchall()}
+    if "source_name" not in existing_cols:
+        cursor.execute("ALTER TABLE company_profiles ADD COLUMN source_name TEXT")
+    if "source_url" not in existing_cols:
+        cursor.execute("ALTER TABLE company_profiles ADD COLUMN source_url TEXT")
+    if "verification_status" not in existing_cols:
+        cursor.execute("ALTER TABLE company_profiles ADD COLUMN verification_status TEXT DEFAULT 'verified'")
+    if "last_updated" not in existing_cols:
+        cursor.execute("ALTER TABLE company_profiles ADD COLUMN last_updated TEXT")
+
     conn.commit()
 
 
@@ -370,3 +383,173 @@ def _format_company_profile_row(row: sqlite3.Row) -> Dict[str, Any]:
 
     d["is_active"] = bool(d.get("is_active", 1))
     return d
+
+
+# ==============================================================================
+# Company Hiring Guide Freshness, Source & Verification Enrichment
+# ==============================================================================
+
+def parse_last_updated_date(date_str: Optional[str]) -> Tuple[Optional[datetime], Optional[int]]:
+    """
+    Parses a last_updated date string (e.g. '2026-10-18', '2026-10') and calculates
+    the age in days relative to current UTC time.
+    Returns (parsed_datetime, age_in_days).
+    """
+    if not date_str or not str(date_str).strip():
+        return None, None
+
+    clean = str(date_str).strip()
+    formats = [
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d",
+        "%Y-%m",
+        "%d-%m-%Y",
+        "%B %d, %Y",
+        "%B %Y"
+    ]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(clean, fmt)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            age_days = (now - dt).days
+            return dt, age_days
+        except ValueError:
+            continue
+
+    return None, None
+
+
+def format_last_updated_display(date_str: Optional[str]) -> str:
+    """
+    Formats last_updated into a friendly human-readable date (e.g. 'October 18, 2026').
+    Falls back gracefully to 'Date unconfirmed' if missing or unparseable.
+    """
+    if not date_str or not str(date_str).strip():
+        return "Date unconfirmed"
+
+    dt, _ = parse_last_updated_date(date_str)
+    if dt:
+        return dt.strftime("%B %d, %Y")
+    return str(date_str).strip()
+
+
+def is_hiring_guide_outdated(date_str: Optional[str], threshold_days: int = 365) -> bool:
+    """
+    Checks if a company hiring guide is outdated (e.g. older than 365 days or date unconfirmed).
+    """
+    if not date_str or not str(date_str).strip():
+        return True
+
+    dt, age_days = parse_last_updated_date(date_str)
+    if age_days is None:
+        return True
+    return age_days > threshold_days
+
+
+def enrich_company_hiring_guide(company_name: str, raw_details: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """
+    Enriches raw company hiring information with source metadata, verified vs. general guidance
+    separation, freshness calculation, and graceful fallbacks for missing data.
+    """
+    if not isinstance(raw_details, dict):
+        raw_details = {}
+
+    d = dict(raw_details)
+
+    # 1. Source Name & Source Link
+    raw_source_name = d.get("source_name")
+    raw_source_url = d.get("source_url")
+
+    if raw_source_name and str(raw_source_name).strip():
+        source_name = str(raw_source_name).strip()
+        source_is_default = False
+    else:
+        source_name = "Campus Placement Archives (Aggregated)"
+        source_is_default = True
+
+    # Validate external URL: must be http:// or https://
+    source_url: Optional[str] = None
+    if raw_source_url and isinstance(raw_source_url, str):
+        trimmed_url = raw_source_url.strip()
+        if trimmed_url.startswith("http://") or trimmed_url.startswith("https://"):
+            source_url = trimmed_url
+
+    # 2. Last Updated & Freshness Calculation
+    raw_last_updated = d.get("last_updated")
+    dt, age_days = parse_last_updated_date(raw_last_updated)
+    last_updated_display = format_last_updated_display(raw_last_updated)
+    is_outdated = is_hiring_guide_outdated(raw_last_updated, threshold_days=365)
+
+    if not raw_last_updated:
+        freshness_status = "unconfirmed"
+        freshness_label = "Date Unconfirmed"
+        freshness_badge = "secondary"
+        outdated_warning = "The last updated date is unconfirmed for this company guide. Hiring criteria may differ for the current recruitment season."
+    elif is_outdated:
+        freshness_status = "outdated"
+        freshness_label = "Archive / Needs Refresh"
+        freshness_badge = "warning"
+        outdated_warning = (
+            f"This hiring guide was last updated on {last_updated_display} (over 12 months ago). "
+            "Campus recruitment patterns and eligibility cutoffs may vary for the current season. "
+            "Please cross-reference with the official company careers portal before applying."
+        )
+    else:
+        freshness_status = "current"
+        freshness_label = "Current 2026 Season"
+        freshness_badge = "success"
+        outdated_warning = None
+
+    # 3. Verification Distinction
+    is_verified = bool(d.get("is_verified") or d.get("verification_status") == "verified")
+    verification_status = "verified" if is_verified else "general_guidance"
+    verification_badge = "Verified Hiring Criteria" if is_verified else "General Preparation Suggestions"
+    verified_by = d.get("verified_by") or ("Campus Placement Cell & Industry Archives" if is_verified else None)
+
+    # 4. Structured Division between Verified Criteria and Preparation Suggestions
+    verified_info = {
+        "eligibility": d.get("eligibility") or "Eligibility criteria not officially specified. Consult your college placement cell for current cutoffs.",
+        "hiring_process": d.get("hiring_process") or "Hiring process stages currently undergoing season update.",
+        "technical_rounds": d.get("technical_rounds") or "Technical round details currently being updated.",
+        "hr_rounds": d.get("hr_rounds") or "HR and cultural evaluation details not specified.",
+        "source_name": source_name,
+        "source_url": source_url,
+        "last_updated": last_updated_display,
+        "verified_by": verified_by,
+        "is_verified": is_verified,
+        "is_outdated": is_outdated,
+    }
+
+    general_suggestions = {
+        "frequent_topics": d.get("frequent_topics") or [],
+        "required_skills": d.get("required_skills") or [],
+        "prep_tips": d.get("prep_tips") or "Review standard computer science fundamentals and practice coding problems.",
+        "disclaimer": "Preparation tips and frequent topics represent aggregated interview experiences and community-guided suggestions; company assessment patterns may evolve per recruitment cycle.",
+        "is_general_guidance": True,
+    }
+
+    # Update dictionary with enriched values while keeping all existing keys
+    d["company_name"] = company_name
+    d["source_name"] = source_name
+    d["source_url"] = source_url
+    d["source_is_default"] = source_is_default
+    d["last_updated"] = raw_last_updated or "Not specified"
+    d["last_updated_display"] = last_updated_display
+    d["age_days"] = age_days
+    d["is_outdated"] = is_outdated
+    d["freshness_status"] = freshness_status
+    d["freshness_label"] = freshness_label
+    d["freshness_badge"] = freshness_badge
+    d["outdated_warning"] = outdated_warning
+    d["is_verified"] = is_verified
+    d["verification_status"] = verification_status
+    d["verification_badge"] = verification_badge
+    d["verified_by"] = verified_by
+    d["verified_info"] = verified_info
+    d["general_suggestions"] = general_suggestions
+
+    return d
+

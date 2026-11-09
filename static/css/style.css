@@ -2282,3 +2282,23 @@ textarea:focus-visible {
 [data-bs-theme="dark"] .stage-badge-rejected {
   color: #ea868f;
 }
+/* Session Expiration & Automatic Logout Modal */
+#sessionExpiryModal .modal-content {
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.session-countdown-timer {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  letter-spacing: 2px;
+  font-size: 2.75rem;
+}
+
+[data-bs-theme="dark"] #sessionExpiryModal .modal-header.bg-warning {
+  background-color: rgba(210, 153, 34, 0.2) !important;
+}
+
+[data-bs-theme="dark"] #sessionExpiryModal .modal-footer.bg-light {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
