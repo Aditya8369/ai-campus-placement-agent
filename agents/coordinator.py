@@ -22,6 +22,7 @@ from agents.skill_gap_agent import SkillGapAgent
 from agents.roadmap_agent import RoadmapAgent
 from agents.interview_agent import InterviewAgent
 from utils.pdf_reader import standardize_resume_sections, format_standardized_resume
+from utils.skill_evidence_mapper import map_skill_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,26 @@ class CoordinatorAgent:
         else:
             logger.info("CoordinatorAgent: No cross-section conflicts detected.")
 
-        # 8. Combine validated data into a final coordinated results payload
+        # 8. Map detected skill evidence across resume sections (#250)
+        try:
+            matched_skills_list = processed_job_match.get("matched_skills") or []
+            evidence_mapping = map_skill_evidence(
+                resume_text=resume_text,
+                target_skills=matched_skills_list or None
+            )
+        except Exception as map_err:
+            logger.warning(f"CoordinatorAgent: Skill evidence mapping failed ({map_err}). Falling back to empty mapping.")
+            evidence_mapping = {
+                "total_skills": 0,
+                "supported_skills_count": 0,
+                "unsupported_skills_count": 0,
+                "partial_skills_count": 0,
+                "evidence_score": 100,
+                "summary": "Skill evidence mapping could not be evaluated.",
+                "skills": []
+            }
+
+        # 9. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
             "job_match": processed_job_match,
@@ -223,6 +243,7 @@ class CoordinatorAgent:
             "overall_recommendation_summary": overall_summary_block,
             "conflicts": conflicts,
             "section_status": section_status,
+            "skill_evidence_mapping": evidence_mapping
             "security_audit": {
                 "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
                 "resume_threat": resume_threat,

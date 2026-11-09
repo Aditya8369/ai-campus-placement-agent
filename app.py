@@ -2154,6 +2154,29 @@ def dashboard(analysis_id: str) -> str:
 
     streak_data = get_student_streak(student_id)
 
+    # Prepare Skill Evidence Mapping (#250)
+    results = analysis_record.get("results") or {}
+    skill_evidence = results.get("skill_evidence_mapping")
+    if not skill_evidence or not skill_evidence.get("skills"):
+        try:
+            from utils.skill_evidence_mapper import map_skill_evidence
+            skill_evidence = map_skill_evidence(
+                resume_text=analysis_record.get("resume_text", ""),
+                analysis_record=analysis_record,
+                target_skills=clean_matched or None
+            )
+        except Exception as sem_err:
+            logger.warning(f"Error generating skill evidence mapping for dashboard: {sem_err}")
+            skill_evidence = {
+                "total_skills": 0,
+                "supported_skills_count": 0,
+                "unsupported_skills_count": 0,
+                "partial_skills_count": 0,
+                "evidence_score": 100,
+                "summary": "Skill evidence mapping could not be evaluated.",
+                "skills": []
+            }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -2172,8 +2195,43 @@ def dashboard(analysis_id: str) -> str:
         readiness_summary=readiness_summary,
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison),
+        skill_evidence=skill_evidence,
+        skill_evidence_json=json.dumps(skill_evidence),
         streak=streak_data
     )
+
+
+@app.route("/api/analysis/<analysis_id>/skill-evidence", methods=["GET"])
+def api_skill_evidence_mapping(analysis_id: str):
+    """
+    Returns the Skill Evidence Mapping for a specific placement analysis (#250).
+    Shows where detected skills are supported in the candidate's resume and highlights
+    skills lacking practical evidence.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    skill_evidence = results.get("skill_evidence_mapping")
+    if not skill_evidence or not skill_evidence.get("skills"):
+        from utils.skill_evidence_mapper import map_skill_evidence
+        job_match = results.get("job_match") or {}
+        matched = job_match.get("matched_skills") or job_match.get("matching_skills") or []
+        if isinstance(matched, str):
+            matched = [s.strip() for s in matched.split(",") if s.strip()]
+        skill_evidence = map_skill_evidence(
+            resume_text=analysis_record.get("resume_text", ""),
+            analysis_record=analysis_record,
+            target_skills=matched or None
+        )
+
+    return jsonify({
+        "success": True,
+        "analysis_id": analysis_id,
+        "company_name": analysis_record.get("company_name", "General"),
+        "skill_evidence": skill_evidence
+    }), 200
 
 
 @app.route("/leaderboard", methods=["GET"])
