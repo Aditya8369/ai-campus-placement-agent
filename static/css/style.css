@@ -2184,6 +2184,104 @@ textarea:focus-visible {
   }
 }
 
+/* Job Application Tracker Pipeline & Kanban Styling */
+.stage-stat-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  border-radius: 1rem;
+}
+
+.stage-stat-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+}
+
+.kanban-board-container {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding-bottom: 1rem;
+}
+
+.kanban-column {
+  min-width: 270px;
+  max-width: 320px;
+  flex: 1 0 270px;
+  background-color: var(--surface-secondary, #f8f9fa);
+  border-radius: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #e9ecef);
+}
+
+[data-bs-theme="dark"] .kanban-column {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-color);
+}
+
+.kanban-card {
+  background-color: var(--card-solid-bg, #ffffff);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border-color, #e9ecef);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.kanban-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stage-badge-applied {
+  background-color: rgba(13, 202, 240, 0.15);
+  color: #055160;
+  border: 1px solid rgba(13, 202, 240, 0.3);
+}
+
+.stage-badge-assessment {
+  background-color: rgba(255, 193, 7, 0.15);
+  color: #664d03;
+  border: 1px solid rgba(255, 193, 7, 0.3);
+}
+
+.stage-badge-interview {
+  background-color: rgba(13, 110, 253, 0.15);
+  color: #084298;
+  border: 1px solid rgba(13, 110, 253, 0.3);
+}
+
+.stage-badge-selected {
+  background-color: rgba(25, 135, 84, 0.15);
+  color: #0f5132;
+  border: 1px solid rgba(25, 135, 84, 0.3);
+}
+
+.stage-badge-rejected {
+  background-color: rgba(220, 53, 69, 0.15);
+  color: #842029;
+  border: 1px solid rgba(220, 53, 69, 0.3);
+}
+
+[data-bs-theme="dark"] .stage-badge-applied {
+  color: #6edff6;
+}
+
+[data-bs-theme="dark"] .stage-badge-assessment {
+  color: #ffda6a;
+}
+
+[data-bs-theme="dark"] .stage-badge-interview {
+  color: #6ea8fe;
+}
+
+[data-bs-theme="dark"] .stage-badge-selected {
+  color: #75b798;
+}
+
+[data-bs-theme="dark"] .stage-badge-rejected {
+  color: #ea868f;
+}
 /* Session Expiration & Automatic Logout Modal */
 #sessionExpiryModal .modal-content {
   border-radius: 1rem;
