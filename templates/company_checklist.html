@@ -82,6 +82,68 @@
       </div>
     </div>
 
+    <!-- Company Hiring Guide Freshness & Source Banner -->
+    {% if company_guide %}
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="badge bg-{{ company_guide.freshness_badge }}-subtle text-{{ company_guide.freshness_badge }} border border-{{ company_guide.freshness_badge }}-subtle px-3 py-2 rounded-pill">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i>Last Updated: {{ company_guide.last_updated_display }}
+          </span>
+          {% if company_guide.is_verified %}
+          <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill">
+            <i class="fa-solid fa-circle-check me-1"></i>Verified Hiring Guide
+          </span>
+          {% else %}
+          <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-3 py-2 rounded-pill">
+            <i class="fa-solid fa-compass me-1"></i>General Preparation Guide
+          </span>
+          {% endif %}
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          {% if company_guide.source_url %}
+          <a href="{{ company_guide.source_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 text-decoration-none">
+            <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Official Source: {{ company_guide.source_name }}
+          </a>
+          {% else %}
+          <span class="badge bg-light text-muted border py-2 px-3 rounded-pill">
+            <i class="fa-solid fa-building-columns me-1"></i>Source: {{ company_guide.source_name }}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if company_guide.is_outdated and company_guide.outdated_warning %}
+      <div class="alert alert-warning border-warning-subtle d-flex align-items-start gap-2 p-3 rounded-3 mb-3">
+        <i class="fa-solid fa-triangle-exclamation text-warning fs-5 mt-1"></i>
+        <div class="small">
+          <strong>Notice: Seasonal Verification Recommended</strong>
+          <p class="mb-0 text-muted">{{ company_guide.outdated_warning }}</p>
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="row g-3 small">
+        <div class="col-md-6">
+          <div class="p-3 bg-light rounded-3 h-100 border">
+            <span class="fw-bold text-success d-block mb-1">
+              <i class="fa-solid fa-shield-halved me-1"></i>Verified Eligibility & Process
+            </span>
+            <p class="text-secondary mb-0">{{ company_guide.verified_info.eligibility }}</p>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="p-3 bg-light rounded-3 h-100 border">
+            <span class="fw-bold text-info d-block mb-1">
+              <i class="fa-solid fa-lightbulb me-1"></i>Preparation Suggestions Notice
+            </span>
+            <p class="text-secondary mb-0">{{ company_guide.general_suggestions.disclaimer }}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Checklist Sections Grid -->
     <div class="row g-4">
       {% for category, tasks in data.checklist.items() %}
