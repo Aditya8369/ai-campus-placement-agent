@@ -151,7 +151,8 @@ from utils.company_profile_manager import (
     get_company_profile_by_name,
     list_company_profiles,
     archive_company_profile,
-    seed_default_company_profiles
+    seed_default_company_profiles,
+    enrich_company_hiring_guide,
 )
 from utils.progress_tracker import (
     calculate_version_delta,
@@ -984,6 +985,7 @@ def index() -> str:
 def get_company_profile(company_name: str):
     """
     Returns company hiring details from data/companies.json for the preview explorer modal.
+    Enriched with source metadata, verification status, and freshness indicators.
     """
     companies_file = config.BASE_DIR / "data" / "companies.json"
     try:
@@ -991,7 +993,9 @@ def get_company_profile(company_name: str):
             with open(companies_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if company_name in data:
-                    return jsonify({"success": True, "company": company_name, "details": data[company_name]})
+                    raw_details = data[company_name]
+                    enriched_details = enrich_company_hiring_guide(company_name, raw_details)
+                    return jsonify({"success": True, "company": company_name, "details": enriched_details})
     except Exception as e:
         logger.error(f"Error fetching company details for {company_name}: {e}")
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
@@ -7292,10 +7296,25 @@ def company_checklist_view():
 
     checklist_info = get_company_checklist(student_id=student_id, company_name=target_company)
 
+    company_guide = None
+    try:
+        companies_file = config.BASE_DIR / "data" / "companies.json"
+        if companies_file.exists():
+            with open(companies_file, "r", encoding="utf-8") as f:
+                comp_data = json.load(f)
+                if target_company in comp_data:
+                    company_guide = enrich_company_hiring_guide(target_company, comp_data[target_company])
+                else:
+                    company_guide = enrich_company_hiring_guide(target_company, {})
+    except Exception as e:
+        logger.warning(f"Error loading company guide for checklist: {e}")
+        company_guide = enrich_company_hiring_guide(target_company, {})
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
-            "data": checklist_info
+            "data": checklist_info,
+            "company_guide": company_guide
         }), 200
 
     return render_template(
@@ -7303,7 +7322,8 @@ def company_checklist_view():
         data=checklist_info,
         target_company=target_company,
         available_companies=available_companies,
-        student_id=student_id
+        student_id=student_id,
+        company_guide=company_guide
     )
 
 
