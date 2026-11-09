@@ -3191,20 +3191,21 @@ def create_preparation_note(
         cursor.execute("SELECT * FROM interview_preparation_notes WHERE id = ?", (note_id,))
         row = cursor.fetchone()
         logger.info(f"Created interview note {note_id} for student {effective_student_id}")
+
+        # Record preparation activity for candidate streak tracking (#236)
+        try:
+            record_preparation_activity(
+                student_id=effective_student_id,
+                activity_type="prep_note",
+                metadata={"note_id": note_id, "title": clean_title, "category": clean_category}
+            )
+        except Exception as streak_err:
+            logger.warning(f"Failed to record preparation activity on create_preparation_note: {streak_err}")
+
         return dict(row) if row else {}
     except Exception as e:
         logger.error(f"Error creating preparation note: {e}")
         raise e
-    
-        # Record preparation activity for candidate streak tracking (#236)
-        try:
-            record_preparation_activity(
-                student_id=s_id,
-                activity_type="prep_note",
-                metadata={"note_id": note_id, "title": title.strip(), "category": category.strip()}
-            )
-        except Exception as streak_err:
-            logger.warning(f"Failed to record preparation activity on create_preparation_note: {streak_err}")
     finally:
         conn.close()
 
