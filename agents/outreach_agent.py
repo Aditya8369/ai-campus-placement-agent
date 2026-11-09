@@ -21,6 +21,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import config
 import prompts
 from utils.gemini import generate_json_response, AIAnalysisError
+from utils.prompt_security import (
+    sanitize_untrusted_text,
+    encapsulate_untrusted_input,
+    build_secure_system_instruction,
+    redact_sensitive_information,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,22 +102,26 @@ class OutreachGeneratorAgent:
                     if c_info:
                         company_details_str = json.dumps(c_info)
 
+            safe_jd = sanitize_untrusted_text(job_description or f"Engineering position at {company_name}.", max_length=15000)
+            encapsulated_jd = encapsulate_untrusted_input(safe_jd, document_type="job_description")
+            safe_exp = sanitize_untrusted_text(experience_context[:600])
+
             prompt = prompts.OUTREACH_USER_PROMPT_TEMPLATE.format(
                 company_name=company_name,
                 role_title=inferred_role,
                 tone=norm_tone,
                 company_details=company_details_str or f"Hiring for engineering and technical positions at {company_name}.",
-                job_description=job_description or f"Engineering position at {company_name}.",
+                job_description=encapsulated_jd,
                 matched_skills=", ".join(matched_skills[:8]) if matched_skills else "Python, Problem Solving, Data Structures",
                 strengths=", ".join(strengths[:4]) if strengths else "Strong fundamentals, analytical mindset",
                 resume_summary=resume_summary,
                 ats_score=ats_score,
-                experience_context=experience_context[:600]
+                experience_context=safe_exp
             )
 
             raw_outreach = generate_json_response(
                 prompt=prompt,
-                system_instruction=prompts.OUTREACH_SYSTEM_INSTRUCTION
+                system_instruction=build_secure_system_instruction(prompts.OUTREACH_SYSTEM_INSTRUCTION)
             )
 
             validated = self._validate_and_sanitize_outreach(
@@ -122,7 +132,7 @@ class OutreachGeneratorAgent:
                 matched_skills=matched_skills
             )
             if validated:
-                return validated
+                return redact_sensitive_information(validated)
 
         except Exception as e:
             logger.warning(f"LLM outreach generation failed or offline ({e}). Using heuristic generator.")

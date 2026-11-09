@@ -404,6 +404,34 @@ def rate_limit_exceeded(error):
     ), 429
 
 
+@app.errorhandler(500)
+def internal_server_error(error):
+    """
+    Handles HTTP 500 errors safely, ensuring internal secrets, API keys,
+    and stack traces are never exposed to clients or user views.
+    """
+    from utils.prompt_security import redact_sensitive_information
+    raw_desc = getattr(error, "description", None) or "An unexpected server error occurred."
+    safe_desc = redact_sensitive_information(str(raw_desc))
+    logger.error(f"Internal Server Error (500): {safe_desc}")
+
+    is_json = (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.headers.get("Accept") == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        return jsonify({
+            "success": False,
+            "error": "Internal Server Error",
+            "message": "An internal error occurred. Please try again later."
+        }), 500
+
+    flash("An unexpected error occurred while processing your request. Please try again.", "error")
+    return redirect(url_for("index"))
+
+
 @app.after_request
 def set_security_headers(response):
     """

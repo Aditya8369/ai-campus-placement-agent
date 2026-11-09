@@ -2,6 +2,12 @@ import logging
 from typing import Dict, Any, List
 import prompts
 from utils.gemini import generate_json_response
+from utils.prompt_security import (
+    sanitize_untrusted_text,
+    encapsulate_untrusted_input,
+    build_secure_system_instruction,
+    redact_sensitive_information,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,18 +126,22 @@ class InterviewAgent:
                 "feedback": "The candidate did not provide an answer. Prompt evaluation requires written or spoken input."
             }
 
+        safe_answer = sanitize_untrusted_text(answer.strip(), max_length=5000)
+        encapsulated_answer = encapsulate_untrusted_input(safe_answer, document_type="candidate_interview_answer")
+
         prompt = prompts.INTERVIEW_EVAL_USER_PROMPT_TEMPLATE.format(
             question_type=question_type,
             question=question,
-            candidate_answer=answer.strip()
+            candidate_answer=encapsulated_answer
         )
 
         try:
-            # Query Gemini for the answer evaluation
+            # Query Gemini for the answer evaluation with hardened security instructions
             res = generate_json_response(
-                system_instruction=prompts.INTERVIEW_EVAL_SYSTEM_INSTRUCTION,
+                system_instruction=build_secure_system_instruction(prompts.INTERVIEW_EVAL_SYSTEM_INSTRUCTION),
                 prompt=prompt
             )
+            res = redact_sensitive_information(res)
 
             # Robust score sanitization
             conf = self.parse_score(res.get("confidence_score"), 50)
