@@ -7031,6 +7031,7 @@ def api_send_interview_reminder():
 
 
 
+@app.route("/interview-experiences", methods=["GET", "POST"])
 def interview_experiences_view():
     """
     Company-Wise Interview Experiences View and Submission Handler (#189).
@@ -9718,6 +9719,219 @@ def api_user_placement_analyses():
     return jsonify({
         "success": True,
         "data": history_data
+    }), 200
+
+
+# ==============================================================================
+# Interview Preparation Notes Routes (#235)
+# ==============================================================================
+
+@app.route("/notes", methods=["GET", "POST"])
+def interview_notes_view():
+    """
+    Renders the Interview Preparation Notes dashboard and handles new note creation (#235).
+    Enforces per-student isolation and supports filtering by category and search terms.
+    """
+    json_body = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_body, dict):
+        json_body = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_body.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or (flask_session.get("user", {}).get("id") if isinstance(flask_session.get("user"), dict) else None)
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    is_api_request = (
+        request.path == "/api/notes"
+        or request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or "").strip()
+        description = (payload.get("description") or payload.get("content") or "").strip()
+        category = (payload.get("category") or "Technical").strip()
+
+        if not title or not description:
+            if is_api_request:
+                return jsonify({
+                    "success": False,
+                    "error": "Note title and description are required."
+                }), 400
+            flash("Note title and description are required.", "danger")
+            return redirect(url_for("interview_notes_view", student_id=student_id))
+
+        try:
+            created_note = create_preparation_note(
+                student_id=student_id,
+                title=title,
+                description=description,
+                category=category
+            )
+            if is_api_request:
+                return jsonify({
+                    "success": True,
+                    "message": "Interview preparation note created successfully.",
+                    "note": created_note
+                }), 201
+
+            flash("Interview preparation note saved successfully!", "success")
+            return redirect(url_for("interview_notes_view", student_id=student_id))
+        except Exception as err:
+            logger.error(f"Error creating preparation note: {err}")
+            if is_api_request:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to create preparation note."
+                }), 500
+            flash("Failed to save note. Please try again.", "danger")
+            return redirect(url_for("interview_notes_view", student_id=student_id))
+
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    notes = get_preparation_notes(
+        student_id=student_id,
+        category_filter=category_filter,
+        search_query=search_query
+    )
+    category_counts = get_note_category_counts(student_id)
+
+    if is_api_request:
+        return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "notes": notes,
+            "category_counts": category_counts,
+            "current_category": category_filter,
+            "search_query": search_query
+        }), 200
+
+    return render_template(
+        "notes.html",
+        notes=notes,
+        category_counts=category_counts,
+        current_category=category_filter,
+        search_query=search_query,
+        student_id=student_id
+    )
+
+
+@app.route("/api/notes", methods=["GET", "POST"])
+def api_notes_collection():
+    """
+    Dedicated REST API collection endpoint for interview preparation notes (#235).
+    """
+    return interview_notes_view()
+
+
+@app.route("/api/notes/<note_id>", methods=["GET", "PUT", "POST", "DELETE"])
+def api_note_operations(note_id: str):
+    """
+    Retrieves, updates, or permanently deletes a student's private preparation note (#235).
+    Enforces strict user isolation.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or (flask_session.get("user", {}).get("id") if isinstance(flask_session.get("user"), dict) else None)
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    if request.method == "GET":
+        note = get_preparation_note_by_id(note_id=note_id, student_id=student_id)
+        if not note:
+            return jsonify({
+                "success": False,
+                "error": "Note not found or unauthorized."
+            }), 404
+        return jsonify({
+            "success": True,
+            "note": note
+        }), 200
+
+    if request.method in ["PUT", "POST"]:
+        payload = request.get_json(silent=True) or request.form
+        existing = get_preparation_note_by_id(note_id=note_id, student_id=student_id)
+        if not existing:
+            return jsonify({
+                "success": False,
+                "error": "Note not found or unauthorized."
+            }), 404
+
+        title = (payload.get("title") or existing["title"]).strip()
+        description = (payload.get("description") or payload.get("content") or existing["description"]).strip()
+        category = (payload.get("category") or existing["category"]).strip()
+
+        if not title or not description:
+            return jsonify({
+                "success": False,
+                "error": "Title and description are required."
+            }), 400
+
+        updated = update_preparation_note(
+            note_id=note_id,
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        if updated:
+            refreshed = get_preparation_note_by_id(note_id=note_id, student_id=student_id)
+            return jsonify({
+                "success": True,
+                "message": "Preparation note updated successfully.",
+                "note": refreshed
+            }), 200
+        return jsonify({
+            "success": False,
+            "error": "Failed to update preparation note."
+        }), 500
+
+    if request.method == "DELETE":
+        deleted = delete_preparation_note(note_id=note_id, student_id=student_id)
+        if deleted:
+            return jsonify({
+                "success": True,
+                "message": "Preparation note deleted successfully."
+            }), 200
+        return jsonify({
+            "success": False,
+            "error": "Note not found or unauthorized."
+        }), 404
+
+
+@app.route("/api/notes/categories", methods=["GET"])
+def api_notes_categories():
+    """
+    Returns aggregated note category counts for the authenticated student (#235).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or (flask_session.get("user", {}).get("id") if isinstance(flask_session.get("user"), dict) else None)
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+    counts = get_note_category_counts(student_id=student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "category_counts": counts,
+        "counts": counts
     }), 200
 
 

@@ -232,6 +232,7 @@
     <div class="modal-dialog modal-dialog-centered modal-lg">
       <div class="modal-content border-0 shadow-lg rounded-4">
         <form id="createNoteForm" method="POST" action="/notes">
+          <input type="hidden" name="student_id" value="{{ student_id }}">
           <div class="modal-header border-0 pb-0">
             <h5 class="modal-title fw-bold" id="createNoteModalLabel">
               <i class="fa-solid fa-plus-circle text-primary me-2"></i>Create Preparation Note
@@ -279,6 +280,7 @@
       <div class="modal-content border-0 shadow-lg rounded-4">
         <form id="editNoteForm">
           <input type="hidden" id="editNoteId" name="note_id">
+          <input type="hidden" id="editStudentId" name="student_id" value="{{ student_id }}">
           <div class="modal-header border-0 pb-0">
             <h5 class="modal-title fw-bold" id="editNoteModalLabel">
               <i class="fa-solid fa-pen-to-square text-warning me-2"></i>Edit Preparation Note
@@ -359,6 +361,243 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script>
+    (function() {
+      const studentId = "{{ student_id or 'default_student' }}";
+      const editModalEl = document.getElementById("editNoteModal");
+      const deleteModalEl = document.getElementById("deleteNoteModal");
+      const editModal = editModalEl ? new bootstrap.Modal(editModalEl) : null;
+      const deleteModal = deleteModalEl ? new bootstrap.Modal(deleteModalEl) : null;
+      const toastEl = document.getElementById("noteToast");
+      const toast = toastEl ? new bootstrap.Toast(toastEl, { delay: 3500 }) : null;
+
+      let currentDeleteId = null;
+
+      function showToast(msg, icon = "fa-circle-check", isSuccess = true) {
+        if (!toast || !toastEl) return;
+        const msgEl = document.getElementById("noteToastMsg");
+        const iconEl = document.getElementById("noteToastIcon");
+        if (msgEl) msgEl.textContent = msg;
+        if (iconEl) {
+          iconEl.className = `fa-solid ${icon} ${isSuccess ? 'text-warning' : 'text-danger'} me-2 fs-5`;
+        }
+        toastEl.className = `toast align-items-center text-bg-${isSuccess ? 'dark' : 'danger'} border-0 rounded-3 shadow`;
+        toast.show();
+      }
+
+      function updateCategoryBadgeClass(badgeEl, category) {
+        if (!badgeEl) return;
+        badgeEl.className = `badge rounded-pill note-category-badge badge-note-${category.toLowerCase().replace(/\s+/g, '-')}`;
+        let iconHtml = '<i class="fa-solid fa-tag me-1"></i>';
+        if (category === 'Technical') iconHtml = '<i class="fa-solid fa-laptop-code me-1"></i> Technical';
+        else if (category === 'HR') iconHtml = '<i class="fa-solid fa-users me-1"></i> HR & STAR';
+        else if (category === 'DSA') iconHtml = '<i class="fa-solid fa-code me-1"></i> DSA';
+        else if (category === 'Company Preparation') iconHtml = '<i class="fa-solid fa-building me-1"></i> Company Prep';
+        else iconHtml = `<i class="fa-solid fa-tag me-1"></i> ${category}`;
+        badgeEl.innerHTML = iconHtml;
+      }
+
+      async function refreshCategoryCounts() {
+        try {
+          const res = await fetch(`/api/notes/categories?student_id=${encodeURIComponent(studentId)}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.category_counts) {
+              const c = data.category_counts;
+              const setEl = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val ?? 0;
+              };
+              setEl("navNotesCount", c.All);
+              setEl("badgeCountAll", c.All);
+              setEl("badgeCountTechnical", c.Technical);
+              setEl("badgeCountHR", c.HR);
+              setEl("badgeCountDSA", c.DSA);
+              setEl("badgeCountCompany", c["Company Preparation"]);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to refresh note counts:", err);
+        }
+      }
+
+      // Wire Edit Buttons
+      function bindEditButtons() {
+        document.querySelectorAll(".btn-edit-note").forEach(btn => {
+          btn.onclick = (e) => {
+            e.preventDefault();
+            const noteId = btn.getAttribute("data-note-id");
+            const noteTitle = btn.getAttribute("data-note-title");
+            const noteCategory = btn.getAttribute("data-note-category");
+            const noteDesc = btn.getAttribute("data-note-description");
+
+            document.getElementById("editNoteId").value = noteId;
+            document.getElementById("editNoteTitle").value = noteTitle || "";
+            document.getElementById("editNoteCategory").value = noteCategory || "Technical";
+            document.getElementById("editNoteDescription").value = noteDesc || "";
+
+            if (editModal) editModal.show();
+          };
+        });
+      }
+
+      // Wire Delete Buttons
+      function bindDeleteButtons() {
+        document.querySelectorAll(".btn-delete-note").forEach(btn => {
+          btn.onclick = (e) => {
+            e.preventDefault();
+            currentDeleteId = btn.getAttribute("data-note-id");
+            const noteTitle = btn.getAttribute("data-note-title") || "Untitled Note";
+            const titleDisplay = document.getElementById("deleteNoteTitleDisplay");
+            if (titleDisplay) titleDisplay.textContent = noteTitle;
+            if (deleteModal) deleteModal.show();
+          };
+        });
+      }
+
+      // Edit Form Submission
+      const editForm = document.getElementById("editNoteForm");
+      if (editForm) {
+        editForm.onsubmit = async (e) => {
+          e.preventDefault();
+          const noteId = document.getElementById("editNoteId").value;
+          const updatedTitle = document.getElementById("editNoteTitle").value.trim();
+          const updatedCategory = document.getElementById("editNoteCategory").value;
+          const updatedDesc = document.getElementById("editNoteDescription").value.trim();
+
+          if (!updatedTitle || !updatedDesc) {
+            alert("Title and description are required.");
+            return;
+          }
+
+          try {
+            const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                student_id: studentId,
+                title: updatedTitle,
+                category: updatedCategory,
+                description: updatedDesc
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              if (editModal) editModal.hide();
+              showToast("Note updated successfully!", "fa-circle-check", true);
+
+              // Update DOM card
+              const cardCol = document.getElementById(`note-card-${noteId}`);
+              if (cardCol) {
+                cardCol.setAttribute("data-title", updatedTitle);
+                cardCol.setAttribute("data-category", updatedCategory);
+                cardCol.setAttribute("data-description", updatedDesc);
+
+                const titleEl = cardCol.querySelector(".note-title");
+                if (titleEl) titleEl.textContent = updatedTitle;
+
+                const descEl = cardCol.querySelector(".note-description");
+                if (descEl) descEl.textContent = updatedDesc;
+
+                const badgeEl = cardCol.querySelector(".note-category-badge");
+                updateCategoryBadgeClass(badgeEl, updatedCategory);
+
+                const editBtn = cardCol.querySelector(".btn-edit-note");
+                if (editBtn) {
+                  editBtn.setAttribute("data-note-title", updatedTitle);
+                  editBtn.setAttribute("data-note-category", updatedCategory);
+                  editBtn.setAttribute("data-note-description", updatedDesc);
+                  editBtn.setAttribute("aria-label", `Edit ${updatedTitle}`);
+                }
+
+                const deleteBtn = cardCol.querySelector(".btn-delete-note");
+                if (deleteBtn) {
+                  deleteBtn.setAttribute("data-note-title", updatedTitle);
+                  deleteBtn.setAttribute("aria-label", `Delete ${updatedTitle}`);
+                }
+              }
+              refreshCategoryCounts();
+            } else {
+              showToast(data.error || "Failed to update note", "fa-triangle-exclamation", false);
+            }
+          } catch (err) {
+            console.error("Error saving note:", err);
+            showToast("Network error updating note", "fa-triangle-exclamation", false);
+          }
+        };
+      }
+
+      // Delete Confirmation
+      const btnConfirmDelete = document.getElementById("btnConfirmDeleteNote");
+      if (btnConfirmDelete) {
+        btnConfirmDelete.onclick = async () => {
+          if (!currentDeleteId) return;
+          try {
+            const res = await fetch(`/api/notes/${encodeURIComponent(currentDeleteId)}?student_id=${encodeURIComponent(studentId)}`, {
+              method: "DELETE"
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              if (deleteModal) deleteModal.hide();
+              const cardCol = document.getElementById(`note-card-${currentDeleteId}`);
+              if (cardCol) {
+                cardCol.remove();
+              }
+              showToast("Note permanently deleted", "fa-trash-can", true);
+
+              // Check if all notes deleted
+              const remaining = document.querySelectorAll(".note-item-col");
+              const noNotesMsg = document.getElementById("noNotesMessage");
+              const notesGrid = document.getElementById("notesGrid");
+              if (remaining.length === 0) {
+                if (noNotesMsg) noNotesMsg.classList.remove("d-none");
+                if (notesGrid) notesGrid.classList.add("d-none");
+              }
+              refreshCategoryCounts();
+            } else {
+              showToast(data.error || "Failed to delete note", "fa-triangle-exclamation", false);
+            }
+          } catch (err) {
+            console.error("Error deleting note:", err);
+            showToast("Network error deleting note", "fa-triangle-exclamation", false);
+          }
+        };
+      }
+
+      // Real-time Search Box
+      const searchInput = document.getElementById("noteSearchInput");
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.toLowerCase().trim();
+          const cards = document.querySelectorAll(".note-item-col");
+          let visibleCount = 0;
+
+          cards.forEach(card => {
+            const title = (card.getAttribute("data-title") || "").toLowerCase();
+            const desc = (card.getAttribute("data-description") || "").toLowerCase();
+            if (!query || title.includes(query) || desc.includes(query)) {
+              card.classList.remove("d-none");
+              visibleCount++;
+            } else {
+              card.classList.add("d-none");
+            }
+          });
+
+          const noNotesMsg = document.getElementById("noNotesMessage");
+          const notesGrid = document.getElementById("notesGrid");
+          if (visibleCount === 0) {
+            if (noNotesMsg) noNotesMsg.classList.remove("d-none");
+          } else {
+            if (noNotesMsg) noNotesMsg.classList.add("d-none");
+            if (notesGrid) notesGrid.classList.remove("d-none");
+          }
+        });
+      }
+
+      bindEditButtons();
+      bindDeleteButtons();
+    })();
+  </script>
 </body>
 
 </html>
