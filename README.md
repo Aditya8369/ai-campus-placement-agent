@@ -329,8 +329,6 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
-
-
 <div align='center'>
   
 ### If you find this repo helpful, please consider giving it a ⭐ star on GitHub!
