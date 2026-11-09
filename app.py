@@ -7,6 +7,7 @@ import logging
 import re
 import secrets
 import hashlib
+from datetime import timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from flask import (
@@ -19,6 +20,7 @@ from flask import (
     jsonify,
     send_file,
     Response,
+    make_response,
     session as flask_session,
 )
 from werkzeug.utils import secure_filename
@@ -254,10 +256,15 @@ app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
-app.config["PERMANENT_SESSION_LIFETIME"] = 3600
+app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
+app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
 
 @app.before_request
 def require_login():
+    now = time.time()
+    timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
+
     if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
         aid = None
         if request.view_args:
@@ -267,19 +274,27 @@ def require_login():
             if rec and rec.get("student_id"):
                 flask_session["user_id"] = rec["student_id"]
                 flask_session["user_name"] = rec["student_id"]
+                if "last_activity" not in flask_session:
+                    flask_session["last_activity"] = now
                 return None
         if request.view_args and "student_id" in request.view_args:
             flask_session["user_id"] = request.view_args["student_id"]
             flask_session["user_name"] = request.view_args["student_id"]
+            if "last_activity" not in flask_session:
+                flask_session["last_activity"] = now
             return None
         student_param = request.args.get("student_id")
         if student_param:
             flask_session["user_id"] = student_param
             flask_session["user_name"] = student_param
+            if "last_activity" not in flask_session:
+                flask_session["last_activity"] = now
             return None
         if "user_id" not in flask_session:
             flask_session["user_id"] = "default_student"
             flask_session["user_name"] = "Default Student"
+        if "last_activity" not in flask_session:
+            flask_session["last_activity"] = now
         return None
 
     public_endpoints = {
@@ -294,7 +309,69 @@ def require_login():
         "static",
         "gemini_api_usage_dashboard",
         "api_gemini_usage_summary",
+        "api_session_status",
+        "api_session_keep_alive",
+        "api_session_logout",
+        "logout",
     }
+
+    user_id = flask_session.get("user_id")
+
+    # Inactivity check for authenticated sessions
+    if user_id:
+        last_activity = flask_session.get("last_activity")
+        if last_activity is None:
+            # Gracefully initialize for existing active session
+            flask_session["last_activity"] = now
+            last_activity = now
+
+        try:
+            last_act_float = float(last_activity)
+        except (ValueError, TypeError):
+            last_act_float = now
+            flask_session["last_activity"] = now
+
+        if (now - last_act_float) > timeout_seconds:
+            logger.info(
+                "Session expired due to inactivity for user_id=%s (inactive %.1fs > %ss)",
+                user_id,
+                now - last_act_float,
+                timeout_seconds,
+            )
+            flask_session.clear()
+
+            is_json_request = (
+                request.path.startswith("/api/")
+                or request.is_json
+                or "application/json" in request.headers.get("Accept", "")
+                or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+            )
+
+            if is_json_request:
+                resp = jsonify({
+                    "status": "error",
+                    "error": "session_expired",
+                    "message": "Your session has expired due to inactivity. Please log in again."
+                })
+                resp.status_code = 401
+                resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                resp.headers["Pragma"] = "no-cache"
+                return resp
+
+            if request.endpoint not in public_endpoints:
+                flash("Your session has expired due to inactivity. Please log in again.", "warning")
+                next_url = request.full_path if request.method == "GET" and not request.path.startswith("/static") else None
+                login_url = url_for("login", next=next_url) if next_url and next_url != "/?" else url_for("login")
+                resp = make_response(redirect(login_url))
+                resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+                resp.headers["Pragma"] = "no-cache"
+                return resp
+        else:
+            # Active session: update activity timestamp for non-polling requests
+            if request.endpoint not in ("api_session_status", "static"):
+                flask_session["last_activity"] = now
 
     if request.endpoint in public_endpoints:
         return None
@@ -302,14 +379,26 @@ def require_login():
     if not flask_session.get("user_id"):
         if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
             flask_session["user_id"] = "default_student"
+            flask_session["last_activity"] = now
             return None
-        if request.path.startswith("/api/"):
-            return jsonify({
+
+        is_json_request = (
+            request.path.startswith("/api/")
+            or request.is_json
+            or "application/json" in request.headers.get("Accept", "")
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+        if is_json_request:
+            resp = jsonify({
                 "status": "error",
                 "message": "Authentication required."
-            }), 401
+            })
+            resp.status_code = 401
+            return resp
 
-        return redirect(url_for("login"))
+        next_url = request.full_path if request.method == "GET" and not request.path.startswith("/static") else None
+        login_url = url_for("login", next=next_url) if next_url and next_url != "/?" else url_for("login")
+        return redirect(login_url)
 
 
 @app.context_processor
@@ -323,6 +412,18 @@ def inject_i18n():
         "supported_locales": SUPPORTED_LOCALES,
         "locale_names": LOCALE_NAMES,
         "_t": lambda key, default=None: get_translation(key, locale=current_locale, default=default)
+    }
+
+
+@app.context_processor
+def inject_session_config():
+    """
+    Injects session expiration and timeout settings into all Jinja templates.
+    """
+    return {
+        "session_timeout_seconds": app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)),
+        "session_warning_seconds": app.config.get("SESSION_WARNING_SECONDS", getattr(config, "SESSION_WARNING_SECONDS", 120)),
+        "is_authenticated": bool(flask_session.get("user_id")),
     }
 
 
@@ -428,6 +529,13 @@ def set_security_headers(response):
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
+
+    # For authenticated sessions viewing HTML pages, prevent browser history/disk caching
+    if flask_session.get("user_id") and "text/html" in response.headers.get("Content-Type", ""):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
     return response
 
 # Ensure directories exist
@@ -615,11 +723,139 @@ def api_migrations_run():
         }), 500
 
 
-@app.route("/logout", methods=["POST"])
-def logout():
+@app.route("/api/session/status", methods=["GET"])
+def api_session_status():
+    """
+    Returns current session authentication status, inactivity duration, and remaining seconds.
+    Does NOT bump last_activity so periodic client polling does not prevent inactivity logout.
+    """
+    user_id = flask_session.get("user_id")
+    timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
+    warning_seconds = app.config.get("SESSION_WARNING_SECONDS", getattr(config, "SESSION_WARNING_SECONDS", 120))
+
+    if not user_id:
+        return jsonify({
+            "authenticated": False,
+            "timeout_seconds": timeout_seconds,
+            "warning_seconds": warning_seconds,
+            "remaining_seconds": 0,
+            "warning": False,
+            "expired": False,
+        })
+
+    now = time.time()
+    last_activity = flask_session.get("last_activity", now)
+    try:
+        last_act_float = float(last_activity)
+    except (ValueError, TypeError):
+        last_act_float = now
+        flask_session["last_activity"] = now
+
+    inactivity_seconds = max(0, int(now - last_act_float))
+    remaining_seconds = max(0, int(timeout_seconds - inactivity_seconds))
+    is_expired = remaining_seconds <= 0
+    is_warning = not is_expired and remaining_seconds <= warning_seconds
+
+    if is_expired:
+        flask_session.clear()
+        return jsonify({
+            "authenticated": False,
+            "timeout_seconds": timeout_seconds,
+            "warning_seconds": warning_seconds,
+            "remaining_seconds": 0,
+            "warning": False,
+            "expired": True,
+        })
+
+    return jsonify({
+        "authenticated": True,
+        "user_id": user_id,
+        "user_name": flask_session.get("user_name", ""),
+        "timeout_seconds": timeout_seconds,
+        "warning_seconds": warning_seconds,
+        "inactivity_seconds": inactivity_seconds,
+        "remaining_seconds": remaining_seconds,
+        "warning": is_warning,
+        "expired": False,
+    })
+
+
+@app.route("/api/session/keep-alive", methods=["POST"])
+def api_session_keep_alive():
+    """
+    Extends the current session by refreshing last_activity to the current timestamp.
+    Returns 401 if already expired or unauthenticated.
+    """
+    user_id = flask_session.get("user_id")
+    timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
+    warning_seconds = app.config.get("SESSION_WARNING_SECONDS", getattr(config, "SESSION_WARNING_SECONDS", 120))
+
+    if not user_id:
+        return jsonify({
+            "status": "error",
+            "error": "session_expired",
+            "message": "Your session has expired or you are not logged in."
+        }), 401
+
+    now = time.time()
+    last_activity = flask_session.get("last_activity", now)
+    try:
+        last_act_float = float(last_activity)
+    except (ValueError, TypeError):
+        last_act_float = now
+
+    if (now - last_act_float) > timeout_seconds:
+        flask_session.clear()
+        resp = jsonify({
+            "status": "error",
+            "error": "session_expired",
+            "message": "Your session has already expired due to inactivity. Please log in again."
+        })
+        resp.status_code = 401
+        resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+        return resp
+
+    flask_session["last_activity"] = now
+    return jsonify({
+        "status": "ok",
+        "message": "Session extended successfully.",
+        "remaining_seconds": timeout_seconds,
+        "timeout_seconds": timeout_seconds,
+        "warning_seconds": warning_seconds,
+    })
+
+
+@app.route("/api/session/logout", methods=["POST"])
+def api_session_logout():
+    """
+    API endpoint to securely terminate session and clear credentials.
+    """
     flask_session.clear()
-    flash("You have been logged out.", "success")
-    return redirect(url_for("index"))
+    resp = jsonify({
+        "status": "ok",
+        "message": "Logged out successfully."
+    })
+    resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
+@app.route("/logout", methods=["GET", "POST"])
+def logout():
+    was_expired = request.args.get("expired") == "1"
+    flask_session.clear()
+    if was_expired:
+        flash("Your session has expired due to inactivity. Please log in again.", "warning")
+        resp = make_response(redirect(url_for("login")))
+    else:
+        flash("You have been logged out.", "success")
+        resp = make_response(redirect(url_for("index")))
+    resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -647,11 +883,17 @@ def login():
             return render_template("login.html", unverified_email=email)
 
         flask_session.clear()
+        now = time.time()
         flask_session["user_id"] = user["id"]
         flask_session["user_name"] = user["name"]
+        flask_session["last_activity"] = now
+        flask_session["login_time"] = now
         flask_session.permanent = True
 
         flash("Login successful.", "success")
+        next_page = request.args.get("next") or request.form.get("next")
+        if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+            return redirect(next_page)
         return redirect(url_for("index"))
 
     return render_template("login.html")
@@ -10652,6 +10894,229 @@ def redact_resume_pii_endpoint():
 
 
 
+
+
+# ==============================================================================
+# Interview Preparation Notes (#235)
+# Personal space for candidates to create, organize, edit, and categorize notes.
+# Strictly enforces per-student data isolation.
+# ==============================================================================
+
+NOTE_CATEGORIES = ["Technical", "HR", "DSA", "Company Preparation"]
+
+
+@app.route("/notes", methods=["GET", "POST"])
+def preparation_notes_view():
+    """
+    Personal Interview Preparation Notes View (#235).
+    Provides students with an organized space to create, filter, edit, and review notes.
+    Guarantees strict candidate privacy: one student cannot view another's notes.
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        category = request.form.get("category", "Technical").strip()
+
+        if not title:
+            flash("Note title is required.", "danger")
+        elif not description:
+            flash("Note description or content cannot be empty.", "danger")
+        else:
+            create_preparation_note(
+                student_id=student_id,
+                title=title,
+                description=description,
+                category=category
+            )
+            flash(f"Note '{title}' created successfully!", "success")
+            return redirect(url_for("preparation_notes_view", category=category))
+
+    category_filter = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    notes = get_preparation_notes(
+        student_id=student_id,
+        category_filter=category_filter if category_filter != "All" else None,
+        search_query=search_query or None
+    )
+    category_counts = get_note_category_counts(student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    return render_template(
+        "notes.html",
+        notes=notes,
+        category_counts=category_counts,
+        current_category=category_filter,
+        search_query=search_query,
+        categories=NOTE_CATEGORIES,
+        student_id=student_id
+    )
+
+
+@app.route("/notes/<note_id>", methods=["GET", "POST"])
+def preparation_note_detail_view(note_id: str):
+    """
+    Individual Interview Preparation Note View and Update (#235).
+    """
+    student_id = _get_current_student_id()
+    note = get_preparation_note_by_id(note_id, student_id)
+    if not note:
+        flash("Note not found or access denied.", "danger")
+        return redirect(url_for("preparation_notes_view")), 404
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        category = request.form.get("category", "Technical").strip()
+
+        if not title:
+            flash("Note title cannot be empty.", "danger")
+        elif not description:
+            flash("Note description cannot be empty.", "danger")
+        else:
+            update_preparation_note(
+                note_id=note_id,
+                student_id=student_id,
+                title=title,
+                description=description,
+                category=category
+            )
+            flash("Note updated successfully!", "success")
+            return redirect(url_for("preparation_notes_view", category=category))
+
+    return render_template("notes.html", active_note=note, categories=NOTE_CATEGORIES, student_id=student_id)
+
+
+@app.route("/api/notes", methods=["GET", "POST"])
+def api_preparation_notes():
+    """
+    REST API endpoint to fetch all notes or create a new note for the logged in student (#235).
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "GET":
+        category_filter = request.args.get("category", "All").strip()
+        search_query = request.args.get("search", "").strip()
+        notes = get_preparation_notes(
+            student_id=student_id,
+            category_filter=category_filter if category_filter != "All" else None,
+            search_query=search_query or None
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(notes),
+            "notes": notes,
+            "category_counts": category_counts
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or "").strip()
+        description = (payload.get("description") or "").strip()
+        category = (payload.get("category") or "Technical").strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title is required"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description is required"}), 400
+
+        note = create_preparation_note(
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": True,
+            "message": "Note created successfully",
+            "note": note,
+            "category_counts": category_counts
+        }), 201
+
+
+@app.route("/api/notes/<note_id>", methods=["GET", "PUT", "POST", "DELETE"])
+def api_preparation_note_item(note_id: str):
+    """
+    REST API endpoint to retrieve, update, or delete a specific note (#235).
+    Enforces strict candidate privacy: checks note ownership against logged in student.
+    """
+    student_id = _get_current_student_id()
+
+    existing_note = get_preparation_note_by_id(note_id, student_id)
+    if not existing_note:
+        return jsonify({
+            "success": False,
+            "error": "Note not found or access denied."
+        }), 404
+
+    if request.method == "GET":
+        return jsonify({
+            "success": True,
+            "note": existing_note
+        }), 200
+
+    if request.method in ["PUT", "POST"]:
+        payload = request.get_json(silent=True) or request.form
+        title = (payload.get("title") or existing_note["title"]).strip()
+        description = (payload.get("description") or existing_note["description"]).strip()
+        category = (payload.get("category") or existing_note["category"]).strip()
+
+        if not title:
+            return jsonify({"success": False, "error": "Note title cannot be empty"}), 400
+        if not description:
+            return jsonify({"success": False, "error": "Note description cannot be empty"}), 400
+
+        updated = update_preparation_note(
+            note_id=note_id,
+            student_id=student_id,
+            title=title,
+            description=description,
+            category=category
+        )
+        if updated:
+            refreshed = get_preparation_note_by_id(note_id, student_id)
+            category_counts = get_note_category_counts(student_id)
+            return jsonify({
+                "success": True,
+                "message": "Note updated successfully",
+                "note": refreshed,
+                "category_counts": category_counts
+            }), 200
+        return jsonify({"success": False, "error": "Failed to update note"}), 500
+
+    if request.method == "DELETE":
+        deleted = delete_preparation_note(note_id, student_id)
+        category_counts = get_note_category_counts(student_id)
+        return jsonify({
+            "success": deleted,
+            "message": "Note deleted successfully" if deleted else "Note not found",
+            "category_counts": category_counts
+        }), 200 if deleted else 404
+
+
+@app.route("/api/notes/<note_id>/delete", methods=["POST"])
+def api_delete_preparation_note_form(note_id: str):
+    """
+    Form-friendly deletion endpoint for non-JS browser fallbacks (#235).
+    """
+    student_id = _get_current_student_id()
+    deleted = delete_preparation_note(note_id, student_id)
+    if deleted:
+        flash("Note deleted successfully.", "success")
+    else:
+        flash("Note could not be deleted or access was denied.", "danger")
+    return redirect(url_for("preparation_notes_view"))
 
 
 if __name__ == "__main__":

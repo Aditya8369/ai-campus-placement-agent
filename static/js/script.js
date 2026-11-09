@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCodingBookmarks();
   initStreakTracker();
   initAccessibility();
+  initSessionTimeout();
 });
 
 /**
@@ -4506,4 +4507,229 @@ function initPasswordStrengthIndicator() {
   passwordInput.addEventListener("paste", () => {
     setTimeout(updateIndicator, 20);
   });
+}
+
+/**
+ * Session Expiration and Automatic Inactivity Logout Handler
+ * - Monitors authenticated session duration and inactivity
+ * - Displays accessible warning modal with real-time countdown before expiration
+ * - Allows user to continue/extend session via Keep-Alive ping
+ * - Automatically logs out and redirects to login on session expiration
+ */
+function initSessionTimeout() {
+  if (window._sessionTimeoutInitialized) return;
+  window._sessionTimeoutInitialized = true;
+
+  let timeoutSeconds = 1800;
+  let warningSeconds = 120;
+  let remainingSeconds = 1800;
+  let countdownTimer = null;
+  let isModalVisible = false;
+  let lastKeepAlivePing = Date.now();
+
+  function formatTime(secs) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+  }
+
+  function ensureModal() {
+    let modalEl = document.getElementById("sessionExpiryModal");
+    if (!modalEl) {
+      modalEl = document.createElement("div");
+      modalEl.id = "sessionExpiryModal";
+      modalEl.className = "modal fade";
+      modalEl.setAttribute("tabindex", "-1");
+      modalEl.setAttribute("role", "dialog");
+      modalEl.setAttribute("aria-modal", "true");
+      modalEl.setAttribute("aria-labelledby", "sessionExpiryModalLabel");
+      modalEl.setAttribute("aria-describedby", "sessionExpiryModalDesc");
+      modalEl.setAttribute("data-bs-backdrop", "static");
+      modalEl.setAttribute("data-bs-keyboard", "false");
+
+      modalEl.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content shadow-lg border-warning">
+            <div class="modal-header bg-warning bg-opacity-10 border-warning">
+              <h5 class="modal-title text-warning-emphasis d-flex align-items-center" id="sessionExpiryModalLabel">
+                <i class="fa-solid fa-triangle-exclamation me-2 text-warning fs-4" aria-hidden="true"></i>
+                Session Expiration Warning
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnSessionDismiss"></button>
+            </div>
+            <div class="modal-body py-4">
+              <p id="sessionExpiryModalDesc" class="mb-3 text-body">
+                You have been inactive for a while. For your security, your session will automatically expire in:
+              </p>
+              <div class="text-center my-3">
+                <div class="display-6 fw-bold text-danger session-countdown-timer" id="sessionCountdownDisplay" aria-live="polite">
+                  02:00
+                </div>
+                <p class="text-muted small mt-2">Would you like to stay logged in or log out now?</p>
+              </div>
+            </div>
+            <div class="modal-footer bg-light bg-opacity-50 justify-content-between">
+              <a href="/logout?expired=0" class="btn btn-outline-secondary" id="btnSessionLogout">
+                <i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i> Log Out Now
+              </a>
+              <button type="button" class="btn btn-primary fw-semibold" id="btnExtendSession">
+                <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i> Stay Logged In
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalEl);
+
+      const btnExtend = modalEl.querySelector("#btnExtendSession");
+      if (btnExtend) {
+        btnExtend.addEventListener("click", () => {
+          extendSession();
+        });
+      }
+
+      const btnDismiss = modalEl.querySelector("#btnSessionDismiss");
+      if (btnDismiss) {
+        btnDismiss.addEventListener("click", () => {
+          extendSession();
+        });
+      }
+    }
+    return modalEl;
+  }
+
+  function showWarningModal() {
+    if (isModalVisible) return;
+    isModalVisible = true;
+    const modalEl = ensureModal();
+
+    if (window.bootstrap && bootstrap.Modal) {
+      const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      bsModal.show();
+    } else {
+      modalEl.classList.add("show");
+      modalEl.style.display = "block";
+      document.body.classList.add("modal-open");
+    }
+
+    const btnExtend = modalEl.querySelector("#btnExtendSession");
+    if (btnExtend) {
+      setTimeout(() => btnExtend.focus(), 150);
+    }
+  }
+
+  function hideWarningModal() {
+    if (!isModalVisible) return;
+    isModalVisible = false;
+    const modalEl = document.getElementById("sessionExpiryModal");
+    if (!modalEl) return;
+
+    if (window.bootstrap && bootstrap.Modal) {
+      const bsModal = bootstrap.Modal.getInstance(modalEl);
+      if (bsModal) bsModal.hide();
+    } else {
+      modalEl.classList.remove("show");
+      modalEl.style.display = "none";
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  function updateCountdownDisplay() {
+    const displayEl = document.getElementById("sessionCountdownDisplay");
+    if (displayEl) {
+      displayEl.textContent = formatTime(Math.max(0, remainingSeconds));
+      if (remainingSeconds <= 30) {
+        displayEl.classList.add("text-danger");
+      }
+    }
+  }
+
+  function handleExpired() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    window.location.href = "/logout?expired=1";
+  }
+
+  function extendSession() {
+    fetch("/api/session/keep-alive", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Session expired");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data.status === "ok") {
+          remainingSeconds = data.remaining_seconds || timeoutSeconds;
+          lastKeepAlivePing = Date.now();
+          hideWarningModal();
+        } else {
+          handleExpired();
+        }
+      })
+      .catch(() => {
+        handleExpired();
+      });
+  }
+
+  fetch("/api/session/status", {
+    headers: { "X-Requested-With": "XMLHttpRequest" }
+  })
+    .then((res) => res.json())
+    .then((data) => {
+      if (!data.authenticated) {
+        return;
+      }
+
+      timeoutSeconds = data.timeout_seconds || 1800;
+      warningSeconds = data.warning_seconds || 120;
+      remainingSeconds = data.remaining_seconds || timeoutSeconds;
+
+      ensureModal();
+
+      countdownTimer = setInterval(() => {
+        remainingSeconds -= 1;
+
+        if (remainingSeconds <= warningSeconds && remainingSeconds > 0) {
+          showWarningModal();
+          updateCountdownDisplay();
+        } else if (remainingSeconds <= 0) {
+          updateCountdownDisplay();
+          handleExpired();
+        }
+      }, 1000);
+
+      const activityEvents = ["click", "keydown", "submit"];
+      const onUserActivity = () => {
+        if (isModalVisible) return;
+        const now = Date.now();
+        if (now - lastKeepAlivePing >= 60000) {
+          lastKeepAlivePing = now;
+          fetch("/api/session/keep-alive", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          })
+            .then((r) => r.ok && r.json())
+            .then((resData) => {
+              if (resData && resData.status === "ok") {
+                remainingSeconds = resData.remaining_seconds || timeoutSeconds;
+              }
+            })
+            .catch(() => {});
+        }
+      };
+
+      activityEvents.forEach((ev) => {
+        window.addEventListener(ev, onUserActivity, { passive: true });
+      });
+    })
+    .catch(() => {});
 }

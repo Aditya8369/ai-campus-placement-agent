@@ -91,3 +91,9 @@ GEMINI_RETRY_INITIAL_DELAY = float(os.getenv("GEMINI_RETRY_INITIAL_DELAY", "1.0"
 GEMINI_RETRY_BACKOFF_FACTOR = float(os.getenv("GEMINI_RETRY_BACKOFF_FACTOR", "2.0"))
 GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "10.0"))  # in seconds
 GEMINI_RETRY_JITTER = os.getenv("GEMINI_RETRY_JITTER", "true").lower() in ("true", "1", "yes")
+
+# Session Expiration & Inactivity Tracking Configurations
+SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
+SESSION_TIMEOUT_SECONDS = int(os.getenv("SESSION_TIMEOUT_SECONDS", str(SESSION_TIMEOUT_MINUTES * 60)))
+SESSION_WARNING_SECONDS = int(os.getenv("SESSION_WARNING_SECONDS", "120"))
+
