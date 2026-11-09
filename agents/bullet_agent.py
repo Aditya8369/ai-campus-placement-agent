@@ -11,6 +11,12 @@ from typing import Dict, Any, List, Optional
 import config
 import prompts
 from utils.gemini import generate_json_response
+from utils.prompt_security import (
+    sanitize_untrusted_text,
+    encapsulate_untrusted_input,
+    build_secure_system_instruction,
+    redact_sensitive_information,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -205,17 +211,20 @@ class BulletOptimizerAgent:
         # Attempt Gemini call if API key configured
         if config.GEMINI_API_KEY:
             try:
+                safe_bullet = sanitize_untrusted_text(clean_bullet, max_length=1000)
+                encapsulated_bullet = encapsulate_untrusted_input(safe_bullet, document_type="resume_bullet")
                 user_prompt = prompts.BULLET_OPTIMIZER_PROMPT_TEMPLATE.format(
-                    original_bullet=clean_bullet,
+                    original_bullet=encapsulated_bullet,
                     company_name=company_name or "General",
                     role_target=role_target or "Software Engineer",
                     context=context or "Technical college project or internship experience."
                 )
 
                 response_json = generate_json_response(
-                    system_instruction=prompts.BULLET_OPTIMIZER_SYSTEM_INSTRUCTION,
+                    system_instruction=build_secure_system_instruction(prompts.BULLET_OPTIMIZER_SYSTEM_INSTRUCTION),
                     prompt=user_prompt
                 )
+                response_json = redact_sensitive_information(response_json)
 
                 if isinstance(response_json, dict) and "rewrites" in response_json and isinstance(response_json["rewrites"], list) and len(response_json["rewrites"]) >= 3:
                     # Enrich response with UI icons and badge classes

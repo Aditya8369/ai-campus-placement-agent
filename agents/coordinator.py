@@ -7,6 +7,13 @@ import prompts
 import config
 from utils.gemini import generate_json_response, AIResponseFormatError
 from agents.coordinator_schema import validate_coordinator_payload
+from utils.prompt_security import (
+    sanitize_untrusted_text,
+    encapsulate_untrusted_input,
+    detect_prompt_injection,
+    build_secure_system_instruction,
+    validate_ai_response_safety,
+)
 
 # Import specialized agents
 from agents.resume_agent import ResumeAgent
@@ -68,29 +75,50 @@ class CoordinatorAgent:
         if on_progress:
             on_progress("step2", "ResumeAgent", "Evaluating resume formatting, bullet points, and ATS compatibility...", 30)
 
+        # 0. Treat uploaded resume and pasted job descriptions as untrusted inputs
+        sanitized_resume = sanitize_untrusted_text(resume_text, max_length=25000)
+        sanitized_jd = sanitize_untrusted_text(job_description, max_length=15000)
+
+        resume_threat = detect_prompt_injection(sanitized_resume)
+        jd_threat = detect_prompt_injection(sanitized_jd)
+
+        if resume_threat["is_suspicious"]:
+            logger.warning(
+                f"CoordinatorAgent: Suspicious prompt injection patterns detected in resume: {resume_threat['matched_categories']}"
+            )
+        if jd_threat["is_suspicious"]:
+            logger.warning(
+                f"CoordinatorAgent: Suspicious prompt injection patterns detected in job description: {jd_threat['matched_categories']}"
+            )
+
         # 1. Load static company metadata to supply relevant hiring details
         company_profile = self._load_company_data(company_name)
         company_profile_str = json.dumps(company_profile, indent=2) if company_profile else "Generic technical engineering placement guidelines."
 
         # 2. Standardize resume sections for cleaner agent consumption
-        parsed_sections = standardize_resume_sections(resume_text)
-        formatted_resume = format_standardized_resume(parsed_sections) if parsed_sections else resume_text
+        parsed_sections = standardize_resume_sections(sanitized_resume)
+        formatted_resume = format_standardized_resume(parsed_sections) if parsed_sections else sanitized_resume
 
-        # 3. Format the user prompt combining all parameters
-        job_desc_str = job_description if job_description.strip() else "None provided. Assume General Software Development Engineer Role."
+        # 3. Encapsulate untrusted inputs within rigid boundary tags
+        encapsulated_resume = encapsulate_untrusted_input(formatted_resume, document_type="candidate_resume")
+        job_desc_str = sanitized_jd if sanitized_jd.strip() else "None provided. Assume General Software Development Engineer Role."
+        encapsulated_jd = encapsulate_untrusted_input(job_desc_str, document_type="job_description")
+
+        # 4. Format the user prompt combining all parameters and hardened system instruction
         user_prompt = prompts.ANALYSIS_USER_PROMPT_TEMPLATE.format(
             company_name=company_name,
             company_details=company_profile_str,
-            job_description=job_desc_str,
-            resume_text=formatted_resume
+            job_description=encapsulated_jd,
+            resume_text=encapsulated_resume
         )
+        secure_system_instruction = build_secure_system_instruction(prompts.ANALYSIS_SYSTEM_INSTRUCTION)
 
-        # 4. Call the Gemini API with structured JSON configs, with one-time retry for format failures
+        # 5. Call the Gemini API with structured JSON configs, with one-time retry for format failures
         logger.info("CoordinatorAgent: Issuing request to Gemini model.")
         raw_json_response = None
         try:
             raw_json_response = generate_json_response(
-                system_instruction=prompts.ANALYSIS_SYSTEM_INSTRUCTION,
+                system_instruction=secure_system_instruction,
                 prompt=user_prompt
             )
         except AIResponseFormatError as fmt_err:
@@ -106,7 +134,7 @@ class CoordinatorAgent:
             )
             try:
                 raw_json_response = generate_json_response(
-                    system_instruction=prompts.ANALYSIS_SYSTEM_INSTRUCTION,
+                    system_instruction=secure_system_instruction,
                     prompt=reminder_prompt
                 )
             except AIResponseFormatError:
@@ -123,7 +151,17 @@ class CoordinatorAgent:
             )
             raw_json_response = {}
 
-        # 5. Validate response blocks with Pydantic schema before delegation
+        # 6. Validate AI response for safety, secret leakage, persona breaches, and score tampering
+        is_safe, sanitized_response, security_flags = validate_ai_response_safety(
+            raw_json_response,
+            original_resume=sanitized_resume,
+            original_jd=sanitized_jd
+        )
+        if not is_safe:
+            logger.warning(f"CoordinatorAgent: AI response flagged by safety validator: {security_flags}")
+        raw_json_response = sanitized_response
+
+        # 7. Validate response blocks with Pydantic schema before delegation
         logger.info("CoordinatorAgent: Validating JSON blocks against Pydantic schema.")
         validated_blocks, section_status = validate_coordinator_payload(raw_json_response)
 
@@ -206,6 +244,12 @@ class CoordinatorAgent:
             "conflicts": conflicts,
             "section_status": section_status,
             "skill_evidence_mapping": evidence_mapping
+            "security_audit": {
+                "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
+                "resume_threat": resume_threat,
+                "job_description_threat": jd_threat,
+                "safety_flags": security_flags
+            }
         }
 
         logger.info("CoordinatorAgent: Multi-agent processing complete.")

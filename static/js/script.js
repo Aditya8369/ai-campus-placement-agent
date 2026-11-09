@@ -48,6 +48,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCodingBookmarks();
   initStreakTracker();
   initAccessibility();
+  initSessionTimeout();
 });
 
 /**
@@ -346,28 +347,158 @@ function initCompanyExplorer() {
       const data = await res.json();
       if (data.success && data.details) {
         const d = data.details;
+
+        const escapeHtml = (str) => {
+          if (!str) return "";
+          return String(str).replace(/[&<>"']/g, (m) => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#039;"
+          })[m]);
+        };
+
+        const lastUpdated = d.last_updated_display || d.last_updated || "Date unconfirmed";
+        const sourceName = d.source_name || "Campus Placement Archives";
+        const sourceUrl = d.source_url;
+        const isVerified = Boolean(d.is_verified || d.verification_status === "verified");
+        const isOutdated = Boolean(d.is_outdated);
+
+        // Verification Badge
+        const verificationBadgeHtml = isVerified
+          ? `<span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1"><i class="fa-solid fa-circle-check me-1"></i>Verified Hiring Guide</span>`
+          : `<span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1"><i class="fa-solid fa-compass me-1"></i>General Preparation Guide</span>`;
+
+        // Last Updated / Freshness Badge
+        const freshnessBadgeHtml = isOutdated
+          ? `<span class="badge bg-warning-subtle text-warning border border-warning-subtle px-2 py-1"><i class="fa-solid fa-clock-rotate-left me-1"></i>Last Updated: ${escapeHtml(lastUpdated)}</span>`
+          : `<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1"><i class="fa-solid fa-calendar-check me-1"></i>Last Updated: ${escapeHtml(lastUpdated)}</span>`;
+
+        // Source Link with external security attributes
+        const sourceLinkHtml = (sourceUrl && (sourceUrl.startsWith("http://") || sourceUrl.startsWith("https://")))
+          ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 text-decoration-none"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i>Official Source Link</a>`
+          : `<span class="badge bg-light text-muted border py-1 px-2"><i class="fa-solid fa-link-slash me-1"></i>Source Link Unavailable</span>`;
+
+        // Outdated Warning Banner
+        const outdatedWarningHtml = isOutdated
+          ? `<div class="alert alert-warning border-warning-subtle d-flex align-items-start gap-2 p-3 rounded-3 mb-3">
+               <i class="fa-solid fa-triangle-exclamation text-warning fs-5 mt-1"></i>
+               <div class="small">
+                 <strong>Notice: Verification Recommended for Current Season</strong>
+                 <p class="mb-0 text-muted">${escapeHtml(d.outdated_warning || "This company hiring guide was last updated over a year ago. Hiring rounds, patterns, and eligibility may differ for the current recruitment season. Please verify with the official career portal before applying.")}</p>
+               </div>
+             </div>`
+          : "";
+
+        // Source Information Strip
+        const sourceStripHtml = `
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div>
+                <span class="small text-muted d-block text-uppercase fw-semibold" style="font-size: 0.72rem; letter-spacing: 0.5px;">Information Source</span>
+                <span class="small fw-bold text-dark"><i class="fa-solid fa-building-columns text-primary me-1"></i>${escapeHtml(sourceName)}</span>
+                ${d.verified_by ? `<span class="small text-muted d-block" style="font-size: 0.75rem;">Verified by: ${escapeHtml(d.verified_by)}</span>` : ""}
+              </div>
+              <div>
+                ${sourceLinkHtml}
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Section 1: Verified Information
         const eligibilityHtml = d.eligibility
-          ? `<h6 class="fw-bold"><i class="fa-solid fa-user-graduate text-primary me-2"></i>Eligibility Criteria:</h6><p class="small text-muted mb-3">${d.eligibility}</p>`
+          ? `<div class="mb-3">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-user-graduate text-success me-2"></i>Eligibility Criteria:</h6>
+               <p class="small text-secondary mb-0 bg-white p-2 rounded border border-light-subtle">${escapeHtml(d.eligibility)}</p>
+             </div>`
+          : `<div class="mb-3">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-user-graduate text-success me-2"></i>Eligibility Criteria:</h6>
+               <p class="small text-muted fst-italic mb-0 bg-white p-2 rounded border border-light-subtle">Eligibility criteria not officially specified. Consult your college placement cell for current cutoffs.</p>
+             </div>`;
+
+        const hiringProcessHtml = `
+          <div class="mb-3">
+            <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-list-check text-success me-2"></i>Hiring Process:</h6>
+            <p class="small text-secondary mb-0 bg-white p-2 rounded border border-light-subtle">${escapeHtml(d.hiring_process || "Hiring process stages currently undergoing season update.")}</p>
+          </div>
+        `;
+
+        const technicalRoundsHtml = `
+          <div class="mb-3">
+            <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-laptop-code text-success me-2"></i>Technical Rounds:</h6>
+            <p class="small text-secondary mb-0 bg-white p-2 rounded border border-light-subtle">${escapeHtml(d.technical_rounds || "Technical round details currently being updated.")}</p>
+          </div>
+        `;
+
+        const hrRoundsHtml = d.hr_rounds
+          ? `<div class="mb-3">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-handshake text-success me-2"></i>HR & Cultural Evaluation:</h6>
+               <p class="small text-secondary mb-0 bg-white p-2 rounded border border-light-subtle">${escapeHtml(d.hr_rounds)}</p>
+             </div>`
           : "";
+
+        // Section 2: General Preparation Suggestions
         const frequentTopicsHtml = Array.isArray(d.frequent_topics) && d.frequent_topics.length
-          ? `<h6 class="fw-bold"><i class="fa-solid fa-tags text-primary me-2"></i>Frequent Topics:</h6><div class="d-flex flex-wrap gap-1 mb-3">${d.frequent_topics.map(t => `<span class="badge bg-light text-dark border">${t}</span>`).join(" ")}</div>`
+          ? `<div class="mb-3">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-tags text-info me-2"></i>Frequent Topics (Aggregated Student Experiences):</h6>
+               <div class="d-flex flex-wrap gap-1">${d.frequent_topics.map(t => `<span class="badge bg-light text-dark border">${escapeHtml(t)}</span>`).join(" ")}</div>
+             </div>`
           : "";
+
         const requiredSkillsHtml = Array.isArray(d.required_skills) && d.required_skills.length
-          ? `<h6 class="fw-bold"><i class="fa-solid fa-code text-primary me-2"></i>Required Skills:</h6><div class="d-flex flex-wrap gap-1 mb-3">${d.required_skills.map(s => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${s}</span>`).join(" ")}</div>`
+          ? `<div class="mb-3">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-code text-info me-2"></i>Recommended Preparation Skills:</h6>
+               <div class="d-flex flex-wrap gap-1">${d.required_skills.map(s => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle">${escapeHtml(s)}</span>`).join(" ")}</div>
+             </div>`
           : "";
+
+        const prepTipsHtml = d.prep_tips
+          ? `<div class="mb-2">
+               <h6 class="fw-bold small text-dark mb-1"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Preparation Tips & Strategies:</h6>
+               <div class="alert alert-light border small text-dark mb-0">${escapeHtml(d.prep_tips)}</div>
+             </div>`
+          : "";
+
         modalBody.innerHTML = `
-          <h4 class="fw-bold text-primary mb-3">${data.company}</h4>
-          <p class="text-secondary">${d.overview || ""}</p>
-          <hr/>
-          ${eligibilityHtml}
-          <h6 class="fw-bold"><i class="fa-solid fa-list-check text-primary me-2"></i>Hiring Process:</h6>
-          <p class="small text-muted mb-3">${d.hiring_process || "N/A"}</p>
-          <h6 class="fw-bold"><i class="fa-solid fa-laptop-code text-primary me-2"></i>Technical Rounds:</h6>
-          <p class="small text-muted mb-3">${d.technical_rounds || "N/A"}</p>
-          ${frequentTopicsHtml}
-          ${requiredSkillsHtml}
-          <h6 class="fw-bold"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Preparation Tips:</h6>
-          <div class="alert alert-light border small text-dark">${d.prep_tips || "N/A"}</div>
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <h4 class="fw-bold text-primary mb-0">${escapeHtml(data.company)}</h4>
+            <div class="d-flex flex-wrap gap-1 align-items-center">
+              ${verificationBadgeHtml}
+              ${freshnessBadgeHtml}
+            </div>
+          </div>
+          <p class="text-secondary small mb-3">${escapeHtml(d.overview || "")}</p>
+
+          ${outdatedWarningHtml}
+          ${sourceStripHtml}
+
+          <!-- Verified Information Card -->
+          <div class="card border border-success-subtle rounded-3 mb-3 bg-success-subtle bg-opacity-10 p-3">
+            <div class="d-flex align-items-center gap-2 mb-2 pb-2 border-bottom border-success-subtle">
+              <span class="badge bg-success text-white"><i class="fa-solid fa-shield-halved me-1"></i>Verified</span>
+              <h6 class="fw-bold mb-0 text-success">Confirmed Hiring Criteria & Process</h6>
+            </div>
+            ${eligibilityHtml}
+            ${hiringProcessHtml}
+            ${technicalRoundsHtml}
+            ${hrRoundsHtml}
+          </div>
+
+          <!-- General Preparation Suggestions Card -->
+          <div class="card border border-info-subtle rounded-3 mb-2 bg-info-subtle bg-opacity-10 p-3">
+            <div class="d-flex align-items-center gap-2 mb-1 pb-2 border-bottom border-info-subtle">
+              <span class="badge bg-info text-white"><i class="fa-solid fa-lightbulb me-1"></i>Guidance</span>
+              <h6 class="fw-bold mb-0 text-info">General Preparation Suggestions</h6>
+            </div>
+            <p class="small text-muted fst-italic mb-3" style="font-size: 0.78rem;">
+              <i class="fa-solid fa-circle-info me-1"></i>Note: Preparation tips and frequent topics represent aggregated interview experiences and community-guided suggestions; company assessment patterns may evolve per recruitment cycle.
+            </p>
+            ${frequentTopicsHtml}
+            ${requiredSkillsHtml}
+            ${prepTipsHtml}
+          </div>
         `;
       } else {
         modalBody.innerHTML = `<div class="alert alert-warning">No details found for ${company}.</div>`;
@@ -4506,4 +4637,229 @@ function initPasswordStrengthIndicator() {
   passwordInput.addEventListener("paste", () => {
     setTimeout(updateIndicator, 20);
   });
+}
+
+/**
+ * Session Expiration and Automatic Inactivity Logout Handler
+ * - Monitors authenticated session duration and inactivity
+ * - Displays accessible warning modal with real-time countdown before expiration
+ * - Allows user to continue/extend session via Keep-Alive ping
+ * - Automatically logs out and redirects to login on session expiration
+ */
+function initSessionTimeout() {
+  if (window._sessionTimeoutInitialized) return;
+  window._sessionTimeoutInitialized = true;
+
+  let timeoutSeconds = 1800;
+  let warningSeconds = 120;
+  let remainingSeconds = 1800;
+  let countdownTimer = null;
+  let isModalVisible = false;
+  let lastKeepAlivePing = Date.now();
+
+  function formatTime(secs) {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m < 10 ? "0" : ""}${m}:${s < 10 ? "0" : ""}${s}`;
+  }
+
+  function ensureModal() {
+    let modalEl = document.getElementById("sessionExpiryModal");
+    if (!modalEl) {
+      modalEl = document.createElement("div");
+      modalEl.id = "sessionExpiryModal";
+      modalEl.className = "modal fade";
+      modalEl.setAttribute("tabindex", "-1");
+      modalEl.setAttribute("role", "dialog");
+      modalEl.setAttribute("aria-modal", "true");
+      modalEl.setAttribute("aria-labelledby", "sessionExpiryModalLabel");
+      modalEl.setAttribute("aria-describedby", "sessionExpiryModalDesc");
+      modalEl.setAttribute("data-bs-backdrop", "static");
+      modalEl.setAttribute("data-bs-keyboard", "false");
+
+      modalEl.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content shadow-lg border-warning">
+            <div class="modal-header bg-warning bg-opacity-10 border-warning">
+              <h5 class="modal-title text-warning-emphasis d-flex align-items-center" id="sessionExpiryModalLabel">
+                <i class="fa-solid fa-triangle-exclamation me-2 text-warning fs-4" aria-hidden="true"></i>
+                Session Expiration Warning
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" id="btnSessionDismiss"></button>
+            </div>
+            <div class="modal-body py-4">
+              <p id="sessionExpiryModalDesc" class="mb-3 text-body">
+                You have been inactive for a while. For your security, your session will automatically expire in:
+              </p>
+              <div class="text-center my-3">
+                <div class="display-6 fw-bold text-danger session-countdown-timer" id="sessionCountdownDisplay" aria-live="polite">
+                  02:00
+                </div>
+                <p class="text-muted small mt-2">Would you like to stay logged in or log out now?</p>
+              </div>
+            </div>
+            <div class="modal-footer bg-light bg-opacity-50 justify-content-between">
+              <a href="/logout?expired=0" class="btn btn-outline-secondary" id="btnSessionLogout">
+                <i class="fa-solid fa-right-from-bracket me-1" aria-hidden="true"></i> Log Out Now
+              </a>
+              <button type="button" class="btn btn-primary fw-semibold" id="btnExtendSession">
+                <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i> Stay Logged In
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modalEl);
+
+      const btnExtend = modalEl.querySelector("#btnExtendSession");
+      if (btnExtend) {
+        btnExtend.addEventListener("click", () => {
+          extendSession();
+        });
+      }
+
+      const btnDismiss = modalEl.querySelector("#btnSessionDismiss");
+      if (btnDismiss) {
+        btnDismiss.addEventListener("click", () => {
+          extendSession();
+        });
+      }
+    }
+    return modalEl;
+  }
+
+  function showWarningModal() {
+    if (isModalVisible) return;
+    isModalVisible = true;
+    const modalEl = ensureModal();
+
+    if (window.bootstrap && bootstrap.Modal) {
+      const bsModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+      bsModal.show();
+    } else {
+      modalEl.classList.add("show");
+      modalEl.style.display = "block";
+      document.body.classList.add("modal-open");
+    }
+
+    const btnExtend = modalEl.querySelector("#btnExtendSession");
+    if (btnExtend) {
+      setTimeout(() => btnExtend.focus(), 150);
+    }
+  }
+
+  function hideWarningModal() {
+    if (!isModalVisible) return;
+    isModalVisible = false;
+    const modalEl = document.getElementById("sessionExpiryModal");
+    if (!modalEl) return;
+
+    if (window.bootstrap && bootstrap.Modal) {
+      const bsModal = bootstrap.Modal.getInstance(modalEl);
+      if (bsModal) bsModal.hide();
+    } else {
+      modalEl.classList.remove("show");
+      modalEl.style.display = "none";
+      document.body.classList.remove("modal-open");
+    }
+  }
+
+  function updateCountdownDisplay() {
+    const displayEl = document.getElementById("sessionCountdownDisplay");
+    if (displayEl) {
+      displayEl.textContent = formatTime(Math.max(0, remainingSeconds));
+      if (remainingSeconds <= 30) {
+        displayEl.classList.add("text-danger");
+      }
+    }
+  }
+
+  function handleExpired() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    window.location.href = "/logout?expired=1";
+  }
+
+  function extendSession() {
+    fetch("/api/session/keep-alive", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Session expired");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (data.status === "ok") {
+          remainingSeconds = data.remaining_seconds || timeoutSeconds;
+          lastKeepAlivePing = Date.now();
+          hideWarningModal();
+        } else {
+          handleExpired();
+        }
+      })
+      .catch(() => {
+        handleExpired();
+      });
+  }
+
+  fetch("/api/session/status", {
+    headers: { "X-Requested-With": "XMLHttpRequest" }
+  })
+    .then((res) => res.json())
+    .then((data) => {
+      if (!data.authenticated) {
+        return;
+      }
+
+      timeoutSeconds = data.timeout_seconds || 1800;
+      warningSeconds = data.warning_seconds || 120;
+      remainingSeconds = data.remaining_seconds || timeoutSeconds;
+
+      ensureModal();
+
+      countdownTimer = setInterval(() => {
+        remainingSeconds -= 1;
+
+        if (remainingSeconds <= warningSeconds && remainingSeconds > 0) {
+          showWarningModal();
+          updateCountdownDisplay();
+        } else if (remainingSeconds <= 0) {
+          updateCountdownDisplay();
+          handleExpired();
+        }
+      }, 1000);
+
+      const activityEvents = ["click", "keydown", "submit"];
+      const onUserActivity = () => {
+        if (isModalVisible) return;
+        const now = Date.now();
+        if (now - lastKeepAlivePing >= 60000) {
+          lastKeepAlivePing = now;
+          fetch("/api/session/keep-alive", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          })
+            .then((r) => r.ok && r.json())
+            .then((resData) => {
+              if (resData && resData.status === "ok") {
+                remainingSeconds = resData.remaining_seconds || timeoutSeconds;
+              }
+            })
+            .catch(() => {});
+        }
+      };
+
+      activityEvents.forEach((ev) => {
+        window.addEventListener(ev, onUserActivity, { passive: true });
+      });
+    })
+    .catch(() => {});
 }
