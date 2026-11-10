@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Notification Preferences - AI Campus Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-lg-8">
+            <h1 class="h3 fw-bold mb-1"><i class="bi bi-bell-fill text-primary me-2"></i>Notification Preferences</h1>
+            <p class="text-muted">Choose which placement updates you want to receive and how you prefer to be notified.</p>
+        </div>
+        <div class="col-lg-4 text-lg-end d-flex align-items-center justify-content-lg-end">
+            <div class="form-check form-switch fs-5">
+                <input class="form-check-input" type="checkbox" id="masterToggle" {% if preferences_data.master_toggle_all %}checked{% endif %}>
+                <label class="form-check-label fs-6 fw-semibold text-secondary" for="masterToggle">Enable All Notifications</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white py-3 border-bottom">
+            <h5 class="card-title mb-0 fw-semibold">Placement Notification Channels & Topics</h5>
+        </div>
+        <div class="card-body p-0">
+            <form id="preferencesForm">
+                <div class="list-group list-group-flush">
+                    {% for pref in preferences_data.preferences %}
+                    <div class="list-group-item p-4 preference-row" data-category="{{ pref.category_id }}">
+                        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <h6 class="mb-0 fw-bold text-dark">{{ pref.title }}</h6>
+                                    {% if pref.is_customized %}
+                                    <span class="badge bg-light text-primary border border-primary-subtle small">Customized</span>
+                                    {% else %}
+                                    <span class="badge bg-light text-secondary border small">Default</span>
+                                    {% endif %}
+                                </div>
+                                <p class="text-muted small mb-0">{{ pref.description }}</p>
+                            </div>
+                            
+                            <div class="d-flex align-items-center gap-4 flex-wrap">
+                                <!-- Frequency Selection -->
+                                <div>
+                                    <label class="small text-muted d-block mb-1">Frequency</label>
+                                    <select class="form-select form-select-sm category-freq" style="min-width: 140px;">
+                                        <option value="realtime" {% if pref.frequency == 'realtime' %}selected{% endif %}>Immediate / Real-time</option>
+                                        <option value="daily_digest" {% if pref.frequency == 'daily_digest' %}selected{% endif %}>Daily Digest</option>
+                                        <option value="weekly_digest" {% if pref.frequency == 'weekly_digest' %}selected{% endif %}>Weekly Digest</option>
+                                    </select>
+                                </div>
+
+                                <!-- Channels -->
+                                <div class="d-flex align-items-center gap-3 border-start ps-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input channel-email" type="checkbox" id="email_{{ pref.category_id }}" {% if pref.email_enabled %}checked{% endif %}>
+                                        <label class="form-check-label small" for="email_{{ pref.category_id }}">
+                                            <i class="bi bi-envelope me-1"></i>Email
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input channel-in-app" type="checkbox" id="in_app_{{ pref.category_id }}" {% if pref.in_app_enabled %}checked{% endif %}>
+                                        <label class="form-check-label small" for="in_app_{{ pref.category_id }}">
+                                            <i class="bi bi-bell me-1"></i>In-App
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <!-- Master Category Toggle -->
+                                <div class="form-check form-switch ps-4 border-start">
+                                    <input class="form-check-input category-enabled" type="checkbox" id="cat_{{ pref.category_id }}" {% if pref.enabled %}checked{% endif %}>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="card-footer bg-light p-3 d-flex justify-content-between align-items-center">
+                    <span id="saveStatus" class="small text-muted"></span>
+                    <button type="button" id="savePreferencesBtn" class="btn btn-primary px-4">
+                        <i class="bi bi-check2-circle me-1"></i> Save Preferences
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const masterToggle = document.getElementById("masterToggle");
+    const saveBtn = document.getElementById("savePreferencesBtn");
+    const statusSpan = document.getElementById("saveStatus");
+
+    masterToggle.addEventListener("change", async (e) => {
+        const enabled = e.target.checked;
+        document.querySelectorAll(".category-enabled").forEach(cb => cb.checked = enabled);
+        try {
+            const resp = await fetch("/api/notifications/preferences/master-toggle", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({enabled})
+            });
+            const data = await resp.json();
+            if (data.success) {
+                statusSpan.textContent = `All notifications ${enabled ? 'enabled' : 'disabled'}.`;
+                statusSpan.className = "small text-success";
+            }
+        } catch (err) {
+            statusSpan.textContent = "Error updating master preferences.";
+            statusSpan.className = "small text-danger";
+        }
+    });
+
+    saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+        
+        const rows = document.querySelectorAll(".preference-row");
+        const preferences = [];
+
+        rows.forEach(row => {
+            preferences.push({
+                category_id: row.dataset.category,
+                enabled: row.querySelector(".category-enabled").checked,
+                email_enabled: row.querySelector(".channel-email").checked,
+                in_app_enabled: row.querySelector(".channel-in-app").checked,
+                frequency: row.querySelector(".category-freq").value
+            });
+        });
+
+        try {
+            const resp = await fetch("/api/notifications/preferences", {
+                method: "PUT",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({preferences})
+            });
+            const data = await resp.json();
+            if (data.success) {
+                statusSpan.textContent = "Preferences saved successfully!";
+                statusSpan.className = "small text-success";
+            } else {
+                statusSpan.textContent = data.error || "Failed to save.";
+                statusSpan.className = "small text-danger";
+            }
+        } catch (err) {
+            statusSpan.textContent = "Server error while saving preferences.";
+            statusSpan.className = "small text-danger";
+        } finally {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = '<i class="bi bi-check2-circle me-1"></i> Save Preferences';
+        }
+    });
+});
+</script>
+{% endblock %}
