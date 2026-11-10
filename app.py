@@ -124,11 +124,12 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.resume_role_comparator import (
-    get_available_roles,
-    compare_resume_across_roles,
-    save_multi_role_comparison,
-    get_student_role_comparisons
+from utils.topic_practice_service import (
+    get_supported_topics,
+    generate_topic_interview_question,
+    evaluate_topic_answer,
+    record_practice_session,
+    get_student_practice_history
 )
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
@@ -11626,84 +11627,99 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ============================================================================
-# MULTI-ROLE RESUME ANALYSIS COMPARISON ENDPOINTS (#256)
+# CUSTOM TECHNICAL TOPIC INTERVIEW PRACTICE MODE (#255)
 # ============================================================================
 
-@app.route("/api/resume/compare-roles/catalog", methods=["GET"])
-def api_resume_roles_catalog():
-    """Returns the catalog of supported technical roles available for comparison."""
-    roles = get_available_roles()
+@app.route("/api/interview/practice/topics", methods=["GET"])
+def api_interview_practice_topics():
+    """Returns available technical practice topics and supported difficulty levels."""
+    catalog = get_supported_topics()
     return jsonify({
         "status": "success",
-        "total_roles": len(roles),
-        "roles": roles
+        "data": catalog
     }), 200
 
 
-@app.route("/api/resume/compare-roles", methods=["POST"])
-def api_compare_resume_roles():
-    """
-    Evaluates a resume simultaneously against multiple selected technical roles.
-    Computes match percentages, role-specific missing skills, and common transferable competencies.
-    """
-    student_id = flask_session.get("user_id") or "default_student"
+@app.route("/api/interview/practice/generate", methods=["POST"])
+def api_generate_practice_question():
+    """Generates an interview question targeted to a specific technical topic and difficulty level."""
     payload = request.get_json(silent=True) or request.form.to_dict()
+    topic = payload.get("topic")
+    difficulty = payload.get("difficulty", "medium")
 
-    resume_text = payload.get("resume_text", "")
-    roles = payload.get("roles", [])
-
-    if isinstance(roles, str):
-        roles = [r.strip() for r in roles.split(",") if r.strip()]
-
-    if not resume_text or not resume_text.strip():
-        # Check if an analysis_id was provided to reuse existing parsed resume
-        analysis_id = payload.get("analysis_id")
-        if analysis_id:
-            rec = get_analysis(analysis_id)
-            if rec and rec.get("resume_text"):
-                resume_text = rec["resume_text"]
-
-    if not resume_text or not resume_text.strip():
-        return jsonify({"status": "error", "message": "Resume text is required for multi-role comparison."}), 400
-
-    if not roles:
-        return jsonify({"status": "error", "message": "Please select at least one job role to compare."}), 400
+    if not topic:
+        return jsonify({"status": "error", "message": "Field 'topic' is required."}), 400
 
     try:
-        comparison_data = compare_resume_across_roles(
-            resume_text=resume_text,
-            target_role_keys=roles
-        )
-
-        # Save record in database
-        saved_ref = save_multi_role_comparison(
-            student_id=student_id,
-            resume_text=resume_text,
-            selected_roles=roles,
-            comparison_results=comparison_data
-        )
-
+        question_data = generate_topic_interview_question(topic=topic, difficulty=difficulty)
         return jsonify({
             "status": "success",
-            "comparison": comparison_data,
-            "saved_record": saved_ref
+            "data": question_data
         }), 200
     except ValueError as ve:
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Error in multi-role resume comparison: {e}")
-        return jsonify({"status": "error", "message": "Failed to analyze resume across roles."}), 500
+        logger.error(f"Error generating topic question: {e}")
+        return jsonify({"status": "error", "message": "Failed to generate topic interview question."}), 500
 
 
-@app.route("/api/resume/compare-roles/history", methods=["GET"])
-def api_role_comparison_history():
-    """Retrieves previous multi-role comparisons for the active candidate."""
+@app.route("/api/interview/practice/evaluate", methods=["POST"])
+def api_evaluate_practice_answer():
+    """Evaluates a candidate's answer for a topic-specific interview question and persists the session."""
     student_id = flask_session.get("user_id") or "default_student"
-    history = get_student_role_comparisons(student_id)
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    topic = payload.get("topic")
+    difficulty = payload.get("difficulty", "medium")
+    question_text = payload.get("question", "")
+    question_id = payload.get("question_id", str(uuid.uuid4()))
+    answer_text = payload.get("answer", "")
+
+    if not topic:
+        return jsonify({"status": "error", "message": "Field 'topic' is required."}), 400
+    if not question_text:
+        return jsonify({"status": "error", "message": "Field 'question' is required."}), 400
+
+    try:
+        evaluation = evaluate_topic_answer(
+            topic=topic,
+            difficulty=difficulty,
+            question=question_text,
+            answer=answer_text
+        )
+
+        # Record session in database for student history tracking
+        saved_record = record_practice_session(
+            student_id=student_id,
+            topic=topic,
+            difficulty=difficulty,
+            question_id=question_id,
+            question_text=question_text,
+            answer=answer_text,
+            evaluation=evaluation
+        )
+
+        return jsonify({
+            "status": "success",
+            "evaluation": evaluation,
+            "session": saved_record
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error evaluating topic answer: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate topic response."}), 500
+
+
+@app.route("/api/interview/practice/history", methods=["GET"])
+def api_practice_history():
+    """Retrieves chronological practice session history for the logged-in student."""
+    student_id = flask_session.get("user_id") or "default_student"
+    history = get_student_practice_history(student_id)
     return jsonify({
         "status": "success",
         "student_id": student_id,
-        "total_comparisons": len(history),
+        "total_sessions": len(history),
         "history": history
     }), 200
 
