@@ -1275,13 +1275,36 @@ def generate_interview_transcript_pdf(
                     for sug in suggestions:
                         q_elements.append(Paragraph(f"&bull; {escape_xml(sug)}", bullet_style))
 
-                star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
-                if isinstance(star_data, dict) and star_data.get("feedback"):
+                star_analysis = eval_data.get("star_analysis")
+                if isinstance(star_analysis, dict) and any(
+                    k in star_analysis for k in ("situation", "task", "action", "result")
+                ):
+                    s_stat = escape_xml(str(star_analysis.get("situation", "missing")).capitalize())
+                    t_stat = escape_xml(str(star_analysis.get("task", "missing")).capitalize())
+                    a_stat = escape_xml(str(star_analysis.get("action", "missing")).capitalize())
+                    r_stat = escape_xml(str(star_analysis.get("result", "missing")).capitalize())
                     q_elements.append(Spacer(1, 4))
-                    q_elements.append(Paragraph(
-                        f"<b>STAR Framework Coaching:</b> {escape_xml(star_data.get('feedback'))}",
-                        body_style
-                    ))
+                    star_line = (
+                        f"<b>STAR Structure Checklist:</b> "
+                        f"Situation: <b>{s_stat}</b> &bull; "
+                        f"Task: <b>{t_stat}</b> &bull; "
+                        f"Action: <b>{a_stat}</b> &bull; "
+                        f"Result: <b>{r_stat}</b>"
+                    )
+                    q_elements.append(Paragraph(star_line, body_style))
+                    if star_analysis.get("tip"):
+                        q_elements.append(Paragraph(
+                            f"<b>STAR Tip:</b> {escape_xml(star_analysis.get('tip'))}",
+                            body_style
+                        ))
+                else:
+                    star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
+                    if isinstance(star_data, dict) and star_data.get("feedback"):
+                        q_elements.append(Spacer(1, 4))
+                        q_elements.append(Paragraph(
+                            f"<b>STAR Framework Coaching:</b> {escape_xml(star_data.get('feedback'))}",
+                            body_style
+                        ))
 
                 fillers = eval_data.get("filler_words_detected", [])
                 if fillers and isinstance(fillers, list):
@@ -1448,12 +1471,28 @@ def generate_interview_transcript_markdown(
                     lines.append(f"- {s}")
                 lines.append("")
 
-            star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
-            if isinstance(star_data, dict) and star_data.get("feedback"):
+            star_analysis = eval_data.get("star_analysis")
+            if (
+                isinstance(star_analysis, dict)
+                and any(k in star_analysis for k in ("situation", "task", "action", "result"))
+            ):
+                s_stat = str(star_analysis.get("situation", "missing")).capitalize()
+                t_stat = str(star_analysis.get("task", "missing")).capitalize()
+                a_stat = str(star_analysis.get("action", "missing")).capitalize()
+                r_stat = str(star_analysis.get("result", "missing")).capitalize()
                 lines.extend([
-                    f"**STAR Framework Coaching:** {star_data.get('feedback')}",
-                    "",
+                    f"- **STAR Structure Checklist:** Situation: **{s_stat}** | Task: **{t_stat}** | Action: **{a_stat}** | Result: **{r_stat}**",
                 ])
+                if star_analysis.get("tip"):
+                    lines.append(f"- **STAR Tip:** {star_analysis.get('tip')}")
+                lines.append("")
+            else:
+                star_data = eval_data.get("star_method_analysis") or eval_data.get("star_evaluation")
+                if isinstance(star_data, dict) and star_data.get("feedback"):
+                    lines.extend([
+                        f"**STAR Framework Coaching:** {star_data.get('feedback')}",
+                        "",
+                    ])
 
             fillers = eval_data.get("filler_words_detected", [])
             if fillers and isinstance(fillers, list):

@@ -1856,29 +1856,58 @@ function initMockInterview() {
       }
 
       let starHtml = "";
-      const se = evalData.star_evaluation;
-      if (se) {
+      const sa = evalData.star_analysis;
+      if (sa && (sa.situation || sa.task || sa.action || sa.result)) {
+        const getBadge = (val, label) => {
+          const s = String(val || "").toLowerCase();
+          if (s === "present") {
+            return `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 star-badge-present"><i class="fa-solid fa-check me-1"></i> ${label}: Present</span>`;
+          } else if (s === "weak") {
+            return `<span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 star-badge-weak"><i class="fa-solid fa-triangle-exclamation me-1"></i> ${label}: Weak</span>`;
+          } else {
+            return `<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1 star-badge-missing"><i class="fa-solid fa-xmark me-1"></i> ${label}: Missing</span>`;
+          }
+        };
+
         starHtml = `
-          <div class="p-2 bg-white rounded-3 border mb-2">
+          <div class="p-2 bg-light rounded-3 border mb-2 star-checklist-container">
             <div class="d-flex justify-content-between align-items-center mb-1">
-              <small class="fw-bold text-dark"><i class="fa-solid fa-sitemap text-primary me-1"></i> STAR Story Breakdown</small>
-              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">STAR Score: ${se.star_score}/100</span>
+              <small class="fw-bold text-dark"><i class="fa-solid fa-list-check text-primary me-1"></i> STAR Structure Checklist:</small>
             </div>
-            <div class="d-flex flex-wrap gap-1 mb-1">
-              <span class="badge ${se.situation.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">S: ${se.situation.score}%</span>
-              <span class="badge ${se.task.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">T: ${se.task.score}%</span>
-              <span class="badge ${se.action.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">A: ${se.action.score}%</span>
-              <span class="badge ${se.result.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">R: ${se.result.score}%</span>
+            <div class="d-flex flex-wrap gap-2 mb-1">
+              ${getBadge(sa.situation, "Situation")}
+              ${getBadge(sa.task, "Task")}
+              ${getBadge(sa.action, "Action")}
+              ${getBadge(sa.result, "Result")}
             </div>
-            ${se.coaching && se.coaching.suggested_star_rewrite ? `<div class="small text-muted fst-italic"><b>Coach's Model Rewrite:</b> "${se.coaching.suggested_star_rewrite}"</div>` : ''}
+            ${sa.tip ? `<div class="small text-muted mt-1 star-improvement-tip"><i class="fa-solid fa-lightbulb text-warning me-1"></i> <b>Improvement Tip:</b> ${escapeHtml(sa.tip)}</div>` : ""}
           </div>
         `;
-      } else if (evalData.star_method_analysis && evalData.star_method_analysis.feedback) {
-        starHtml = `
-          <div class="small mb-2 text-secondary">
-            <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> ${evalData.star_method_analysis.feedback}
-          </div>
-        `;
+      } else {
+        const se = evalData.star_evaluation;
+        if (se) {
+          starHtml = `
+            <div class="p-2 bg-white rounded-3 border mb-2">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <small class="fw-bold text-dark"><i class="fa-solid fa-sitemap text-primary me-1"></i> STAR Story Breakdown</small>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">STAR Score: ${se.star_score}/100</span>
+              </div>
+              <div class="d-flex flex-wrap gap-1 mb-1">
+                <span class="badge ${se.situation.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">S: ${se.situation.score}%</span>
+                <span class="badge ${se.task.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">T: ${se.task.score}%</span>
+                <span class="badge ${se.action.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">A: ${se.action.score}%</span>
+                <span class="badge ${se.result.present ? 'bg-success-subtle text-success border border-success-subtle' : 'bg-danger-subtle text-danger border border-danger-subtle'} rounded-pill">R: ${se.result.score}%</span>
+              </div>
+              ${se.coaching && se.coaching.suggested_star_rewrite ? `<div class="small text-muted fst-italic"><b>Coach's Model Rewrite:</b> "${se.coaching.suggested_star_rewrite}"</div>` : ''}
+            </div>
+          `;
+        } else if (evalData.star_method_analysis && evalData.star_method_analysis.feedback) {
+          starHtml = `
+            <div class="small mb-2 text-secondary">
+              <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> ${evalData.star_method_analysis.feedback}
+            </div>
+          `;
+        }
       }
 
       const feedbackText = `

@@ -185,6 +185,13 @@ Provide feedback and ratings in JSON format matching this schema:
   "verbal_clarity_score": 82,
   "filler_words_detected": ["like", "um"],
   "filler_word_count": 2,
+  "star_analysis": {{
+    "situation": "present",
+    "task": "present",
+    "action": "weak",
+    "result": "missing",
+    "tip": "Quantify the outcome or business impact to complete the Result component."
+  }},
   "star_method_analysis": {{
     "used_star": true,
     "feedback": "Situation and Action clearly stated; add measurable Results."
@@ -195,6 +202,7 @@ Provide feedback and ratings in JSON format matching this schema:
   ],
   "feedback": "A concise summary paragraph detailing strengths, verbal delivery, and areas of improvement for this response."
 }}
+For behavioral questions, identify which STAR parts (situation, task, action, result) are 'present', 'weak', or 'missing', plus one actionable improvement tip. For technical questions, star_analysis can be omitted or null.
 Ensure the response is valid JSON only.
 """
 
