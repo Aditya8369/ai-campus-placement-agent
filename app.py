@@ -11621,84 +11621,87 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Calendar Timezone Handling Endpoints (#261)
+# Student Notification Preferences Management Endpoints (#260)
 # ---------------------------------------------------------------------------
 
-@app.route("/api/calendar/timezone", methods=["GET"])
-def api_get_calendar_timezone():
-    """Retrieve the configured timezone metadata for the logged-in student."""
+@app.route("/api/notifications/preferences", methods=["GET"])
+def api_get_notification_preferences():
+    """Retrieve full notification preference configuration for the logged-in student."""
     user_id = flask_session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "Authentication required"}), 401
 
     try:
-        from utils.calendar_timezone_service import get_student_timezone_info
-        info = get_student_timezone_info(user_id)
+        from utils.notification_preferences_manager import get_student_preferences
+        data = get_student_preferences(user_id)
         return jsonify({
             "success": True,
-            "timezone": info
+            **data
         }), 200
     except Exception as e:
-        logger.error(f"Error fetching timezone settings: {e}")
+        logger.error(f"Error fetching notification preferences: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/calendar/timezone", methods=["PUT"])
-def api_set_calendar_timezone():
-    """Update timezone configuration for the logged-in student."""
+@app.route("/api/notifications/preferences", methods=["PUT"])
+def api_update_notification_preferences():
+    """Update notification preferences for the logged-in student."""
     user_id = flask_session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "Authentication required"}), 401
 
     payload = request.get_json(silent=True) or {}
-    tz_id = payload.get("timezone_id")
-    auto_detect = bool(payload.get("auto_detect", False))
-
-    if not tz_id or not isinstance(tz_id, str):
-        return jsonify({"success": False, "error": "timezone_id must be a non-empty string"}), 400
-
-    from utils.calendar_timezone_service import is_valid_timezone, set_student_timezone
-    if not is_valid_timezone(tz_id):
-        return jsonify({
-            "success": False,
-            "error": f"Invalid IANA timezone identifier: {tz_id}"
-        }), 400
+    preferences_list = payload.get("preferences")
+    if not isinstance(preferences_list, list):
+        return jsonify({"success": False, "error": "Payload must contain 'preferences' list"}), 400
 
     try:
-        updated_info = set_student_timezone(user_id, tz_id, auto_detect=auto_detect)
+        from utils.notification_preferences_manager import update_student_preferences
+        updated = update_student_preferences(user_id, preferences_list)
         return jsonify({
             "success": True,
-            "message": f"Timezone successfully updated to {tz_id}",
-            "timezone": updated_info
+            "message": "Notification preferences updated successfully",
+            **updated
         }), 200
     except Exception as e:
-        logger.error(f"Error updating timezone settings: {e}")
+        logger.error(f"Error updating notification preferences: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/calendar/convert-time", methods=["POST"])
-def api_convert_calendar_time():
-    """Utility endpoint to convert local wall-clock event time to UTC or vice versa."""
+@app.route("/api/notifications/preferences/master-toggle", methods=["POST"])
+def api_toggle_master_notifications():
+    """Turn all notifications on or off simultaneously for the student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
     payload = request.get_json(silent=True) or {}
-    direction = payload.get("direction", "local_to_utc")
-    
-    from utils.calendar_timezone_service import convert_local_to_utc, convert_utc_to_local
+    enabled = bool(payload.get("enabled", True))
+
     try:
-        if direction == "local_to_utc":
-            date_str = payload.get("date", "")
-            time_str = payload.get("time", "00:00")
-            tz_id = payload.get("timezone_id", "UTC")
-            res = convert_local_to_utc(date_str, time_str, tz_id)
-            return jsonify({"success": True, "result": res}), 200
-        elif direction == "utc_to_local":
-            utc_str = payload.get("utc_timestamp", "")
-            tz_id = payload.get("timezone_id", "UTC")
-            res = convert_utc_to_local(utc_str, tz_id)
-            return jsonify({"success": True, "result": res}), 200
-        else:
-            return jsonify({"success": False, "error": "direction must be 'local_to_utc' or 'utc_to_local'"}), 400
+        from utils.notification_preferences_manager import set_master_notification_toggle
+        res = set_master_notification_toggle(user_id, enabled)
+        return jsonify({
+            "success": True,
+            "message": f"All notifications {'enabled' if enabled else 'disabled'}",
+            **res
+        }), 200
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        logger.error(f"Error toggling master notifications: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/notification-preferences", methods=["GET"])
+def notification_preferences_view():
+    """Render notification preferences management page (#260)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        flash("Please log in to manage your notification preferences.", "warning")
+        return redirect(url_for("login"))
+
+    from utils.notification_preferences_manager import get_student_preferences
+    prefs = get_student_preferences(user_id)
+    return render_template("notification_preferences.html", preferences_data=prefs)
 
 
 
