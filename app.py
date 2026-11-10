@@ -58,6 +58,10 @@ from utils.database import (
     get_student_interview_performance_analytics,
     get_user_placement_history,
     save_batch_comparison,
+    save_analysis_section_feedback,
+    get_analysis_section_feedback,
+    get_analysis_section_feedback_summary,
+    export_analysis_section_feedback_csv,
     create_user,
     get_user_by_email,
     get_user_by_id,
@@ -2900,6 +2904,7 @@ def feedback_view():
     )
 
 
+@app.route("/api/feedback", methods=["GET", "POST"])
 def api_feedback():
     """
     REST API endpoint for submitting and retrieving feedback (#197).
@@ -2956,6 +2961,123 @@ def api_feedback():
             "message": "Feedback recorded successfully",
             "feedback": record
         }), 201
+
+
+# ==============================================================================
+# Dashboard Analysis Section Feedback (Thumbs Up / Down + Comments) (#302)
+# ==============================================================================
+
+@app.route("/api/analysis/<aid>/feedback", methods=["GET", "POST"])
+def api_analysis_section_feedback(aid: str):
+    """
+    API endpoint for getting and submitting thumbs-up / thumbs-down ratings
+    and optional comments for specific dashboard analysis sections (#302).
+    Allows users to rate and later update/change their rating per section.
+    """
+    user_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+    )
+    if not user_id:
+        user_id = f"guest_{request.remote_addr or 'anon'}"
+        flask_session["user_id"] = user_id
+
+    if request.method == "GET":
+        section = request.args.get("section")
+        feedback_data = get_analysis_section_feedback(analysis_id=aid, user_id=user_id, section=section)
+        return jsonify({
+            "success": True,
+            "analysis_id": aid,
+            "feedback": feedback_data
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    section = payload.get("section")
+    rating = payload.get("rating")
+    comment = payload.get("comment")
+
+    if not section or not str(section).strip():
+        return jsonify({"success": False, "error": "Section is required."}), 400
+
+    if not rating or str(rating).strip().lower() not in (
+        "up", "down", "thumbs_up", "thumbs_down", "1", "-1", "positive", "negative", "true", "false"
+    ):
+        return jsonify({"success": False, "error": "Rating must be 'up' or 'down'."}), 400
+
+    max_len = getattr(config, "MAX_FEEDBACK_COMMENT_LENGTH", 500)
+    if comment and len(str(comment).strip()) > max_len:
+        return jsonify({"success": False, "error": f"Comment exceeds maximum allowed length of {max_len} characters."}), 400
+
+    try:
+        record = save_analysis_section_feedback(
+            analysis_id=aid,
+            user_id=user_id,
+            section=str(section).strip(),
+            rating=str(rating).strip(),
+            comment=str(comment).strip() if comment is not None else None,
+            max_comment_length=max_len
+        )
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully.",
+            "feedback": record
+        }), 200
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error saving section feedback for analysis {aid}: {e}")
+        return jsonify({"success": False, "error": "Failed to save feedback."}), 500
+
+
+@app.route("/admin/analysis-feedback", methods=["GET"])
+def admin_analysis_feedback_view():
+    """
+    Admin-only dashboard view summarizing section feedback ratings and comments (#302).
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    section_filter = request.args.get("section")
+    rating_filter = request.args.get("rating")
+    summary = get_analysis_section_feedback_summary(section_filter=section_filter, rating_filter=rating_filter)
+
+    return render_template(
+        "admin_analysis_feedback.html",
+        summary=summary,
+        selected_section=section_filter or "all",
+        selected_rating=rating_filter or "all"
+    )
+
+
+@app.route("/admin/analysis-feedback/export.csv", methods=["GET"])
+def admin_analysis_feedback_export_csv():
+    """
+    Admin-only CSV export of all analysis section feedback records (#302).
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    csv_data = export_analysis_section_feedback_csv()
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=analysis_section_feedback.csv"}
+    )
 
 
 
@@ -4634,45 +4756,6 @@ def notification_settings_view():
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
-
-    feedback_list = get_user_feedback_list(limit=25)
-    metrics = get_feedback_metrics_summary()
-
-    return render_template(
-        "feedback.html",
-        categories=categories,
-        feedback_list=feedback_list,
-        metrics=metrics,
-        student_id=student_id
-    )
-
-
-def api_feedback():
-    """
-    REST API endpoint for submitting and retrieving feedback (#197).
-    """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user", {}).get("id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    )
-
-    if request.method == "GET":
-        cat = request.args.get("category")
-        limit = request.args.get("limit", 50)
-        try:
-            limit_val = int(limit)
-        except (ValueError, TypeError):
-            limit_val = 50
-        items = get_user_feedback_list(category_filter=cat, limit=limit_val)
-        metrics = get_feedback_metrics_summary()
-        return jsonify({
-            "success": True,
-            "preferences": prefs
-        }), 200
-
     return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
 
 

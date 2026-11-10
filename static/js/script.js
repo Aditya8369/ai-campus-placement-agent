@@ -49,6 +49,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initStreakTracker();
   initAccessibility();
   initSessionTimeout();
+  initSectionFeedback();
 });
 
 /**
@@ -4862,4 +4863,177 @@ function initSessionTimeout() {
       });
     })
     .catch(() => {});
+}
+
+/**
+ * Initializes thumbs-up / thumbs-down section feedback widgets on the dashboard (#302).
+ * Allows students to rate sections, add optional comments, and later change their ratings.
+ */
+function initSectionFeedback() {
+  const widgets = document.querySelectorAll(".section-feedback-widget");
+  if (!widgets.length) return;
+
+  const dashboardContainer = document.getElementById("dashboardContainer");
+  const defaultAnalysisId = dashboardContainer ? dashboardContainer.dataset.analysisId : "";
+
+  widgets.forEach((widget) => {
+    const analysisId = widget.dataset.analysisId || defaultAnalysisId;
+    const section = widget.dataset.section;
+    if (!analysisId || !section) return;
+
+    const rateBtns = widget.querySelectorAll(".btn-feedback-rate");
+    const commentBox = widget.querySelector(".feedback-comment-box");
+    const commentInput = widget.querySelector(".feedback-comment-input");
+    const submitBtn = widget.querySelector(".btn-feedback-submit");
+    const charCounter = widget.querySelector(".feedback-char-counter");
+    const statusMsg = widget.querySelector(".feedback-status-msg");
+
+    // Fetch existing user rating & comment if previously submitted
+    fetch(`/api/analysis/${encodeURIComponent(analysisId)}/feedback?section=${encodeURIComponent(section)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && data.success && data.feedback) {
+          const fb = data.feedback;
+          const currentRating = fb.rating; // 'up' or 'down'
+          rateBtns.forEach((btn) => {
+            const btnRating = btn.dataset.rating;
+            if (btnRating === currentRating) {
+              btn.classList.add("active");
+              const icon = btn.querySelector("i");
+              if (icon) {
+                icon.className = btnRating === "up" ? "fa-solid fa-thumbs-up me-1" : "fa-solid fa-thumbs-down me-1";
+              }
+            } else {
+              btn.classList.remove("active");
+            }
+          });
+
+          if (fb.comment && commentInput) {
+            commentInput.value = fb.comment;
+            if (charCounter) charCounter.textContent = `${fb.comment.length}/500`;
+            if (commentBox) commentBox.classList.remove("d-none");
+          }
+        }
+      })
+      .catch(() => {});
+
+    // Live character counter on comment input
+    if (commentInput && charCounter) {
+      commentInput.addEventListener("input", () => {
+        charCounter.textContent = `${commentInput.value.length}/500`;
+      });
+    }
+
+    // Rate button click handler
+    rateBtns.forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const rating = btn.dataset.rating;
+        const comment = commentInput ? commentInput.value.trim() : "";
+
+        fetch(`/api/analysis/${encodeURIComponent(analysisId)}/feedback`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            section: section,
+            rating: rating,
+            comment: comment || null,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              rateBtns.forEach((b) => {
+                b.classList.remove("active");
+                const icon = b.querySelector("i");
+                if (icon) {
+                  icon.className = b.dataset.rating === "up" ? "fa-regular fa-thumbs-up me-1" : "fa-regular fa-thumbs-down me-1";
+                }
+              });
+
+              btn.classList.add("active");
+              const activeIcon = btn.querySelector("i");
+              if (activeIcon) {
+                activeIcon.className = rating === "up" ? "fa-solid fa-thumbs-up me-1" : "fa-solid fa-thumbs-down me-1";
+              }
+
+              if (commentBox) {
+                if (rating === "down" || (commentInput && commentInput.value)) {
+                  commentBox.classList.remove("d-none");
+                }
+              }
+
+              if (statusMsg) {
+                statusMsg.textContent = "Rating saved!";
+                statusMsg.className = "feedback-status-msg text-success";
+                setTimeout(() => {
+                  if (statusMsg.textContent === "Rating saved!") statusMsg.textContent = "";
+                }, 3000);
+              }
+            } else {
+              if (statusMsg) {
+                statusMsg.textContent = data.error || "Failed to save.";
+                statusMsg.className = "feedback-status-msg text-danger";
+              }
+            }
+          })
+          .catch(() => {
+            if (statusMsg) {
+              statusMsg.textContent = "Error saving feedback.";
+              statusMsg.className = "feedback-status-msg text-danger";
+            }
+          });
+      });
+    });
+
+    // Save comment button click handler
+    if (submitBtn) {
+      submitBtn.addEventListener("click", () => {
+        let activeRating = "up";
+        rateBtns.forEach((b) => {
+          if (b.classList.contains("active")) {
+            activeRating = b.dataset.rating;
+          }
+        });
+
+        const comment = commentInput ? commentInput.value.trim() : "";
+
+        fetch(`/api/analysis/${encodeURIComponent(analysisId)}/feedback`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            section: section,
+            rating: activeRating,
+            comment: comment || null,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              if (statusMsg) {
+                statusMsg.textContent = "Comment saved!";
+                statusMsg.className = "feedback-status-msg text-success";
+                setTimeout(() => {
+                  if (statusMsg.textContent === "Comment saved!") statusMsg.textContent = "";
+                }, 3000);
+              }
+            } else {
+              if (statusMsg) {
+                statusMsg.textContent = data.error || "Failed to save comment.";
+                statusMsg.className = "feedback-status-msg text-danger";
+              }
+            }
+          })
+          .catch(() => {
+            if (statusMsg) {
+              statusMsg.textContent = "Error saving comment.";
+              statusMsg.className = "feedback-status-msg text-danger";
+            }
+          });
+      });
+    }
+  });
 }

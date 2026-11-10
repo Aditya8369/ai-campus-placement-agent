@@ -399,6 +399,23 @@ def init_db() -> None:
             )
         """)
 
+        # Analysis section feedback table (thumbs up / thumbs down + comments) (#302)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_section_feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                analysis_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                section TEXT NOT NULL,
+                rating TEXT NOT NULL,
+                comment TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(analysis_id, user_id, section)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_feedback_analysis ON analysis_section_feedback (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_section_feedback_section ON analysis_section_feedback (section)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -4628,5 +4645,241 @@ def get_gemini_usage_summary(days: int = 30) -> Dict[str, Any]:
             "model_breakdown": [],
             "recent_logs": [],
         }
+    finally:
+        conn.close()
+
+
+# ==============================================================================
+# Analysis Section Feedback Functions (Thumbs Up / Down + Comments) (#302)
+# ==============================================================================
+
+def save_analysis_section_feedback(
+    analysis_id: str,
+    user_id: str,
+    section: str,
+    rating: str,
+    comment: Optional[str] = None,
+    max_comment_length: int = 500
+) -> Dict[str, Any]:
+    """
+    Saves or updates a user's thumbs-up / thumbs-down rating and optional comment for a dashboard section (#302).
+    Ensures at most one rating per user per section per analysis, allowing them to change their rating.
+    Enforces maximum comment length limit.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        aid = str(analysis_id or "").strip()
+        if not aid:
+            raise ValueError("Analysis ID is required.")
+
+        uid = str(user_id or "anonymous_user").strip()
+        sec = str(section or "overall").strip().lower()
+        if not sec:
+            raise ValueError("Section identifier is required.")
+
+        # Normalize rating to 'up' or 'down'
+        raw_rating = str(rating or "").strip().lower()
+        if raw_rating in ("up", "thumbs_up", "thumbs-up", "positive", "1", "+1", "true"):
+            norm_rating = "up"
+        elif raw_rating in ("down", "thumbs_down", "thumbs-down", "negative", "-1", "0", "false"):
+            norm_rating = "down"
+        else:
+            raise ValueError("Rating must be 'up' or 'down'.")
+
+        # Comment length limit validation
+        clean_comment = None
+        if comment is not None:
+            clean_comment = str(comment).strip()
+            if len(clean_comment) > max_comment_length:
+                raise ValueError(f"Comment exceeds maximum length of {max_comment_length} characters.")
+            if not clean_comment:
+                clean_comment = None
+
+        cursor.execute("""
+            INSERT INTO analysis_section_feedback (analysis_id, user_id, section, rating, comment, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(analysis_id, user_id, section) DO UPDATE SET
+                rating = excluded.rating,
+                comment = excluded.comment,
+                updated_at = CURRENT_TIMESTAMP
+        """, (aid, uid, sec, norm_rating, clean_comment))
+        conn.commit()
+
+        cursor.execute("""
+            SELECT * FROM analysis_section_feedback
+            WHERE analysis_id = ? AND user_id = ? AND section = ?
+        """, (aid, uid, sec))
+        row = cursor.fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_analysis_section_feedback(
+    analysis_id: str,
+    user_id: Optional[str] = None,
+    section: Optional[str] = None
+) -> Union[Dict[str, Any], List[Dict[str, Any]], None]:
+    """
+    Retrieves feedback records for a given analysis (#302).
+    If user_id and section are specified: returns single dict or None.
+    If user_id is specified without section: returns dict mapping section -> record dict.
+    If user_id is None: returns list of all feedback records for the analysis.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        aid = str(analysis_id or "").strip()
+        if not aid:
+            return None if section else {}
+
+        if user_id and section:
+            cursor.execute("""
+                SELECT * FROM analysis_section_feedback
+                WHERE analysis_id = ? AND user_id = ? AND section = ?
+            """, (aid, str(user_id).strip(), str(section).strip().lower()))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+        elif user_id:
+            cursor.execute("""
+                SELECT * FROM analysis_section_feedback
+                WHERE analysis_id = ? AND user_id = ?
+            """, (aid, str(user_id).strip()))
+            rows = cursor.fetchall()
+            return {r["section"]: dict(r) for r in rows}
+
+        else:
+            cursor.execute("""
+                SELECT * FROM analysis_section_feedback
+                WHERE analysis_id = ?
+                ORDER BY updated_at DESC
+            """, (aid,))
+            rows = cursor.fetchall()
+            return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_analysis_section_feedback_summary(
+    section_filter: Optional[str] = None,
+    rating_filter: Optional[str] = None,
+    limit: int = 100
+) -> Dict[str, Any]:
+    """
+    Summarizes analysis section ratings (totals, thumbs up, thumbs down, positive percentage)
+    and returns recent feedback comments for the admin view (#302).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # Section-by-section aggregation
+        cursor.execute("""
+            SELECT 
+                section,
+                COUNT(*) as total_count,
+                SUM(CASE WHEN rating = 'up' THEN 1 ELSE 0 END) as up_count,
+                SUM(CASE WHEN rating = 'down' THEN 1 ELSE 0 END) as down_count,
+                SUM(CASE WHEN comment IS NOT NULL AND TRIM(comment) != '' THEN 1 ELSE 0 END) as comments_count
+            FROM analysis_section_feedback
+            GROUP BY section
+        """)
+        section_rows = cursor.fetchall()
+
+        sections_summary = {}
+        total_all = 0
+        total_up = 0
+        total_down = 0
+        total_comments = 0
+
+        for r in section_rows:
+            sec = r["section"]
+            tot = r["total_count"]
+            up = r["up_count"] or 0
+            down = r["down_count"] or 0
+            cmts = r["comments_count"] or 0
+            pct = round((up / tot * 100.0), 1) if tot > 0 else 0.0
+
+            sections_summary[sec] = {
+                "section": sec,
+                "total": tot,
+                "up": up,
+                "down": down,
+                "percentage": pct,
+                "comments_count": cmts,
+            }
+            total_all += tot
+            total_up += up
+            total_down += down
+            total_comments += cmts
+
+        overall_pct = round((total_up / total_all * 100.0), 1) if total_all > 0 else 0.0
+
+        # Detailed recent feedback records with optional filtering
+        query = "SELECT * FROM analysis_section_feedback WHERE 1=1"
+        params: List[Any] = []
+        if section_filter and section_filter.strip() and section_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(section) = LOWER(?)"
+            params.append(section_filter.strip())
+        if rating_filter and rating_filter.strip() and rating_filter.strip().lower() not in ("all", "any"):
+            query += " AND LOWER(rating) = LOWER(?)"
+            params.append(rating_filter.strip())
+
+        query += " ORDER BY updated_at DESC, id DESC LIMIT ?"
+        params.append(max(1, int(limit)))
+
+        cursor.execute(query, params)
+        records = [dict(r) for r in cursor.fetchall()]
+
+        return {
+            "sections": sections_summary,
+            "overall": {
+                "total": total_all,
+                "up": total_up,
+                "down": total_down,
+                "percentage": overall_pct,
+                "comments_count": total_comments,
+            },
+            "recent_feedback": records,
+        }
+    finally:
+        conn.close()
+
+
+def export_analysis_section_feedback_csv() -> str:
+    """
+    Exports all analysis section feedback entries as a CSV formatted string (#302).
+    """
+    import csv
+    import io
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, analysis_id, user_id, section, rating, comment, created_at, updated_at
+            FROM analysis_section_feedback
+            ORDER BY updated_at DESC, id DESC
+        """)
+        rows = cursor.fetchall()
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["id", "analysis_id", "user_id", "section", "rating", "comment", "created_at", "updated_at"])
+
+        for r in rows:
+            writer.writerow([
+                r["id"],
+                r["analysis_id"],
+                r["user_id"],
+                r["section"],
+                r["rating"],
+                r["comment"] or "",
+                r["created_at"],
+                r["updated_at"],
+            ])
+
+        return output.getvalue()
     finally:
         conn.close()
