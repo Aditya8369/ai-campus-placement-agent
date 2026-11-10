@@ -272,6 +272,35 @@ GEMINI_RETRY_MAX_DELAY=10.0
 GEMINI_RETRY_JITTER=true
 ```
 
+---
+
+## CSRF Protection & Session Cookie Security (#300)
+
+To safeguard student accounts, mock interview sessions, and personal career preparation records against Cross-Site Request Forgery (CSRF) and unauthorized cross-origin requests, state-changing HTTP endpoints require a per-session verification token:
+
+### Key Capabilities
+- **Per-Session CSRF Verification**: All state-changing requests (`POST`, `PUT`, `DELETE`, `PATCH`) must provide a valid CSRF token, either via the `X-CSRFToken` / `X-CSRF-Token` HTTP headers or as a `csrf_token` hidden form parameter.
+- **Frontend Interceptor**: A global `fetch()` wrapper in `static/js/script.js` extracts the session token from `<meta name="csrf-token">` and automatically injects it into all AJAX / fetch requests.
+- **Actionable 400 Error Handling**: Requests lacking a valid token are rejected with HTTP 400. Browser requests display a styled, informative `templates/csrf_error.html` page with clear instructions to refresh, while AJAX / API requests receive a structured JSON 400 response.
+- **Hardened Session Cookies**:
+  - `SESSION_COOKIE_HTTPONLY=True`: Protects session cookies from cross-site scripting (XSS) client-side reads.
+  - `SESSION_COOKIE_SAMESITE="Lax"`: Restricts cross-site cookie transmission to mitigate CSRF attacks.
+  - `SESSION_COOKIE_SECURE`: Automatically set to `True` when running in production (`FLASK_ENV=production` or `SESSION_COOKIE_SECURE=true`), ensuring session cookies are only transmitted over HTTPS.
+
+### Configuration
+```env
+# Enable or disable CSRF protection (default: true)
+WTF_CSRF_ENABLED=true
+
+# CSRF token expiration in seconds (default: 3600 = 1 hour)
+WTF_CSRF_TIME_LIMIT=3600
+
+# Session cookie SameSite policy (default: Lax)
+SESSION_COOKIE_SAMESITE=Lax
+
+# Force secure cookies regardless of environment (default: auto-detected from FLASK_ENV)
+SESSION_COOKIE_SECURE=false
+```
 
 ---
 

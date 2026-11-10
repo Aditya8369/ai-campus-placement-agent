@@ -124,7 +124,13 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.batch_analyzer import run_batch_company_comparison
+from utils.topic_practice_service import (
+    get_supported_topics,
+    generate_topic_interview_question,
+    evaluate_topic_answer,
+    record_practice_session,
+    get_student_practice_history
+)
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -264,9 +270,19 @@ app = Flask(__name__)
 configure_logging(app=app)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+
+# Session Cookie Hardening & Environment Configuration (#300)
+app.config["SESSION_COOKIE_HTTPONLY"] = getattr(config, "SESSION_COOKIE_HTTPONLY", True)
+app.config["SESSION_COOKIE_SAMESITE"] = getattr(config, "SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = getattr(config, "SESSION_COOKIE_SECURE", False)
+app.config["WTF_CSRF_ENABLED"] = getattr(config, "WTF_CSRF_ENABLED", True)
+app.config["WTF_CSRF_CHECK_DEFAULT"] = getattr(config, "WTF_CSRF_CHECK_DEFAULT", True)
+app.config["WTF_CSRF_TIME_LIMIT"] = getattr(config, "WTF_CSRF_TIME_LIMIT", 3600)
+app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
+
+# Initialize CSRF protection extension (#300)
+csrf.init_app(app)
+
 app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
@@ -472,6 +488,32 @@ def inject_correlation_headers(response):
     return response
 
 
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """
+    Renders a clear user-friendly error page or JSON response when CSRF token
+    validation fails (#300).
+    """
+    reason = getattr(error, "description", "CSRF token missing or invalid.")
+    logger.warning(f"CSRF protection validation failed for {request.method} {request.path}: {reason}")
+
+    is_json = (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.headers.get("Accept") == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed",
+            "message": "Your security token was missing or has expired. Please refresh the page and try again.",
+            "details": str(reason),
+        }), 400
+
+    return render_template("csrf_error.html", error_message=reason), 400
+
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
@@ -520,13 +562,28 @@ def rate_limit_exceeded(error):
 @app.errorhandler(500)
 def internal_server_error(error):
     """
-    Handles HTTP 500 errors safely, ensuring internal secrets, API keys,
-    and stack traces are never exposed to clients or user views.
+    Handles HTTP 500 errors safely (#263), generating a unique human-shareable
+    Error Reference ID (ERR-YYYYMMDD-XXXXXX) for support correlation while ensuring
+    internal secrets, API keys, and stack traces are never exposed to clients or user views.
     """
     from utils.prompt_security import redact_sensitive_information
-    raw_desc = getattr(error, "description", None) or "An unexpected server error occurred."
-    safe_desc = redact_sensitive_information(str(raw_desc))
-    logger.error(f"Internal Server Error (500): {safe_desc}")
+    from utils.error_reference_service import record_application_error
+    from flask import g
+
+    req_id = getattr(g, "request_id", None)
+    user_id = flask_session.get("user_id")
+
+    # Record error and obtain reference details
+    err_info = record_application_error(
+        error=error if isinstance(error, Exception) else Exception(str(error)),
+        endpoint=request.path,
+        http_method=request.method,
+        status_code=500,
+        user_id=user_id,
+        request_id=req_id,
+    )
+
+    ref_id = err_info["reference_id"]
 
     is_json = (
         request.is_json
@@ -538,10 +595,12 @@ def internal_server_error(error):
         return jsonify({
             "success": False,
             "error": "Internal Server Error",
-            "message": "An internal error occurred. Please try again later."
+            "message": "An internal error occurred. Please quote the reference ID when contacting support.",
+            "reference_id": ref_id,
+            "request_id": req_id,
         }), 500
 
-    flash("An unexpected error occurred while processing your request. Please try again.", "error")
+    flash(f"An unexpected error occurred. Reference ID: {ref_id}. Please contact support if the issue persists.", "error")
     return redirect(url_for("index"))
 
 
@@ -11615,6 +11674,104 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+# ============================================================================
+# CUSTOM TECHNICAL TOPIC INTERVIEW PRACTICE MODE (#255)
+# ============================================================================
+
+@app.route("/api/interview/practice/topics", methods=["GET"])
+def api_interview_practice_topics():
+    """Returns available technical practice topics and supported difficulty levels."""
+    catalog = get_supported_topics()
+    return jsonify({
+        "status": "success",
+        "data": catalog
+    }), 200
+
+
+@app.route("/api/interview/practice/generate", methods=["POST"])
+def api_generate_practice_question():
+    """Generates an interview question targeted to a specific technical topic and difficulty level."""
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    topic = payload.get("topic")
+    difficulty = payload.get("difficulty", "medium")
+
+    if not topic:
+        return jsonify({"status": "error", "message": "Field 'topic' is required."}), 400
+
+    try:
+        question_data = generate_topic_interview_question(topic=topic, difficulty=difficulty)
+        return jsonify({
+            "status": "success",
+            "data": question_data
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error generating topic question: {e}")
+        return jsonify({"status": "error", "message": "Failed to generate topic interview question."}), 500
+
+
+@app.route("/api/interview/practice/evaluate", methods=["POST"])
+def api_evaluate_practice_answer():
+    """Evaluates a candidate's answer for a topic-specific interview question and persists the session."""
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    topic = payload.get("topic")
+    difficulty = payload.get("difficulty", "medium")
+    question_text = payload.get("question", "")
+    question_id = payload.get("question_id", str(uuid.uuid4()))
+    answer_text = payload.get("answer", "")
+
+    if not topic:
+        return jsonify({"status": "error", "message": "Field 'topic' is required."}), 400
+    if not question_text:
+        return jsonify({"status": "error", "message": "Field 'question' is required."}), 400
+
+    try:
+        evaluation = evaluate_topic_answer(
+            topic=topic,
+            difficulty=difficulty,
+            question=question_text,
+            answer=answer_text
+        )
+
+        # Record session in database for student history tracking
+        saved_record = record_practice_session(
+            student_id=student_id,
+            topic=topic,
+            difficulty=difficulty,
+            question_id=question_id,
+            question_text=question_text,
+            answer=answer_text,
+            evaluation=evaluation
+        )
+
+        return jsonify({
+            "status": "success",
+            "evaluation": evaluation,
+            "session": saved_record
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error evaluating topic answer: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate topic response."}), 500
+
+
+@app.route("/api/interview/practice/history", methods=["GET"])
+def api_practice_history():
+    """Retrieves chronological practice session history for the logged-in student."""
+    student_id = flask_session.get("user_id") or "default_student"
+    history = get_student_practice_history(student_id)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "total_sessions": len(history),
+        "history": history
+    }), 200
 
 
 if __name__ == "__main__":
