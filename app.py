@@ -124,7 +124,10 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.batch_analyzer import run_batch_company_comparison
+from utils.student_data_exporter import (
+    build_student_data_export_manifest,
+    generate_student_data_zip_package
+)
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -11601,6 +11604,50 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+# ============================================================================
+# STUDENT PERSONAL DATA DOWNLOAD PACKAGE ENDPOINTS (#258)
+# ============================================================================
+
+@app.route("/api/student/data-export/manifest", methods=["GET"])
+def api_student_data_export_manifest():
+    """
+    Returns a summary manifest of all placement records, applications, notes,
+    and analyses owned by the authenticated student.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        manifest = build_student_data_export_manifest(student_id)
+        return jsonify({
+            "status": "success",
+            "manifest": manifest
+        }), 200
+    except Exception as e:
+        logger.error(f"Error compiling student data manifest: {e}")
+        return jsonify({"status": "error", "message": "Failed to compile personal data manifest."}), 500
+
+
+@app.route("/api/student/data-export/download", methods=["GET"])
+def api_student_data_export_download():
+    """
+    Generates and streams a downloadable ZIP package containing all personal
+    placement preparation data, strictly sanitized of passwords and credentials.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    import datetime as dt
+    try:
+        zip_buffer = generate_student_data_zip_package(student_id)
+        filename = f"placement_data_export_{student_id}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        logger.error(f"Error building student data export zip: {e}")
+        return jsonify({"status": "error", "message": "Failed to generate personal data download package."}), 500
 
 
 if __name__ == "__main__":
