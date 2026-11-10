@@ -124,10 +124,9 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.application_timeline_service import (
-    log_application_activity,
-    get_application_timeline,
-    transition_application_status_with_timeline
+from utils.student_data_exporter import (
+    build_student_data_export_manifest,
+    generate_student_data_zip_package
 )
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
@@ -11625,91 +11624,47 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ============================================================================
-# JOB APPLICATION ACTIVITY TIMELINE ENDPOINTS (#259)
+# STUDENT PERSONAL DATA DOWNLOAD PACKAGE ENDPOINTS (#258)
 # ============================================================================
 
-@app.route("/api/job-applications/<app_id>/timeline", methods=["GET"])
-def api_get_job_application_timeline(app_id: str):
-    """Retrieves the chronological audit history and milestones for a specific job application."""
-    student_id = flask_session.get("user_id") or "default_student"
-    try:
-        timeline_data = get_application_timeline(application_id=app_id, student_id=student_id)
-        return jsonify({
-            "status": "success",
-            "data": timeline_data
-        }), 200
-    except PermissionError as pe:
-        return jsonify({"status": "error", "message": str(pe)}), 403
-    except Exception as e:
-        logger.error(f"Error fetching application timeline: {e}")
-        return jsonify({"status": "error", "message": "Failed to retrieve application timeline."}), 500
-
-
-@app.route("/api/job-applications/<app_id>/transition", methods=["POST"])
-def api_transition_application_status(app_id: str):
+@app.route("/api/student/data-export/manifest", methods=["GET"])
+def api_student_data_export_manifest():
     """
-    Transitions the status of a job application (e.g. from Applied to Interviewing)
-    and records an activity timeline audit log.
+    Returns a summary manifest of all placement records, applications, notes,
+    and analyses owned by the authenticated student.
     """
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    new_status = payload.get("status")
-    notes = payload.get("notes")
-
-    if not new_status:
-        return jsonify({"status": "error", "message": "New status is required."}), 400
-
     try:
-        transition_res = transition_application_status_with_timeline(
-            application_id=app_id,
-            student_id=student_id,
-            new_status=new_status,
-            notes=notes
-        )
+        manifest = build_student_data_export_manifest(student_id)
         return jsonify({
             "status": "success",
-            "message": f"Application transitioned to '{new_status}'.",
-            "transition": transition_res
+            "manifest": manifest
         }), 200
-    except PermissionError as pe:
-        return jsonify({"status": "error", "message": str(pe)}), 403
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Error transitioning job application status: {e}")
-        return jsonify({"status": "error", "message": "Failed to transition application status."}), 500
+        logger.error(f"Error compiling student data manifest: {e}")
+        return jsonify({"status": "error", "message": "Failed to compile personal data manifest."}), 500
 
 
-@app.route("/api/job-applications/<app_id>/activity", methods=["POST"])
-def api_log_custom_application_activity(app_id: str):
-    """Logs an optional milestone or custom progress note to an application's timeline."""
+@app.route("/api/student/data-export/download", methods=["GET"])
+def api_student_data_export_download():
+    """
+    Generates and streams a downloadable ZIP package containing all personal
+    placement preparation data, strictly sanitized of passwords and credentials.
+    """
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    event_type = payload.get("event_type", "note_added")
-    status = payload.get("status", "Current")
-    notes = payload.get("notes", "")
-
-    if not notes:
-        return jsonify({"status": "error", "message": "Notes / activity description is required."}), 400
-
+    import datetime as dt
     try:
-        activity = log_application_activity(
-            application_id=app_id,
-            student_id=student_id,
-            new_status=status,
-            event_type=event_type,
-            notes=notes
+        zip_buffer = generate_student_data_zip_package(student_id)
+        filename = f"placement_data_export_{student_id}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        return send_file(
+            zip_buffer,
+            mimetype="application/zip",
+            as_attachment=True,
+            download_name=filename
         )
-        return jsonify({
-            "status": "success",
-            "message": "Activity recorded successfully.",
-            "activity": activity
-        }), 201
-    except PermissionError as pe:
-        return jsonify({"status": "error", "message": str(pe)}), 403
     except Exception as e:
-        logger.error(f"Error logging application activity: {e}")
-        return jsonify({"status": "error", "message": "Failed to log application activity."}), 500
+        logger.error(f"Error building student data export zip: {e}")
+        return jsonify({"status": "error", "message": "Failed to generate personal data download package."}), 500
 
 
 if __name__ == "__main__":
