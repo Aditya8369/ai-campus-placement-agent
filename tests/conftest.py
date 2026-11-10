@@ -13,6 +13,15 @@ import pytest
 from google.genai.errors import APIError
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter_fixture():
+    """Reset rate limiter state before each test to prevent 429 rate limit leakage across tests."""
+    from utils.rate_limiter import limiter
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
 
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""

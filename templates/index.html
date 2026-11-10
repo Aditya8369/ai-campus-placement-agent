@@ -398,6 +398,16 @@
                 </div>
               </div>
 
+              <!-- Privacy Notice & Third-Party AI Consent (#304) -->
+              <div class="mb-4 p-3 bg-light rounded-3 border" id="privacyConsentBox">
+                <div class="form-check d-flex align-items-start gap-2 mb-0">
+                  <input class="form-check-input mt-1 flex-shrink-0" type="checkbox" id="privacyConsentCheck" name="privacy_consent" value="true" required>
+                  <label class="form-check-label small text-secondary" for="privacyConsentCheck">
+                    I consent to having my resume text processed by the Gemini AI service and stored in accordance with the <a href="{{ url_for('privacy_policy') }}" target="_blank" class="text-primary fw-semibold text-decoration-underline">Privacy Notice</a>.
+                  </label>
+                </div>
+              </div>
+
               <!-- Action Buttons: Analyze Readiness & Clear All -->
               <div class="d-flex flex-column flex-sm-row gap-2 mt-3">
                 <button type="submit" id="btnSubmitAnalysis"
@@ -576,7 +586,13 @@
   <!-- Footer -->
   <footer class="bg-white border-top py-4 mt-auto">
     <div class="container text-center text-secondary small">
-      © 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+      <div class="mb-2">
+        © 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+      </div>
+      <div>
+        <a href="{{ url_for('privacy_policy') }}" class="text-secondary text-decoration-underline me-3">Privacy Notice</a>
+        <a href="https://github.com/deepikagandla74/ai-campus-placement-agent" target="_blank" rel="noopener noreferrer" class="text-secondary text-decoration-underline">GitHub</a>
+      </div>
     </div>
   </footer>
 
