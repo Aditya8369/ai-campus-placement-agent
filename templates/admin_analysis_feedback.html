@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analysis Section Feedback Summary - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Dashboard Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container py-4 my-auto">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-thumbs-up text-primary me-2"></i>Analysis Section Feedback Summary
+        </h2>
+        <p class="text-secondary small mb-0">
+          Review student satisfaction ratings (thumbs up / thumbs down) and feedback comments across dashboard sections to identify weak prompts and refine AI models.
+        </p>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <a href="/admin/analysis-feedback/export.csv" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" id="btnExportFeedbackCsv">
+          <i class="fa-solid fa-file-csv me-1"></i> Export CSV
+        </a>
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+      <!-- Total Ratings -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Total Ratings</span>
+            <span class="badge bg-primary-subtle text-primary rounded-pill"><i class="fa-solid fa-calculator"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiTotalRatings">{{ summary.overall.total }}</h3>
+          <small class="text-muted">Total student evaluations</small>
+        </div>
+      </div>
+
+      <!-- Positive Satisfaction -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Satisfaction Rate</span>
+            <span class="badge bg-success-subtle text-success rounded-pill"><i class="fa-solid fa-percent"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-success" id="kpiSatisfactionRate">{{ summary.overall.percentage }}%</h3>
+          <small class="text-muted">Positive thumbs-up ratio</small>
+        </div>
+      </div>
+
+      <!-- Thumbs Up -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Helpful (Up)</span>
+            <span class="badge bg-success-subtle text-success rounded-pill"><i class="fa-solid fa-thumbs-up"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-success" id="kpiThumbsUp">{{ summary.overall.up }}</h3>
+          <small class="text-muted">Positive feedback ratings</small>
+        </div>
+      </div>
+
+      <!-- Thumbs Down -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Unhelpful (Down)</span>
+            <span class="badge bg-danger-subtle text-danger rounded-pill"><i class="fa-solid fa-thumbs-down"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-danger" id="kpiThumbsDown">{{ summary.overall.down }}</h3>
+          <small class="text-muted">Needs improvement signals</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section-by-Section Performance Table -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white overflow-hidden">
+      <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+        <h5 class="fw-bold mb-0"><i class="fa-solid fa-layer-group text-primary me-2"></i>Ratings per Dashboard Section</h5>
+        <span class="badge bg-light text-dark border">{{ summary.sections|length }} Sections Tracked</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="sectionSummaryTable">
+          <thead class="table-light small text-uppercase">
+            <tr>
+              <th>Section Name</th>
+              <th class="text-center">Total Ratings</th>
+              <th class="text-center">Thumbs Up</th>
+              <th class="text-center">Thumbs Down</th>
+              <th>Satisfaction %</th>
+              <th class="text-center">Comments</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if summary.sections %}
+              {% for sec_name, sec_data in summary.sections.items() %}
+                <tr>
+                  <td class="fw-semibold">
+                    {% if sec_name == 'resume_analysis' %}
+                      <i class="fa-solid fa-file-lines text-primary me-2"></i> Resume Analysis
+                    {% elif sec_name == 'skill_gaps' %}
+                      <i class="fa-solid fa-triangle-exclamation text-warning me-2"></i> Skill Gaps
+                    {% elif sec_name == 'roadmap' %}
+                      <i class="fa-solid fa-route text-success me-2"></i> Learning Roadmap
+                    {% elif sec_name == 'interview_prep' %}
+                      <i class="fa-solid fa-comments text-info me-2"></i> Interview Questions
+                    {% elif sec_name == 'overall' %}
+                      <i class="fa-solid fa-chart-pie text-secondary me-2"></i> Overall Analysis
+                    {% else %}
+                      <i class="fa-solid fa-square-check text-muted me-2"></i> {{ sec_name|replace('_', ' ')|title }}
+                    {% endif %}
+                    <small class="text-muted d-block font-monospace">({{ sec_name }})</small>
+                  </td>
+                  <td class="text-center fw-bold">{{ sec_data.total }}</td>
+                  <td class="text-center text-success"><i class="fa-solid fa-thumbs-up me-1"></i>{{ sec_data.up }}</td>
+                  <td class="text-center text-danger"><i class="fa-solid fa-thumbs-down me-1"></i>{{ sec_data.down }}</td>
+                  <td style="min-width: 150px;">
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="progress flex-grow-1" style="height: 8px;">
+                        <div class="progress-bar {% if sec_data.percentage >= 70 %}bg-success{% elif sec_data.percentage >= 40 %}bg-warning{% else %}bg-danger{% endif %}"
+                             role="progressbar" style="width: {{ sec_data.percentage }}%" aria-valuenow="{{ sec_data.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                      </div>
+                      <span class="small fw-bold">{{ sec_data.percentage }}%</span>
+                    </div>
+                  </td>
+                  <td class="text-center">
+                    <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-1">
+                      <i class="fa-regular fa-comment me-1"></i>{{ sec_data.comments_count }}
+                    </span>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="text-center py-4 text-muted">
+                  <i class="fa-regular fa-folder-open fs-3 d-block mb-2"></i>
+                  No section ratings recorded yet.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Filter & Detailed Feedback Comments -->
+    <div class="card border-0 shadow-sm rounded-4 bg-white overflow-hidden">
+      <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <h5 class="fw-bold mb-0"><i class="fa-solid fa-comments text-primary me-2"></i>Recent Feedback & Student Comments</h5>
+        
+        <!-- Filter Form -->
+        <form method="GET" action="/admin/analysis-feedback" class="d-flex flex-wrap align-items-center gap-2">
+          <select name="section" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()" style="width: auto;" aria-label="Filter by section">
+            <option value="all" {% if selected_section == 'all' %}selected{% endif %}>All Sections</option>
+            <option value="resume_analysis" {% if selected_section == 'resume_analysis' %}selected{% endif %}>Resume Analysis</option>
+            <option value="skill_gaps" {% if selected_section == 'skill_gaps' %}selected{% endif %}>Skill Gaps</option>
+            <option value="roadmap" {% if selected_section == 'roadmap' %}selected{% endif %}>Learning Roadmap</option>
+            <option value="interview_prep" {% if selected_section == 'interview_prep' %}selected{% endif %}>Interview Prep</option>
+            <option value="overall" {% if selected_section == 'overall' %}selected{% endif %}>Overall</option>
+          </select>
+
+          <select name="rating" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()" style="width: auto;" aria-label="Filter by rating">
+            <option value="all" {% if selected_rating == 'all' %}selected{% endif %}>All Ratings</option>
+            <option value="up" {% if selected_rating == 'up' %}selected{% endif %}>Thumbs Up (Helpful)</option>
+            <option value="down" {% if selected_rating == 'down' %}selected{% endif %}>Thumbs Down (Unhelpful)</option>
+          </select>
+        </form>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="feedbackCommentsTable">
+          <thead class="table-light small text-uppercase">
+            <tr>
+              <th style="width: 150px;">Date & Time</th>
+              <th>Section</th>
+              <th>Rating</th>
+              <th>Student / User</th>
+              <th>Analysis ID</th>
+              <th>Comment</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if summary.recent_feedback %}
+              {% for item in summary.recent_feedback %}
+                <tr>
+                  <td class="small text-muted text-nowrap">{{ item.updated_at or item.created_at }}</td>
+                  <td>
+                    <span class="badge bg-light text-dark border font-monospace">{{ item.section }}</span>
+                  </td>
+                  <td>
+                    {% if item.rating == 'up' %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1">
+                        <i class="fa-solid fa-thumbs-up me-1"></i> Helpful
+                      </span>
+                    {% else %}
+                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1">
+                        <i class="fa-solid fa-thumbs-down me-1"></i> Not Helpful
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="small text-secondary font-monospace">{{ item.user_id|truncate(20) }}</td>
+                  <td class="small">
+                    <a href="/dashboard/{{ item.analysis_id }}" class="text-decoration-none font-monospace" title="Open analysis dashboard">
+                      {{ item.analysis_id|truncate(15) }}
+                    </a>
+                  </td>
+                  <td class="text-break">
+                    {% if item.comment %}
+                      <span class="feedback-comment-text">{{ item.comment|e }}</span>
+                    {% else %}
+                      <span class="text-muted fst-italic small">No comment provided</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="6" class="text-center py-5 text-muted">
+                  <i class="fa-regular fa-comment-dots fs-3 d-block mb-2"></i>
+                  No student comments found matching the selected filter.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-3 mt-auto text-center small text-muted">
+    <div class="container">
+      AI Campus Placement Agent &bull; Administrator Section Feedback Analytics
+    </div>
+  </footer>
+
+  <!-- Bootstrap Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

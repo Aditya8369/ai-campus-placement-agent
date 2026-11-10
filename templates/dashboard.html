@@ -932,6 +932,31 @@
             </div>
 
           </div>
+
+          <!-- Section Feedback Widget: Resume Analysis (#302) -->
+          <div class="section-feedback-widget mt-3 pt-3 border-top" data-section="resume_analysis" data-analysis-id="{{ analysis_id }}">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <span class="small text-muted"><i class="fa-regular fa-comment-dots text-primary me-1"></i> Was this resume analysis helpful?</span>
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 btn-feedback-rate" data-rating="up" title="Helpful" aria-label="Helpful">
+                  <i class="fa-regular fa-thumbs-up me-1"></i> Helpful
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 btn-feedback-rate" data-rating="down" title="Not helpful" aria-label="Not helpful">
+                  <i class="fa-regular fa-thumbs-down me-1"></i> Not Helpful
+                </button>
+              </div>
+            </div>
+            <div class="feedback-comment-box mt-2 d-none">
+              <div class="input-group input-group-sm">
+                <input type="text" class="form-control rounded-start-pill feedback-comment-input" maxlength="500" placeholder="Optional: Tell us what could be improved (max 500 chars)..." aria-label="Feedback comment">
+                <button class="btn btn-primary rounded-end-pill px-3 btn-feedback-submit" type="button">Save</button>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mt-1 px-2">
+                <small class="feedback-status-msg text-muted"></small>
+                <small class="feedback-char-counter text-muted">0/500</small>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1358,6 +1383,31 @@
           </tbody>
         </table>
       </div>
+
+      <!-- Section Feedback Widget: Skill Gaps (#302) -->
+      <div class="section-feedback-widget mt-3 pt-3 border-top" data-section="skill_gaps" data-analysis-id="{{ analysis_id }}">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span class="small text-muted"><i class="fa-regular fa-comment-dots text-primary me-1"></i> Was this skill gap analysis helpful?</span>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 btn-feedback-rate" data-rating="up" title="Helpful" aria-label="Helpful">
+              <i class="fa-regular fa-thumbs-up me-1"></i> Helpful
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 btn-feedback-rate" data-rating="down" title="Not helpful" aria-label="Not helpful">
+              <i class="fa-regular fa-thumbs-down me-1"></i> Not Helpful
+            </button>
+          </div>
+        </div>
+        <div class="feedback-comment-box mt-2 d-none">
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control rounded-start-pill feedback-comment-input" maxlength="500" placeholder="Optional: Tell us what could be improved (max 500 chars)..." aria-label="Feedback comment">
+            <button class="btn btn-primary rounded-end-pill px-3 btn-feedback-submit" type="button">Save</button>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-1 px-2">
+            <small class="feedback-status-msg text-muted"></small>
+            <small class="feedback-char-counter text-muted">0/500</small>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Learning Roadmap Timeline -->
@@ -1525,6 +1575,31 @@
             </div>
           </div>
         {% endfor %}
+      </div>
+
+      <!-- Section Feedback Widget: Learning Roadmap (#302) -->
+      <div class="section-feedback-widget mt-3 pt-3 border-top" data-section="roadmap" data-analysis-id="{{ analysis_id }}">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <span class="small text-muted"><i class="fa-regular fa-comment-dots text-primary me-1"></i> Was this learning roadmap helpful?</span>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 btn-feedback-rate" data-rating="up" title="Helpful" aria-label="Helpful">
+              <i class="fa-regular fa-thumbs-up me-1"></i> Helpful
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 btn-feedback-rate" data-rating="down" title="Not helpful" aria-label="Not helpful">
+              <i class="fa-regular fa-thumbs-down me-1"></i> Not Helpful
+            </button>
+          </div>
+        </div>
+        <div class="feedback-comment-box mt-2 d-none">
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control rounded-start-pill feedback-comment-input" maxlength="500" placeholder="Optional: Tell us what could be improved (max 500 chars)..." aria-label="Feedback comment">
+            <button class="btn btn-primary rounded-end-pill px-3 btn-feedback-submit" type="button">Save</button>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-1 px-2">
+            <small class="feedback-status-msg text-muted"></small>
+            <small class="feedback-char-counter text-muted">0/500</small>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1952,6 +2027,38 @@
                 {% endfor %}
               {% endif %}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overall Analysis Feedback Card (#302) -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="overallFeedbackCard">
+      <div class="section-feedback-widget" data-section="overall" data-analysis-id="{{ analysis_id }}">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+          <div>
+            <h5 class="fw-bold mb-1 text-dark">
+              <i class="fa-solid fa-thumbs-up text-primary me-2"></i> Was this overall analysis helpful?
+            </h5>
+            <p class="text-secondary small mb-0">Help us improve prompts, roadmap suggestions, and interview accuracy with your rating.</p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3 py-1 btn-feedback-rate" data-rating="up" title="Helpful" aria-label="Rate helpful">
+              <i class="fa-regular fa-thumbs-up me-1"></i> Helpful
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 py-1 btn-feedback-rate" data-rating="down" title="Not helpful" aria-label="Rate not helpful">
+              <i class="fa-regular fa-thumbs-down me-1"></i> Not Helpful
+            </button>
+          </div>
+        </div>
+        <div class="feedback-comment-box mt-3 d-none">
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control rounded-start-pill feedback-comment-input" maxlength="500" placeholder="Optional: Tell us what could be improved (max 500 chars)..." aria-label="Feedback comment">
+            <button class="btn btn-primary rounded-end-pill px-3 btn-feedback-submit" type="button">Save Comment</button>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-1 px-2">
+            <small class="feedback-status-msg text-muted"></small>
+            <small class="feedback-char-counter text-muted">0/500</small>
           </div>
         </div>
       </div>

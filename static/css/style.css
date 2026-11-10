@@ -2368,3 +2368,42 @@ textarea:focus-visible {
   background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
+/* ==============================================================================
+   Dashboard Section Feedback Widgets (#302)
+   ============================================================================== */
+.section-feedback-widget {
+  transition: all 0.2s ease-in-out;
+}
+
+.section-feedback-widget .btn-feedback-rate {
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+.section-feedback-widget .btn-feedback-rate.active {
+  font-weight: 600;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.section-feedback-widget .btn-feedback-rate[data-rating="up"].active {
+  background-color: var(--bs-success, #198754) !important;
+  color: #fff !important;
+  border-color: var(--bs-success, #198754) !important;
+}
+
+.section-feedback-widget .btn-feedback-rate[data-rating="down"].active {
+  background-color: var(--bs-danger, #dc3545) !important;
+  color: #fff !important;
+  border-color: var(--bs-danger, #dc3545) !important;
+}
+
+[data-bs-theme="dark"] .section-feedback-widget {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-bs-theme="dark"] .section-feedback-widget .feedback-comment-input {
+  background-color: #212529;
+  color: #f8f9fa;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
