@@ -124,7 +124,12 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.answer_quality_checklist import audit_interview_answer_quality
+from utils.resume_role_comparator import (
+    get_available_roles,
+    compare_resume_across_roles,
+    save_multi_role_comparison,
+    get_student_role_comparisons
+)
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -11621,37 +11626,86 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ============================================================================
-# AI-GENERATED ANSWER QUALITY CHECKLIST ENDPOINTS (#257)
+# MULTI-ROLE RESUME ANALYSIS COMPARISON ENDPOINTS (#256)
 # ============================================================================
 
-@app.route("/api/interview/answer-quality-audit", methods=["POST"])
-def api_audit_interview_answer_quality():
-    """
-    Audits a candidate's interview answer across the 6-point structured Quality Rubric:
-    direct question address, concrete examples, supported claims, technical explanation,
-    structural flow, and actionable next steps.
-    """
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    question = payload.get("question", "")
-    answer = payload.get("answer", "")
-    question_type = payload.get("question_type", "technical")
+@app.route("/api/resume/compare-roles/catalog", methods=["GET"])
+def api_resume_roles_catalog():
+    """Returns the catalog of supported technical roles available for comparison."""
+    roles = get_available_roles()
+    return jsonify({
+        "status": "success",
+        "total_roles": len(roles),
+        "roles": roles
+    }), 200
 
-    if not question:
-        return jsonify({"status": "error", "message": "Question prompt is required."}), 400
+
+@app.route("/api/resume/compare-roles", methods=["POST"])
+def api_compare_resume_roles():
+    """
+    Evaluates a resume simultaneously against multiple selected technical roles.
+    Computes match percentages, role-specific missing skills, and common transferable competencies.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    resume_text = payload.get("resume_text", "")
+    roles = payload.get("roles", [])
+
+    if isinstance(roles, str):
+        roles = [r.strip() for r in roles.split(",") if r.strip()]
+
+    if not resume_text or not resume_text.strip():
+        # Check if an analysis_id was provided to reuse existing parsed resume
+        analysis_id = payload.get("analysis_id")
+        if analysis_id:
+            rec = get_analysis(analysis_id)
+            if rec and rec.get("resume_text"):
+                resume_text = rec["resume_text"]
+
+    if not resume_text or not resume_text.strip():
+        return jsonify({"status": "error", "message": "Resume text is required for multi-role comparison."}), 400
+
+    if not roles:
+        return jsonify({"status": "error", "message": "Please select at least one job role to compare."}), 400
 
     try:
-        audit_result = audit_interview_answer_quality(
-            question=question,
-            answer=answer,
-            question_type=question_type
+        comparison_data = compare_resume_across_roles(
+            resume_text=resume_text,
+            target_role_keys=roles
         )
+
+        # Save record in database
+        saved_ref = save_multi_role_comparison(
+            student_id=student_id,
+            resume_text=resume_text,
+            selected_roles=roles,
+            comparison_results=comparison_data
+        )
+
         return jsonify({
             "status": "success",
-            "audit": audit_result
+            "comparison": comparison_data,
+            "saved_record": saved_ref
         }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Error auditing answer quality: {e}")
-        return jsonify({"status": "error", "message": "Failed to analyze answer quality checklist."}), 500
+        logger.error(f"Error in multi-role resume comparison: {e}")
+        return jsonify({"status": "error", "message": "Failed to analyze resume across roles."}), 500
+
+
+@app.route("/api/resume/compare-roles/history", methods=["GET"])
+def api_role_comparison_history():
+    """Retrieves previous multi-role comparisons for the active candidate."""
+    student_id = flask_session.get("user_id") or "default_student"
+    history = get_student_role_comparisons(student_id)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "total_comparisons": len(history),
+        "history": history
+    }), 200
 
 
 if __name__ == "__main__":
