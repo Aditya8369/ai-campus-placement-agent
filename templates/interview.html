@@ -197,7 +197,36 @@
                     {% endfor %}
                   </div>
                 {% endif %}
-                {% if ans.evaluation.star_method_analysis and ans.evaluation.star_method_analysis.feedback %}
+                {% if ans.evaluation.star_analysis and (ans.evaluation.star_analysis.situation or ans.evaluation.star_analysis.task or ans.evaluation.star_analysis.action or ans.evaluation.star_analysis.result) %}
+                  <div class="p-2 bg-light rounded-3 border mb-2 star-checklist-container">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <small class="fw-bold text-dark"><i class="fa-solid fa-list-check text-primary me-1"></i> STAR Structure Checklist:</small>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-1">
+                      {% for part_key, part_label in [('situation', 'Situation'), ('task', 'Task'), ('action', 'Action'), ('result', 'Result')] %}
+                        {% set p_status = (ans.evaluation.star_analysis.get(part_key) or 'missing')|lower %}
+                        {% if p_status == 'present' %}
+                          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 star-badge-present">
+                            <i class="fa-solid fa-check me-1"></i> {{ part_label }}: Present
+                          </span>
+                        {% elif p_status == 'weak' %}
+                          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 star-badge-weak">
+                            <i class="fa-solid fa-triangle-exclamation me-1"></i> {{ part_label }}: Weak
+                          </span>
+                        {% else %}
+                          <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1 star-badge-missing">
+                            <i class="fa-solid fa-xmark me-1"></i> {{ part_label }}: Missing
+                          </span>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                    {% if ans.evaluation.star_analysis.tip %}
+                      <div class="small text-muted mt-1 star-improvement-tip">
+                        <i class="fa-solid fa-lightbulb text-warning me-1"></i> <b>Improvement Tip:</b> {{ ans.evaluation.star_analysis.tip }}
+                      </div>
+                    {% endif %}
+                  </div>
+                {% elif ans.evaluation.star_method_analysis and ans.evaluation.star_method_analysis.feedback %}
                   <div class="small mb-2 text-secondary d-flex justify-content-between align-items-center gap-2">
                     <div>
                       <i class="fa-solid fa-sitemap text-primary me-1"></i> <b>STAR Framework:</b> {{ ans.evaluation.star_method_analysis.feedback }}
@@ -222,7 +251,7 @@
             {% endfor %}
 
             <!-- Display current active question if not completed -->
-            {% if not interview.completed %}
+            {% if not interview.completed and interview.questions and interview.current_question_index < interview.questions|length %}
               {% set current_q = interview.questions[interview.current_question_index] %}
               <div class="chat-bubble chat-bubble-question" id="currentQuestionBubble">
                 <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">

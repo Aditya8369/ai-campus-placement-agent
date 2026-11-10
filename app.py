@@ -2435,7 +2435,13 @@ def interview(analysis_id: str) -> str:
         for category in categories_to_include:
             key = category.lower()
             for question_text in coordinator_questions.get(key, []):
-                flat_questions_list.append({"index": q_idx, "type": category, "question": question_text})
+                is_behav = (category.lower() == "behavioral") or live_interview_agent.is_behavioral_question(question_text, category)
+                flat_questions_list.append({
+                    "index": q_idx,
+                    "type": category,
+                    "question": question_text,
+                    "is_behavioral": is_behav
+                })
                 q_idx += 1
 
         # Save new session into SQLite DB
@@ -2491,12 +2497,17 @@ def submit_interview_answer(analysis_id: str):
             return jsonify({"error": "The requested question index is out of bounds."}), 400
 
         target_question = questions_list[question_index]
+        q_type = target_question.get("type", "Technical")
+        is_behav = target_question.get("is_behavioral")
+        if is_behav is None:
+            is_behav = live_interview_agent.is_behavioral_question(target_question.get("question", ""), q_type)
 
         # Call InterviewAgent to dynamically evaluate response accuracy, metrics, and suggestions
         evaluation_results = live_interview_agent.evaluate_answer(
-            question_type=target_question["type"],
+            question_type=q_type,
             question=target_question["question"],
-            answer=candidate_response
+            answer=candidate_response,
+            is_behavioral=is_behav
         )
 
         # Enhance with deep STAR evaluation and non-verbal speech telemetry
@@ -2516,6 +2527,7 @@ def submit_interview_answer(analysis_id: str):
             "question_index": question_index,
             "type": target_question["type"],
             "question": target_question["question"],
+            "is_behavioral": is_behav,
             "answer": candidate_response,
             "evaluation": evaluation_results
         }

@@ -100,14 +100,126 @@ class InterviewAgent:
         except (ValueError, TypeError, ZeroDivisionError):
             return default
 
-    def evaluate_answer(self, question_type: str, question: str, answer: str) -> Dict[str, Any]:
+    @staticmethod
+    def is_behavioral_question(question: str, question_type: str = "") -> bool:
+        """
+        Determines whether a question is behavioral based on its category or phrasing (#303).
+        """
+        if question_type and str(question_type).strip().lower() in ("behavioral", "behavioural"):
+            return True
+        q_lower = str(question or "").strip().lower()
+        behavioral_phrases = [
+            "tell me about a time",
+            "describe a time",
+            "describe a situation",
+            "give an example",
+            "share an example",
+            "have you ever",
+            "how do you handle",
+            "how did you handle",
+            "what would you do if",
+            "conflict arose",
+            "mistake or failure",
+            "above and beyond",
+            "walk me through",
+        ]
+        return any(phrase in q_lower for phrase in behavioral_phrases)
+
+    @staticmethod
+    def _normalize_star_part(value: Any) -> str:
+        """
+        Normalizes a STAR component status to 'present', 'weak', or 'missing' (#303).
+        """
+        if value is True:
+            return "present"
+        if value is False or value is None:
+            return "missing"
+        val = str(value).strip().lower()
+        if val in ("present", "yes", "true", "complete", "strong", "good", "included", "covered"):
+            return "present"
+        if val in ("weak", "partial", "needs_improvement", "unclear", "moderate", "fair"):
+            return "weak"
+        if val in ("missing", "no", "false", "none", "not_present", "absent", "omitted"):
+            return "missing"
+        return "weak" if val else "missing"
+
+    def _parse_star_block(self, res: Dict[str, Any], is_behavioral: bool) -> Any:
+        """
+        Safely extracts and sanitizes the STAR analysis block for behavioral questions (#303).
+        Returns None for technical questions or if the model omits / malforms the STAR block.
+        """
+        if not is_behavioral:
+            return None
+
+        raw_star = res.get("star_analysis")
+        if not isinstance(raw_star, dict):
+            # Also check if it was nested under star_method_analysis
+            raw_star_method = res.get("star_method_analysis")
+            if isinstance(raw_star_method, dict) and any(
+                k in raw_star_method for k in ("situation", "task", "action", "result")
+            ):
+                raw_star = raw_star_method
+            else:
+                return None
+
+        situation = self._normalize_star_part(raw_star.get("situation"))
+        task = self._normalize_star_part(raw_star.get("task"))
+        action = self._normalize_star_part(raw_star.get("action"))
+        result = self._normalize_star_part(raw_star.get("result"))
+
+        tip = str(
+            raw_star.get("tip")
+            or raw_star.get("improvement_tip")
+            or raw_star.get("feedback")
+            or ""
+        ).strip()
+
+        if not tip:
+            missing_parts = [
+                name for name, status in [
+                    ("Situation", situation),
+                    ("Task", task),
+                    ("Action", action),
+                    ("Result", result),
+                ] if status in ("missing", "weak")
+            ]
+            if missing_parts:
+                tip = f"Strengthen your answer by detailing the {', '.join(missing_parts)} component{'s' if len(missing_parts) > 1 else ''}."
+            else:
+                tip = "Excellent narrative structure covering all Situation, Task, Action, and Result components."
+
+        return {
+            "situation": situation,
+            "task": task,
+            "action": action,
+            "result": result,
+            "tip": tip
+        }
+
+    def evaluate_answer(
+        self, question_type: str, question: str, answer: str, is_behavioral: Any = None
+    ) -> Dict[str, Any]:
         """
         Performs a dynamic API evaluation call to score a single answer response,
         including verbal communication indicators (clarity, filler words, STAR approach).
+        For behavioral questions, evaluates STAR method parts (Situation, Task, Action, Result)
+        and returns which are present, missing or weak, plus one improvement tip (#303).
         """
-        logger.info(f"InterviewAgent: Dynamic response evaluation started for type: '{question_type}'")
+        if is_behavioral is None:
+            is_behavioral = self.is_behavioral_question(question, question_type)
+
+        logger.info(f"InterviewAgent: Dynamic response evaluation started for type: '{question_type}' (is_behavioral={is_behavioral})")
 
         if not answer or not answer.strip():
+            star_analysis = None
+            if is_behavioral:
+                star_analysis = {
+                    "situation": "missing",
+                    "task": "missing",
+                    "action": "missing",
+                    "result": "missing",
+                    "tip": "Provide a descriptive answer detailing the Situation, Task, Action, and Result."
+                }
             return {
                 "confidence_score": 0,
                 "communication_score": 0,
@@ -119,6 +231,7 @@ class InterviewAgent:
                     "used_star": False,
                     "feedback": "No answer provided to analyze structure."
                 },
+                "star_analysis": star_analysis,
                 "suggestions": [
                     "Answer field was submitted empty.",
                     "Please formulate a response of at least 2-3 sentences."
@@ -155,11 +268,22 @@ class InterviewAgent:
             if not isinstance(filler_count, int):
                 filler_count = len(filler_list)
 
+            star_analysis = self._parse_star_block(res, is_behavioral)
+
             star_data = res.get("star_method_analysis")
             if not isinstance(star_data, dict):
+                used_star_flag = bool(
+                    star_analysis
+                    and star_analysis["situation"] == "present"
+                    and star_analysis["action"] == "present"
+                )
                 star_data = {
-                    "used_star": False,
-                    "feedback": "Consider structuring experiences using Situation, Task, Action, and Result."
+                    "used_star": used_star_flag,
+                    "feedback": (
+                        star_analysis["tip"]
+                        if star_analysis
+                        else "Consider structuring experiences using Situation, Task, Action, and Result."
+                    )
                 }
             else:
                 star_data = {
@@ -175,12 +299,22 @@ class InterviewAgent:
                 "filler_words_detected": filler_list,
                 "filler_word_count": filler_count,
                 "star_method_analysis": star_data,
+                "star_analysis": star_analysis,
                 "suggestions": self._sanitize_list(res.get("suggestions")) or ["Incorporate clear structured responses (STAR method)."],
                 "feedback": str(res.get("feedback", "Feedback generation completed."))
             }
 
         except Exception as e:
             logger.error(f"InterviewAgent: Evaluation execution failed: {str(e)}")
+            star_analysis = None
+            if is_behavioral:
+                star_analysis = {
+                    "situation": "weak",
+                    "task": "weak",
+                    "action": "weak",
+                    "result": "weak",
+                    "tip": "Structure your response with clear Situation, Task, Action, and Result stages."
+                }
             return {
                 "confidence_score": 50,
                 "communication_score": 50,
@@ -192,6 +326,7 @@ class InterviewAgent:
                     "used_star": False,
                     "feedback": "Evaluation system was unable to evaluate STAR structure."
                 },
+                "star_analysis": star_analysis,
                 "suggestions": [
                     "Use quantitative metrics where possible.",
                     "Break down explanations into clear steps."
