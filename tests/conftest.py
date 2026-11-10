@@ -13,6 +13,28 @@ import pytest
 from google.genai.errors import APIError
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter_fixture():
+    """Reset rate limiter state before each test to prevent 429 rate limit leakage across tests."""
+    from utils.rate_limiter import limiter
+    limiter.reset()
+    yield
+    limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def configure_test_csrf_fixture():
+    """Ensure existing unit tests run without CSRF enforcement by default unless explicitly enabled."""
+    from app import app
+    original = app.config.get("WTF_CSRF_ENABLED", True)
+    if "WTF_CSRF_ENABLED" not in os.environ:
+        app.config["WTF_CSRF_ENABLED"] = False
+    yield
+    app.config["WTF_CSRF_ENABLED"] = original
+
+
+
+
 
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""

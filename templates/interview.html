@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Interactive AI Mock Interview - AI Campus Placement Agent</title>
   <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -400,6 +401,7 @@
           <!-- Answer Input Form -->
           {% if not interview.completed %}
             <form id="chatForm" data-question-index="{{ interview.current_question_index }}" data-analysis-id="{{ analysis_id }}" data-total-questions="{{ interview.questions|length }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <div class="input-group">
                 <textarea id="answerInput" class="form-control rounded-start-3" rows="3" placeholder="Type or speak your answer here... Be descriptive and structured (STAR method)." aria-label="Type your interview answer"></textarea>
                 <button class="btn btn-outline-secondary px-3 d-flex align-items-center gap-1" type="button" id="btnToggleVideoCoach" title="Enable AI Video & Non-Verbal Composure Coach" aria-label="Video coach toggle">
