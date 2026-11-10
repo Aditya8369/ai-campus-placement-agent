@@ -253,6 +253,9 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 
+# CSRF Protection & Token Security (#300)
+from utils.csrf import csrf, CSRFError, generate_csrf
+
 # Configure structured application logging
 logging.basicConfig(
     level=logging.INFO,
@@ -264,9 +267,19 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = os.getenv("FLASK_ENV") == "production"
+
+# Session Cookie Hardening & Environment Configuration (#300)
+app.config["SESSION_COOKIE_HTTPONLY"] = getattr(config, "SESSION_COOKIE_HTTPONLY", True)
+app.config["SESSION_COOKIE_SAMESITE"] = getattr(config, "SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = getattr(config, "SESSION_COOKIE_SECURE", False)
+app.config["WTF_CSRF_ENABLED"] = getattr(config, "WTF_CSRF_ENABLED", True)
+app.config["WTF_CSRF_CHECK_DEFAULT"] = getattr(config, "WTF_CSRF_CHECK_DEFAULT", True)
+app.config["WTF_CSRF_TIME_LIMIT"] = getattr(config, "WTF_CSRF_TIME_LIMIT", 3600)
+app.config["WTF_CSRF_HEADERS"] = ["X-CSRFToken", "X-CSRF-Token"]
+
+# Initialize CSRF protection extension (#300)
+csrf.init_app(app)
+
 app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
@@ -469,6 +482,32 @@ def inject_correlation_headers(response):
     if req_id:
         response.headers["X-Request-ID"] = req_id
     return response
+
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """
+    Renders a clear user-friendly error page or JSON response when CSRF token
+    validation fails (#300).
+    """
+    reason = getattr(error, "description", "CSRF token missing or invalid.")
+    logger.warning(f"CSRF protection validation failed for {request.method} {request.path}: {reason}")
+
+    is_json = (
+        request.is_json
+        or request.path.startswith("/api/")
+        or request.headers.get("Accept") == "application/json"
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed",
+            "message": "Your security token was missing or has expired. Please refresh the page and try again.",
+            "details": str(reason),
+        }), 400
+
+    return render_template("csrf_error.html", error_message=reason), 400
 
 
 @app.errorhandler(413)

@@ -14,6 +14,63 @@ try {
   // Graceful fallback
 }
 
+// CSRF Protection Token Helper & Interceptor (#300)
+function getCsrfToken() {
+  const meta = document.querySelector('meta[name="csrf-token"]');
+  if (meta && meta.getAttribute("content")) {
+    return meta.getAttribute("content");
+  }
+  const input = document.querySelector('input[name="csrf_token"]');
+  if (input && input.value) {
+    return input.value;
+  }
+  return "";
+}
+
+// Global fetch wrapper to ensure all mutating requests (POST, PUT, DELETE, PATCH)
+// automatically include the X-CSRFToken and X-CSRF-Token headers
+(function () {
+  if (typeof window !== "undefined" && typeof window.fetch === "function") {
+    const originalFetch = window.fetch;
+    window.fetch = function (resource, init) {
+      init = init || {};
+      const method = (init.method || "GET").toUpperCase();
+      if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+        const token = getCsrfToken();
+        if (token) {
+          if (!init.headers) {
+            init.headers = {};
+          }
+          if (init.headers instanceof Headers) {
+            if (!init.headers.has("X-CSRFToken")) {
+              init.headers.append("X-CSRFToken", token);
+            }
+            if (!init.headers.has("X-CSRF-Token")) {
+              init.headers.append("X-CSRF-Token", token);
+            }
+          } else if (Array.isArray(init.headers)) {
+            const hasCsrf = init.headers.some(
+              ([k]) => k.toLowerCase() === "x-csrftoken" || k.toLowerCase() === "x-csrf-token"
+            );
+            if (!hasCsrf) {
+              init.headers.push(["X-CSRFToken", token]);
+              init.headers.push(["X-CSRF-Token", token]);
+            }
+          } else {
+            if (!init.headers["X-CSRFToken"] && !init.headers["x-csrftoken"]) {
+              init.headers["X-CSRFToken"] = token;
+            }
+            if (!init.headers["X-CSRF-Token"] && !init.headers["x-csrf-token"]) {
+              init.headers["X-CSRF-Token"] = token;
+            }
+          }
+        }
+      }
+      return originalFetch.call(this, resource, init);
+    };
+  }
+})();
+
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
   if (typeof str !== "string") str = String(str);
