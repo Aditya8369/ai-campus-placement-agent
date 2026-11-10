@@ -11603,6 +11603,88 @@ def api_delete_preparation_note_form(note_id: str):
     return redirect(url_for("preparation_notes_view"))
 
 
+# ---------------------------------------------------------------------------
+# Calendar Timezone Handling Endpoints (#261)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/calendar/timezone", methods=["GET"])
+def api_get_calendar_timezone():
+    """Retrieve the configured timezone metadata for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.calendar_timezone_service import get_student_timezone_info
+        info = get_student_timezone_info(user_id)
+        return jsonify({
+            "success": True,
+            "timezone": info
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching timezone settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/calendar/timezone", methods=["PUT"])
+def api_set_calendar_timezone():
+    """Update timezone configuration for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    tz_id = payload.get("timezone_id")
+    auto_detect = bool(payload.get("auto_detect", False))
+
+    if not tz_id or not isinstance(tz_id, str):
+        return jsonify({"success": False, "error": "timezone_id must be a non-empty string"}), 400
+
+    from utils.calendar_timezone_service import is_valid_timezone, set_student_timezone
+    if not is_valid_timezone(tz_id):
+        return jsonify({
+            "success": False,
+            "error": f"Invalid IANA timezone identifier: {tz_id}"
+        }), 400
+
+    try:
+        updated_info = set_student_timezone(user_id, tz_id, auto_detect=auto_detect)
+        return jsonify({
+            "success": True,
+            "message": f"Timezone successfully updated to {tz_id}",
+            "timezone": updated_info
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating timezone settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/calendar/convert-time", methods=["POST"])
+def api_convert_calendar_time():
+    """Utility endpoint to convert local wall-clock event time to UTC or vice versa."""
+    payload = request.get_json(silent=True) or {}
+    direction = payload.get("direction", "local_to_utc")
+    
+    from utils.calendar_timezone_service import convert_local_to_utc, convert_utc_to_local
+    try:
+        if direction == "local_to_utc":
+            date_str = payload.get("date", "")
+            time_str = payload.get("time", "00:00")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_local_to_utc(date_str, time_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        elif direction == "utc_to_local":
+            utc_str = payload.get("utc_timestamp", "")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_utc_to_local(utc_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        else:
+            return jsonify({"success": False, "error": "direction must be 'local_to_utc' or 'utc_to_local'"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
