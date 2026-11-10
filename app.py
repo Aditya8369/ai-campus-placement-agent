@@ -124,7 +124,7 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.batch_analyzer import run_batch_company_comparison
+from utils.answer_quality_checklist import audit_interview_answer_quality
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -11601,6 +11601,40 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+# ============================================================================
+# AI-GENERATED ANSWER QUALITY CHECKLIST ENDPOINTS (#257)
+# ============================================================================
+
+@app.route("/api/interview/answer-quality-audit", methods=["POST"])
+def api_audit_interview_answer_quality():
+    """
+    Audits a candidate's interview answer across the 6-point structured Quality Rubric:
+    direct question address, concrete examples, supported claims, technical explanation,
+    structural flow, and actionable next steps.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+    question_type = payload.get("question_type", "technical")
+
+    if not question:
+        return jsonify({"status": "error", "message": "Question prompt is required."}), 400
+
+    try:
+        audit_result = audit_interview_answer_quality(
+            question=question,
+            answer=answer,
+            question_type=question_type
+        )
+        return jsonify({
+            "status": "success",
+            "audit": audit_result
+        }), 200
+    except Exception as e:
+        logger.error(f"Error auditing answer quality: {e}")
+        return jsonify({"status": "error", "message": "Failed to analyze answer quality checklist."}), 500
 
 
 if __name__ == "__main__":
