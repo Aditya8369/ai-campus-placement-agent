@@ -310,6 +310,16 @@ def init_db() -> None:
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
 
+        # Schema migration for users table (#206)
+        cursor.execute("PRAGMA table_info(users)")
+        user_cols = [col[1] for col in cursor.fetchall()]
+        if "is_verified" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_verified INTEGER DEFAULT 0")
+        if "verification_token" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
+        if "token_created_at" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
