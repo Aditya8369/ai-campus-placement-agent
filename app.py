@@ -124,7 +124,11 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.batch_analyzer import run_batch_company_comparison
+from utils.application_timeline_service import (
+    log_application_activity,
+    get_application_timeline,
+    transition_application_status_with_timeline
+)
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -11601,6 +11605,94 @@ def api_delete_preparation_note_form(note_id: str):
     else:
         flash("Note could not be deleted or access was denied.", "danger")
     return redirect(url_for("preparation_notes_view"))
+
+
+# ============================================================================
+# JOB APPLICATION ACTIVITY TIMELINE ENDPOINTS (#259)
+# ============================================================================
+
+@app.route("/api/job-applications/<app_id>/timeline", methods=["GET"])
+def api_get_job_application_timeline(app_id: str):
+    """Retrieves the chronological audit history and milestones for a specific job application."""
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        timeline_data = get_application_timeline(application_id=app_id, student_id=student_id)
+        return jsonify({
+            "status": "success",
+            "data": timeline_data
+        }), 200
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error fetching application timeline: {e}")
+        return jsonify({"status": "error", "message": "Failed to retrieve application timeline."}), 500
+
+
+@app.route("/api/job-applications/<app_id>/transition", methods=["POST"])
+def api_transition_application_status(app_id: str):
+    """
+    Transitions the status of a job application (e.g. from Applied to Interviewing)
+    and records an activity timeline audit log.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    new_status = payload.get("status")
+    notes = payload.get("notes")
+
+    if not new_status:
+        return jsonify({"status": "error", "message": "New status is required."}), 400
+
+    try:
+        transition_res = transition_application_status_with_timeline(
+            application_id=app_id,
+            student_id=student_id,
+            new_status=new_status,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": f"Application transitioned to '{new_status}'.",
+            "transition": transition_res
+        }), 200
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error transitioning job application status: {e}")
+        return jsonify({"status": "error", "message": "Failed to transition application status."}), 500
+
+
+@app.route("/api/job-applications/<app_id>/activity", methods=["POST"])
+def api_log_custom_application_activity(app_id: str):
+    """Logs an optional milestone or custom progress note to an application's timeline."""
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    event_type = payload.get("event_type", "note_added")
+    status = payload.get("status", "Current")
+    notes = payload.get("notes", "")
+
+    if not notes:
+        return jsonify({"status": "error", "message": "Notes / activity description is required."}), 400
+
+    try:
+        activity = log_application_activity(
+            application_id=app_id,
+            student_id=student_id,
+            new_status=status,
+            event_type=event_type,
+            notes=notes
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Activity recorded successfully.",
+            "activity": activity
+        }), 201
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error logging application activity: {e}")
+        return jsonify({"status": "error", "message": "Failed to log application activity."}), 500
 
 
 if __name__ == "__main__":
