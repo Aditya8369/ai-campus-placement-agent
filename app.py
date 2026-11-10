@@ -518,13 +518,28 @@ def rate_limit_exceeded(error):
 @app.errorhandler(500)
 def internal_server_error(error):
     """
-    Handles HTTP 500 errors safely, ensuring internal secrets, API keys,
-    and stack traces are never exposed to clients or user views.
+    Handles HTTP 500 errors safely (#263), generating a unique human-shareable
+    Error Reference ID (ERR-YYYYMMDD-XXXXXX) for support correlation while ensuring
+    internal secrets, API keys, and stack traces are never exposed to clients or user views.
     """
     from utils.prompt_security import redact_sensitive_information
-    raw_desc = getattr(error, "description", None) or "An unexpected server error occurred."
-    safe_desc = redact_sensitive_information(str(raw_desc))
-    logger.error(f"Internal Server Error (500): {safe_desc}")
+    from utils.error_reference_service import record_application_error
+    from flask import g
+
+    req_id = getattr(g, "request_id", None)
+    user_id = flask_session.get("user_id")
+
+    # Record error and obtain reference details
+    err_info = record_application_error(
+        error=error if isinstance(error, Exception) else Exception(str(error)),
+        endpoint=request.path,
+        http_method=request.method,
+        status_code=500,
+        user_id=user_id,
+        request_id=req_id,
+    )
+
+    ref_id = err_info["reference_id"]
 
     is_json = (
         request.is_json
@@ -536,10 +551,12 @@ def internal_server_error(error):
         return jsonify({
             "success": False,
             "error": "Internal Server Error",
-            "message": "An internal error occurred. Please try again later."
+            "message": "An internal error occurred. Please quote the reference ID when contacting support.",
+            "reference_id": ref_id,
+            "request_id": req_id,
         }), 500
 
-    flash("An unexpected error occurred while processing your request. Please try again.", "error")
+    flash(f"An unexpected error occurred. Reference ID: {ref_id}. Please contact support if the issue persists.", "error")
     return redirect(url_for("index"))
 
 
