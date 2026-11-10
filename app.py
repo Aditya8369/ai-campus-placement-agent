@@ -11603,6 +11603,99 @@ def api_delete_preparation_note_form(note_id: str):
     return redirect(url_for("preparation_notes_view"))
 
 
+# ---------------------------------------------------------------------------
+# AI Analysis Feedback and Correction Reporting Endpoints (#262)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/analyses/feedback/categories", methods=["GET"])
+def api_get_feedback_categories():
+    """Retrieve list of valid AI analysis feedback and inaccuracy categories."""
+    from utils.analysis_feedback_service import FEEDBACK_CATEGORIES
+    return jsonify({
+        "success": True,
+        "categories": [
+            {"id": k, "title": v["title"], "description": v["description"]}
+            for k, v in FEEDBACK_CATEGORIES.items()
+        ]
+    }), 200
+
+
+@app.route("/api/analyses/<analysis_id>/feedback", methods=["POST"])
+def api_submit_analysis_feedback(analysis_id: str):
+    """Submit a correction or feedback report for an AI analysis."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    category = payload.get("category")
+    claim_detail = payload.get("claim_detail")
+    field_affected = payload.get("field_affected", "general")
+    proposed_correction = payload.get("proposed_correction")
+
+    try:
+        from utils.analysis_feedback_service import submit_analysis_feedback
+        report = submit_analysis_feedback(
+            analysis_id=analysis_id,
+            student_id=str(user_id),
+            category=category,
+            claim_detail=claim_detail,
+            field_affected=field_affected,
+            proposed_correction=proposed_correction,
+        )
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully for review",
+            "report": report
+        }), 201
+    except PermissionError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except KeyError as ke:
+        return jsonify({"success": False, "error": str(ke)}), 404
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error submitting analysis feedback: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/analyses/<analysis_id>/feedback", methods=["GET"])
+def api_get_analysis_feedback(analysis_id: str):
+    """Retrieve all feedback reports for a given analysis."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.analysis_feedback_service import get_analysis_feedback_reports
+        reports = get_analysis_feedback_reports(analysis_id, student_id=str(user_id))
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "reports": reports
+        }), 200
+    except Exception as e:
+        logger.error(f"Error retrieving analysis feedback: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/feedback-summary", methods=["GET"])
+def api_get_feedback_summary():
+    """Retrieve aggregated feedback and inaccuracy statistics across all analyses."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.analysis_feedback_service import get_feedback_summary_statistics
+        stats = get_feedback_summary_statistics()
+        return jsonify({"success": True, "statistics": stats}), 200
+    except Exception as e:
+        logger.error(f"Error fetching feedback summary stats: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
