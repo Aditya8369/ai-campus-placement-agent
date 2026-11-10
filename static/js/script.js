@@ -993,6 +993,12 @@ function initFormUpload() {
         reviewStepSwitch.checked = false;
       }
 
+      // Reset privacy consent checkbox if present
+      const privacyConsentCheck = document.getElementById("privacyConsentCheck");
+      if (privacyConsentCheck) {
+        privacyConsentCheck.checked = false;
+      }
+
       // Switch back to the primary Upload PDF / DOCX tab
       const pdfTab = document.getElementById("pdf-tab");
       if (pdfTab) {
@@ -1035,6 +1041,14 @@ function initFormUpload() {
         alert("Please upload a PDF or DOCX resume, or paste your resume text first to review extracted info.");
         return;
       }
+
+      const consentCheck = document.getElementById("privacyConsentCheck");
+      if (consentCheck && !consentCheck.checked) {
+        alert("Please agree to the privacy notice and consent to data processing before analyzing your resume.");
+        consentCheck.focus();
+        return;
+      }
+
       const reviewSwitch = document.getElementById("reviewStepSwitch");
       if (reviewSwitch) reviewSwitch.checked = true;
       uploadForm.action = "/resume/review";
@@ -1052,6 +1066,14 @@ function initFormUpload() {
 
     if (!hasFile && !hasText) {
       alert("Please upload a PDF or DOCX resume, or paste your resume text first.");
+      return;
+    }
+
+    // Verify required privacy & AI processing consent (#304)
+    const consentCheck = document.getElementById("privacyConsentCheck");
+    if (consentCheck && !consentCheck.checked) {
+      alert("Please agree to the privacy notice and consent to data processing before analyzing your resume.");
+      consentCheck.focus();
       return;
     }
 
