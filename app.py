@@ -124,10 +124,7 @@ from utils.database import (
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
 )
-from utils.student_data_exporter import (
-    build_student_data_export_manifest,
-    generate_student_data_zip_package
-)
+from utils.answer_quality_checklist import audit_interview_answer_quality
 from utils.experience_search_service import (
     search_and_filter_interview_experiences,
     get_interview_filter_facets
@@ -11624,47 +11621,37 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ============================================================================
-# STUDENT PERSONAL DATA DOWNLOAD PACKAGE ENDPOINTS (#258)
+# AI-GENERATED ANSWER QUALITY CHECKLIST ENDPOINTS (#257)
 # ============================================================================
 
-@app.route("/api/student/data-export/manifest", methods=["GET"])
-def api_student_data_export_manifest():
+@app.route("/api/interview/answer-quality-audit", methods=["POST"])
+def api_audit_interview_answer_quality():
     """
-    Returns a summary manifest of all placement records, applications, notes,
-    and analyses owned by the authenticated student.
+    Audits a candidate's interview answer across the 6-point structured Quality Rubric:
+    direct question address, concrete examples, supported claims, technical explanation,
+    structural flow, and actionable next steps.
     """
-    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+    question_type = payload.get("question_type", "technical")
+
+    if not question:
+        return jsonify({"status": "error", "message": "Question prompt is required."}), 400
+
     try:
-        manifest = build_student_data_export_manifest(student_id)
+        audit_result = audit_interview_answer_quality(
+            question=question,
+            answer=answer,
+            question_type=question_type
+        )
         return jsonify({
             "status": "success",
-            "manifest": manifest
+            "audit": audit_result
         }), 200
     except Exception as e:
-        logger.error(f"Error compiling student data manifest: {e}")
-        return jsonify({"status": "error", "message": "Failed to compile personal data manifest."}), 500
-
-
-@app.route("/api/student/data-export/download", methods=["GET"])
-def api_student_data_export_download():
-    """
-    Generates and streams a downloadable ZIP package containing all personal
-    placement preparation data, strictly sanitized of passwords and credentials.
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-    import datetime as dt
-    try:
-        zip_buffer = generate_student_data_zip_package(student_id)
-        filename = f"placement_data_export_{student_id}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-        return send_file(
-            zip_buffer,
-            mimetype="application/zip",
-            as_attachment=True,
-            download_name=filename
-        )
-    except Exception as e:
-        logger.error(f"Error building student data export zip: {e}")
-        return jsonify({"status": "error", "message": "Failed to generate personal data download package."}), 500
+        logger.error(f"Error auditing answer quality: {e}")
+        return jsonify({"status": "error", "message": "Failed to analyze answer quality checklist."}), 500
 
 
 if __name__ == "__main__":
