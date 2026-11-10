@@ -247,15 +247,21 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 
-# Configure structured application logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+# Configure structured application logging (#301)
+from utils.logger_config import (
+    configure_logging,
+    get_current_request_id,
+    set_current_request_id,
+    register_sensitive_text,
+    clear_sensitive_texts,
 )
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 # Initialize Flask application
 app = Flask(__name__)
+configure_logging(app=app)
 app.secret_key = config.FLASK_SECRET_KEY
 app.config["MAX_CONTENT_LENGTH"] = config.MAX_CONTENT_LENGTH
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -447,12 +453,13 @@ def _is_student_authorized(record_or_student_id) -> bool:
 
 @app.before_request
 def assign_request_id():
-    """Assign or extract an X-Request-ID for distributed tracing and structured correlation."""
+    """Assign or extract an X-Request-ID for distributed tracing and structured correlation (#301)."""
     from flask import g
     req_id = request.headers.get("X-Request-ID")
     if not req_id:
         req_id = str(uuid.uuid4())
     g.request_id = req_id
+    set_current_request_id(req_id)
 
 
 @app.after_request
@@ -1283,11 +1290,17 @@ def _extract_and_validate_resume(req):
     uploaded_file = req.files.get("resume")
     file_uuid = str(uuid.uuid4())
 
+    jd_text = req.form.get("job_description", "").strip()
+    if jd_text:
+        register_sensitive_text(jd_text)
+
     if pasted_text:
         is_valid, validation_msg = validate_resume_text(pasted_text)
         if not is_valid:
             return None, None, None, validation_msg
-        return pasted_text[:MAX_RESUME_TEXT_CHARS], "Pasted_Resume.txt", file_uuid, None
+        clean_text = pasted_text[:MAX_RESUME_TEXT_CHARS]
+        register_sensitive_text(clean_text)
+        return clean_text, "Pasted_Resume.txt", file_uuid, None
     elif uploaded_file and uploaded_file.filename != "":
         filename_lower = uploaded_file.filename.lower()
         ext = os.path.splitext(uploaded_file.filename)[1].lower()
@@ -1348,6 +1361,7 @@ def _extract_and_validate_resume(req):
         logger.info(f"Uploaded resume saved locally at: {saved_file_path}")
         try:
             extracted_resume_text = extract_text_from_file(saved_file_path)
+            register_sensitive_text(extracted_resume_text)
             return extracted_resume_text, resume_filename, file_uuid, None
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")

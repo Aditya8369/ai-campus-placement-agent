@@ -51,6 +51,10 @@ MAX_RESUME_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 MAX_FILE_SIZE_BYTES = MAX_RESUME_FILE_SIZE_BYTES
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(MAX_RESUME_FILE_SIZE_BYTES)))
 
+# Structured Logging & Request Tracing Configurations (#301)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FORMAT = os.getenv("LOG_FORMAT", "key_value").lower()
+
 # Rate Limiting & Abuse Prevention Configurations (Issue #160)
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")
 
