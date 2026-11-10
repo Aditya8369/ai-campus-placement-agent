@@ -11621,95 +11621,84 @@ def api_delete_preparation_note_form(note_id: str):
 
 
 # ---------------------------------------------------------------------------
-# AI Analysis Feedback and Correction Reporting Endpoints (#262)
+# Calendar Timezone Handling Endpoints (#261)
 # ---------------------------------------------------------------------------
 
-@app.route("/api/analyses/feedback/categories", methods=["GET"])
-def api_get_feedback_categories():
-    """Retrieve list of valid AI analysis feedback and inaccuracy categories."""
-    from utils.analysis_feedback_service import FEEDBACK_CATEGORIES
-    return jsonify({
-        "success": True,
-        "categories": [
-            {"id": k, "title": v["title"], "description": v["description"]}
-            for k, v in FEEDBACK_CATEGORIES.items()
-        ]
-    }), 200
+@app.route("/api/calendar/timezone", methods=["GET"])
+def api_get_calendar_timezone():
+    """Retrieve the configured timezone metadata for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.calendar_timezone_service import get_student_timezone_info
+        info = get_student_timezone_info(user_id)
+        return jsonify({
+            "success": True,
+            "timezone": info
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching timezone settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/analyses/<analysis_id>/feedback", methods=["POST"])
-def api_submit_analysis_feedback(analysis_id: str):
-    """Submit a correction or feedback report for an AI analysis."""
+@app.route("/api/calendar/timezone", methods=["PUT"])
+def api_set_calendar_timezone():
+    """Update timezone configuration for the logged-in student."""
     user_id = flask_session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "Authentication required"}), 401
 
     payload = request.get_json(silent=True) or {}
-    category = payload.get("category")
-    claim_detail = payload.get("claim_detail")
-    field_affected = payload.get("field_affected", "general")
-    proposed_correction = payload.get("proposed_correction")
+    tz_id = payload.get("timezone_id")
+    auto_detect = bool(payload.get("auto_detect", False))
+
+    if not tz_id or not isinstance(tz_id, str):
+        return jsonify({"success": False, "error": "timezone_id must be a non-empty string"}), 400
+
+    from utils.calendar_timezone_service import is_valid_timezone, set_student_timezone
+    if not is_valid_timezone(tz_id):
+        return jsonify({
+            "success": False,
+            "error": f"Invalid IANA timezone identifier: {tz_id}"
+        }), 400
 
     try:
-        from utils.analysis_feedback_service import submit_analysis_feedback
-        report = submit_analysis_feedback(
-            analysis_id=analysis_id,
-            student_id=str(user_id),
-            category=category,
-            claim_detail=claim_detail,
-            field_affected=field_affected,
-            proposed_correction=proposed_correction,
-        )
+        updated_info = set_student_timezone(user_id, tz_id, auto_detect=auto_detect)
         return jsonify({
             "success": True,
-            "message": "Feedback submitted successfully for review",
-            "report": report
-        }), 201
-    except PermissionError as pe:
-        return jsonify({"success": False, "error": str(pe)}), 403
-    except KeyError as ke:
-        return jsonify({"success": False, "error": str(ke)}), 404
-    except ValueError as ve:
-        return jsonify({"success": False, "error": str(ve)}), 400
-    except Exception as e:
-        logger.error(f"Error submitting analysis feedback: {e}")
-        return jsonify({"success": False, "error": "Internal server error"}), 500
-
-
-@app.route("/api/analyses/<analysis_id>/feedback", methods=["GET"])
-def api_get_analysis_feedback(analysis_id: str):
-    """Retrieve all feedback reports for a given analysis."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
-
-    try:
-        from utils.analysis_feedback_service import get_analysis_feedback_reports
-        reports = get_analysis_feedback_reports(analysis_id, student_id=str(user_id))
-        return jsonify({
-            "success": True,
-            "analysis_id": analysis_id,
-            "reports": reports
+            "message": f"Timezone successfully updated to {tz_id}",
+            "timezone": updated_info
         }), 200
     except Exception as e:
-        logger.error(f"Error retrieving analysis feedback: {e}")
+        logger.error(f"Error updating timezone settings: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-@app.route("/api/admin/feedback-summary", methods=["GET"])
-def api_get_feedback_summary():
-    """Retrieve aggregated feedback and inaccuracy statistics across all analyses."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
-
+@app.route("/api/calendar/convert-time", methods=["POST"])
+def api_convert_calendar_time():
+    """Utility endpoint to convert local wall-clock event time to UTC or vice versa."""
+    payload = request.get_json(silent=True) or {}
+    direction = payload.get("direction", "local_to_utc")
+    
+    from utils.calendar_timezone_service import convert_local_to_utc, convert_utc_to_local
     try:
-        from utils.analysis_feedback_service import get_feedback_summary_statistics
-        stats = get_feedback_summary_statistics()
-        return jsonify({"success": True, "statistics": stats}), 200
+        if direction == "local_to_utc":
+            date_str = payload.get("date", "")
+            time_str = payload.get("time", "00:00")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_local_to_utc(date_str, time_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        elif direction == "utc_to_local":
+            utc_str = payload.get("utc_timestamp", "")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_utc_to_local(utc_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        else:
+            return jsonify({"success": False, "error": "direction must be 'local_to_utc' or 'utc_to_local'"}), 400
     except Exception as e:
-        logger.error(f"Error fetching feedback summary stats: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 
