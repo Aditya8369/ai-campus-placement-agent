@@ -51,22 +51,9 @@ MAX_RESUME_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 MAX_FILE_SIZE_BYTES = MAX_RESUME_FILE_SIZE_BYTES
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(MAX_RESUME_FILE_SIZE_BYTES)))
 
-# CSRF Protection Configurations (#300)
-WTF_CSRF_ENABLED = os.getenv("WTF_CSRF_ENABLED", "true").lower() in ("true", "1", "yes")
-WTF_CSRF_CHECK_DEFAULT = True
-WTF_CSRF_TIME_LIMIT = int(os.getenv("WTF_CSRF_TIME_LIMIT", "3600"))
-
-# Session Cookie Hardening & Environment Configuration (#300)
-SESSION_COOKIE_HTTPONLY = True
-SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
-FLASK_ENV = os.getenv("FLASK_ENV", "development").lower()
-ENV = os.getenv("ENV", os.getenv("ENVIRONMENT", "development")).lower()
-IS_PRODUCTION = (
-    FLASK_ENV == "production"
-    or ENV == "production"
-    or os.getenv("SESSION_COOKIE_SECURE", "false").lower() in ("true", "1", "yes")
-)
-SESSION_COOKIE_SECURE = IS_PRODUCTION
+# Structured Logging & Request Tracing Configurations (#301)
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_FORMAT = os.getenv("LOG_FORMAT", "key_value").lower()
 
 # Rate Limiting & Abuse Prevention Configurations (Issue #160)
 RATE_LIMIT_ENABLED = os.getenv("RATE_LIMIT_ENABLED", "true").lower() in ("true", "1", "yes")

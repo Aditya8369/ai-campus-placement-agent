@@ -95,9 +95,10 @@ def run_full_retention_policy(max_file_age_hours: int = 24, max_db_age_days: int
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-    print("Executing automated upload and report file cleanup...")
+    from utils.logger_config import configure_logging
+    configure_logging()
+    logger.info("Executing automated upload and report file cleanup...")
     results = cleanup_expired_files(max_age_hours=24)
-    print(
+    logger.info(
         f"Cleanup finished: {results['files_removed']} files removed, {results['bytes_reclaimed']} bytes reclaimed."
     )
