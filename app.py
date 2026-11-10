@@ -11603,6 +11603,91 @@ def api_delete_preparation_note_form(note_id: str):
     return redirect(url_for("preparation_notes_view"))
 
 
+# ---------------------------------------------------------------------------
+# Student Notification Preferences Management Endpoints (#260)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/notifications/preferences", methods=["GET"])
+def api_get_notification_preferences():
+    """Retrieve full notification preference configuration for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.notification_preferences_manager import get_student_preferences
+        data = get_student_preferences(user_id)
+        return jsonify({
+            "success": True,
+            **data
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching notification preferences: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/notifications/preferences", methods=["PUT"])
+def api_update_notification_preferences():
+    """Update notification preferences for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    preferences_list = payload.get("preferences")
+    if not isinstance(preferences_list, list):
+        return jsonify({"success": False, "error": "Payload must contain 'preferences' list"}), 400
+
+    try:
+        from utils.notification_preferences_manager import update_student_preferences
+        updated = update_student_preferences(user_id, preferences_list)
+        return jsonify({
+            "success": True,
+            "message": "Notification preferences updated successfully",
+            **updated
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating notification preferences: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/notifications/preferences/master-toggle", methods=["POST"])
+def api_toggle_master_notifications():
+    """Turn all notifications on or off simultaneously for the student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    enabled = bool(payload.get("enabled", True))
+
+    try:
+        from utils.notification_preferences_manager import set_master_notification_toggle
+        res = set_master_notification_toggle(user_id, enabled)
+        return jsonify({
+            "success": True,
+            "message": f"All notifications {'enabled' if enabled else 'disabled'}",
+            **res
+        }), 200
+    except Exception as e:
+        logger.error(f"Error toggling master notifications: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/notification-preferences", methods=["GET"])
+def notification_preferences_view():
+    """Render notification preferences management page (#260)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        flash("Please log in to manage your notification preferences.", "warning")
+        return redirect(url_for("login"))
+
+    from utils.notification_preferences_manager import get_student_preferences
+    prefs = get_student_preferences(user_id)
+    return render_template("notification_preferences.html", preferences_data=prefs)
+
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)

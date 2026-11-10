@@ -243,7 +243,7 @@ class CoordinatorAgent:
             "overall_recommendation_summary": overall_summary_block,
             "conflicts": conflicts,
             "section_status": section_status,
-            "skill_evidence_mapping": evidence_mapping
+            "skill_evidence_mapping": evidence_mapping,
             "security_audit": {
                 "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
                 "resume_threat": resume_threat,
