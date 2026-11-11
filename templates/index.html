@@ -56,6 +56,10 @@
   <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">{{ _t('nav_register', 'Register') }}</a>
 {% endif %}
 
+<button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap btn-open-walkthrough" id="btnOpenWalkthrough" data-bs-toggle="modal" data-bs-target="#userWalkthroughModal" title="First-time user walkthrough & feature tour">
+  <i class="fa-solid fa-compass me-1"></i> Tour
+</button>
+
 <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Compare Versions</a>
 <a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">GitHub Audit</a>
 <a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Find Internships</a>
@@ -135,8 +139,79 @@
     </div>
   </nav>
 
-  <!-- Hero Section -->
+  <!-- Main Content -->
   <main id="main-content" tabindex="-1">
+
+  <!-- First-Time User Walkthrough Banner (#350) -->
+  <div class="container pt-3" id="userWalkthroughBannerContainer">
+    <div class="card glass-card border-primary border-opacity-25 shadow-sm p-4 mb-3 rounded-4 {{ 'd-none' if walkthrough_dismissed else '' }}" id="userWalkthroughBanner" role="region" aria-label="First-time user walkthrough">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-primary text-white rounded-pill px-3 py-1 fw-semibold">
+            <i class="fa-solid fa-compass me-1"></i> Quick Walkthrough
+          </span>
+          <h5 class="fw-bold mb-0 text-dark">Welcome to AI Campus Placement Agent</h5>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 btn-open-walkthrough" data-bs-toggle="modal" data-bs-target="#userWalkthroughModal" id="btnLaunchWalkthroughModal">
+            <i class="fa-solid fa-play me-1"></i> Interactive Tour
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnDismissWalkthroughBanner" aria-label="Dismiss walkthrough banner">
+            <i class="fa-solid fa-xmark me-1"></i> Skip
+          </button>
+        </div>
+      </div>
+      <p class="text-secondary small mb-3">
+        New here? Explore the 4 core areas of the platform designed to guide your preparation from resume screening to final job offer.
+      </p>
+
+      <!-- 4 Core Areas Grid -->
+      <div class="row g-3">
+        {% for step in walkthrough_steps %}
+        <div class="col-md-6 col-lg-3">
+          <div class="p-3 bg-white rounded-4 border h-100 shadow-xs d-flex flex-column justify-content-between walkthrough-card">
+            <div>
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="badge bg-{{ step.color }}-subtle text-{{ step.color }} border border-{{ step.color }}-subtle rounded-pill px-2 py-1 small fw-semibold">
+                  Step {{ step.step_number }}
+                </span>
+                <i class="fa-solid {{ step.icon }} text-{{ step.color }} fs-4"></i>
+              </div>
+              <h6 class="fw-bold text-dark mb-1">{{ step.title }}</h6>
+              <p class="text-muted small mb-3">{{ step.short_desc }}</p>
+            </div>
+            <div>
+              {% if step.target_element %}
+              <button type="button" class="btn btn-sm btn-outline-{{ step.color }} rounded-pill w-100 btn-walkthrough-nav" data-target="{{ step.target_element }}">
+                {{ step.action_text }} <i class="fa-solid fa-arrow-down ms-1"></i>
+              </button>
+              {% else %}
+              <a href="{{ step.action_url }}" class="btn btn-sm btn-outline-{{ step.color }} rounded-pill w-100">
+                {{ step.action_text }} <i class="fa-solid fa-arrow-right ms-1"></i>
+              </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Recommended Next Step Callout -->
+      <div class="p-3 bg-light rounded-3 border d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fa-solid fa-lightbulb text-warning fs-5"></i>
+          <span class="small text-secondary">
+            <strong class="text-dark">Recommended Next Step:</strong> Upload your PDF or DOCX resume below in the Workspace to evaluate your placement readiness score.
+          </span>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary rounded-pill px-3 text-nowrap btn-walkthrough-nav" data-target="analysisForm" id="btnWalkthroughNextStep">
+          Start with Resume <i class="fa-solid fa-arrow-down ms-1"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero Section -->
   <section class="hero-section">
     <div class="container">
       <div class="row align-items-center">
@@ -557,6 +632,119 @@
         </div>
         <div class="modal-body p-4" id="companyModalBody">
           <div class="text-center py-4"><span class="spinner-border text-primary" role="status"></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interactive First-Time User Walkthrough Modal (#350) -->
+  <div class="modal fade" id="userWalkthroughModal" tabindex="-1" aria-labelledby="userWalkthroughModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-0 pb-0">
+          <div class="d-flex align-items-center gap-2">
+            <span class="p-2 bg-primary-subtle text-primary rounded-circle"><i class="fa-solid fa-compass"></i></span>
+            <h5 class="modal-title fw-bold text-dark" id="userWalkthroughModalLabel">Getting Started Walkthrough</h5>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="text-secondary small mb-3">
+            An overview of the 4 key areas to guide your placement journey. You can skip, jump to any step, or return here anytime via the <strong>Tour</strong> button in the navigation.
+          </p>
+
+          <!-- Step Indicators Bar -->
+          <div class="d-flex justify-content-between align-items-center gap-1 mb-4 p-2 bg-light rounded-pill border">
+            {% for step in walkthrough_steps %}
+            <button type="button" class="btn btn-sm rounded-pill flex-fill walkthrough-step-indicator {{ 'btn-primary text-white' if loop.first else 'btn-outline-secondary' }}" data-step="{{ step.step_number }}" id="btnStepIndicator{{ step.step_number }}">
+              <span class="d-none d-sm-inline">{{ loop.index }}. </span>{{ step.title.split(' ')[0] }}
+            </button>
+            {% endfor %}
+          </div>
+
+          <!-- Step Panes Container -->
+          <div id="walkthroughPanesContainer">
+            {% for step in walkthrough_steps %}
+            <div class="walkthrough-step-pane {{ 'd-none' if not loop.first else 'active' }}" data-step="{{ step.step_number }}" id="walkthroughPane{{ step.step_number }}">
+              <div class="card border border-{{ step.color }}-subtle rounded-4 p-4 mb-3 bg-body">
+                <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+                  <div class="d-flex align-items-center gap-3">
+                    <div class="p-3 bg-{{ step.color }}-subtle text-{{ step.color }} rounded-4 fs-2">
+                      <i class="fa-solid {{ step.icon }}"></i>
+                    </div>
+                    <div>
+                      <span class="badge bg-{{ step.color }}-subtle text-{{ step.color }} border border-{{ step.color }}-subtle rounded-pill px-2 py-1 small fw-semibold">
+                        {{ step.badge }}
+                      </span>
+                      <h4 class="fw-bold mb-0 text-dark mt-1">{{ step.title }}</h4>
+                    </div>
+                  </div>
+                  <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 py-1 small">
+                    Step {{ step.step_number }} of {{ walkthrough_steps|length }}
+                  </span>
+                </div>
+
+                <p class="text-secondary mb-3">{{ step.long_desc }}</p>
+
+                <div class="p-3 bg-light rounded-3 border mb-3">
+                  <h6 class="fw-bold text-dark small mb-2"><i class="fa-solid fa-star text-warning me-1"></i> Key Capabilities:</h6>
+                  <ul class="small text-muted mb-0 ps-3">
+                    {% if step.id == 'resume_analysis' %}
+                    <li>Instant ATS scoring (0-100) and grammar check.</li>
+                    <li>Job description keyword alignment and missing skills breakdown.</li>
+                    <li>Evidence mapping linking claimed skills directly to resume sections.</li>
+                    {% elif step.id == 'interview_practice' %}
+                    <li>Live conversational mock interviews with dynamic follow-up questions.</li>
+                    <li>Topic-based technical challenges in DSA, System Design, and OS.</li>
+                    <li>STAR method evaluation for behavioral HR interview questions.</li>
+                    {% elif step.id == 'preparation_plans' %}
+                    <li>Custom 6-week preparation curriculum with estimated study hours.</li>
+                    <li>Company hiring checklists with verified interview rounds for 15+ recruiters.</li>
+                    <li>Daily streak tracker to keep your placement preparation consistent.</li>
+                    {% elif step.id == 'application_tracker' %}
+                    <li>Organized stages: Applied, Assessment, Interview, Selected, and Rejected.</li>
+                    <li>Interview deadline reminders and chronological activity timeline.</li>
+                    <li>Export applications anytime to CSV, JSON, or Markdown formats.</li>
+                    {% endif %}
+                  </ul>
+                </div>
+
+                <!-- Step Direct Action Button -->
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <span class="small text-muted">Ready to try this feature?</span>
+                  {% if step.target_element %}
+                  <button type="button" class="btn btn-{{ step.color }} rounded-pill px-4 btn-walkthrough-nav" data-target="{{ step.target_element }}" data-bs-dismiss="modal">
+                    {{ step.action_text }} <i class="fa-solid fa-arrow-down ms-1"></i>
+                  </button>
+                  {% else %}
+                  <a href="{{ step.action_url }}" class="btn btn-{{ step.color }} rounded-pill px-4">
+                    {{ step.action_text }} <i class="fa-solid fa-arrow-right ms-1"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="modal-footer border-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal" id="btnDismissWalkthroughModal">
+              Skip Walkthrough
+            </button>
+            <button type="button" class="btn btn-sm btn-link text-muted p-0 text-decoration-none small" id="btnResetWalkthroughState" title="Show the banner on the home page again">
+              <i class="fa-solid fa-rotate-left me-1"></i> Reset Walkthrough
+            </button>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnWalkthroughPrev" disabled>
+              <i class="fa-solid fa-arrow-left me-1"></i> Previous
+            </button>
+            <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" id="btnWalkthroughNext">
+              Next Step <i class="fa-solid fa-arrow-right ms-1"></i>
+            </button>
+          </div>
         </div>
       </div>
     </div>
