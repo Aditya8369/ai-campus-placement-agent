@@ -257,6 +257,9 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 
+# CSRF Protection & Token Security (#300)
+from utils.csrf import csrf, CSRFError, generate_csrf
+
 # Configure structured application logging (#301)
 from utils.logger_config import (
     configure_logging,
