@@ -107,6 +107,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initAccessibility();
   initSessionTimeout();
   initSectionFeedback();
+  initUserWalkthrough();
 });
 
 /**
@@ -5144,4 +5145,189 @@ function initSectionFeedback() {
       });
     }
   });
+}
+
+/**
+ * First-Time User Walkthrough & Feature Tour (#350).
+ * Handles persistent dismissal via localStorage and session,
+ * interactive multi-step navigation, direct jump to feature anchors, and reopening anytime.
+ */
+function initUserWalkthrough() {
+  const walkthroughBanner = document.getElementById("userWalkthroughBanner");
+  const dismissBtn = document.getElementById("btnDismissWalkthroughBanner");
+  const openTourBtns = document.querySelectorAll(".btn-open-walkthrough");
+  const walkthroughModalEl = document.getElementById("userWalkthroughModal");
+  const modalDismissBtn = document.getElementById("btnDismissWalkthroughModal");
+  const modalResetBtn = document.getElementById("btnResetWalkthroughState");
+  const stepPanes = document.querySelectorAll(".walkthrough-step-pane");
+  const stepIndicators = document.querySelectorAll(".walkthrough-step-indicator");
+  const prevBtn = document.getElementById("btnWalkthroughPrev");
+  const nextBtn = document.getElementById("btnWalkthroughNext");
+  const actionNavBtns = document.querySelectorAll(".btn-walkthrough-nav");
+
+  const STORAGE_KEY = "campus_placement_walkthrough_dismissed";
+
+  // Check initial dismissal state from localStorage
+  const isDismissed = localStorage.getItem(STORAGE_KEY) === "true";
+  if (walkthroughBanner) {
+    if (isDismissed) {
+      walkthroughBanner.classList.add("d-none");
+    } else {
+      walkthroughBanner.classList.remove("d-none");
+    }
+  }
+
+  function dismissWalkthrough() {
+    localStorage.setItem(STORAGE_KEY, "true");
+    if (walkthroughBanner) {
+      walkthroughBanner.classList.add("d-none");
+    }
+    try {
+      fetch("/api/walkthrough/dismiss", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  function resetWalkthrough() {
+    localStorage.removeItem(STORAGE_KEY);
+    if (walkthroughBanner) {
+      walkthroughBanner.classList.remove("d-none");
+    }
+    try {
+      fetch("/api/walkthrough/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
+  if (dismissBtn) {
+    dismissBtn.addEventListener("click", dismissWalkthrough);
+  }
+
+  if (modalDismissBtn) {
+    modalDismissBtn.addEventListener("click", dismissWalkthrough);
+  }
+
+  if (modalResetBtn) {
+    modalResetBtn.addEventListener("click", () => {
+      resetWalkthrough();
+      if (typeof bootstrap !== "undefined" && walkthroughModalEl) {
+        const modal = bootstrap.Modal.getInstance(walkthroughModalEl);
+        if (modal) modal.hide();
+      }
+    });
+  }
+
+  openTourBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (typeof bootstrap !== "undefined" && walkthroughModalEl) {
+        const modal = bootstrap.Modal.getOrCreateInstance(walkthroughModalEl);
+        modal.show();
+      }
+    });
+  });
+
+  // Multi-step modal navigation
+  let currentStep = 1;
+  const totalSteps = stepPanes.length || 4;
+
+  function showStep(stepNum) {
+    currentStep = Math.max(1, Math.min(stepNum, totalSteps));
+    stepPanes.forEach((pane) => {
+      const paneStep = parseInt(pane.dataset.step, 10);
+      if (paneStep === currentStep) {
+        pane.classList.remove("d-none");
+        pane.classList.add("active");
+      } else {
+        pane.classList.add("d-none");
+        pane.classList.remove("active");
+      }
+    });
+
+    stepIndicators.forEach((ind) => {
+      const indStep = parseInt(ind.dataset.step, 10);
+      if (indStep === currentStep) {
+        ind.classList.add("btn-primary", "text-white");
+        ind.classList.remove("btn-outline-secondary", "bg-light");
+      } else if (indStep < currentStep) {
+        ind.classList.add("btn-outline-primary");
+        ind.classList.remove("btn-primary", "text-white", "btn-outline-secondary");
+      } else {
+        ind.classList.add("btn-outline-secondary");
+        ind.classList.remove("btn-primary", "text-white", "btn-outline-primary");
+      }
+    });
+
+    if (prevBtn) {
+      prevBtn.disabled = currentStep === 1;
+    }
+    if (nextBtn) {
+      if (currentStep === totalSteps) {
+        nextBtn.innerHTML = 'Finish Tour <i class="fa-solid fa-check ms-1"></i>';
+        nextBtn.classList.remove("btn-primary");
+        nextBtn.classList.add("btn-success");
+      } else {
+        nextBtn.innerHTML = 'Next Step <i class="fa-solid fa-arrow-right ms-1"></i>';
+        nextBtn.classList.remove("btn-success");
+        nextBtn.classList.add("btn-primary");
+      }
+    }
+  }
+
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      if (currentStep > 1) {
+        showStep(currentStep - 1);
+      }
+    });
+  }
+
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      if (currentStep < totalSteps) {
+        showStep(currentStep + 1);
+      } else {
+        dismissWalkthrough();
+        if (typeof bootstrap !== "undefined" && walkthroughModalEl) {
+          const modal = bootstrap.Modal.getInstance(walkthroughModalEl);
+          if (modal) modal.hide();
+        }
+      }
+    });
+  }
+
+  stepIndicators.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const stepNum = parseInt(btn.dataset.step, 10);
+      if (!isNaN(stepNum)) {
+        showStep(stepNum);
+      }
+    });
+  });
+
+  // Direct feature navigation buttons
+  actionNavBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.target;
+      if (target === "analysisForm" || target === "uploadArea") {
+        if (typeof bootstrap !== "undefined" && walkthroughModalEl) {
+          const modal = bootstrap.Modal.getInstance(walkthroughModalEl);
+          if (modal) modal.hide();
+        }
+        const targetEl = document.getElementById("analysisForm") || document.getElementById("uploadArea");
+        if (targetEl) {
+          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          const fileInput = document.getElementById("resumeInput");
+          if (fileInput) fileInput.focus();
+        }
+      }
+    });
+  });
+
+  if (stepPanes.length > 0) {
+    showStep(1);
+  }
 }

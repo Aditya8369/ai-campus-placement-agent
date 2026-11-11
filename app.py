@@ -257,6 +257,9 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 
+# CSRF Protection & Token Security (#300)
+from utils.csrf import csrf, CSRFError, generate_csrf
+
 # Configure structured application logging (#301)
 from utils.logger_config import (
     configure_logging,
@@ -344,6 +347,9 @@ def require_login():
         "api_session_keep_alive",
         "api_session_logout",
         "logout",
+        "api_walkthrough",
+        "api_walkthrough_dismiss",
+        "api_walkthrough_reset",
     }
 
     user_id = flask_session.get("user_id")
@@ -1316,13 +1322,125 @@ def api_gemini_usage_summary():
     })
 
 
+# ============================================================================
+# FIRST-TIME USER WALKTHROUGH & FEATURE TOUR (#350)
+# ============================================================================
+
+WALKTHROUGH_STEPS_CATALOG = [
+    {
+        "id": "resume_analysis",
+        "step_number": 1,
+        "title": "Resume Analysis & ATS Scoring",
+        "short_desc": "Upload your resume in PDF or DOCX format for instant ATS scoring, grammar review, and keyword matching.",
+        "long_desc": "Evaluates your resume against corporate job descriptions to identify formatting weaknesses, missing keywords, and section improvements.",
+        "action_url": "/#analysisForm",
+        "action_text": "Start Resume Analysis",
+        "target_element": "analysisForm",
+        "icon": "fa-file-lines",
+        "badge": "Recommended First Step",
+        "color": "primary"
+    },
+    {
+        "id": "interview_practice",
+        "step_number": 2,
+        "title": "Interactive Mock Interviews",
+        "short_desc": "Dynamic AI mock interviews, technical DSA challenges, and behavioral STAR evaluations.",
+        "long_desc": "Practice real-time technical questions and behavioral scenarios with AI feedback scoring communication clarity, confidence, and accuracy.",
+        "action_url": "/coding-practice",
+        "action_text": "Explore Interview Practice",
+        "target_element": None,
+        "icon": "fa-comments",
+        "badge": "Technical & HR",
+        "color": "success"
+    },
+    {
+        "id": "preparation_plans",
+        "step_number": 3,
+        "title": "Preparation Plans & Roadmaps",
+        "short_desc": "Tailored 6-week study roadmaps, company hiring checklists, and daily streak tracking.",
+        "long_desc": "Follow progressive weekly preparation milestones and track recruitment readiness using checklists for 15+ top recruiters.",
+        "action_url": "/company-checklist",
+        "action_text": "View Preparation Plans",
+        "target_element": None,
+        "icon": "fa-list-check",
+        "badge": "Milestones & Checklist",
+        "color": "warning"
+    },
+    {
+        "id": "application_tracker",
+        "step_number": 4,
+        "title": "Job Application Tracker",
+        "short_desc": "Organize applications across Applied, Assessment, Interview, Selected, and Rejected stages.",
+        "long_desc": "Manage every placement drive from submission to offer. Record application dates, track status updates, and export your application records.",
+        "action_url": "/applications",
+        "action_text": "Go to Application Tracker",
+        "target_element": None,
+        "icon": "fa-briefcase",
+        "badge": "Pipeline Tracker",
+        "color": "info"
+    }
+]
+
+
+@app.route("/api/walkthrough", methods=["GET"])
+def api_walkthrough():
+    """
+    Returns structured walkthrough steps introducing the core application areas (#350).
+    Allows first-time and returning users to learn about Resume Analysis, Interview Practice,
+    Preparation Plans, and Application Tracking.
+    """
+    dismissed = bool(flask_session.get("walkthrough_dismissed", False))
+    return jsonify({
+        "success": True,
+        "dismissed": dismissed,
+        "recommended_next_step": {
+            "feature": "resume_analysis",
+            "title": "Start with Resume Analysis",
+            "description": "Upload your resume in the Workspace to evaluate your ATS score and skill gaps.",
+            "action_url": "/#analysisForm",
+            "action_text": "Upload Resume"
+        },
+        "total_steps": len(WALKTHROUGH_STEPS_CATALOG),
+        "steps": WALKTHROUGH_STEPS_CATALOG
+    }), 200
+
+
+@app.route("/api/walkthrough/dismiss", methods=["POST"])
+@csrf.exempt
+def api_walkthrough_dismiss():
+    """Marks the walkthrough as dismissed in the user session (#350)."""
+    flask_session["walkthrough_dismissed"] = True
+    return jsonify({
+        "success": True,
+        "dismissed": True,
+        "message": "Walkthrough dismissed successfully."
+    }), 200
+
+
+@app.route("/api/walkthrough/reset", methods=["POST"])
+@csrf.exempt
+def api_walkthrough_reset():
+    """Resets the walkthrough dismissal state to re-enable it for the user (#350)."""
+    flask_session["walkthrough_dismissed"] = False
+    return jsonify({
+        "success": True,
+        "dismissed": False,
+        "message": "Walkthrough reset successfully."
+    }), 200
+
+
 @app.route("/")
 def index() -> str:
     """
     Renders the placement landing page containing the configuration forms.
     """
     companies_list = get_available_companies()
-    return render_template("index.html", companies=companies_list)
+    return render_template(
+        "index.html",
+        companies=companies_list,
+        walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
+        walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
+    )
 
 
 @app.route("/privacy", methods=["GET"])

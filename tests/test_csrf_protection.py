@@ -78,15 +78,21 @@ def test_post_with_invalid_csrf_token_is_rejected_with_400(csrf_enabled_client):
     assert response_form.status_code == 400
 
 
+def _extract_csrf_token(response) -> str:
+    html = response.get_data(as_text=True)
+    match = re.search(r'<meta\s+name="csrf-token"\s+content="([^"]+)"', html)
+    if not match:
+        match = re.search(r'name="csrf_token"\s+value="([^"]+)"', html)
+    assert match is not None, "CSRF token not found in response HTML"
+    return match.group(1)
+
+
 def test_post_with_valid_header_csrftoken_succeeds(csrf_enabled_client):
     """Verify POST request containing valid X-CSRFToken header passes CSRF verification (#300)."""
     # 1. Fetch homepage to initialize session and get token
     get_res = csrf_enabled_client.get("/")
     assert get_res.status_code == 200
-
-    with csrf_enabled_client.session_transaction() as sess:
-        with app.test_request_context():
-            token = generate_csrf()
+    token = _extract_csrf_token(get_res)
 
     # 2. Submit POST with valid header token
     response = csrf_enabled_client.post(
@@ -100,9 +106,9 @@ def test_post_with_valid_header_csrftoken_succeeds(csrf_enabled_client):
 
 def test_post_with_valid_header_csrf_dash_token_succeeds(csrf_enabled_client):
     """Verify POST request containing valid X-CSRF-Token header passes CSRF verification (#300)."""
-    csrf_enabled_client.get("/")
-    with app.test_request_context():
-        token = generate_csrf()
+    get_res = csrf_enabled_client.get("/")
+    assert get_res.status_code == 200
+    token = _extract_csrf_token(get_res)
 
     response = csrf_enabled_client.post(
         "/login",
@@ -114,9 +120,9 @@ def test_post_with_valid_header_csrf_dash_token_succeeds(csrf_enabled_client):
 
 def test_post_with_valid_form_field_token_succeeds(csrf_enabled_client):
     """Verify POST request containing valid form field csrf_token passes verification (#300)."""
-    csrf_enabled_client.get("/")
-    with app.test_request_context():
-        token = generate_csrf()
+    get_res = csrf_enabled_client.get("/")
+    assert get_res.status_code == 200
+    token = _extract_csrf_token(get_res)
 
     response = csrf_enabled_client.post(
         "/login",
