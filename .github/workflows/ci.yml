@@ -35,6 +35,10 @@ jobs:
         run: |
           python utils/ci_pipeline_validator.py
 
+      - name: Run Deployment Pre-Flight Check
+        run: |
+          python utils/deployment_check.py
+
   lint:
     name: Code Linting & Style Enforcement
     runs-on: ubuntu-latest

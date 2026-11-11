@@ -22,6 +22,19 @@ def reset_rate_limiter_fixture():
     limiter.reset()
 
 
+@pytest.fixture(autouse=True)
+def reset_csrf_testing_state():
+    """Ensure CSRF is disabled by default across unit tests unless explicitly enabled."""
+    from app import app
+    prev_state = app.config.get("WTF_CSRF_ENABLED")
+    app.config["WTF_CSRF_ENABLED"] = False
+    yield
+    if prev_state is not None:
+        app.config["WTF_CSRF_ENABLED"] = prev_state
+    else:
+        app.config.pop("WTF_CSRF_ENABLED", None)
+
+
 
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""
