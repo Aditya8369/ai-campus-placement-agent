@@ -454,6 +454,15 @@ def save_analysis(
 ) -> None:
     """Inserts a newly generated coordinator analysis into the database.
     Automatically assigns candidate student_id and auto-increments version_number if omitted."""
+    # Guard against saving synthetic demo data to real user records (#360)
+    if (
+        student_id == "demo_visitor"
+        or analysis_id in ("demo-sample-analysis", "demo_sample_analysis", "demo")
+        or (isinstance(results_dict, dict) and results_dict.get("is_demo"))
+    ):
+        logger.info(f"Demo mode analysis {analysis_id} intercepted; skipping real database persistence.")
+        return
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -526,6 +535,10 @@ def get_analysis(analysis_id: str) -> dict:
     Retrieves and returns an analysis record by ID.
     Loads and injects the deserialized JSON results.
     """
+    if analysis_id in ("demo-sample-analysis", "demo_sample_analysis", "demo"):
+        from utils.demo_mode import get_synthetic_sample_analysis
+        return get_synthetic_sample_analysis()
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -548,6 +561,10 @@ def get_student_versions(student_id: str, company_name: Optional[str] = None) ->
     ordered by version_number ASC. Deserializes results_json and computes
     ATS score and match percentage for each version.
     """
+    if student_id == "demo_visitor":
+        from utils.demo_mode import get_synthetic_sample_analysis
+        return [get_synthetic_sample_analysis()]
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -592,6 +609,9 @@ def get_previous_analysis(student_id: str, current_version: int) -> Optional[Dic
     """
     Retrieves the immediately preceding analysis record for a candidate.
     """
+    if student_id == "demo_visitor":
+        return None
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()

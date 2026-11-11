@@ -165,6 +165,11 @@ python app.py
 ```
 The application will be running at `http://127.0.0.1:5000/`. Open this link in your browser to start.
 
+### 5. Deployment & Cloud Hosting (Vercel)
+The project is configured for deployment on Vercel using Python Serverless Functions (`api/index.py` and `vercel.json`):
+- **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
+- **Pre-Flight Smoke Check**: Run `python utils/deployment_check.py` to verify deployment integrity, configuration files, and critical public routes before releasing.
+
 ---
 
 ## Rate Limiting & Security Quotas

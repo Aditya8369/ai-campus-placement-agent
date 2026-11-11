@@ -115,7 +115,7 @@ class CIRuntimeValidator:
                 issues.append(f"Missing required directory: {folder}")
 
         # Check key configuration files
-        for f in ["app.py", "config.py"]:
+        for f in ["app.py", "config.py", "vercel.json"]:
             target = b_dir / f
             if not target.exists() or not target.is_file():
                 issues.append(f"Missing root file: {f}")
