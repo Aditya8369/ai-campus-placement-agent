@@ -17,7 +17,13 @@ IS_VERCEL = os.getenv("VERCEL") == "1"
 
 # Directory configurations
 if IS_VERCEL:
-    STORAGE_DIR = Path("/tmp")
+    import tempfile
+    # In Vercel serverless (Linux), /tmp is the writable storage directory.
+    # On Windows or local test environments where /tmp is not directly accessible, fall back to tempfile.gettempdir().
+    if os.name == "nt":
+        STORAGE_DIR = Path(tempfile.gettempdir()) / "placement_agent_vercel"
+    else:
+        STORAGE_DIR = Path("/tmp")
 else:
     STORAGE_DIR = BASE_DIR
 
@@ -27,18 +33,30 @@ DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
 BACKUP_DIR = STORAGE_DIR / "backups"
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-secret-key")
 
-# Ensure folders exist
-UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
-REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
-BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure folders exist safely with graceful fallback
+try:
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+    REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+except (PermissionError, OSError):
+    import tempfile
+    STORAGE_DIR = Path(tempfile.gettempdir()) / "placement_agent_fallback"
+    UPLOAD_FOLDER = STORAGE_DIR / "uploads"
+    REPORT_FOLDER = STORAGE_DIR / "reports"
+    DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+    BACKUP_DIR = STORAGE_DIR / "backups"
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+    REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY")
 if not FLASK_SECRET_KEY:
-    if os.getenv("FLASK_ENV") == "production":
+    if os.getenv("FLASK_ENV") == "production" and not IS_VERCEL:
         raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
-    FLASK_SECRET_KEY = "dev-secret-key-12345"
+    # On Vercel or non-production fallback, avoid crashing serverless function invocation
+    FLASK_SECRET_KEY = os.getenv("DEFAULT_SECRET_KEY", "dev-secret-key-12345")
 
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
 

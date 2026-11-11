@@ -257,6 +257,9 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 
+# CSRF Protection & Token Security (#300)
+from utils.csrf import csrf, CSRFError, generate_csrf
+
 # Configure structured application logging (#301)
 from utils.logger_config import (
     configure_logging,
@@ -344,6 +347,10 @@ def require_login():
         "api_session_keep_alive",
         "api_session_logout",
         "logout",
+        "privacy_policy",
+        "forgot_password",
+        "reset_password",
+        "get_company_profile",
     }
 
     user_id = flask_session.get("user_id")
