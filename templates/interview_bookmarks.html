@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Saved Interview Questions - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .bookmark-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      background: var(--bs-card-bg, #fff);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+    }
+    .bookmark-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+    }
+    .badge-cat-technical {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    .badge-cat-behavioral {
+      background-color: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .badge-cat-hr {
+      background-color: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-cat-company-specific {
+      background-color: #f3e8ff;
+      color: #7e22ce;
+      border: 1px solid #e9d5ff;
+    }
+    .stat-kpi-card {
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      border-radius: 1rem;
+    }
+  </style>
+</head>
+
+<body class="bg-light bookmarks-page">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/interview/bookmarks" class="btn btn-warning text-dark btn-sm rounded-pill px-3 py-1 fw-semibold">
+          <i class="fa-solid fa-bookmark me-1"></i> Saved Questions (<span id="navBookmarksCount">{{ counts['All'] or 0 }}</span>)
+        </a>
+        <a href="/notes" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-note-sticky me-1"></i> Notes
+        </a>
+        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-code me-1"></i> Practice DSA
+        </a>
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
+    <!-- Page Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-7">
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-bookmark text-warning me-2"></i>Bookmarked Interview Questions
+        </h2>
+        <p class="text-muted mb-0">
+          Save, review, and practice important interview questions from your AI mock interview sessions (#358).
+        </p>
+      </div>
+      <div class="col-md-5 text-md-end mt-3 mt-md-0 d-flex gap-2 justify-content-md-end flex-wrap">
+        <a href="/interview/bookmarks/export" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm btn-sm" title="Export saved questions to JSON">
+          <i class="fa-solid fa-file-export me-1"></i> Export JSON
+        </a>
+        <button type="button" class="btn btn-outline-primary rounded-pill px-3 shadow-sm btn-sm" id="btnCopyAllQuestions" title="Copy all visible questions to clipboard">
+          <i class="fa-regular fa-copy me-1"></i> Copy All
+        </button>
+        <a href="/" class="btn btn-primary rounded-pill px-3 shadow-sm btn-sm" title="Start a new interview">
+          <i class="fa-solid fa-play me-1"></i> Practice Mock
+        </a>
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md">
+        <div class="card stat-kpi-card shadow-sm p-3 bg-white h-100">
+          <div class="text-muted small fw-semibold">Total Saved</div>
+          <div class="fs-4 fw-bold text-dark mt-1" id="statTotalCount">{{ counts['All'] or 0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card stat-kpi-card shadow-sm p-3 bg-white h-100 border-primary-subtle">
+          <div class="text-primary small fw-semibold"><i class="fa-solid fa-laptop-code me-1"></i>Technical</div>
+          <div class="fs-4 fw-bold text-primary mt-1" id="statTechCount">{{ counts['Technical'] or 0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card stat-kpi-card shadow-sm p-3 bg-white h-100 border-success-subtle">
+          <div class="text-success small fw-semibold"><i class="fa-solid fa-comments me-1"></i>Behavioral</div>
+          <div class="fs-4 fw-bold text-success mt-1" id="statBehCount">{{ counts['Behavioral'] or 0 }}</div>
+        </div>
+      </div>
+      <div class="col-6 col-md">
+        <div class="card stat-kpi-card shadow-sm p-3 bg-white h-100 border-warning-subtle">
+          <div class="text-warning-emphasis small fw-semibold"><i class="fa-solid fa-users me-1"></i>HR</div>
+          <div class="fs-4 fw-bold text-dark mt-1" id="statHrCount">{{ counts['HR'] or 0 }}</div>
+        </div>
+      </div>
+      <div class="col-12 col-md">
+        <div class="card stat-kpi-card shadow-sm p-3 bg-white h-100 border-info-subtle">
+          <div class="text-info-emphasis small fw-semibold"><i class="fa-solid fa-building me-1"></i>Company-Specific</div>
+          <div class="fs-4 fw-bold text-dark mt-1" id="statCompanyCount">{{ counts['Company-Specific'] or 0 }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls Bar -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+      <div class="row g-3 align-items-center justify-content-between">
+        <!-- Category Filter Pills -->
+        <div class="col-lg-8">
+          <div class="d-flex flex-wrap gap-2" id="categoryFilterContainer">
+            <a href="/interview/bookmarks?category=All{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-dark' if active_category == 'All' or not active_category else 'btn-outline-secondary' }}"
+               data-category="All">
+              <i class="fa-solid fa-layer-group me-1"></i> All
+              <span class="badge {{ 'bg-light text-dark' if active_category == 'All' or not active_category else 'bg-secondary' }} rounded-pill ms-1">
+                {{ counts['All'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/interview/bookmarks?category=Technical{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-primary' if active_category|lower == 'technical' else 'btn-outline-primary' }}"
+               data-category="Technical">
+              <i class="fa-solid fa-laptop-code me-1"></i> Technical
+              <span class="badge {{ 'bg-light text-primary' if active_category|lower == 'technical' else 'bg-primary-subtle text-primary' }} rounded-pill ms-1">
+                {{ counts['Technical'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/interview/bookmarks?category=Behavioral{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-success' if active_category|lower == 'behavioral' else 'btn-outline-success' }}"
+               data-category="Behavioral">
+              <i class="fa-solid fa-comments me-1"></i> Behavioral
+              <span class="badge {{ 'bg-light text-success' if active_category|lower == 'behavioral' else 'bg-success-subtle text-success' }} rounded-pill ms-1">
+                {{ counts['Behavioral'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/interview/bookmarks?category=HR{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-warning text-dark' if active_category|lower == 'hr' else 'btn-outline-warning' }}"
+               data-category="HR">
+              <i class="fa-solid fa-users me-1"></i> HR
+              <span class="badge {{ 'bg-light text-dark' if active_category|lower == 'hr' else 'bg-warning-subtle text-dark' }} rounded-pill ms-1">
+                {{ counts['HR'] or 0 }}
+              </span>
+            </a>
+
+            <a href="/interview/bookmarks?category=Company-Specific{% if search_query %}&search={{ search_query }}{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 filter-category-btn {{ 'btn-info text-white' if active_category|lower == 'company-specific' else 'btn-outline-info' }}"
+               data-category="Company-Specific">
+              <i class="fa-solid fa-building me-1"></i> Company-Specific
+              <span class="badge {{ 'bg-light text-info' if active_category|lower == 'company-specific' else 'bg-info-subtle text-info' }} rounded-pill ms-1">
+                {{ counts['Company-Specific'] or 0 }}
+              </span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Real-time Search Box -->
+        <div class="col-lg-4">
+          <div class="input-group">
+            <span class="input-group-text bg-white border-end-0 rounded-start-pill ps-3 text-muted">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </span>
+            <input type="text" class="form-control border-start-0 rounded-end-pill pe-3" id="bookmarkSearchInput" 
+                   placeholder="Search questions or company..." value="{{ search_query or '' }}">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="noBookmarksMessage" class="text-center py-5 bg-white rounded-4 border border-dashed shadow-sm {% if bookmarks and bookmarks|length > 0 %}d-none{% endif %}">
+      <div class="mb-3">
+        <i class="fa-regular fa-bookmark fa-3x text-warning opacity-75"></i>
+      </div>
+      <h5 class="fw-bold text-dark mb-1">No bookmarked questions found</h5>
+      <p class="text-muted small mb-3">You can bookmark questions during your mock interviews to review them here anytime.</p>
+      <a href="/" class="btn btn-primary btn-sm rounded-pill px-4">
+        <i class="fa-solid fa-play me-1"></i> Start a Mock Interview
+      </a>
+    </div>
+
+    <!-- Bookmarks Grid -->
+    <div id="bookmarksGrid" class="row g-4 {% if not bookmarks or bookmarks|length == 0 %}d-none{% endif %}">
+      {% for b in bookmarks %}
+      <div class="col-md-6 bookmark-col" 
+           id="bookmark-card-{{ b.question_id }}"
+           data-question-id="{{ b.question_id }}"
+           data-category="{{ b.category }}"
+           data-company="{{ b.company_name }}"
+           data-question="{{ b.question_text }}">
+        <div class="card bookmark-card shadow-sm rounded-4 h-100 p-4 d-flex flex-column justify-content-between position-relative">
+          <div>
+            <!-- Header Badges -->
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                {% set cat_lower = b.category|lower %}
+                {% if cat_lower == 'technical' %}
+                  <span class="badge rounded-pill badge-cat-technical px-3 py-1">
+                    <i class="fa-solid fa-laptop-code me-1"></i> Technical
+                  </span>
+                {% elif cat_lower == 'behavioral' %}
+                  <span class="badge rounded-pill badge-cat-behavioral px-3 py-1">
+                    <i class="fa-solid fa-comments me-1"></i> Behavioral
+                  </span>
+                {% elif cat_lower == 'hr' %}
+                  <span class="badge rounded-pill badge-cat-hr px-3 py-1">
+                    <i class="fa-solid fa-users me-1"></i> HR
+                  </span>
+                {% elif 'company' in cat_lower %}
+                  <span class="badge rounded-pill badge-cat-company-specific px-3 py-1">
+                    <i class="fa-solid fa-building me-1"></i> Company-Specific
+                  </span>
+                {% else %}
+                  <span class="badge rounded-pill bg-secondary px-3 py-1 text-white">
+                    <i class="fa-solid fa-tag me-1"></i> {{ b.category }}
+                  </span>
+                {% endif %}
+
+                {% if b.company_name and b.company_name != 'General' %}
+                  <span class="badge bg-light text-secondary border rounded-pill px-2 py-1 small">
+                    <i class="fa-solid fa-building me-1"></i> {{ b.company_name }}
+                  </span>
+                {% endif %}
+              </div>
+              <small class="text-muted">
+                <i class="fa-regular fa-clock me-1"></i> {{ b.created_at[:10] if b.created_at else '' }}
+              </small>
+            </div>
+
+            <!-- Question Content -->
+            <h5 class="fw-semibold text-dark mb-3 lh-base fs-6 question-text">
+              {{ b.question_text }}
+            </h5>
+
+            {% if b.notes %}
+              <div class="bg-light p-2 rounded-3 small text-secondary mb-3 border">
+                <i class="fa-regular fa-note-sticky text-warning me-1"></i>
+                <strong>Note:</strong> {{ b.notes }}
+              </div>
+            {% endif %}
+          </div>
+
+          <!-- Action Footer -->
+          <div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 btn-copy-question" 
+                    data-question="{{ b.question_text|escape }}"
+                    title="Copy question text to clipboard">
+              <i class="fa-regular fa-copy me-1"></i> Copy
+            </button>
+            <div class="d-flex align-items-center gap-2">
+              <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-remove-bookmark" 
+                      data-question-id="{{ b.question_id }}"
+                      title="Remove bookmark">
+                <i class="fa-solid fa-trash me-1"></i> Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </main>
+
+  <!-- Live Toast Notification Container -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+    <div id="bookmarkActionToast" class="toast align-items-center text-bg-dark border-0 rounded-4 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="bookmarkToastBody">
+          Action completed.
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const searchInput = document.getElementById("bookmarkSearchInput");
+      const bookmarkCols = document.querySelectorAll(".bookmark-col");
+      const noBookmarksMessage = document.getElementById("noBookmarksMessage");
+      const toastEl = document.getElementById("bookmarkActionToast");
+      const toastBody = document.getElementById("bookmarkToastBody");
+      const toast = toastEl ? new bootstrap.Toast(toastEl, { delay: 2500 }) : null;
+
+      function showToast(msg) {
+        if (toast && toastBody) {
+          toastBody.textContent = msg;
+          toast.show();
+        }
+      }
+
+      // Live Search Filter
+      if (searchInput) {
+        searchInput.addEventListener("input", () => {
+          const query = searchInput.value.toLowerCase().trim();
+          let visibleCount = 0;
+          bookmarkCols.forEach((col) => {
+            const qText = (col.getAttribute("data-question") || "").toLowerCase();
+            const company = (col.getAttribute("data-company") || "").toLowerCase();
+            const category = (col.getAttribute("data-category") || "").toLowerCase();
+            if (!query || qText.includes(query) || company.includes(query) || category.includes(query)) {
+              col.classList.remove("d-none");
+              visibleCount++;
+            } else {
+              col.classList.add("d-none");
+            }
+          });
+          if (noBookmarksMessage) {
+            if (visibleCount === 0) {
+              noBookmarksMessage.classList.remove("d-none");
+            } else {
+              noBookmarksMessage.classList.add("d-none");
+            }
+          }
+        });
+      }
+
+      // Copy Individual Question
+      document.addEventListener("click", (e) => {
+        const copyBtn = e.target.closest(".btn-copy-question");
+        if (copyBtn) {
+          e.preventDefault();
+          const text = copyBtn.getAttribute("data-question") || "";
+          navigator.clipboard.writeText(text).then(() => {
+            const originalHTML = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="fa-solid fa-check text-success me-1"></i> Copied!';
+            showToast("Question copied to clipboard!");
+            setTimeout(() => {
+              copyBtn.innerHTML = originalHTML;
+            }, 1800);
+          }).catch(() => {
+            showToast("Failed to copy question.");
+          });
+        }
+      });
+
+      // Copy All Questions
+      const btnCopyAll = document.getElementById("btnCopyAllQuestions");
+      if (btnCopyAll) {
+        btnCopyAll.addEventListener("click", () => {
+          const visibleTexts = [];
+          document.querySelectorAll(".bookmark-col:not(.d-none) .question-text").forEach((el) => {
+            const t = el.innerText.trim();
+            if (t) visibleTexts.push(t);
+          });
+          if (visibleTexts.length === 0) {
+            showToast("No questions available to copy.");
+            return;
+          }
+          const combined = visibleTexts.map((q, idx) => `${idx + 1}. ${q}`).join("\n\n");
+          navigator.clipboard.writeText(combined).then(() => {
+            const originalHTML = btnCopyAll.innerHTML;
+            btnCopyAll.innerHTML = '<i class="fa-solid fa-check text-success me-1"></i> Copied All!';
+            showToast(`Copied ${visibleTexts.length} questions to clipboard!`);
+            setTimeout(() => {
+              btnCopyAll.innerHTML = originalHTML;
+            }, 2000);
+          }).catch(() => {
+            showToast("Failed to copy questions.");
+          });
+        });
+      }
+
+      // Remove Bookmark via AJAX
+      document.addEventListener("click", (e) => {
+        const removeBtn = e.target.closest(".btn-remove-bookmark");
+        if (removeBtn) {
+          e.preventDefault();
+          const questionId = removeBtn.getAttribute("data-question-id");
+          if (!questionId) return;
+
+          removeBtn.disabled = true;
+          removeBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+
+          fetch(`/api/interview/bookmark/${encodeURIComponent(questionId)}`, {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+              "X-Requested-With": "XMLHttpRequest"
+            }
+          })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              const cardCol = document.getElementById(`bookmark-card-${questionId}`);
+              if (cardCol) {
+                cardCol.remove();
+              }
+              showToast("Bookmark removed successfully");
+              // Update total count
+              const remaining = document.querySelectorAll(".bookmark-col").length;
+              const navCount = document.getElementById("navBookmarksCount");
+              const statTotal = document.getElementById("statTotalCount");
+              if (navCount) navCount.textContent = remaining;
+              if (statTotal) statTotal.textContent = remaining;
+              if (remaining === 0 && noBookmarksMessage) {
+                noBookmarksMessage.classList.remove("d-none");
+                const grid = document.getElementById("bookmarksGrid");
+                if (grid) grid.classList.add("d-none");
+              }
+            } else {
+              showToast(data.message || "Could not remove bookmark.");
+              removeBtn.disabled = false;
+              removeBtn.innerHTML = '<i class="fa-solid fa-trash me-1"></i> Remove';
+            }
+          })
+          .catch((err) => {
+            console.error("Error removing bookmark:", err);
+            showToast("Failed to remove bookmark.");
+            removeBtn.disabled = false;
+            removeBtn.innerHTML = '<i class="fa-solid fa-trash me-1"></i> Remove';
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>

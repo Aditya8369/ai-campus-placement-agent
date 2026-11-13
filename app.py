@@ -7,7 +7,7 @@ import logging
 import re
 import secrets
 import hashlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from flask import (
@@ -101,6 +101,10 @@ from utils.database import (
     remove_coding_bookmark,
     get_coding_bookmarks,
     is_coding_bookmarked,
+    save_interview_bookmark,
+    remove_interview_bookmark,
+    get_interview_bookmarks,
+    is_interview_bookmarked,
     create_preparation_note,
     get_preparation_notes,
     get_preparation_note_by_id,
@@ -12041,6 +12045,215 @@ def api_practice_history():
         "total_sessions": len(history),
         "history": history
     }), 200
+
+
+# ==========================================
+# Interview Question Bookmarks (#358)
+# ==========================================
+
+@app.route("/api/interview/bookmarks", methods=["GET"])
+def api_get_interview_bookmarks():
+    """
+    Returns the student's bookmarked interview questions (#358).
+    Optional query param: ?category=Technical|Behavioral|HR|Company-Specific
+    """
+    student_id = _get_current_student_id()
+    category = request.args.get("category", "").strip() or None
+    bookmarks = get_interview_bookmarks(student_id, category=category)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "count": len(bookmarks),
+        "bookmarks": bookmarks
+    }), 200
+
+
+@app.route("/api/interview/bookmark", methods=["POST"])
+def api_save_interview_bookmark():
+    """
+    Bookmarks an interview question for a candidate (#358).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    question_text = (payload.get("question_text") or payload.get("question") or "").strip()
+    question_id = (payload.get("question_id") or payload.get("id") or "").strip()
+    category = (payload.get("category") or payload.get("type") or "Technical").strip()
+    company_name = (payload.get("company_name") or payload.get("company") or "General").strip()
+    notes = (payload.get("notes") or "").strip()
+    metadata = payload.get("metadata")
+    if not isinstance(metadata, dict):
+        metadata = {}
+
+    if not question_text:
+        return jsonify({"success": False, "error": "Question text is required"}), 400
+
+    if not question_id:
+        question_id = f"iq-{hashlib.sha256(question_text.encode('utf-8')).hexdigest()[:12]}"
+
+    saved = save_interview_bookmark(
+        student_id=student_id,
+        question_id=question_id,
+        question_text=question_text,
+        category=category,
+        company_name=company_name,
+        notes=notes,
+        metadata=metadata
+    )
+    return jsonify({
+        "success": saved,
+        "message": "Question bookmarked successfully" if saved else "Failed to save bookmark",
+        "question_id": question_id,
+        "bookmarked": True
+    }), (200 if saved else 500)
+
+
+@app.route("/api/interview/bookmark/<question_id>", methods=["DELETE", "POST"])
+def api_remove_interview_bookmark(question_id: str):
+    """
+    Removes a bookmarked interview question for a candidate (#358).
+    """
+    student_id = _get_current_student_id()
+    removed = remove_interview_bookmark(student_id, question_id)
+    return jsonify({
+        "success": removed,
+        "message": "Bookmark removed successfully" if removed else "Bookmark not found or already removed",
+        "bookmarked": False
+    }), 200
+
+
+@app.route("/api/interview/bookmark/toggle", methods=["POST"])
+def api_toggle_interview_bookmark():
+    """
+    Toggles bookmark state for an interview question (#358).
+    """
+    payload = request.get_json(silent=True) or request.form
+    student_id = _get_current_student_id()
+    question_text = (payload.get("question_text") or payload.get("question") or "").strip()
+    question_id = (payload.get("question_id") or payload.get("id") or "").strip()
+    category = (payload.get("category") or payload.get("type") or "Technical").strip()
+    company_name = (payload.get("company_name") or payload.get("company") or "General").strip()
+    notes = (payload.get("notes") or "").strip()
+
+    if not question_text and not question_id:
+        return jsonify({"success": False, "error": "Question text or question ID is required"}), 400
+
+    if not question_id:
+        question_id = f"iq-{hashlib.sha256(question_text.encode('utf-8')).hexdigest()[:12]}"
+
+    already_bookmarked = is_interview_bookmarked(student_id, question_id)
+    if already_bookmarked:
+        remove_interview_bookmark(student_id, question_id)
+        return jsonify({
+            "success": True,
+            "bookmarked": False,
+            "question_id": question_id,
+            "message": "Bookmark removed"
+        }), 200
+    else:
+        if not question_text:
+            return jsonify({"success": False, "error": "Question text is required to bookmark"}), 400
+        saved = save_interview_bookmark(
+            student_id=student_id,
+            question_id=question_id,
+            question_text=question_text,
+            category=category,
+            company_name=company_name,
+            notes=notes
+        )
+        return jsonify({
+            "success": saved,
+            "bookmarked": True,
+            "question_id": question_id,
+            "message": "Question bookmarked successfully"
+        }), 200
+
+
+@app.route("/interview/bookmarks", methods=["GET"])
+def interview_bookmarks_view():
+    """
+    Dedicated Review Page for Bookmarked Interview Questions (#358).
+    Supports category filtering (Technical, Behavioral, HR, Company-Specific),
+    keyword search, and JSON export.
+    """
+    student_id = request.args.get("student_id") or _get_current_student_id()
+    active_category = request.args.get("category", "All").strip()
+    search_query = request.args.get("search", "").strip()
+
+    all_bookmarks = get_interview_bookmarks(student_id)
+
+    # Calculate category counts
+    counts = {
+        "All": len(all_bookmarks),
+        "Technical": 0,
+        "Behavioral": 0,
+        "HR": 0,
+        "Company-Specific": 0
+    }
+    for b in all_bookmarks:
+        cat = b.get("category", "Technical")
+        matched = False
+        for k in ["Technical", "Behavioral", "HR", "Company-Specific"]:
+            if cat.lower() == k.lower():
+                counts[k] += 1
+                matched = True
+                break
+        if not matched:
+            counts["Technical"] += 1
+
+    # Filter by category if not 'All'
+    filtered = all_bookmarks
+    if active_category and active_category.lower() != "all":
+        filtered = [b for b in filtered if b.get("category", "").lower() == active_category.lower()]
+
+    # Filter by search query if provided
+    if search_query:
+        q_lower = search_query.lower()
+        filtered = [
+            b for b in filtered
+            if q_lower in b.get("question_text", "").lower()
+            or q_lower in b.get("company_name", "").lower()
+            or q_lower in b.get("notes", "").lower()
+        ]
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "student_id": student_id,
+            "active_category": active_category,
+            "counts": counts,
+            "bookmarks": filtered
+        }), 200
+
+    return render_template(
+        "interview_bookmarks.html",
+        student_id=student_id,
+        bookmarks=filtered,
+        all_bookmarks=all_bookmarks,
+        active_category=active_category,
+        search_query=search_query,
+        counts=counts
+    )
+
+
+@app.route("/interview/bookmarks/export", methods=["GET"])
+def export_interview_bookmarks():
+    """
+    Export bookmarked interview questions as JSON file download (#358).
+    """
+    student_id = request.args.get("student_id") or _get_current_student_id()
+    category = request.args.get("category", "").strip() or None
+    bookmarks = get_interview_bookmarks(student_id, category=category)
+    export_payload = {
+        "exported_at": datetime.now().isoformat(),
+        "student_id": student_id,
+        "total_bookmarks": len(bookmarks),
+        "bookmarks": bookmarks
+    }
+    return Response(
+        json.dumps(export_payload, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": f"attachment;filename=interview_bookmarks_{student_id}.json"}
+    )
 
 
 if __name__ == "__main__":

@@ -103,6 +103,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSkillsComparisonChart();
   initBackToTop();
   initCodingBookmarks();
+  initInterviewBookmarks();
   initStreakTracker();
   initAccessibility();
   initSessionTimeout();
@@ -2038,9 +2039,14 @@ function initMockInterview() {
               <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
                 <i class="fa-solid fa-play me-1"></i> Active Question ${nextQ.index + 1} &bull; ${nextQ.type}
               </span>
-              <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="${nextQ.question.replace(/"/g, '&quot;')}">
-                <i class="fa-solid fa-volume-high me-1"></i> Listen
-              </button>
+              <div class="d-flex align-items-center gap-1">
+                <button type="button" class="btn btn-sm btn-outline-warning btn-bookmark-interview-q py-0 px-2 rounded-pill" title="Bookmark question" aria-label="Bookmark question" data-question-id="q-${nextQ.index}" data-question="${nextQ.question.replace(/"/g, '&quot;')}" data-category="${nextQ.type || 'Technical'}">
+                  <i class="fa-regular fa-bookmark"></i> <span class="d-none d-sm-inline">Save</span>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="${nextQ.question.replace(/"/g, '&quot;')}">
+                  <i class="fa-solid fa-volume-high me-1"></i> Listen
+                </button>
+              </div>
             </div>
             <div class="fw-semibold text-dark fs-6 lh-base">${nextQ.question}</div>
           `;
@@ -4215,6 +4221,69 @@ function initCodingBookmarks() {
 
   // Initial count verification on load
   updateSavedCount();
+}
+
+
+/**
+ * Interview Question Bookmarks (#358)
+ * Enables students to bookmark questions during or after mock interviews.
+ */
+function initInterviewBookmarks() {
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".btn-bookmark-interview-q");
+    if (!btn) return;
+
+    e.preventDefault();
+    const qId = btn.getAttribute("data-question-id") || "";
+    const qText = btn.getAttribute("data-question") || "";
+    const category = btn.getAttribute("data-category") || "Technical";
+    const company = btn.getAttribute("data-company") || "General";
+
+    if (!qText && !qId) return;
+
+    const originalContent = btn.innerHTML;
+    btn.disabled = true;
+
+    try {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+      const res = await fetch("/api/interview/bookmark/toggle", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
+          "X-Requested-With": "XMLHttpRequest"
+        },
+        body: JSON.stringify({
+          question_id: qId,
+          question_text: qText,
+          category: category,
+          company_name: company
+        })
+      });
+
+      const data = await res.json();
+      btn.disabled = false;
+      if (data.success) {
+        if (data.bookmarked) {
+          btn.classList.remove("btn-outline-warning");
+          btn.classList.add("btn-warning", "text-dark");
+          btn.innerHTML = '<i class="fa-solid fa-bookmark me-1"></i> <span class="d-none d-sm-inline">Saved</span>';
+          btn.title = "Saved in your bookmarks";
+        } else {
+          btn.classList.remove("btn-warning", "text-dark");
+          btn.classList.add("btn-outline-warning");
+          btn.innerHTML = '<i class="fa-regular fa-bookmark me-1"></i> <span class="d-none d-sm-inline">Save</span>';
+          btn.title = "Bookmark question";
+        }
+      } else {
+        btn.innerHTML = originalContent;
+      }
+    } catch (err) {
+      console.error("Error toggling interview bookmark:", err);
+      btn.disabled = false;
+      btn.innerHTML = originalContent;
+    }
+  });
 }
 
 

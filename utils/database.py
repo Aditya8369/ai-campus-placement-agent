@@ -212,6 +212,23 @@ def init_db() -> None:
             )
         """)
 
+        # Table 12b: Store bookmarked interview practice questions (#358)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bookmarked_interview_questions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                question_id TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'Technical',
+                company_name TEXT NOT NULL DEFAULT 'General',
+                notes TEXT DEFAULT '',
+                metadata_json TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, question_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_bookmarks_student ON bookmarked_interview_questions (student_id, category, created_at DESC)")
+
         # Table 13: Store personal interview preparation notes (#235)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS interview_preparation_notes (
@@ -3207,6 +3224,156 @@ def is_coding_bookmarked(
         conn.close()
 
 
+def save_interview_bookmark(
+    student_id: str,
+    question_id: str,
+    question_text: str,
+    category: str = "Technical",
+    company_name: str = "General",
+    notes: str = "",
+    metadata: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Saves an interview practice question to the candidate's bookmarked collection (#358).
+    Supports categories: Technical, Behavioral, HR, Company-Specific.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+        q_text = str(question_text).strip()
+        if not q_text:
+            return False
+        if not q_id:
+            import hashlib
+            q_id = f"iq-{hashlib.sha256(q_text.encode('utf-8')).hexdigest()[:12]}"
+        cat = (category or "Technical").strip()
+        comp = (company_name or "General").strip()
+        user_notes = (notes or "").strip()
+        meta_json = json.dumps(metadata or {})
+        b_id = str(uuid.uuid4())
+
+        cursor.execute("""
+            INSERT INTO bookmarked_interview_questions (
+                id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(student_id, question_id) DO UPDATE SET
+                question_text = excluded.question_text,
+                category = excluded.category,
+                company_name = excluded.company_name,
+                notes = excluded.notes,
+                metadata_json = excluded.metadata_json,
+                created_at = CURRENT_TIMESTAMP
+        """, (b_id, effective_student_id, q_id, q_text, cat, comp, user_notes, meta_json))
+        conn.commit()
+        logger.info(f"Saved interview bookmark for student {effective_student_id}, question {q_id}")
+        return True
+    except Exception as e:
+        logger.error(f"Error saving interview bookmark for question {question_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def remove_interview_bookmark(
+    student_id: str,
+    question_id: str
+) -> bool:
+    """
+    Removes a bookmarked interview question for a candidate (#358).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+
+        cursor.execute("""
+            DELETE FROM bookmarked_interview_questions
+            WHERE student_id = ? AND question_id = ?
+        """, (effective_student_id, q_id))
+        conn.commit()
+        logger.info(f"Removed interview bookmark for student {effective_student_id}, question {q_id}")
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error removing interview bookmark for question {question_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_interview_bookmarks(
+    student_id: str,
+    category: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """
+    Retrieves all bookmarked interview questions for a student (#358).
+    Optionally filters by category (Technical, Behavioral, HR, Company-Specific).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        if category and category.strip().lower() not in ("all", ""):
+            cursor.execute("""
+                SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
+                FROM bookmarked_interview_questions
+                WHERE student_id = ? AND LOWER(category) = LOWER(?)
+                ORDER BY created_at DESC
+            """, (effective_student_id, category.strip()))
+        else:
+            cursor.execute("""
+                SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
+                FROM bookmarked_interview_questions
+                WHERE student_id = ?
+                ORDER BY created_at DESC
+            """, (effective_student_id,))
+
+        rows = cursor.fetchall()
+        bookmarks = []
+        for row in rows:
+            rec = dict(row)
+            try:
+                rec["metadata"] = json.loads(rec.get("metadata_json", "{}"))
+            except Exception:
+                rec["metadata"] = {}
+            bookmarks.append(rec)
+        return bookmarks
+    except Exception as e:
+        logger.error(f"Error fetching interview bookmarks for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def is_interview_bookmarked(
+    student_id: str,
+    question_id: str
+) -> bool:
+    """
+    Checks if an interview question is bookmarked by the student (#358).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+
+        cursor.execute("""
+            SELECT 1 FROM bookmarked_interview_questions
+            WHERE student_id = ? AND question_id = ?
+            LIMIT 1
+        """, (effective_student_id, q_id))
+        return cursor.fetchone() is not None
+    except Exception as e:
+        logger.error(f"Error checking interview bookmark status for question {question_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def create_preparation_note(
     student_id: str,
     title: str,
@@ -3746,6 +3913,12 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         if cursor.fetchone():
             cursor.execute("DELETE FROM bookmarked_coding_questions WHERE student_id = ?", (student_id,))
             deleted_counts["bookmarked_coding_questions"] = cursor.rowcount
+
+        # 14b. Delete bookmarked interview questions if exists (#358)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarked_interview_questions'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM bookmarked_interview_questions WHERE student_id = ?", (student_id,))
+            deleted_counts["bookmarked_interview_questions"] = cursor.rowcount
 
         # 15. Check if recently_viewed_jobs table exists, if so delete student rows
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='recently_viewed_jobs'")
