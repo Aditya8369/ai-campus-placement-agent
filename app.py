@@ -111,6 +111,11 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    create_saved_job_description,
+    get_saved_job_descriptions,
+    get_saved_job_description_by_id,
+    update_saved_job_description,
+    delete_saved_job_description,
     create_password_reset_token,
     get_valid_password_reset_token,
     reset_user_password,
@@ -1425,9 +1430,11 @@ def index() -> str:
     Renders the placement landing page containing the configuration forms.
     """
     companies_list = get_available_companies()
+    student_id = flask_session.get("user_id")
     return render_template(
         "index.html",
         companies=companies_list,
+        saved_job_descriptions=get_saved_job_descriptions(student_id) if student_id else [],
         walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
         walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
     )
@@ -12243,88 +12250,146 @@ def export_interview_bookmarks():
     )
 
 
-# ---------------------------------------------------------------------------
-# Student Notification Preferences Management Endpoints (#260)
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Saved Job Description Library
+# ============================================================================
 
-@app.route("/api/notifications/preferences", methods=["GET"])
-def api_get_notification_preferences():
-    """Retrieve full notification preference configuration for the logged-in student."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
-
-    try:
-        from utils.notification_preferences_manager import get_student_preferences
-        data = get_student_preferences(user_id)
-        return jsonify({
-            "success": True,
-            **data
-        }), 200
-    except Exception as e:
-        logger.error(f"Error fetching notification preferences: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+def _require_authenticated_student():
+    """Returns the current user id or a suitable response for private data routes."""
+    student_id = flask_session.get("user_id")
+    if student_id:
+        return student_id, None
+    if request.is_json or request.path.startswith("/api/"):
+        return None, (jsonify({"success": False, "error": "Authentication required."}), 401)
+    flash("Please log in to use your saved job description library.", "warning")
+    return None, redirect(url_for("login", next=request.path))
 
 
-@app.route("/api/notifications/preferences", methods=["PUT"])
-def api_update_notification_preferences():
-    """Update notification preferences for the logged-in student."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
-
-    payload = request.get_json(silent=True) or {}
-    preferences_list = payload.get("preferences")
-    if not isinstance(preferences_list, list):
-        return jsonify({"success": False, "error": "Payload must contain 'preferences' list"}), 400
-
-    try:
-        from utils.notification_preferences_manager import update_student_preferences
-        updated = update_student_preferences(user_id, preferences_list)
-        return jsonify({
-            "success": True,
-            "message": "Notification preferences updated successfully",
-            **updated
-        }), 200
-    except Exception as e:
-        logger.error(f"Error updating notification preferences: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+def _saved_job_description_fields(payload):
+    """Extracts and validates the fields shared by page and API submissions."""
+    values = {
+        "company_name": (payload.get("company_name") or "").strip(),
+        "role_title": (payload.get("role_title") or "").strip(),
+        "source": (payload.get("source") or "").strip(),
+        "description": (payload.get("description") or "").strip(),
+        "notes": (payload.get("notes") or "").strip(),
+    }
+    if not values["company_name"] or not values["role_title"] or not values["source"] or not values["description"]:
+        return None, "Company, role title, source, and job description are required."
+    if len(values["description"]) > 15000:
+        return None, "Job descriptions must be 15,000 characters or fewer."
+    if len(values["notes"]) > 5000:
+        return None, "Notes must be 5,000 characters or fewer."
+    return values, None
 
 
-@app.route("/api/notifications/preferences/master-toggle", methods=["POST"])
-def api_toggle_master_notifications():
-    """Turn all notifications on or off simultaneously for the student."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+@app.route("/saved-job-descriptions", methods=["GET", "POST"])
+def saved_job_descriptions_view():
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
 
-    payload = request.get_json(silent=True) or {}
-    enabled = bool(payload.get("enabled", True))
+    if request.method == "POST":
+        fields, error = _saved_job_description_fields(request.form)
+        if error:
+            flash(error, "danger")
+        else:
+            create_saved_job_description(student_id=student_id, **fields)
+            flash("Job description saved to your private library.", "success")
+            return redirect(url_for("saved_job_descriptions_view"))
 
-    try:
-        from utils.notification_preferences_manager import set_master_notification_toggle
-        res = set_master_notification_toggle(user_id, enabled)
-        return jsonify({
-            "success": True,
-            "message": f"All notifications {'enabled' if enabled else 'disabled'}",
-            **res
-        }), 200
-    except Exception as e:
-        logger.error(f"Error toggling master notifications: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    return render_template(
+        "saved_job_descriptions.html",
+        saved_job_descriptions=get_saved_job_descriptions(student_id),
+        editing=None
+    )
 
 
-@app.route("/notification-preferences", methods=["GET"])
-def notification_preferences_view():
-    """Render notification preferences management page (#260)."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        flash("Please log in to manage your notification preferences.", "warning")
-        return redirect(url_for("login"))
+@app.route("/saved-job-descriptions/<saved_id>/edit", methods=["GET", "POST"])
+def edit_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        flash("Saved job description not found or access denied.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
 
-    from utils.notification_preferences_manager import get_student_preferences
-    prefs = get_student_preferences(user_id)
-    return render_template("notification_preferences.html", preferences_data=prefs)
+    if request.method == "POST":
+        fields, error = _saved_job_description_fields(request.form)
+        if error:
+            flash(error, "danger")
+        elif update_saved_job_description(saved_id, student_id, **fields):
+            flash("Saved job description updated.", "success")
+            return redirect(url_for("saved_job_descriptions_view"))
+        else:
+            flash("Saved job description could not be updated.", "danger")
+        saved = dict(saved)
+        saved.update(fields or {})
+
+    return render_template(
+        "saved_job_descriptions.html",
+        saved_job_descriptions=get_saved_job_descriptions(student_id),
+        editing=saved
+    )
+
+
+@app.route("/saved-job-descriptions/<saved_id>/delete", methods=["POST"])
+def delete_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    if delete_saved_job_description(saved_id, student_id):
+        flash("Saved job description deleted.", "success")
+    else:
+        flash("Saved job description not found or access denied.", "danger")
+    return redirect(url_for("saved_job_descriptions_view"))
+
+
+@app.route("/api/saved-job-descriptions", methods=["GET", "POST"])
+def api_saved_job_descriptions():
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+
+    if request.method == "GET":
+        descriptions = get_saved_job_descriptions(student_id)
+        return jsonify({"success": True, "saved_job_descriptions": descriptions}), 200
+
+    payload = request.get_json(silent=True) or request.form
+    fields, error = _saved_job_description_fields(payload)
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    saved = create_saved_job_description(student_id=student_id, **fields)
+    return jsonify({"success": True, "saved_job_description": saved}), 201
+
+
+@app.route("/api/saved-job-descriptions/<saved_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def api_saved_job_description_item(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        return jsonify({"success": False, "error": "Saved job description not found or access denied."}), 404
+
+    if request.method == "GET":
+        return jsonify({"success": True, "saved_job_description": saved}), 200
+    if request.method == "DELETE":
+        deleted = delete_saved_job_description(saved_id, student_id)
+        return jsonify({"success": deleted, "message": "Saved job description deleted." if deleted else "Delete failed."}), 200 if deleted else 500
+
+    payload = request.get_json(silent=True) or request.form
+    fields, error = _saved_job_description_fields(payload)
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    updated = update_saved_job_description(saved_id, student_id, **fields)
+    if not updated:
+        return jsonify({"success": False, "error": "Saved job description could not be updated."}), 500
+    return jsonify({
+        "success": True,
+        "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
+    }), 200
 
 
 if __name__ == "__main__":
