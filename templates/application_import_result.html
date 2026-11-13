@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Application Import Result</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <main class="container py-5">
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5">
+      <h2 class="fw-bold mb-2">Import complete</h2>
+      <p class="text-muted">Valid applications were saved without discarding the rows that need correction.</p>
+      <div class="d-flex gap-3 mb-4">
+        <span class="badge bg-success-subtle text-success p-2">{{ imported }} imported</span>
+        <span class="badge bg-warning-subtle text-warning p-2">{{ skipped|length }} skipped</span>
+      </div>
+      {% if skipped %}
+      <h5 class="fw-bold">Rows not imported</h5>
+      <div class="table-responsive mb-4">
+        <table class="table table-sm align-middle">
+          <thead><tr><th>CSV row</th><th>Reason</th></tr></thead>
+          <tbody>
+            {% for row in skipped %}
+            <tr><td>{{ row.row_number }}</td><td class="text-danger">{{ row.errors|join('; ') }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-success"><i class="fa-solid fa-check me-1"></i>All valid rows were imported.</p>
+      {% endif %}
+      <a href="{{ url_for('job_applications_tracker', student_id=student_id) }}" class="btn btn-primary rounded-pill">Back to Applications</a>
+    </div>
+  </main>
+</body>
+</html>

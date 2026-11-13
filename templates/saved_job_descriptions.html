@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Saved Job Descriptions - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light min-vh-100 d-flex flex-column">
+  <nav class="navbar navbar-light bg-white border-bottom py-2">
+    <div class="container d-flex justify-content-between align-items-center">
+      <a class="navbar-brand fw-bold" href="/"><i class="fa-solid fa-graduation-cap me-1"></i> AI Campus Placement Agent</a>
+      <div class="d-flex gap-2">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill">New Analysis</a>
+        <a href="/logout" class="btn btn-outline-danger btn-sm rounded-pill">Logout</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 flex-grow-1">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else category }} alert-dismissible fade show rounded-3">
+          {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1"><i class="fa-solid fa-bookmark text-primary me-2"></i>Saved Job Descriptions</h2>
+        <p class="text-muted mb-0">Keep reusable job posts private to your account and load them into a new analysis.</p>
+      </div>
+      <a href="#savedJobDescriptionForm" class="btn btn-primary rounded-pill"><i class="fa-solid fa-plus me-1"></i> Save Description</a>
+    </div>
+
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4" id="savedJobDescriptionForm">
+      <h5 class="fw-bold mb-3">{{ 'Edit Saved Description' if editing else 'Save a Job Description' }}</h5>
+      <form method="POST" action="{{ url_for('edit_saved_job_description_view', saved_id=editing.id) if editing else url_for('saved_job_descriptions_view') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="companyName">Company</label>
+            <input id="companyName" name="company_name" class="form-control" required value="{{ editing.company_name if editing else '' }}" placeholder="e.g. Google">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="roleTitle">Role title</label>
+            <input id="roleTitle" name="role_title" class="form-control" required value="{{ editing.role_title if editing else '' }}" placeholder="e.g. Software Engineer Intern">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold" for="source">Source</label>
+            <input id="source" name="source" class="form-control" required value="{{ editing.source if editing else '' }}" placeholder="e.g. LinkedIn, referral, company site">
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold" for="description">Job description</label>
+            <textarea id="description" name="description" rows="7" class="form-control" required maxlength="15000" placeholder="Paste the complete job description here...">{{ editing.description if editing else '' }}</textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label fw-semibold" for="notes">Notes <span class="text-muted fw-normal">(optional)</span></label>
+            <textarea id="notes" name="notes" rows="3" class="form-control" maxlength="5000" placeholder="Add application-specific reminders...">{{ editing.notes if editing else '' }}</textarea>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button type="submit" class="btn btn-primary rounded-pill">{{ 'Update Description' if editing else 'Save Description' }}</button>
+          {% if editing %}<a href="{{ url_for('saved_job_descriptions_view') }}" class="btn btn-outline-secondary rounded-pill">Cancel</a>{% endif %}
+        </div>
+      </form>
+    </div>
+
+    {% if saved_job_descriptions %}
+      <div class="row g-3">
+        {% for saved in saved_job_descriptions %}
+          <div class="col-md-6 col-lg-4">
+            <div class="card border-0 shadow-sm rounded-4 h-100 p-4">
+              <div class="d-flex justify-content-between gap-2 mb-2">
+                <span class="badge bg-primary-subtle text-primary">{{ saved.company_name }}</span>
+                <span class="small text-muted">{{ saved.updated_at[:10] if saved.updated_at else '' }}</span>
+              </div>
+              <h5 class="fw-bold">{{ saved.role_title }}</h5>
+              <p class="small text-muted mb-2"><i class="fa-solid fa-link me-1"></i>{{ saved.source }}</p>
+              <p class="small text-secondary flex-grow-1">{{ saved.description[:220] }}{% if saved.description|length > 220 %}...{% endif %}</p>
+              {% if saved.notes %}<p class="small bg-light rounded-3 p-2 mb-3"><strong>Notes:</strong> {{ saved.notes }}</p>{% endif %}
+              <div class="d-flex gap-2 pt-3 border-top">
+                <a href="{{ url_for('index') }}?saved_job_description={{ saved.id }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Use for Analysis</a>
+                <a href="{{ url_for('edit_saved_job_description_view', saved_id=saved.id) }}" class="btn btn-outline-secondary btn-sm rounded-pill" title="Edit"><i class="fa-solid fa-pen"></i></a>
+                <form method="POST" action="{{ url_for('delete_saved_job_description_view', saved_id=saved.id) }}" onsubmit="return confirm('Delete this saved job description?');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill" title="Delete"><i class="fa-solid fa-trash"></i></button>
+                </form>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="card border-0 shadow-sm rounded-4 p-5 text-center">
+        <i class="fa-regular fa-folder-open fa-3x text-muted mb-3"></i>
+        <h5 class="fw-bold">Your library is empty</h5>
+        <p class="text-muted mb-0">Save a job description once and reuse it for future resume analyses.</p>
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>

@@ -7,6 +7,7 @@ import logging
 import re
 import secrets
 import hashlib
+import csv
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -111,6 +112,11 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    create_saved_job_description,
+    get_saved_job_descriptions,
+    get_saved_job_description_by_id,
+    update_saved_job_description,
+    delete_saved_job_description,
     create_password_reset_token,
     get_valid_password_reset_token,
     reset_user_password,
@@ -1424,9 +1430,11 @@ def index() -> str:
     Renders the placement landing page containing the configuration forms.
     """
     companies_list = get_available_companies()
+    student_id = flask_session.get("user_id")
     return render_template(
         "index.html",
         companies=companies_list,
+        saved_job_descriptions=get_saved_job_descriptions(student_id) if student_id else [],
         walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
         walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
     )
@@ -7916,6 +7924,100 @@ def placement_calendar_view():
     )
 
 
+def _ics_escape(value):
+    """Escapes text according to RFC 5545 content-line rules."""
+    return (
+        str(value or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+    )
+
+
+def _ics_fold_line(line, limit=75):
+    """Folds long iCalendar content lines without splitting UTF-8 bytes."""
+    if len(line) <= limit:
+        return [line]
+    chunks = [line[index:index + limit] for index in range(0, len(line), limit)]
+    return [chunks[0]] + [f" {chunk}" for chunk in chunks[1:]]
+
+
+@app.route("/calendar/export.ics", methods=["GET"])
+def export_calendar_ics():
+    """Exports selected or all owned preparation events as floating local-time ICS."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "default_student"
+    requested_ids = {
+        event_id.strip()
+        for event_id in request.args.get("event_ids", "").split(",")
+        if event_id.strip()
+    }
+    all_events = get_calendar_events(student_id=student_id)
+    if requested_ids:
+        events = [event for event in all_events if event.get("id") in requested_ids]
+    elif request.args.get("all") == "1":
+        events = all_events
+    else:
+        events = []
+
+    if not events:
+        return Response(
+            "Select at least one calendar event, or choose export all.",
+            status=400,
+            mimetype="text/plain"
+        )
+
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AI Campus Placement Agent//Preparation Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Placement Preparation",
+        "X-WR-CALDESC:Times are floating local times as stored; no timezone conversion is applied.",
+    ]
+    for event in events:
+        event_date = (event.get("event_date") or "").replace("-", "")
+        event_time = (event.get("event_time") or "").replace(":", "")
+        if len(event_date) != 8:
+            continue
+        description_parts = []
+        if event.get("description"):
+            description_parts.append(event["description"])
+        if event.get("company_name"):
+            description_parts.append(f"Company: {event['company_name']}")
+        if event.get("priority"):
+            description_parts.append(f"Priority: {event['priority']}")
+        description_parts.append("Timezone: floating local time as stored; no timezone conversion.")
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{_ics_escape(event.get('id'))}@ai-campus-placement-agent",
+            f"DTSTAMP:{now_utc}",
+            f"SUMMARY:{_ics_escape(event.get('title'))}",
+            f"DESCRIPTION:{_ics_escape(' '.join(description_parts))}",
+        ])
+        if event_time:
+            lines.append(f"DTSTART:{event_date}T{event_time}00")
+        else:
+            lines.append(f"DTSTART;VALUE=DATE:{event_date}")
+        lines.extend([
+            f"CATEGORIES:{_ics_escape(event.get('event_type', 'preparation'))}",
+            "END:VEVENT",
+        ])
+    lines.append("END:VCALENDAR")
+    ics_content = "\r\n".join(
+        folded_line
+        for line in lines
+        for folded_line in _ics_fold_line(line)
+    ) + "\r\n"
+    response = Response(ics_content, mimetype="text/calendar; charset=utf-8")
+    response.headers["Content-Disposition"] = "attachment; filename=preparation_calendar.ics"
+    return response
+
+
 @app.route("/api/calendar/<event_id>", methods=["PUT", "POST", "DELETE"])
 def api_manage_calendar_event(event_id: str):
     """
@@ -9879,6 +9981,119 @@ def internships_view():
         search_query=search_query
     )
 APPLICATION_STAGES = ["Applied", "Assessment", "Interview", "Selected", "Rejected"]
+APPLICATION_IMPORT_FIELDS = [
+    "company_name", "role_title", "status", "application_date", "job_url",
+    "job_description", "notes", "location", "job_type", "experience_level"
+]
+APPLICATION_IMPORT_MAX_ROWS = 2000
+APPLICATION_IMPORT_MAX_BYTES = 5 * 1024 * 1024
+_APPLICATION_IMPORT_PREVIEWS = {}
+
+
+def _application_import_student_id():
+    return (
+        flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+
+def _normalise_csv_header(value):
+    return re.sub(r"[^a-z0-9]+", "_", (value or "").strip().lower()).strip("_")
+
+
+def _suggest_application_import_mapping(headers):
+    aliases = {
+        "company_name": {"company", "company_name", "employer", "organisation", "organization"},
+        "role_title": {"role", "role_title", "job_title", "position", "title"},
+        "status": {"status", "stage", "application_status"},
+        "application_date": {"date", "application_date", "date_applied", "applied_date"},
+        "job_url": {"url", "job_url", "job_link", "link"},
+        "job_description": {"job_description", "description", "job_posting"},
+        "notes": {"notes", "note", "comments"},
+        "location": {"location", "city"},
+        "job_type": {"job_type", "employment_type", "type"},
+        "experience_level": {"experience", "experience_level", "seniority"},
+    }
+    mapping = {}
+    normalised = {_normalise_csv_header(header): header for header in headers}
+    for field, names in aliases.items():
+        mapping[field] = next((normalised[name] for name in names if name in normalised), "")
+    return mapping
+
+
+def _read_application_import_csv(uploaded_file):
+    if not uploaded_file or not uploaded_file.filename:
+        raise ValueError("Choose a CSV file to import.")
+    if not uploaded_file.filename.lower().endswith(".csv"):
+        raise ValueError("Only CSV files are supported.")
+    uploaded_file.seek(0, os.SEEK_END)
+    if uploaded_file.tell() > APPLICATION_IMPORT_MAX_BYTES:
+        raise ValueError("CSV files must be 5 MB or smaller.")
+    uploaded_file.seek(0)
+    try:
+        content = uploaded_file.read().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("The CSV must be encoded as UTF-8.") from exc
+    reader = csv.DictReader(io.StringIO(content))
+    headers = reader.fieldnames or []
+    if not headers:
+        raise ValueError("The CSV must include a header row.")
+    rows = list(reader)
+    if len(rows) > APPLICATION_IMPORT_MAX_ROWS:
+        raise ValueError(f"CSV imports are limited to {APPLICATION_IMPORT_MAX_ROWS} rows.")
+    return headers, rows
+
+
+def _application_import_duplicate(existing_apps, candidate):
+    candidate_url = (candidate.get("job_url") or "").strip().lower()
+    candidate_key = (
+        (candidate.get("company_name") or "").strip().lower(),
+        (candidate.get("role_title") or "").strip().lower(),
+        (candidate.get("application_date") or "").strip(),
+    )
+    for existing in existing_apps:
+        existing_url = (existing.get("job_url") or "").strip().lower()
+        existing_key = (
+            (existing.get("company_name") or "").strip().lower(),
+            (existing.get("role_title") or "").strip().lower(),
+            (existing.get("application_date") or "").strip(),
+        )
+        if candidate_url and existing_url and candidate_url == existing_url:
+            return "matches an existing application URL"
+        if candidate_key == existing_key:
+            return "matches an existing company, role, and application date"
+    return None
+
+
+def _build_application_import_preview(student_id, headers, rows, mapping):
+    existing_apps = get_job_applications(student_id=student_id)
+    seen = []
+    preview_rows = []
+    for row_number, raw_row in enumerate(rows, start=2):
+        candidate = {field: (raw_row.get(mapping.get(field, ""), "") or "").strip() for field in APPLICATION_IMPORT_FIELDS}
+        errors = []
+        if not candidate["company_name"]:
+            errors.append("Company is required")
+        if not candidate["role_title"]:
+            errors.append("Role title is required")
+        if candidate["status"] and candidate["status"] not in APPLICATION_STAGES:
+            if candidate["status"] == "Offered":
+                candidate["status"] = "Selected"
+            else:
+                errors.append(f"Invalid status '{candidate['status']}'")
+        if candidate["application_date"]:
+            try:
+                datetime.strptime(candidate["application_date"], "%Y-%m-%d")
+            except ValueError:
+                errors.append("Application date must use YYYY-MM-DD")
+        duplicate = _application_import_duplicate(existing_apps + seen, candidate)
+        if duplicate:
+            errors.append(f"Likely duplicate: {duplicate}")
+        if not errors:
+            seen.append(candidate)
+        preview_rows.append({"row_number": row_number, "values": candidate, "errors": errors})
+    return preview_rows
 
 
 @app.route("/applications", methods=["GET", "POST"])
@@ -10017,6 +10232,84 @@ def job_applications_tracker():
         job_type_filter=job_type_filter,
         exp_filter=exp_filter,
         sort_by=sort_by
+    )
+
+
+@app.route("/applications/import/preview", methods=["POST"])
+def preview_application_import():
+    student_id = _application_import_student_id()
+    try:
+        headers, rows = _read_application_import_csv(request.files.get("csv_file"))
+        mapping = _suggest_application_import_mapping(headers)
+        preview_rows = _build_application_import_preview(student_id, headers, rows, mapping)
+        now = time.time()
+        for stale_token, stale_preview in list(_APPLICATION_IMPORT_PREVIEWS.items()):
+            if now - stale_preview.get("created_at", now) > 1800:
+                _APPLICATION_IMPORT_PREVIEWS.pop(stale_token, None)
+        token = uuid.uuid4().hex
+        _APPLICATION_IMPORT_PREVIEWS[token] = {
+            "student_id": student_id,
+            "headers": headers,
+            "rows": rows,
+            "created_at": now,
+        }
+        return render_template(
+            "application_import.html",
+            token=token,
+            student_id=student_id,
+            headers=headers,
+            mapping=mapping,
+            preview_rows=preview_rows,
+            import_fields=APPLICATION_IMPORT_FIELDS,
+            valid_rows=sum(1 for row in preview_rows if not row["errors"]),
+            invalid_rows=sum(1 for row in preview_rows if row["errors"]),
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+
+@app.route("/applications/import/confirm", methods=["POST"])
+def confirm_application_import():
+    student_id = _application_import_student_id()
+    token = request.form.get("token", "").strip()
+    preview = _APPLICATION_IMPORT_PREVIEWS.pop(token, None)
+    if not preview or preview["student_id"] != student_id or time.time() - preview["created_at"] > 1800:
+        flash("This import preview has expired. Please upload the CSV again.", "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+    mapping = {field: request.form.get(f"mapping_{field}", "").strip() for field in APPLICATION_IMPORT_FIELDS}
+    preview_rows = _build_application_import_preview(student_id, preview["headers"], preview["rows"], mapping)
+    existing_apps = get_job_applications(student_id=student_id)
+    imported = 0
+    skipped = []
+    for row in preview_rows:
+        if row["errors"]:
+            skipped.append({"row_number": row["row_number"], "errors": row["errors"]})
+            continue
+        values = row["values"]
+        save_job_application(
+            app_id=f"app-{uuid.uuid4().hex[:12]}",
+            student_id=student_id,
+            company_name=values["company_name"],
+            role_title=values["role_title"],
+            status=values["status"] or "Applied",
+            application_date=values["application_date"] or None,
+            job_url=values["job_url"],
+            job_description=values["job_description"],
+            notes=values["notes"],
+            location=values["location"] or "Remote",
+            job_type=values["job_type"] or "Full-Time",
+            experience_level=values["experience_level"] or "Entry-Level",
+        )
+        existing_apps.append(values)
+        imported += 1
+
+    return render_template(
+        "application_import_result.html",
+        imported=imported,
+        skipped=skipped,
+        student_id=student_id,
     )
 
 
@@ -12254,6 +12547,148 @@ def export_interview_bookmarks():
         mimetype="application/json",
         headers={"Content-Disposition": f"attachment;filename=interview_bookmarks_{student_id}.json"}
     )
+
+
+# ============================================================================
+# Saved Job Description Library
+# ============================================================================
+
+def _require_authenticated_student():
+    """Returns the current user id or a suitable response for private data routes."""
+    student_id = flask_session.get("user_id")
+    if student_id:
+        return student_id, None
+    if request.is_json or request.path.startswith("/api/"):
+        return None, (jsonify({"success": False, "error": "Authentication required."}), 401)
+    flash("Please log in to use your saved job description library.", "warning")
+    return None, redirect(url_for("login", next=request.path))
+
+
+def _saved_job_description_fields(payload):
+    """Extracts and validates the fields shared by page and API submissions."""
+    values = {
+        "company_name": (payload.get("company_name") or "").strip(),
+        "role_title": (payload.get("role_title") or "").strip(),
+        "source": (payload.get("source") or "").strip(),
+        "description": (payload.get("description") or "").strip(),
+        "notes": (payload.get("notes") or "").strip(),
+    }
+    if not values["company_name"] or not values["role_title"] or not values["source"] or not values["description"]:
+        return None, "Company, role title, source, and job description are required."
+    if len(values["description"]) > 15000:
+        return None, "Job descriptions must be 15,000 characters or fewer."
+    if len(values["notes"]) > 5000:
+        return None, "Notes must be 5,000 characters or fewer."
+    return values, None
+
+
+@app.route("/saved-job-descriptions", methods=["GET", "POST"])
+def saved_job_descriptions_view():
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+
+    if request.method == "POST":
+        fields, error = _saved_job_description_fields(request.form)
+        if error:
+            flash(error, "danger")
+        else:
+            create_saved_job_description(student_id=student_id, **fields)
+            flash("Job description saved to your private library.", "success")
+            return redirect(url_for("saved_job_descriptions_view"))
+
+    return render_template(
+        "saved_job_descriptions.html",
+        saved_job_descriptions=get_saved_job_descriptions(student_id),
+        editing=None
+    )
+
+
+@app.route("/saved-job-descriptions/<saved_id>/edit", methods=["GET", "POST"])
+def edit_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        flash("Saved job description not found or access denied.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+
+    if request.method == "POST":
+        fields, error = _saved_job_description_fields(request.form)
+        if error:
+            flash(error, "danger")
+        elif update_saved_job_description(saved_id, student_id, **fields):
+            flash("Saved job description updated.", "success")
+            return redirect(url_for("saved_job_descriptions_view"))
+        else:
+            flash("Saved job description could not be updated.", "danger")
+        saved = dict(saved)
+        saved.update(fields or {})
+
+    return render_template(
+        "saved_job_descriptions.html",
+        saved_job_descriptions=get_saved_job_descriptions(student_id),
+        editing=saved
+    )
+
+
+@app.route("/saved-job-descriptions/<saved_id>/delete", methods=["POST"])
+def delete_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    if delete_saved_job_description(saved_id, student_id):
+        flash("Saved job description deleted.", "success")
+    else:
+        flash("Saved job description not found or access denied.", "danger")
+    return redirect(url_for("saved_job_descriptions_view"))
+
+
+@app.route("/api/saved-job-descriptions", methods=["GET", "POST"])
+def api_saved_job_descriptions():
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+
+    if request.method == "GET":
+        descriptions = get_saved_job_descriptions(student_id)
+        return jsonify({"success": True, "saved_job_descriptions": descriptions}), 200
+
+    payload = request.get_json(silent=True) or request.form
+    fields, error = _saved_job_description_fields(payload)
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    saved = create_saved_job_description(student_id=student_id, **fields)
+    return jsonify({"success": True, "saved_job_description": saved}), 201
+
+
+@app.route("/api/saved-job-descriptions/<saved_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
+def api_saved_job_description_item(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        return jsonify({"success": False, "error": "Saved job description not found or access denied."}), 404
+
+    if request.method == "GET":
+        return jsonify({"success": True, "saved_job_description": saved}), 200
+    if request.method == "DELETE":
+        deleted = delete_saved_job_description(saved_id, student_id)
+        return jsonify({"success": deleted, "message": "Saved job description deleted." if deleted else "Delete failed."}), 200 if deleted else 500
+
+    payload = request.get_json(silent=True) or request.form
+    fields, error = _saved_job_description_fields(payload)
+    if error:
+        return jsonify({"success": False, "error": error}), 400
+    updated = update_saved_job_description(saved_id, student_id, **fields)
+    if not updated:
+        return jsonify({"success": False, "error": "Saved job description could not be updated."}), 500
+    return jsonify({
+        "success": True,
+        "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
+    }), 200
 
 
 if __name__ == "__main__":
