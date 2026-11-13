@@ -18,8 +18,8 @@
   /* Typography colours */
   --text-dark: #202124;
   --text-primary: #202124;
-  --text-secondary: #5f6368;
-  --text-muted: #6c757d;
+  --text-secondary: #4b5563;
+  --text-muted: #4b5563;
 
   /* State & semantic colours */
   --success-green: #34a853;
@@ -465,8 +465,8 @@ body {
   /* Typography colours */
   --text-dark: #e6edf3;
   --text-primary: #e6edf3;
-  --text-secondary: #8b949e;
-  --text-muted: #8b949e;
+  --text-secondary: #94a3b8;
+  --text-muted: #94a3b8;
 
   /* State & semantic colours */
   --success-green: #3fb950;
@@ -2068,8 +2068,108 @@ textarea:focus-visible {
 }
 
 /* Target main content when focused via skip-link */
-#main-content:focus {
+#main-content:focus,
+#dashboardContainer:focus {
   outline: none !important;
+}
+
+/* High-Contrast Typography for Accessibility (WCAG 2.1 AA >= 4.5:1) */
+.text-muted {
+  color: var(--text-muted, #4b5563) !important;
+}
+
+.text-secondary {
+  color: var(--text-secondary, #4b5563) !important;
+}
+
+[data-bs-theme="dark"] .text-muted,
+[data-bs-theme="dark"] .text-secondary {
+  color: var(--text-muted, #94a3b8) !important;
+}
+
+/* Accessible High-Contrast Badge Variations (WCAG 2.1 AA >= 4.5:1) */
+.badge.bg-primary-subtle,
+.badge.bg-primary-subtle.text-primary {
+  color: #0b57d0 !important;
+}
+
+.badge.bg-success-subtle,
+.badge.bg-success-subtle.text-success {
+  color: #0f5132 !important;
+}
+
+.badge.bg-danger-subtle,
+.badge.bg-danger-subtle.text-danger {
+  color: #842029 !important;
+}
+
+.badge.bg-warning-subtle,
+.badge.bg-warning-subtle.text-warning {
+  color: #664d03 !important;
+}
+
+.badge.bg-info-subtle,
+.badge.bg-info-subtle.text-info {
+  color: #055160 !important;
+}
+
+.badge.bg-secondary-subtle,
+.badge.bg-secondary-subtle.text-secondary {
+  color: #2b3035 !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-primary-subtle,
+[data-bs-theme="dark"] .badge.bg-primary-subtle.text-primary {
+  color: #a8c7fa !important;
+  background-color: rgba(26, 115, 232, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-success-subtle,
+[data-bs-theme="dark"] .badge.bg-success-subtle.text-success {
+  color: #75b798 !important;
+  background-color: rgba(25, 135, 84, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-danger-subtle,
+[data-bs-theme="dark"] .badge.bg-danger-subtle.text-danger {
+  color: #ea868f !important;
+  background-color: rgba(220, 53, 69, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-warning-subtle,
+[data-bs-theme="dark"] .badge.bg-warning-subtle.text-warning {
+  color: #ffda6a !important;
+  background-color: rgba(255, 193, 7, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-info-subtle,
+[data-bs-theme="dark"] .badge.bg-info-subtle.text-info {
+  color: #6edff6 !important;
+  background-color: rgba(13, 202, 240, 0.2) !important;
+}
+
+[data-bs-theme="dark"] .badge.bg-secondary-subtle,
+[data-bs-theme="dark"] .badge.bg-secondary-subtle.text-secondary {
+  color: #c7cdd4 !important;
+  background-color: rgba(108, 117, 125, 0.2) !important;
+}
+
+/* Company Pill Badges Keyboard Focus & Visibility */
+.company-pill-badge {
+  position: relative;
+  transition: all 0.2s ease-in-out;
+}
+
+.company-pill-badge:focus-within {
+  outline: 3px solid var(--primary-blue, #1a73e8) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(26, 115, 232, 0.25) !important;
+}
+
+[data-bs-theme="dark"] .company-pill-badge:focus-within {
+  outline: 3px solid #6ea8fe !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(110, 168, 254, 0.35) !important;
 }
 
 

@@ -159,7 +159,8 @@ from utils.deadline_reminders import (
     list_student_reminders,
     acknowledge_deadline_reminder,
     get_student_deadline_preferences,
-    update_student_deadline_preferences
+    update_student_deadline_preferences,
+    send_upcoming_deadline_reminders
 )
 from utils.company_profile_manager import (
     create_company_profile,
@@ -4998,10 +4999,11 @@ def role_preparation_view():
 
 
 
+@app.route("/notification-settings", methods=["GET", "POST"])
 def notification_settings_view():
     """
-    Candidate Email Notification Settings View and Preference Handler (#186).
-    Allows students to enable/disable transactional emails and schedule interview reminders.
+    Candidate Email Notification Settings View and Preference Handler (#186, #298).
+    Allows students to enable/disable transactional emails and schedule interview & deadline reminders.
     """
     student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
 
@@ -5012,6 +5014,7 @@ def notification_settings_view():
         notify_application_created = request.form.get("notify_application_created") == "on"
         notify_status_change = request.form.get("notify_status_change") == "on"
         notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
+        notify_deadline_reminder = request.form.get("notify_deadline_reminder") == "on"
 
         update_email_notification_preferences(
             student_id=student_id,
@@ -5020,12 +5023,27 @@ def notification_settings_view():
             notify_welcome=notify_welcome,
             notify_application_created=notify_application_created,
             notify_status_change=notify_status_change,
-            notify_interview_reminder=notify_interview_reminder
+            notify_interview_reminder=notify_interview_reminder,
+            notify_deadline_reminder=notify_deadline_reminder
         )
+        try:
+            update_student_deadline_preferences(
+                student_id=student_id,
+                email_alerts_enabled=(email_enabled and notify_deadline_reminder)
+            )
+        except Exception as pref_err:
+            logger.debug(f"Could not update student deadline preferences: {pref_err}")
+
         flash("Email notification preferences updated successfully!", "success")
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "preferences": prefs
+        }), 200
+
     return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
 
 
@@ -7662,54 +7680,7 @@ def role_preparation_view():
 
 
 
-def notification_settings_view():
-    """
-    Candidate Email Notification Settings View and Preference Handler (#186).
-    Allows students to enable/disable transactional emails and schedule interview reminders.
-    """
-    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
 
-    if request.method == "POST":
-        email = request.form.get("email", "").strip()
-        email_enabled = request.form.get("email_enabled") == "on"
-        notify_welcome = request.form.get("notify_welcome") == "on"
-        notify_application_created = request.form.get("notify_application_created") == "on"
-        notify_status_change = request.form.get("notify_status_change") == "on"
-        notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
-
-        update_email_notification_preferences(
-            student_id=student_id,
-            email=email or None,
-            email_enabled=email_enabled,
-            notify_welcome=notify_welcome,
-            notify_application_created=notify_application_created,
-            notify_status_change=notify_status_change,
-            notify_interview_reminder=notify_interview_reminder
-        )
-        flash("Email notification preferences updated successfully!", "success")
-        return redirect(url_for("notification_settings_view", student_id=student_id))
-
-    prefs = get_email_notification_preferences(student_id)
-
-    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return jsonify({
-            "success": True,
-            "preferences": prefs
-        }), 200
-
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
-
-
-def api_send_interview_reminder():
-    """
-    API endpoint to dispatch on-demand or scheduled interview reminders (#186).
-    """
-    payload = request.get_json(silent=True) or {}
-    student_id = payload.get("student_id") or "default_student"
-    company_name = payload.get("company_name", "").strip()
-    round_type = payload.get("round_type", "Technical Round").strip()
-    scheduled_time = payload.get("scheduled_time", "").strip()
-    interview_link = payload.get("interview_link", "").strip()
 
 
 
@@ -9935,6 +9906,7 @@ def job_applications_tracker():
         location = (payload.get("location") or "Remote").strip()
         job_type = (payload.get("job_type") or "Full-Time").strip()
         exp_level = (payload.get("experience_level") or "Entry-Level").strip()
+        deadline_date = (payload.get("deadline_date") or "").strip() or None
 
         if not company or not role:
             if is_api_request:
@@ -9957,7 +9929,8 @@ def job_applications_tracker():
             notes=notes,
             location=location,
             job_type=job_type,
-            experience_level=exp_level
+            experience_level=exp_level,
+            deadline_date=deadline_date
         )
 
         # Notify candidate via email if preference enabled (#186)
@@ -10090,6 +10063,9 @@ def api_application_detail_operations(app_id: str):
         location = payload.get("location") or existing.get("location") or "Remote"
         job_type = payload.get("job_type") or existing.get("job_type") or "Full-Time"
         exp_level = payload.get("experience_level") or existing.get("experience_level") or "Entry-Level"
+        deadline_date = payload.get("deadline_date") if "deadline_date" in payload else existing.get("deadline_date")
+        if isinstance(deadline_date, str):
+            deadline_date = deadline_date.strip() or None
 
         updated = update_job_application(
             app_id=app_id,
@@ -10102,7 +10078,8 @@ def api_application_detail_operations(app_id: str):
             notes=notes,
             location=location,
             job_type=job_type,
-            experience_level=exp_level
+            experience_level=exp_level,
+            deadline_date=deadline_date
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)
@@ -11292,9 +11269,10 @@ def admin_experience_moderation_logs_endpoint(exp_id: str):
 
 
 # ============================================================================
-# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
+# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251, #298)
 # ============================================================================
 
+@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
 def student_deadline_reminders_endpoint():
     """
     GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
@@ -11369,6 +11347,35 @@ def student_reminder_preferences_endpoint():
         "message": "Updated deadline reminder preferences.",
         "preferences": updated
     }), 200
+
+
+@app.route("/api/reminders/send-upcoming", methods=["POST"])
+@app.route("/api/reminders/send", methods=["POST"])
+def api_send_upcoming_deadline_reminders():
+    """
+    API endpoint to trigger upcoming application & interview deadline reminders (#298).
+    Can be invoked by external cron schedulers or administrative tasks.
+    """
+    payload = request.get_json(silent=True) or {}
+    student_id = request.args.get("student_id") or payload.get("student_id")
+    result = send_upcoming_deadline_reminders(student_id=student_id)
+    return jsonify(result), 200
+
+
+@app.cli.command("send-deadline-reminders")
+def send_deadline_reminders_cli():
+    """
+    CLI scheduled command to find items due in the next 2 days and dispatch reminder emails (#298).
+    Designed for crontab, systemd timers, or APScheduler invocations.
+    """
+    import click
+    logger.info("Executing scheduled CLI job: send-deadline-reminders...")
+    result = send_upcoming_deadline_reminders()
+    click.echo(
+        f"Deadline reminders complete: sent={result['sent_count']}, "
+        f"skipped={result['skipped_count']}, failed={result['failed_count']}"
+    )
+
 
 
 # ============================================================================
@@ -11584,27 +11591,7 @@ def redact_resume_pii_endpoint():
     }), 200
 
 
-# JOB APPLICATION DEADLINE REMINDERS ENDPOINTS (#251)
-# ============================================================================
 
-@app.route("/api/reminders/deadlines", methods=["GET", "POST"])
-def student_deadline_reminders_endpoint():
-    """
-    GET: Scans and retrieves all active upcoming job application and interview deadline reminders.
-    POST: Triggers an on-demand scan and synchronization of reminders for the candidate.
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-    urgency_filter = request.args.get("urgency")
-    include_acknowledged = request.args.get("include_acknowledged", "false").lower() == "true"
-
-    if request.method == "POST":
-        reminders = scan_and_generate_student_reminders(student_id)
-        return jsonify({
-            "status": "success",
-            "message": f"Scanned and updated deadline reminders for student '{student_id}'.",
-            "count": len(reminders),
-            "reminders": reminders
-        }), 200
 
 
 # ============================================================================

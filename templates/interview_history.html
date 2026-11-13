@@ -85,7 +85,9 @@
           <h5 class="fw-bold mb-3"><i class="fa-solid fa-arrow-trend-up text-primary me-2"></i>Performance Score Progression</h5>
           {% if analytics.score_trend %}
           <div style="position: relative; height: 260px;">
-            <canvas id="scoreTrendChart"></canvas>
+            <canvas id="scoreTrendChart" role="img" aria-label="Mock interview performance score progression trend chart">
+              <p>Performance score progression chart visualization</p>
+            </canvas>
           </div>
           {% else %}
           <div class="text-center py-5 text-muted">

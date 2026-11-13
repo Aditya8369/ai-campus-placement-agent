@@ -135,7 +135,9 @@
 
       <!-- Radar Canvas Container -->
       <div style="position: relative; height: 380px; width: 100%;">
-        <canvas id="companyRadarCanvas" data-radar='{{ radar_data_json|safe }}'></canvas>
+        <canvas id="companyRadarCanvas" data-radar='{{ radar_data_json|safe }}' role="img" aria-label="Comparative multi-company fit radar chart">
+          <p>Comparative multi-company fit radar chart visualization</p>
+        </canvas>
       </div>
     </div>
 

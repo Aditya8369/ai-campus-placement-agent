@@ -810,6 +810,8 @@ function initFormUpload() {
     if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
     if (progressTitle) progressTitle.textContent = "Coordinating AI Agents";
     if (progressSubtitle) progressSubtitle.textContent = "Orchestrating multi-agent analysis in progress...";
+    const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
+    if (progressAnnouncer) progressAnnouncer.textContent = "Multi-agent placement analysis started. Please stand by.";
     if (analysisProgressBar) {
       analysisProgressBar.style.width = "5%";
       analysisProgressBar.setAttribute("aria-valuenow", "5");
@@ -1150,6 +1152,16 @@ function initFormUpload() {
         progressSubtitle.textContent = message;
       }
 
+      // Announce progress to screen readers via aria-live region
+      const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
+      if (progressAnnouncer) {
+        if (status === "completed" || step === "completed") {
+          progressAnnouncer.textContent = "Analysis complete! Redirecting to your dashboard...";
+        } else if (message) {
+          progressAnnouncer.textContent = `Analysis progress: ${progress}%. ${message}`;
+        }
+      }
+
       if (step && step.startsWith("step")) {
         const currentIdx = stepOrder.indexOf(step);
         stepOrder.forEach((sId, idx) => {
@@ -1206,6 +1218,8 @@ function initFormUpload() {
 
     function showPipelineError(errMsg) {
       if (progressSpinner) progressSpinner.classList.add("d-none");
+      const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
+      if (progressAnnouncer) progressAnnouncer.textContent = `Analysis error: ${errMsg}`;
       if (progressErrorAlert && progressErrorMessage) {
         progressErrorMessage.textContent = errMsg;
         progressErrorAlert.classList.remove("d-none");
@@ -2072,9 +2086,21 @@ function initMockInterview() {
   function appendChatBubble(text, sender) {
     const bubble = document.createElement("div");
     bubble.className = `chat-bubble chat-bubble-${sender} fade-in`;
+    bubble.setAttribute("role", "article");
     bubble.innerHTML = text;
     chatContainer.appendChild(bubble);
     chatContainer.scrollTop = chatContainer.scrollHeight;
+
+    // Announce to screen readers via live region
+    const announcer = document.getElementById("interviewLiveAnnouncer");
+    if (announcer) {
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = text;
+      const plainText = (tempDiv.textContent || tempDiv.innerText || "").replace(/\s+/g, " ").trim();
+      const prefix = sender === "user" ? "Your answer submitted: " : (sender === "question" ? "New question: " : "Agent feedback: ");
+      announcer.textContent = prefix + plainText;
+    }
+
     return bubble;
   }
 
@@ -4634,6 +4660,60 @@ function initAccessibility() {
     // If close button missing aria-label
     if (btn.classList.contains("btn-close") && !btn.hasAttribute("aria-label")) {
       btn.setAttribute("aria-label", "Close");
+    }
+  });
+
+  // 8. Tablist & Nav Pills ARIA State Synchronization
+  const tabButtons = document.querySelectorAll('[role="tab"], [data-bs-toggle="tab"], [data-bs-toggle="pill"]');
+  tabButtons.forEach((tab) => {
+    tab.addEventListener("shown.bs.tab", (e) => {
+      const activeTab = e.target;
+      const prevTab = e.relatedTarget;
+      if (activeTab) {
+        activeTab.setAttribute("aria-selected", "true");
+        activeTab.setAttribute("tabindex", "0");
+      }
+      if (prevTab) {
+        prevTab.setAttribute("aria-selected", "false");
+        prevTab.setAttribute("tabindex", "-1");
+      }
+    });
+  });
+
+  // 9. Accordion Collapses ARIA State Synchronization
+  document.addEventListener("shown.bs.collapse", (e) => {
+    const collapseEl = e.target;
+    if (collapseEl && collapseEl.id) {
+      const btn = document.querySelector(`[data-bs-target="#${collapseEl.id}"], [href="#${collapseEl.id}"]`);
+      if (btn) btn.setAttribute("aria-expanded", "true");
+    }
+  });
+
+  document.addEventListener("hidden.bs.collapse", (e) => {
+    const collapseEl = e.target;
+    if (collapseEl && collapseEl.id) {
+      const btn = document.querySelector(`[data-bs-target="#${collapseEl.id}"], [href="#${collapseEl.id}"]`);
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  // 10. Canvas Elements Image Role & Accessible Name Verification
+  const canvases = document.querySelectorAll("canvas");
+  canvases.forEach((canvas) => {
+    if (!canvas.hasAttribute("role")) {
+      canvas.setAttribute("role", "img");
+    }
+    if (!canvas.hasAttribute("aria-label")) {
+      const label = canvas.id ? `${canvas.id.replace(/([A-Z])/g, " $1").toLowerCase()} chart` : "Data visualization chart";
+      canvas.setAttribute("aria-label", label);
+    }
+  });
+
+  // 11. Image Alt Text Verification
+  const images = document.querySelectorAll("img");
+  images.forEach((img) => {
+    if (!img.hasAttribute("alt")) {
+      img.setAttribute("alt", "");
     }
   });
 }

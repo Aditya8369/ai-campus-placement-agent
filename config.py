@@ -119,3 +119,12 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 SESSION_TIMEOUT_SECONDS = int(os.getenv("SESSION_TIMEOUT_SECONDS", str(SESSION_TIMEOUT_MINUTES * 60)))
 SESSION_WARNING_SECONDS = int(os.getenv("SESSION_WARNING_SECONDS", "120"))
 
+# SMTP & Transactional Email Configurations (#186, #298)
+SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+NOTIFICATION_SENDER_EMAIL = os.getenv("NOTIFICATION_SENDER_EMAIL", "placements@aicampus.edu")
+EMAIL_DELIVERY_DISABLED = os.getenv("EMAIL_DELIVERY_DISABLED", "false").lower() in ("true", "1", "yes")
+
+
