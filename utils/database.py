@@ -244,6 +244,22 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
 
+        # Table 13b: Store private saved job descriptions for reuse
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_job_descriptions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                company_name TEXT NOT NULL,
+                role_title TEXT NOT NULL,
+                source TEXT NOT NULL,
+                description TEXT NOT NULL,
+                notes TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_jd_student_updated ON saved_job_descriptions (student_id, updated_at DESC)")
+
         # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
@@ -3783,6 +3799,134 @@ def is_user_email_verified(user_id: str) -> bool:
         conn.close()
 
 
+def create_saved_job_description(
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    source: str,
+    description: str,
+    notes: str = ""
+) -> Dict[str, Any]:
+    """Creates a private saved job description for the specified student."""
+    conn = get_db_connection()
+    try:
+        saved_id = f"saved-jd-{uuid.uuid4().hex[:12]}"
+        effective_student_id = (student_id or "").strip()
+        values = (
+            saved_id,
+            effective_student_id,
+            (company_name or "").strip(),
+            (role_title or "").strip(),
+            (source or "").strip(),
+            (description or "").strip(),
+            (notes or "").strip(),
+        )
+        conn.execute("""
+            INSERT INTO saved_job_descriptions
+                (id, student_id, company_name, role_title, source, description, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, values)
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM saved_job_descriptions WHERE id = ? AND student_id = ?",
+            (saved_id, effective_student_id)
+        ).fetchone()
+        return dict(row) if row else {}
+    except Exception:
+        conn.rollback()
+        logger.exception("Error creating saved job description")
+        raise
+    finally:
+        conn.close()
+
+
+def get_saved_job_descriptions(student_id: str) -> List[Dict[str, Any]]:
+    """Returns only the saved job descriptions owned by the specified student."""
+    conn = get_db_connection()
+    try:
+        effective_student_id = (student_id or "").strip()
+        rows = conn.execute("""
+            SELECT id, student_id, company_name, role_title, source, description,
+                   notes, created_at, updated_at
+            FROM saved_job_descriptions
+            WHERE student_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+        """, (effective_student_id,)).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_saved_job_description_by_id(
+    saved_id: str,
+    student_id: str
+) -> Optional[Dict[str, Any]]:
+    """Gets one saved job description only when it belongs to the student."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute("""
+            SELECT * FROM saved_job_descriptions
+            WHERE id = ? AND student_id = ?
+        """, ((saved_id or "").strip(), (student_id or "").strip())).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_saved_job_description(
+    saved_id: str,
+    student_id: str,
+    company_name: str,
+    role_title: str,
+    source: str,
+    description: str,
+    notes: str = ""
+) -> bool:
+    """Updates a saved job description after checking student ownership."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute("""
+            UPDATE saved_job_descriptions
+            SET company_name = ?, role_title = ?, source = ?, description = ?,
+                notes = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND student_id = ?
+        """, (
+            (company_name or "").strip(),
+            (role_title or "").strip(),
+            (source or "").strip(),
+            (description or "").strip(),
+            (notes or "").strip(),
+            (saved_id or "").strip(),
+            (student_id or "").strip(),
+        ))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception:
+        conn.rollback()
+        logger.exception("Error updating saved job description %s", saved_id)
+        return False
+    finally:
+        conn.close()
+
+
+def delete_saved_job_description(saved_id: str, student_id: str) -> bool:
+    """Deletes a saved job description after checking student ownership."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute("""
+            DELETE FROM saved_job_descriptions
+            WHERE id = ? AND student_id = ?
+        """, ((saved_id or "").strip(), (student_id or "").strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception:
+        conn.rollback()
+        logger.exception("Error deleting saved job description %s", saved_id)
+        return False
+    finally:
+        conn.close()
+
+
 def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
     """
     Collects all records and counts associated with a student across the database for GDPR audit and export (#207).
@@ -3827,6 +3971,10 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         # Count in interview_preparation_notes
         cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
+
+        # Count in saved job descriptions
+        cursor.execute("SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
+        summary["tables"]["saved_job_descriptions"] = cursor.fetchone()[0]
 
         # Count in users
         cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
@@ -3901,6 +4049,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         # 12. Delete interview preparation notes
         cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         deleted_counts["interview_preparation_notes"] = cursor.rowcount
+
+        # 12b. Delete saved job descriptions
+        cursor.execute("DELETE FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
+        deleted_counts["saved_job_descriptions"] = cursor.rowcount
 
         # 13. Delete student profile if exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
