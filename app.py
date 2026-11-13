@@ -10067,6 +10067,21 @@ def _build_application_import_preview(student_id, headers, rows, mapping):
     return preview_rows
 
 
+def _resume_link_snapshot(student_id: str, analysis_id: str):
+    """Returns an owned analysis snapshot suitable for linking to an application."""
+    if not analysis_id:
+        return None
+    for version in get_student_versions(student_id):
+        if version.get("id") == analysis_id:
+            return {
+                "id": version["id"],
+                "filename": version.get("resume_filename") or "",
+                "version": version.get("version_number"),
+                "job_description": version.get("job_description") or "",
+            }
+    return None
+
+
 @app.route("/applications", methods=["GET", "POST"])
 @app.route("/api/applications", methods=["GET", "POST"])
 def job_applications_tracker():
@@ -10110,6 +10125,8 @@ def job_applications_tracker():
 
         app_date = (payload.get("application_date") or "").strip()
         job_url = (payload.get("job_url") or payload.get("url") or "").strip()
+        job_description = (payload.get("job_description") or "").strip()
+        resume_analysis_id = (payload.get("resume_analysis_id") or "").strip()
         notes = (payload.get("notes") or "").strip()
         location = (payload.get("location") or "Remote").strip()
         job_type = (payload.get("job_type") or "Full-Time").strip()
@@ -10125,6 +10142,16 @@ def job_applications_tracker():
             flash("Company name and job role are required.", "error")
             return redirect(url_for("job_applications_tracker", student_id=student_id))
 
+        resume_snapshot = _resume_link_snapshot(student_id, resume_analysis_id)
+        if resume_analysis_id and not resume_snapshot:
+            error_message = "The selected resume version is not available for this account."
+            if is_api_request:
+                return jsonify({"success": False, "error": error_message}), 400
+            flash(error_message, "error")
+            return redirect(url_for("job_applications_tracker", student_id=student_id))
+        if resume_snapshot:
+            job_description = resume_snapshot["job_description"]
+
         app_id = f"app-{uuid.uuid4().hex[:12]}"
         save_job_application(
             app_id=app_id,
@@ -10134,11 +10161,15 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
+            job_description=job_description,
             notes=notes,
             location=location,
             job_type=job_type,
             experience_level=exp_level,
-            deadline_date=deadline_date
+            resume_analysis_id=resume_snapshot["id"] if resume_snapshot else None,
+            resume_filename=resume_snapshot["filename"] if resume_snapshot else None,
+            resume_version=resume_snapshot["version"] if resume_snapshot else None,
+            job_description_snapshot=job_description or None
         )
 
         # Notify candidate via email if preference enabled (#186)
@@ -10204,7 +10235,86 @@ def job_applications_tracker():
         location_filter=location_filter,
         job_type_filter=job_type_filter,
         exp_filter=exp_filter,
-        sort_by=sort_by
+        sort_by=sort_by,
+        resume_versions=get_student_versions(student_id)
+    )
+
+
+@app.route("/applications/import/preview", methods=["POST"])
+def preview_application_import():
+    student_id = _application_import_student_id()
+    try:
+        headers, rows = _read_application_import_csv(request.files.get("csv_file"))
+        mapping = _suggest_application_import_mapping(headers)
+        preview_rows = _build_application_import_preview(student_id, headers, rows, mapping)
+        now = time.time()
+        for stale_token, stale_preview in list(_APPLICATION_IMPORT_PREVIEWS.items()):
+            if now - stale_preview.get("created_at", now) > 1800:
+                _APPLICATION_IMPORT_PREVIEWS.pop(stale_token, None)
+        token = uuid.uuid4().hex
+        _APPLICATION_IMPORT_PREVIEWS[token] = {
+            "student_id": student_id,
+            "headers": headers,
+            "rows": rows,
+            "created_at": now,
+        }
+        return render_template(
+            "application_import.html",
+            token=token,
+            student_id=student_id,
+            headers=headers,
+            mapping=mapping,
+            preview_rows=preview_rows,
+            import_fields=APPLICATION_IMPORT_FIELDS,
+            valid_rows=sum(1 for row in preview_rows if not row["errors"]),
+            invalid_rows=sum(1 for row in preview_rows if row["errors"]),
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+
+@app.route("/applications/import/confirm", methods=["POST"])
+def confirm_application_import():
+    student_id = _application_import_student_id()
+    token = request.form.get("token", "").strip()
+    preview = _APPLICATION_IMPORT_PREVIEWS.pop(token, None)
+    if not preview or preview["student_id"] != student_id or time.time() - preview["created_at"] > 1800:
+        flash("This import preview has expired. Please upload the CSV again.", "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+    mapping = {field: request.form.get(f"mapping_{field}", "").strip() for field in APPLICATION_IMPORT_FIELDS}
+    preview_rows = _build_application_import_preview(student_id, preview["headers"], preview["rows"], mapping)
+    existing_apps = get_job_applications(student_id=student_id)
+    imported = 0
+    skipped = []
+    for row in preview_rows:
+        if row["errors"]:
+            skipped.append({"row_number": row["row_number"], "errors": row["errors"]})
+            continue
+        values = row["values"]
+        save_job_application(
+            app_id=f"app-{uuid.uuid4().hex[:12]}",
+            student_id=student_id,
+            company_name=values["company_name"],
+            role_title=values["role_title"],
+            status=values["status"] or "Applied",
+            application_date=values["application_date"] or None,
+            job_url=values["job_url"],
+            job_description=values["job_description"],
+            notes=values["notes"],
+            location=values["location"] or "Remote",
+            job_type=values["job_type"] or "Full-Time",
+            experience_level=values["experience_level"] or "Entry-Level",
+        )
+        existing_apps.append(values)
+        imported += 1
+
+    return render_template(
+        "application_import_result.html",
+        imported=imported,
+        skipped=skipped,
+        student_id=student_id,
     )
 
 
@@ -10345,6 +10455,21 @@ def api_application_detail_operations(app_id: str):
 
         app_date = payload.get("application_date") or existing.get("application_date")
         job_url = payload.get("job_url") if payload.get("job_url") is not None else existing.get("job_url")
+        resume_link_supplied = "resume_analysis_id" in payload
+        resume_analysis_id = (payload.get("resume_analysis_id") or "").strip()
+        resume_snapshot = None
+        if resume_link_supplied and resume_analysis_id:
+            resume_snapshot = _resume_link_snapshot(student_id, resume_analysis_id)
+            if not resume_snapshot:
+                return jsonify({
+                    "success": False,
+                    "error": "The selected resume version is not available for this account."
+                }), 400
+        job_description = payload.get("job_description")
+        if job_description is None:
+            job_description = existing.get("job_description_snapshot") or existing.get("job_description") or ""
+        if resume_snapshot:
+            job_description = resume_snapshot["job_description"]
         notes = payload.get("notes") if payload.get("notes") is not None else existing.get("notes")
         location = payload.get("location") or existing.get("location") or "Remote"
         job_type = payload.get("job_type") or existing.get("job_type") or "Full-Time"
@@ -10361,11 +10486,24 @@ def api_application_detail_operations(app_id: str):
             status=status,
             application_date=app_date,
             job_url=job_url,
+            job_description=job_description,
             notes=notes,
             location=location,
             job_type=job_type,
             experience_level=exp_level,
-            deadline_date=deadline_date
+            resume_analysis_id=(
+                resume_snapshot["id"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_analysis_id"))
+            ),
+            resume_filename=(
+                resume_snapshot["filename"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_filename"))
+            ),
+            resume_version=(
+                resume_snapshot["version"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_version"))
+            ),
+            job_description_snapshot=job_description or None
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)
