@@ -294,7 +294,14 @@
                     {{ app.experience_level or 'Entry-Level' }}
                   </span>
                 </td>
-                <td class="text-secondary small app-date">{{ app.application_date or '—' }}</td>
+                <td class="text-secondary small app-date">
+                  <div>{{ app.application_date or '—' }}</div>
+                  {% if app.deadline_date %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill small mt-1" title="Upcoming Deadline">
+                      <i class="fa-regular fa-clock me-1"></i>Due: {{ app.deadline_date }}
+                    </span>
+                  {% endif %}
+                </td>
                 <td>
                   <select class="form-select form-select-sm rounded-pill status-dropdown" data-app-id="{{ app.id }}" aria-label="Update application status for {{ app.company_name }} - {{ app.role_title }}">
                     <option value="Applied" {% if app.status == 'Applied' %}selected{% endif %}>Applied</option>
@@ -472,9 +479,15 @@
                 </select>
               </div>
             </div>
-            <div class="mb-3">
-              <label for="applicationDate" class="form-label small fw-semibold">Date Applied</label>
-              <input type="date" class="form-control rounded-3" id="applicationDate" name="application_date">
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label for="applicationDate" class="form-label small fw-semibold">Date Applied</label>
+                <input type="date" class="form-control rounded-3" id="applicationDate" name="application_date">
+              </div>
+              <div class="col-md-6">
+                <label for="deadlineDate" class="form-label small fw-semibold">Deadline / Interview Date</label>
+                <input type="date" class="form-control rounded-3" id="deadlineDate" name="deadline_date">
+              </div>
             </div>
             <div class="mb-3">
               <label for="jobUrl" class="form-label small fw-semibold">Job URL (Optional)</label>
@@ -530,6 +543,10 @@
               <div class="col-6">
                 <span class="text-muted d-block">Applied Date:</span>
                 <span class="fw-semibold text-dark" id="viewAppDate">—</span>
+              </div>
+              <div class="col-6">
+                <span class="text-muted d-block">Deadline / Interview:</span>
+                <span class="fw-semibold text-danger" id="viewAppDeadline">—</span>
               </div>
             </div>
           </div>
@@ -610,9 +627,15 @@
                 </select>
               </div>
             </div>
-            <div class="mb-3">
-              <label for="editApplicationDate" class="form-label small fw-semibold">Date Applied</label>
-              <input type="date" class="form-control rounded-3" id="editApplicationDate" name="application_date">
+            <div class="row g-2 mb-3">
+              <div class="col-md-6">
+                <label for="editApplicationDate" class="form-label small fw-semibold">Date Applied</label>
+                <input type="date" class="form-control rounded-3" id="editApplicationDate" name="application_date">
+              </div>
+              <div class="col-md-6">
+                <label for="editDeadlineDate" class="form-label small fw-semibold">Deadline / Interview Date</label>
+                <input type="date" class="form-control rounded-3" id="editDeadlineDate" name="deadline_date">
+              </div>
             </div>
             <div class="mb-3">
               <label for="editJobUrl" class="form-label small fw-semibold">Job URL</label>
@@ -853,6 +876,10 @@
               document.getElementById("viewAppJobType").textContent = app.job_type || "Full-Time";
               document.getElementById("viewAppExp").textContent = app.experience_level || "Entry-Level";
               document.getElementById("viewAppDate").textContent = app.application_date || "Not specified";
+              const deadlineEl = document.getElementById("viewAppDeadline");
+              if (deadlineEl) {
+                deadlineEl.textContent = app.deadline_date || "None";
+              }
               
               const notesEl = document.getElementById("viewAppNotes");
               notesEl.textContent = app.notes || "No notes recorded.";
@@ -939,6 +966,7 @@
           document.getElementById("editExpLevel").value = app.experience_level || "Entry-Level";
           document.getElementById("editStatus").value = (app.status === "Offered") ? "Selected" : app.status;
           document.getElementById("editApplicationDate").value = app.application_date || "";
+          document.getElementById("editDeadlineDate").value = app.deadline_date || "";
           document.getElementById("editJobUrl").value = app.job_url || "";
           document.getElementById("editNotes").value = app.notes || "";
           editModal.show();
@@ -960,6 +988,7 @@
             experience_level: document.getElementById("editExpLevel").value,
             status: document.getElementById("editStatus").value,
             application_date: document.getElementById("editApplicationDate").value,
+            deadline_date: document.getElementById("editDeadlineDate").value,
             job_url: document.getElementById("editJobUrl").value.trim(),
             notes: document.getElementById("editNotes").value.trim()
           };

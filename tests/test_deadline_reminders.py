@@ -15,14 +15,20 @@ Validates:
 
 import pytest
 import json
+import logging
 from datetime import datetime, timezone, timedelta
+from unittest.mock import MagicMock, patch
 
 import config
 from utils.database import (
     init_db,
     save_job_application,
+    update_job_application,
+    get_job_application_by_id,
     save_calendar_event,
-    get_db_connection
+    get_db_connection,
+    get_email_notification_preferences,
+    update_email_notification_preferences
 )
 from utils.deadline_reminders import (
     ensure_deadline_reminders_table,
@@ -30,8 +36,10 @@ from utils.deadline_reminders import (
     update_student_deadline_preferences,
     scan_and_generate_student_reminders,
     list_student_reminders,
-    acknowledge_deadline_reminder
+    acknowledge_deadline_reminder,
+    send_upcoming_deadline_reminders
 )
+from utils.email_service import EmailNotificationService
 from app import app
 
 
@@ -212,3 +220,272 @@ def test_api_reminders_lifecycle(reminder_test_env):
     pref_put = reminder_test_env.put("/api/reminders/preferences", json={"alert_lead_days": 10})
     assert pref_put.status_code == 200
     assert pref_put.get_json()["preferences"]["alert_lead_days"] == 10
+
+
+def test_job_application_deadline_date_field(reminder_test_env):
+    """Verify storing, retrieving, and updating the dedicated deadline_date field (#298)."""
+    save_job_application(
+        app_id="app_deadline_field_1",
+        student_id="student_df_test",
+        company_name="Stripe",
+        role_title="Backend Engineer",
+        status="Applied",
+        deadline_date="2026-11-20"
+    )
+
+    app = get_job_application_by_id("app_deadline_field_1", "student_df_test")
+    assert app is not None
+    assert app["deadline_date"] == "2026-11-20"
+
+    # Update deadline_date
+    updated = update_job_application(
+        app_id="app_deadline_field_1",
+        student_id="student_df_test",
+        company_name="Stripe",
+        role_title="Senior Backend Engineer",
+        status="Applied",
+        deadline_date="2026-11-25"
+    )
+    assert updated is True
+
+    refreshed = get_job_application_by_id("app_deadline_field_1", "student_df_test")
+    assert refreshed["deadline_date"] == "2026-11-25"
+    assert refreshed["role_title"] == "Senior Backend Engineer"
+
+
+def test_send_upcoming_deadline_reminders_next_2_days(reminder_test_env):
+    """
+    Verify scheduled job finds items due in next 2 days and sends one reminder per item (#298).
+    Uses a fixed clock and mocked email client.
+    """
+    fixed_clock = datetime(2026, 11, 15, 9, 0, 0, tzinfo=timezone.utc)
+
+    # 1 day away (due tomorrow) -> should be sent
+    save_job_application(
+        app_id="app_rem_due_1",
+        student_id="student_due_test",
+        company_name="Databricks",
+        role_title="Data Engineer",
+        status="Applied",
+        deadline_date="2026-11-16"
+    )
+    # 2 days away -> should be sent
+    save_job_application(
+        app_id="app_rem_due_2",
+        student_id="student_due_test",
+        company_name="Airbnb",
+        role_title="Full Stack Engineer",
+        status="Applied",
+        deadline_date="2026-11-17"
+    )
+    # 5 days away -> not in next 2 days, should be ignored
+    save_job_application(
+        app_id="app_rem_due_3",
+        student_id="student_due_test",
+        company_name="Uber",
+        role_title="Systems Engineer",
+        status="Applied",
+        deadline_date="2026-11-20"
+    )
+
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email", return_value=True) as mock_send:
+        result = send_upcoming_deadline_reminders(
+            student_id="student_due_test",
+            reference_time=fixed_clock,
+            days_ahead=2
+        )
+
+        assert result["status"] == "success"
+        assert result["sent_count"] == 2
+        assert mock_send.call_count == 2
+
+        companies_sent = [call.kwargs["company_name"] for call in mock_send.call_args_list]
+        assert "Databricks" in companies_sent
+        assert "Airbnb" in companies_sent
+        assert "Uber" not in companies_sent
+
+
+def test_duplicate_reminders_prevented(reminder_test_env):
+    """
+    Verify duplicate reminders are strictly prevented by checking notification_dispatched_at (#298).
+    Subsequent scheduler runs must send 0 emails for already-dispatched items.
+    """
+    fixed_clock = datetime(2026, 11, 15, 9, 0, 0, tzinfo=timezone.utc)
+
+    save_job_application(
+        app_id="app_dedup_1",
+        student_id="student_dedup_test",
+        company_name="Netflix",
+        role_title="Software Engineer",
+        status="Applied",
+        deadline_date="2026-11-16"
+    )
+
+    # First scheduler run: 1 email sent
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email", return_value=True) as mock_send_1:
+        result_1 = send_upcoming_deadline_reminders(
+            student_id="student_dedup_test",
+            reference_time=fixed_clock
+        )
+        assert result_1["sent_count"] == 1
+        assert mock_send_1.call_count == 1
+
+    # Second scheduler run at same or later time: 0 emails sent (deduplication check)
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email", return_value=True) as mock_send_2:
+        result_2 = send_upcoming_deadline_reminders(
+            student_id="student_dedup_test",
+            reference_time=fixed_clock + timedelta(hours=2)
+        )
+        assert result_2["sent_count"] == 0
+        assert mock_send_2.call_count == 0
+
+
+def test_users_with_reminders_disabled_receive_nothing(reminder_test_env):
+    """
+    Verify users who turn off email alerts in preferences receive no reminder emails (#298).
+    """
+    fixed_clock = datetime(2026, 11, 15, 9, 0, 0, tzinfo=timezone.utc)
+
+    save_job_application(
+        app_id="app_opt_out_1",
+        student_id="student_opt_out",
+        company_name="Meta",
+        role_title="Research Scientist",
+        status="Applied",
+        deadline_date="2026-11-16"
+    )
+
+    # Opt out via student deadline preferences
+    update_student_deadline_preferences(
+        student_id="student_opt_out",
+        email_alerts_enabled=False
+    )
+
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email") as mock_send:
+        result = send_upcoming_deadline_reminders(
+            student_id="student_opt_out",
+            reference_time=fixed_clock
+        )
+        assert result["sent_count"] == 0
+        assert result["skipped_count"] >= 1
+        assert mock_send.call_count == 0
+
+    # Also test opting out via email_notification_preferences
+    update_student_deadline_preferences("student_opt_out", email_alerts_enabled=True)
+    update_email_notification_preferences("student_opt_out", notify_deadline_reminder=False)
+
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email") as mock_send:
+        result2 = send_upcoming_deadline_reminders(
+            student_id="student_opt_out",
+            reference_time=fixed_clock
+        )
+        assert result2["sent_count"] == 0
+        assert result2["skipped_count"] >= 1
+        assert mock_send.call_count == 0
+
+
+def test_failed_email_does_not_crash_scheduler(reminder_test_env):
+    """
+    Verify a failed email dispatch (e.g. SMTP socket timeout) is caught gracefully
+    and does not crash the scheduler or prevent other reminders from sending (#298).
+    """
+    fixed_clock = datetime(2026, 11, 15, 9, 0, 0, tzinfo=timezone.utc)
+
+    save_job_application(
+        app_id="app_fail_1",
+        student_id="student_failover",
+        company_name="CompanyA",
+        role_title="Role A",
+        status="Applied",
+        deadline_date="2026-11-16"
+    )
+    save_job_application(
+        app_id="app_fail_2",
+        student_id="student_failover",
+        company_name="CompanyB",
+        role_title="Role B",
+        status="Applied",
+        deadline_date="2026-11-16"
+    )
+
+    # First call raises Exception, second succeeds
+    with patch.object(
+        EmailNotificationService,
+        "send_deadline_reminder_email",
+        side_effect=[Exception("SMTP connection timeout"), True]
+    ):
+        result = send_upcoming_deadline_reminders(
+            student_id="student_failover",
+            reference_time=fixed_clock
+        )
+        # Did not crash!
+        assert result["status"] == "success"
+        assert result["failed_count"] == 1
+        assert result["sent_count"] == 1
+
+
+def test_email_bodies_never_logged(reminder_test_env, caplog):
+    """
+    Security check: verify email bodies are never logged under any circumstance (#298).
+    """
+    svc = EmailNotificationService()
+    secret_body_marker = "SECRET_CANDIDATE_RESUME_INFO_987654"
+
+    with caplog.at_level(logging.DEBUG):
+        svc.send_deadline_reminder_email(
+            recipient_email="candidate@test.edu",
+            student_name="Test Student",
+            title=f"Assessment with {secret_body_marker}",
+            company_name="TestCorp",
+            deadline_date="2026-11-16",
+            days_remaining=1
+        )
+
+    # HTML body template markup or raw text must not be in log
+    assert "<html" not in caplog.text.lower()
+    assert "<body" not in caplog.text.lower()
+    assert "automated reminder that your tracked application deadline" not in caplog.text
+
+
+def test_cli_send_deadline_reminders(reminder_test_env):
+    """Verify Flask CLI scheduled command runs smoothly (#298)."""
+    today = datetime.now(timezone.utc).date()
+    due = (today + timedelta(days=1)).isoformat()
+
+    save_job_application(
+        app_id="app_cli_test",
+        student_id="student_cli",
+        company_name="Apple",
+        role_title="iOS Developer",
+        status="Applied",
+        deadline_date=due
+    )
+
+    runner = app.test_cli_runner()
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email", return_value=True):
+        result = runner.invoke(args=["send-deadline-reminders"])
+        assert result.exit_code == 0
+        assert "Deadline reminders complete" in result.output
+
+
+def test_api_send_upcoming_reminders(reminder_test_env):
+    """Verify POST /api/reminders/send-upcoming API endpoint (#298)."""
+    today = datetime.now(timezone.utc).date()
+    due = (today + timedelta(days=1)).isoformat()
+
+    save_job_application(
+        app_id="app_api_send",
+        student_id="student_api_send",
+        company_name="Nvidia",
+        role_title="Deep Learning Engineer",
+        status="Applied",
+        deadline_date=due
+    )
+
+    with patch.object(EmailNotificationService, "send_deadline_reminder_email", return_value=True):
+        resp = reminder_test_env.post("/api/reminders/send-upcoming?student_id=student_api_send")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["status"] == "success"
+        assert data["sent_count"] >= 1
+
