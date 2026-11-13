@@ -19,7 +19,7 @@
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
       <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
@@ -267,20 +267,20 @@
                 <ul class="nav nav-pills nav-fill mb-2" id="resumeTab" role="tablist">
                   <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="pdf-tab" data-bs-toggle="pill" data-bs-target="#pdf-pane"
-                      type="button" role="tab">
+                      type="button" role="tab" aria-controls="pdf-pane" aria-selected="true">
                       <i class="fa-solid fa-file-arrow-up me-1"></i> Upload PDF / DOCX
                     </button>
                   </li>
                   <li class="nav-item" role="presentation">
                     <button class="nav-link py-2" id="text-tab" data-bs-toggle="pill" data-bs-target="#text-pane"
-                      type="button" role="tab">
+                      type="button" role="tab" aria-controls="text-pane" aria-selected="false">
                       <i class="fa-solid fa-file-lines me-1"></i> Paste Text
                     </button>
                   </li>
                 </ul>
 
                 <div class="tab-content">
-                  <div class="tab-pane fade show active" id="pdf-pane" role="tabpanel">
+                  <div class="tab-pane fade show active" id="pdf-pane" role="tabpanel" aria-labelledby="pdf-tab" tabindex="0">
                     <div class="upload-area" id="uploadArea" role="button" tabindex="0" aria-label="Upload resume file in PDF or DOCX format. Drag and drop or press enter to browse files.">
                       <i class="fa-solid fa-cloud-arrow-up upload-icon" id="uploadIcon"></i>
                       <p class="mb-1 fw-medium text-dark" id="uploadPromptText">Drag and drop your PDF or DOCX resume
@@ -348,7 +348,7 @@
                       <span id="uploadTypeErrorMessage">Unsupported file type. Please upload a PDF or DOCX file.</span>
                     </div>
                   </div>
-                  <div class="tab-pane fade" id="text-pane" role="tabpanel">
+                  <div class="tab-pane fade" id="text-pane" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
                     <textarea name="resume_text" id="resumeTextInput" rows="5" class="form-control rounded-3"
                       aria-label="Paste complete resume text here"
                       placeholder="Paste your complete resume text here (education, skills, projects, experience)..."></textarea>
@@ -431,7 +431,7 @@
                   <div class="d-flex flex-wrap gap-2 mb-2" id="companyPillBadgesGroup">
                     {% for c in companies %}
                     <label class="company-pill-badge border rounded-pill px-3 py-1 small fw-semibold cursor-pointer user-select-none d-flex align-items-center gap-1 transition-all" data-company="{{ c }}" style="cursor: pointer;">
-                      <input type="checkbox" name="batch_companies" value="{{ c }}" class="form-check-input d-none company-pill-check" {% if loop.index <= 4 %}checked{% endif %} aria-label="Select target company {{ c }}">
+                      <input type="checkbox" name="batch_companies" value="{{ c }}" class="form-check-input visually-hidden company-pill-check" {% if loop.index <= 4 %}checked{% endif %} aria-label="Select target company {{ c }}">
                       <span class="pill-check-icon"><i class="fa-solid fa-check text-primary"></i></span>
                       <span class="pill-name">{{ c }}</span>
                     </label>
@@ -569,10 +569,13 @@
   </main>
 
   <!-- Agent Progress Panel Overlay (Hidden by Default) -->
-  <div id="progressOverlay" class="progress-overlay d-none">
+  <div id="progressOverlay" class="progress-overlay d-none" role="region" aria-label="Analysis processing status">
+    <div id="progressLiveAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="progress-panel glass-card text-center p-5">
       <div id="progressSpinner" class="spinner-border text-primary mb-4" role="status"
-        style="width: 3rem; height: 3rem;"></div>
+        style="width: 3rem; height: 3rem;">
+        <span class="visually-hidden">Loading analysis...</span>
+      </div>
       <h3 class="fw-bold text-dark" id="progressTitle">Coordinating AI Agents</h3>
       <p class="text-secondary" id="progressSubtitle">Orchestrating multi-agent analysis in progress...</p>
 
@@ -631,7 +634,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body p-4" id="companyModalBody">
-          <div class="text-center py-4"><span class="spinner-border text-primary" role="status"></span></div>
+          <div class="text-center py-4"><span class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading company details...</span></span></div>
         </div>
       </div>
     </div>

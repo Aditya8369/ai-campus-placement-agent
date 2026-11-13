@@ -17,7 +17,7 @@
   <a href="#dashboardContainer" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
       <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
@@ -572,7 +572,9 @@
           </span>
         </div>
         <div style="position: relative; height: 220px; width: 100%;">
-          <canvas id="progressTrendChart"></canvas>
+          <canvas id="progressTrendChart" role="img" aria-label="Placement readiness progress and score trend chart across recent evaluations">
+            <p>Placement readiness progress trend chart visualization</p>
+          </canvas>
         </div>
       </div>
 
@@ -820,7 +822,7 @@
             
             <div class="accordion-item border-0 mb-3 bg-light rounded-4 overflow-hidden">
               <h2 class="accordion-header">
-                <button class="accordion-button bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseStrengths" aria-expanded="true">
+                <button class="accordion-button bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseStrengths" aria-expanded="true" aria-controls="collapseStrengths">
                   <i class="fa-solid fa-circle-check text-success me-2"></i> Key Strengths
                 </button>
               </h2>
@@ -847,7 +849,7 @@
 
             <div class="accordion-item border-0 mb-3 bg-light rounded-4 overflow-hidden">
               <h2 class="accordion-header">
-                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeaknesses">
+                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseWeaknesses" aria-expanded="false" aria-controls="collapseWeaknesses">
                   <i class="fa-solid fa-circle-xmark text-danger me-2"></i> Critical Weaknesses
                 </button>
               </h2>
@@ -869,7 +871,7 @@
 
             <div class="accordion-item border-0 mb-3 bg-light rounded-4 overflow-hidden">
               <h2 class="accordion-header">
-                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSuggestions">
+                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseSuggestions" aria-expanded="false" aria-controls="collapseSuggestions">
                   <i class="fa-solid fa-circle-info text-warning me-2"></i> Formatting & Grammar Tips
                 </button>
               </h2>
@@ -903,7 +905,7 @@
 
             <div class="accordion-item border-0 bg-light rounded-4 overflow-hidden">
               <h2 class="accordion-header">
-                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProjectExp">
+                <button class="accordion-button collapsed bg-light fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapseProjectExp" aria-expanded="false" aria-controls="collapseProjectExp">
                   <i class="fa-solid fa-briefcase text-primary me-2"></i> Project & Work Experience Feedback
                 </button>
               </h2>
@@ -1072,7 +1074,9 @@
 
             <!-- Chart.js Canvas Container -->
             <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
-              <canvas id="skillsComparisonChart"></canvas>
+              <canvas id="skillsComparisonChart" role="img" aria-label="Visual skills comparison chart comparing candidate skills against role requirements">
+                <p>Visual skills comparison chart visualization</p>
+              </canvas>
               <!-- Center Metric Overlay -->
               <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
                 <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
@@ -1855,22 +1859,22 @@
         <!-- Role Preparation Tabs -->
         <ul class="nav nav-pills mb-3 gap-2" id="dashRolePillsTab" role="tablist">
           <li class="nav-item" role="presentation">
-            <button class="nav-link active rounded-pill px-3 py-2 fw-semibold" id="dash-topics-tab" data-bs-toggle="pill" data-bs-target="#dash-topics-pane" type="button" role="tab">
+            <button class="nav-link active rounded-pill px-3 py-2 fw-semibold" id="dash-topics-tab" data-bs-toggle="pill" data-bs-target="#dash-topics-pane" type="button" role="tab" aria-controls="dash-topics-pane" aria-selected="true">
               <i class="fa-solid fa-book-bookmark me-1"></i> Technical Topics
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-coding-tab" data-bs-toggle="pill" data-bs-target="#dash-coding-pane" type="button" role="tab">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-coding-tab" data-bs-toggle="pill" data-bs-target="#dash-coding-pane" type="button" role="tab" aria-controls="dash-coding-pane" aria-selected="false">
               <i class="fa-solid fa-code me-1"></i> Coding Challenges
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-tech-tab" data-bs-toggle="pill" data-bs-target="#dash-tech-pane" type="button" role="tab">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-tech-tab" data-bs-toggle="pill" data-bs-target="#dash-tech-pane" type="button" role="tab" aria-controls="dash-tech-pane" aria-selected="false">
               <i class="fa-solid fa-microchip me-1"></i> Concepts &amp; Tech Stack
             </button>
           </li>
           <li class="nav-item" role="presentation">
-            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-roadmap-tab" data-bs-toggle="pill" data-bs-target="#dash-roadmap-pane" type="button" role="tab">
+            <button class="nav-link rounded-pill px-3 py-2 fw-semibold" id="dash-roadmap-tab" data-bs-toggle="pill" data-bs-target="#dash-roadmap-pane" type="button" role="tab" aria-controls="dash-roadmap-pane" aria-selected="false">
               <i class="fa-solid fa-route me-1"></i> Role Study Roadmap
             </button>
           </li>
@@ -1879,7 +1883,7 @@
         <!-- Tab Panes -->
         <div class="tab-content" id="dashRolePillsContent">
           <!-- Pane 1: Technical Topics -->
-          <div class="tab-pane fade show active" id="dash-topics-pane" role="tabpanel">
+          <div class="tab-pane fade show active" id="dash-topics-pane" role="tabpanel" aria-labelledby="dash-topics-tab" tabindex="0">
             <div class="row g-3" id="dashTechnicalTopicsGrid">
               {% if role_p %}
                 {% for top in role_p.technical_topics %}
@@ -1910,7 +1914,7 @@
           </div>
 
           <!-- Pane 2: Coding Challenges -->
-          <div class="tab-pane fade" id="dash-coding-pane" role="tabpanel">
+          <div class="tab-pane fade" id="dash-coding-pane" role="tabpanel" aria-labelledby="dash-coding-tab" tabindex="0">
             <div class="row g-3" id="dashCodingQuestionsGrid">
               {% if role_p %}
                 {% for q in role_p.coding_questions %}
@@ -1952,7 +1956,7 @@
           </div>
 
           <!-- Pane 3: Concepts & Tech Stack -->
-          <div class="tab-pane fade" id="dash-tech-pane" role="tabpanel">
+          <div class="tab-pane fade" id="dash-tech-pane" role="tabpanel" aria-labelledby="dash-tech-tab" tabindex="0">
             <div class="p-3 bg-light rounded-4 border">
               <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-layer-group text-primary me-2"></i>Core Technologies</h6>
               <div class="row g-3 mb-4" id="dashCoreTechGrid">
@@ -1991,7 +1995,7 @@
           </div>
 
           <!-- Pane 4: Role Study Roadmap -->
-          <div class="tab-pane fade" id="dash-roadmap-pane" role="tabpanel">
+          <div class="tab-pane fade" id="dash-roadmap-pane" role="tabpanel" aria-labelledby="dash-roadmap-tab" tabindex="0">
             <div class="timeline-wrapper" id="dashRoleRoadmapTimeline">
               {% if role_p %}
                 {% for w in role_p.roadmap %}
