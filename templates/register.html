@@ -52,8 +52,13 @@
 
                 <div class="mb-3">
                     <label for="regPassword" class="form-label">Password</label>
-                    <input type="password" id="regPassword" name="password" class="form-control"
-                           placeholder="Minimum 8 characters" required minlength="8" autocomplete="new-password">
+                    <div class="input-group">
+                        <input type="password" id="regPassword" name="password" class="form-control"
+                               placeholder="Minimum 8 characters" required minlength="8" autocomplete="new-password">
+                        <button class="btn btn-outline-secondary toggle-password-visibility" type="button" data-target="#regPassword" aria-label="Show password" title="Show password">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
                 </div>
 
                 <button type="submit" class="btn btn-primary w-100 rounded-pill py-2">

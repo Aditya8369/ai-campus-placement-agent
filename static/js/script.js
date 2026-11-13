@@ -108,6 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSessionTimeout();
   initSectionFeedback();
   initUserWalkthrough();
+  initPasswordToggle();
 });
 
 /**
@@ -5331,3 +5332,41 @@ function initUserWalkthrough() {
     showStep(1);
   }
 }
+
+/**
+ * Password Visibility Toggle
+ * Toggles input type between password and text with synchronized aria attributes and icons.
+ */
+function initPasswordToggle() {
+  const toggleButtons = document.querySelectorAll(".toggle-password-visibility");
+  toggleButtons.forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const targetSelector = btn.getAttribute("data-target");
+      const input = targetSelector
+        ? document.querySelector(targetSelector)
+        : btn.closest(".input-group")?.querySelector("input");
+
+      if (!input) return;
+
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+
+      const icon = btn.querySelector("i");
+      if (icon) {
+        if (isPassword) {
+          icon.classList.remove("fa-eye");
+          icon.classList.add("fa-eye-slash");
+        } else {
+          icon.classList.remove("fa-eye-slash");
+          icon.classList.add("fa-eye");
+        }
+      }
+
+      const label = isPassword ? "Hide password" : "Show password";
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("title", label);
+    });
+  });
+}
+
