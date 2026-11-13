@@ -26,6 +26,7 @@ import subprocess
 import json
 import logging
 import time
+import importlib.metadata
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime, timezone
@@ -39,6 +40,7 @@ CRITICAL_DEPENDENCIES = [
     "flask",
     "pytest",
     "pypdf",
+    "docx",
     "reportlab",
     "dotenv"
 ]
@@ -88,9 +90,18 @@ class CIRuntimeValidator:
                 elif pkg == "dotenv":
                     import dotenv
                     found[pkg] = getattr(dotenv, "__version__", "installed")
+                elif pkg == "docx":
+                    import docx
+                    try:
+                        found[pkg] = importlib.metadata.version("python-docx")
+                    except Exception:
+                        found[pkg] = getattr(docx, "__version__", "installed")
                 else:
                     mod = __import__(pkg)
-                    found[pkg] = getattr(mod, "__version__", "installed")
+                    try:
+                        found[pkg] = importlib.metadata.version(pkg)
+                    except Exception:
+                        found[pkg] = getattr(mod, "__version__", "installed")
             except ImportError:
                 missing.append(pkg)
 

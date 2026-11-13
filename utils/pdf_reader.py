@@ -384,7 +384,7 @@ def extract_text_with_ocr_fallback(pdf_path: str) -> str:
     return ""
 
 
-def extract_text_from_docx(docx_source: Union[str, io.BytesIO]) -> str:
+def extract_text_from_docx(docx_source: Union[str, io.BytesIO, bytes, bytearray]) -> str:
     """
     Extracts structured text content from a Microsoft Word (.docx) document.
 
@@ -392,7 +392,7 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO]) -> str:
     where applicable to assemble a complete textual resume profile.
 
     Parameters:
-        docx_source: File path (str) or binary stream (io.BytesIO) pointing to the .docx file.
+        docx_source: File path (str), binary stream (io.BytesIO), or raw bytes pointing to the .docx file.
 
     Returns:
         Cleaned, extracted text string from the DOCX document.
@@ -408,6 +408,9 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO]) -> str:
         raise ImportError(
             "DOCX parsing support requires the 'python-docx' library. Please install python-docx."
         )
+
+    if isinstance(docx_source, (bytes, bytearray)):
+        docx_source = io.BytesIO(docx_source)
 
     logger.info(f"Initiating text extraction from DOCX source: {docx_source}")
     if isinstance(docx_source, str) and not os.path.exists(docx_source):
