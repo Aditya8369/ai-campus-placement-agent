@@ -108,6 +108,18 @@ def test_extract_text_from_docx_stream_support(sample_docx_bytes):
     assert "Technical Skills" in extracted
 
 
+def test_extract_text_from_docx_bytes_and_bytearray_support(sample_docx_bytes):
+    """Verify that extract_text_from_docx accepts raw bytes and bytearray directly."""
+    raw_bytes = sample_docx_bytes.getvalue()
+    extracted_bytes = extract_text_from_docx(raw_bytes)
+    assert "Jane Doe" in extracted_bytes
+    assert "Technical Skills" in extracted_bytes
+
+    extracted_bytearray = extract_text_from_docx(bytearray(raw_bytes))
+    assert "Jane Doe" in extracted_bytearray
+    assert "Technical Skills" in extracted_bytearray
+
+
 def test_extract_text_from_docx_empty_file_fails(empty_docx_bytes, tmp_path):
     """Verify that extracting from an empty docx raises ValueError with clear feedback."""
     empty_file = tmp_path / "empty_resume.docx"
@@ -220,3 +232,12 @@ def test_route_analyze_rejects_unsupported_extensions():
         res = client.post("/analyze", data=data, content_type="multipart/form-data", follow_redirects=True)
         assert res.status_code == 200
         assert b"Only PDF (.pdf) and Word (.docx) resumes are supported" in res.data
+
+
+def test_pyproject_toml_includes_python_docx():
+    """Verify that python-docx is declared as a runtime dependency in pyproject.toml."""
+    from pathlib import Path
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    assert pyproject_path.exists(), "pyproject.toml not found"
+    content = pyproject_path.read_text(encoding="utf-8")
+    assert "python-docx" in content, "python-docx must be declared in pyproject.toml dependencies"
