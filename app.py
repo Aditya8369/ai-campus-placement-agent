@@ -7,6 +7,7 @@ import logging
 import re
 import secrets
 import hashlib
+import csv
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
@@ -9879,6 +9880,119 @@ def internships_view():
         search_query=search_query
     )
 APPLICATION_STAGES = ["Applied", "Assessment", "Interview", "Selected", "Rejected"]
+APPLICATION_IMPORT_FIELDS = [
+    "company_name", "role_title", "status", "application_date", "job_url",
+    "job_description", "notes", "location", "job_type", "experience_level"
+]
+APPLICATION_IMPORT_MAX_ROWS = 2000
+APPLICATION_IMPORT_MAX_BYTES = 5 * 1024 * 1024
+_APPLICATION_IMPORT_PREVIEWS = {}
+
+
+def _application_import_student_id():
+    return (
+        flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+
+def _normalise_csv_header(value):
+    return re.sub(r"[^a-z0-9]+", "_", (value or "").strip().lower()).strip("_")
+
+
+def _suggest_application_import_mapping(headers):
+    aliases = {
+        "company_name": {"company", "company_name", "employer", "organisation", "organization"},
+        "role_title": {"role", "role_title", "job_title", "position", "title"},
+        "status": {"status", "stage", "application_status"},
+        "application_date": {"date", "application_date", "date_applied", "applied_date"},
+        "job_url": {"url", "job_url", "job_link", "link"},
+        "job_description": {"job_description", "description", "job_posting"},
+        "notes": {"notes", "note", "comments"},
+        "location": {"location", "city"},
+        "job_type": {"job_type", "employment_type", "type"},
+        "experience_level": {"experience", "experience_level", "seniority"},
+    }
+    mapping = {}
+    normalised = {_normalise_csv_header(header): header for header in headers}
+    for field, names in aliases.items():
+        mapping[field] = next((normalised[name] for name in names if name in normalised), "")
+    return mapping
+
+
+def _read_application_import_csv(uploaded_file):
+    if not uploaded_file or not uploaded_file.filename:
+        raise ValueError("Choose a CSV file to import.")
+    if not uploaded_file.filename.lower().endswith(".csv"):
+        raise ValueError("Only CSV files are supported.")
+    uploaded_file.seek(0, os.SEEK_END)
+    if uploaded_file.tell() > APPLICATION_IMPORT_MAX_BYTES:
+        raise ValueError("CSV files must be 5 MB or smaller.")
+    uploaded_file.seek(0)
+    try:
+        content = uploaded_file.read().decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ValueError("The CSV must be encoded as UTF-8.") from exc
+    reader = csv.DictReader(io.StringIO(content))
+    headers = reader.fieldnames or []
+    if not headers:
+        raise ValueError("The CSV must include a header row.")
+    rows = list(reader)
+    if len(rows) > APPLICATION_IMPORT_MAX_ROWS:
+        raise ValueError(f"CSV imports are limited to {APPLICATION_IMPORT_MAX_ROWS} rows.")
+    return headers, rows
+
+
+def _application_import_duplicate(existing_apps, candidate):
+    candidate_url = (candidate.get("job_url") or "").strip().lower()
+    candidate_key = (
+        (candidate.get("company_name") or "").strip().lower(),
+        (candidate.get("role_title") or "").strip().lower(),
+        (candidate.get("application_date") or "").strip(),
+    )
+    for existing in existing_apps:
+        existing_url = (existing.get("job_url") or "").strip().lower()
+        existing_key = (
+            (existing.get("company_name") or "").strip().lower(),
+            (existing.get("role_title") or "").strip().lower(),
+            (existing.get("application_date") or "").strip(),
+        )
+        if candidate_url and existing_url and candidate_url == existing_url:
+            return "matches an existing application URL"
+        if candidate_key == existing_key:
+            return "matches an existing company, role, and application date"
+    return None
+
+
+def _build_application_import_preview(student_id, headers, rows, mapping):
+    existing_apps = get_job_applications(student_id=student_id)
+    seen = []
+    preview_rows = []
+    for row_number, raw_row in enumerate(rows, start=2):
+        candidate = {field: (raw_row.get(mapping.get(field, ""), "") or "").strip() for field in APPLICATION_IMPORT_FIELDS}
+        errors = []
+        if not candidate["company_name"]:
+            errors.append("Company is required")
+        if not candidate["role_title"]:
+            errors.append("Role title is required")
+        if candidate["status"] and candidate["status"] not in APPLICATION_STAGES:
+            if candidate["status"] == "Offered":
+                candidate["status"] = "Selected"
+            else:
+                errors.append(f"Invalid status '{candidate['status']}'")
+        if candidate["application_date"]:
+            try:
+                datetime.strptime(candidate["application_date"], "%Y-%m-%d")
+            except ValueError:
+                errors.append("Application date must use YYYY-MM-DD")
+        duplicate = _application_import_duplicate(existing_apps + seen, candidate)
+        if duplicate:
+            errors.append(f"Likely duplicate: {duplicate}")
+        if not errors:
+            seen.append(candidate)
+        preview_rows.append({"row_number": row_number, "values": candidate, "errors": errors})
+    return preview_rows
 
 
 @app.route("/applications", methods=["GET", "POST"])
@@ -10017,6 +10131,84 @@ def job_applications_tracker():
         job_type_filter=job_type_filter,
         exp_filter=exp_filter,
         sort_by=sort_by
+    )
+
+
+@app.route("/applications/import/preview", methods=["POST"])
+def preview_application_import():
+    student_id = _application_import_student_id()
+    try:
+        headers, rows = _read_application_import_csv(request.files.get("csv_file"))
+        mapping = _suggest_application_import_mapping(headers)
+        preview_rows = _build_application_import_preview(student_id, headers, rows, mapping)
+        now = time.time()
+        for stale_token, stale_preview in list(_APPLICATION_IMPORT_PREVIEWS.items()):
+            if now - stale_preview.get("created_at", now) > 1800:
+                _APPLICATION_IMPORT_PREVIEWS.pop(stale_token, None)
+        token = uuid.uuid4().hex
+        _APPLICATION_IMPORT_PREVIEWS[token] = {
+            "student_id": student_id,
+            "headers": headers,
+            "rows": rows,
+            "created_at": now,
+        }
+        return render_template(
+            "application_import.html",
+            token=token,
+            student_id=student_id,
+            headers=headers,
+            mapping=mapping,
+            preview_rows=preview_rows,
+            import_fields=APPLICATION_IMPORT_FIELDS,
+            valid_rows=sum(1 for row in preview_rows if not row["errors"]),
+            invalid_rows=sum(1 for row in preview_rows if row["errors"]),
+        )
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+
+@app.route("/applications/import/confirm", methods=["POST"])
+def confirm_application_import():
+    student_id = _application_import_student_id()
+    token = request.form.get("token", "").strip()
+    preview = _APPLICATION_IMPORT_PREVIEWS.pop(token, None)
+    if not preview or preview["student_id"] != student_id or time.time() - preview["created_at"] > 1800:
+        flash("This import preview has expired. Please upload the CSV again.", "danger")
+        return redirect(url_for("job_applications_tracker", student_id=student_id))
+
+    mapping = {field: request.form.get(f"mapping_{field}", "").strip() for field in APPLICATION_IMPORT_FIELDS}
+    preview_rows = _build_application_import_preview(student_id, preview["headers"], preview["rows"], mapping)
+    existing_apps = get_job_applications(student_id=student_id)
+    imported = 0
+    skipped = []
+    for row in preview_rows:
+        if row["errors"]:
+            skipped.append({"row_number": row["row_number"], "errors": row["errors"]})
+            continue
+        values = row["values"]
+        save_job_application(
+            app_id=f"app-{uuid.uuid4().hex[:12]}",
+            student_id=student_id,
+            company_name=values["company_name"],
+            role_title=values["role_title"],
+            status=values["status"] or "Applied",
+            application_date=values["application_date"] or None,
+            job_url=values["job_url"],
+            job_description=values["job_description"],
+            notes=values["notes"],
+            location=values["location"] or "Remote",
+            job_type=values["job_type"] or "Full-Time",
+            experience_level=values["experience_level"] or "Entry-Level",
+        )
+        existing_apps.append(values)
+        imported += 1
+
+    return render_template(
+        "application_import_result.html",
+        imported=imported,
+        skipped=skipped,
+        student_id=student_id,
     )
 
 

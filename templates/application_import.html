@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Review Application Import</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <main class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">Review CSV Import</h2>
+        <p class="text-muted mb-0">Match spreadsheet columns, review validation, then confirm the valid rows.</p>
+      </div>
+      <a href="{{ url_for('job_applications_tracker', student_id=student_id if student_id is defined else '') }}" class="btn btn-outline-secondary rounded-pill">Cancel</a>
+    </div>
+
+    <form method="POST" action="{{ url_for('confirm_application_import') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="token" value="{{ token }}">
+      <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
+        <h5 class="fw-bold mb-3">Column matching</h5>
+        <div class="row g-3">
+          {% for field in import_fields %}
+          <div class="col-md-6 col-lg-4">
+            <label class="form-label small fw-semibold" for="mapping_{{ field }}">{{ field|replace('_', ' ')|title }}{% if field in ['company_name', 'role_title'] %} *{% endif %}</label>
+            <select class="form-select form-select-sm" id="mapping_{{ field }}" name="mapping_{{ field }}">
+              <option value="">Not mapped</option>
+              {% for header in headers %}
+              <option value="{{ header }}" {% if mapping[field] == header %}selected{% endif %}>{{ header }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="d-flex gap-3 mb-3">
+        <span class="badge bg-success-subtle text-success p-2">{{ valid_rows }} row(s) ready to import</span>
+        <span class="badge bg-danger-subtle text-danger p-2">{{ invalid_rows }} row(s) need attention or will be skipped</span>
+      </div>
+
+      <div class="card border-0 shadow-sm rounded-4 overflow-hidden mb-4">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0">
+            <thead class="table-light"><tr><th>CSV row</th><th>Company</th><th>Role</th><th>Status</th><th>Date</th><th>Result</th></tr></thead>
+            <tbody>
+              {% for row in preview_rows %}
+              <tr>
+                <td>{{ row.row_number }}</td>
+                <td>{{ row.values.company_name or '—' }}</td>
+                <td>{{ row.values.role_title or '—' }}</td>
+                <td>{{ row.values.status or 'Applied' }}</td>
+                <td>{{ row.values.application_date or '—' }}</td>
+                <td>
+                  {% if row.errors %}
+                  <span class="text-danger small">{{ row.errors|join('; ') }}</span>
+                  {% else %}
+                  <span class="text-success small"><i class="fa-solid fa-check me-1"></i>Ready</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary rounded-pill px-4" {% if valid_rows == 0 %}disabled{% endif %}>Confirm Import of {{ valid_rows }} Row(s)</button>
+    </form>
+  </main>
+</body>
+</html>
