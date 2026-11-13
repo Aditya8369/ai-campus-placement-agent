@@ -31,7 +31,6 @@ UPLOAD_FOLDER = STORAGE_DIR / "uploads"
 REPORT_FOLDER = STORAGE_DIR / "reports"
 DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
 BACKUP_DIR = STORAGE_DIR / "backups"
-ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-secret-key")
 
 # Ensure folders exist safely with graceful fallback
 try:

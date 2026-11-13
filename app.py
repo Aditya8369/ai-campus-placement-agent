@@ -86,7 +86,6 @@ from utils.database import (
     reset_company_checklist,
     save_coding_submission,
     get_coding_submissions,
-    update_job_application_status,
     save_skill_self_assessment,
     get_student_skill_self_assessments,
     delete_skill_self_assessment,
@@ -114,13 +113,6 @@ from utils.database import (
     invalidate_password_reset_token,
     get_user_data_export_manifest,
     delete_user_account_and_personal_data,
-    generate_email_verification_token,
-    verify_user_email_token,
-    is_user_email_verified,
-    record_preparation_activity,
-    get_student_streak,
-    get_streak_calendar,
-    get_recent_preparation_activities,
     generate_email_verification_token,
     verify_user_email_token,
     is_user_email_verified,
@@ -226,13 +218,6 @@ except ImportError:
     safe_generate_report_with_recovery = None
     generate_fallback_pdf_report = None
     sanitize_report_data = None
-from utils.gemini import (
-    AIAnalysisError,
-    AIRateLimitError,
-    format_ai_error_for_user,
-)
-from utils.report_generator import generate_pdf_report
-from utils.rate_limiter import rate_limit
 from utils.async_pipeline import (
     create_analysis_task,
     get_analysis_task,
