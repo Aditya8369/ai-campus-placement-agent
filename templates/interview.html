@@ -78,6 +78,9 @@
         <a href="/notes" target="_blank" rel="noopener noreferrer" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Interview Preparation Notes">
           <i class="fa-solid fa-note-sticky me-1"></i> <span class="d-none d-sm-inline">Prep</span> Notes
         </a>
+        <a href="/interview/bookmarks" target="_blank" rel="noopener noreferrer" class="btn btn-outline-warning btn-sm rounded-pill px-2 px-sm-3" title="Saved Interview Question Bookmarks">
+          <i class="fa-solid fa-bookmark me-1"></i> <span class="d-none d-sm-inline">Saved</span> Qs
+        </a>
         <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle dark/light theme">
           <i class="fa-solid fa-moon"></i>
         </button>
@@ -167,9 +170,14 @@
                   <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
                     <i class="fa-solid fa-circle-question me-1"></i> Question {{ ans.question_index + 1 }} &bull; {{ ans.type }}
                   </span>
-                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ ans.question|escape }}" aria-label="Read question aloud">
-                    <i class="fa-solid fa-volume-high me-1"></i> Listen
-                  </button>
+                  <div class="d-flex align-items-center gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-warning btn-bookmark-interview-q py-0 px-2 rounded-pill" title="Bookmark question" aria-label="Bookmark question" data-question-id="q-{{ ans.question_index }}" data-question="{{ ans.question|escape }}" data-category="{{ ans.type|escape }}" data-company="{{ company_name|default('General', true)|escape }}">
+                      <i class="fa-regular fa-bookmark"></i> <span class="d-none d-sm-inline">Save</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ ans.question|escape }}" aria-label="Read question aloud">
+                      <i class="fa-solid fa-volume-high me-1"></i> Listen
+                    </button>
+                  </div>
                 </div>
                 <div class="fw-medium text-dark lh-base fs-6">{{ ans.question }}</div>
               </div>
@@ -258,9 +266,14 @@
                   <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
                     <i class="fa-solid fa-play me-1"></i> Active Question {{ current_q.index + 1 }} &bull; {{ current_q.type }}
                   </span>
-                  <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ current_q.question|escape }}" aria-label="Read question aloud">
-                    <i class="fa-solid fa-volume-high me-1"></i> Listen
-                  </button>
+                  <div class="d-flex align-items-center gap-1">
+                    <button type="button" class="btn btn-sm btn-outline-warning btn-bookmark-interview-q py-0 px-2 rounded-pill" title="Bookmark question" aria-label="Bookmark question" data-question-id="q-{{ current_q.index }}" data-question="{{ current_q.question|escape }}" data-category="{{ current_q.type|escape }}" data-company="{{ company_name|default('General', true)|escape }}">
+                      <i class="fa-regular fa-bookmark"></i> <span class="d-none d-sm-inline">Save</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read question aloud" data-tts="{{ current_q.question|escape }}" aria-label="Read question aloud">
+                      <i class="fa-solid fa-volume-high me-1"></i> Listen
+                    </button>
+                  </div>
                 </div>
                 <div id="currentQuestionText" class="fw-semibold text-dark fs-6 lh-base">{{ current_q.question }}</div>
               </div>
