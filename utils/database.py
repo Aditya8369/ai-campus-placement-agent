@@ -68,7 +68,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 4: Store job application tracking records (#143, #193)
+        # Table 4: Store job application tracking records (#143, #193, #298)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS job_applications (
                 id TEXT PRIMARY KEY,
@@ -83,6 +83,7 @@ def init_db() -> None:
                 location TEXT DEFAULT 'Remote',
                 job_type TEXT DEFAULT 'Full-Time',
                 experience_level TEXT DEFAULT 'Entry-Level',
+                deadline_date TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -97,7 +98,7 @@ def init_db() -> None:
             )
         """)
 
-                # Table 6: Store user email notification preferences (#186)
+                # Table 6: Store user email notification preferences (#186, #298)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS email_notification_preferences (
                 student_id TEXT PRIMARY KEY,
@@ -107,6 +108,7 @@ def init_db() -> None:
                 notify_application_created INTEGER NOT NULL DEFAULT 1,
                 notify_status_change INTEGER NOT NULL DEFAULT 1,
                 notify_interview_reminder INTEGER NOT NULL DEFAULT 1,
+                notify_deadline_reminder INTEGER NOT NULL DEFAULT 1,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -333,7 +335,7 @@ def init_db() -> None:
         if "version_number" not in existing_cols:
             cursor.execute("ALTER TABLE analyses ADD COLUMN version_number INTEGER DEFAULT 1")
 
-        # Schema migration for job_applications table (#193)
+        # Schema migration for job_applications table (#193, #298)
         cursor.execute("PRAGMA table_info(job_applications)")
         app_cols = [col[1] for col in cursor.fetchall()]
         if "location" not in app_cols:
@@ -1088,7 +1090,7 @@ def save_job_application(
     job_description_snapshot: Optional[str] = None
 ) -> None:
     """
-    Saves or updates a candidate job application record (#143, #193).
+    Saves or updates a candidate job application record (#143, #193, #298).
     Ensures per-user data segregation.
     """
     import datetime
@@ -1096,6 +1098,7 @@ def save_job_application(
     try:
         cursor = conn.cursor()
         date_str = application_date or datetime.date.today().isoformat()
+        clean_deadline = deadline_date.strip() if deadline_date and isinstance(deadline_date, str) else None
         cursor.execute("""
             INSERT OR REPLACE INTO job_applications (
                 id, student_id, company_name, role_title, status, application_date,
@@ -1266,17 +1269,18 @@ def update_job_application(
     job_description_snapshot: Optional[str] = None
 ) -> bool:
     """
-    Updates an existing job application record with new details.
+    Updates an existing job application record with new details (#143, #298).
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        clean_deadline = deadline_date.strip() if deadline_date and isinstance(deadline_date, str) else deadline_date
         cursor.execute("""
             UPDATE job_applications SET
                 company_name = ?,
                 role_title = ?,
                 status = ?,
-                application_date = ?,
+                application_date = coalesce(?, application_date),
                 job_url = ?,
                 job_description = ?,
                 notes = ?,
@@ -2046,7 +2050,7 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
 
 def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
     """
-    Retrieves candidate email notification configuration (#186).
+    Retrieves candidate email notification configuration (#186, #298).
     Defaults to all enabled if no preference record exists yet.
     """
     conn = get_db_connection()
@@ -2067,7 +2071,8 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
                 "notify_welcome": bool(rec.get("notify_welcome", 1)),
                 "notify_application_created": bool(rec.get("notify_application_created", 1)),
                 "notify_status_change": bool(rec.get("notify_status_change", 1)),
-                "notify_interview_reminder": bool(rec.get("notify_interview_reminder", 1))
+                "notify_interview_reminder": bool(rec.get("notify_interview_reminder", 1)),
+                "notify_deadline_reminder": bool(rec.get("notify_deadline_reminder", 1))
             }
         return {
             "student_id": effective_id,
@@ -2076,7 +2081,8 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
             "notify_welcome": True,
             "notify_application_created": True,
             "notify_status_change": True,
-            "notify_interview_reminder": True
+            "notify_interview_reminder": True,
+            "notify_deadline_reminder": True
         }
     except Exception as e:
         logger.error(f"Error fetching email preferences for {student_id}: {e}")
@@ -2087,7 +2093,8 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
             "notify_welcome": True,
             "notify_application_created": True,
             "notify_status_change": True,
-            "notify_interview_reminder": True
+            "notify_interview_reminder": True,
+            "notify_deadline_reminder": True
         }
     finally:
         conn.close()
@@ -2100,10 +2107,11 @@ def update_email_notification_preferences(
     notify_welcome: bool = True,
     notify_application_created: bool = True,
     notify_status_change: bool = True,
-    notify_interview_reminder: bool = True
+    notify_interview_reminder: bool = True,
+    notify_deadline_reminder: bool = True
 ) -> bool:
     """
-    Saves or updates email notification settings for a student (#186).
+    Saves or updates email notification settings for a student (#186, #298).
     """
     conn = get_db_connection()
     try:
@@ -2112,8 +2120,9 @@ def update_email_notification_preferences(
         cursor.execute("""
             INSERT INTO email_notification_preferences (
                 student_id, email, email_enabled, notify_welcome,
-                notify_application_created, notify_status_change, notify_interview_reminder, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                notify_application_created, notify_status_change, notify_interview_reminder,
+                notify_deadline_reminder, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(student_id) DO UPDATE SET
                 email = coalesce(excluded.email, email_notification_preferences.email),
                 email_enabled = excluded.email_enabled,
@@ -2121,6 +2130,7 @@ def update_email_notification_preferences(
                 notify_application_created = excluded.notify_application_created,
                 notify_status_change = excluded.notify_status_change,
                 notify_interview_reminder = excluded.notify_interview_reminder,
+                notify_deadline_reminder = excluded.notify_deadline_reminder,
                 updated_at = CURRENT_TIMESTAMP
         """, (
             effective_id,
@@ -2129,7 +2139,8 @@ def update_email_notification_preferences(
             1 if notify_welcome else 0,
             1 if notify_application_created else 0,
             1 if notify_status_change else 0,
-            1 if notify_interview_reminder else 0
+            1 if notify_interview_reminder else 0,
+            1 if notify_deadline_reminder else 0
         ))
         conn.commit()
         return True

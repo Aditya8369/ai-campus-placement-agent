@@ -17,7 +17,7 @@
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
       <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
@@ -135,7 +135,7 @@
           </div>
 
           <!-- Interview Round Selection Pills -->
-          <div class="d-flex flex-wrap gap-2 mb-4 p-2 bg-light rounded-pill border">
+          <nav aria-label="Interview round selection" class="d-flex flex-wrap gap-2 mb-4 p-2 bg-light rounded-pill border">
             <a href="/interview/{{ analysis_id }}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary' if (active_round is not defined or active_round == 'All') else 'btn-outline-secondary border-0' }}">
               <i class="fa-solid fa-layer-group me-1"></i> Full Interview (15 Qs)
             </a>
@@ -148,12 +148,14 @@
             <a href="/interview/{{ analysis_id }}?round=Behavioral" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary' if (active_round is defined and active_round == 'Behavioral') else 'btn-outline-secondary border-0' }}">
               <i class="fa-solid fa-people-arrows me-1"></i> Behavioral Round (5 Qs)
             </a>
-          </div>
+          </nav>
           
           <!-- Chat area -->
-          <div class="chat-window d-flex flex-column" id="chatContainer">
+          <div class="chat-window d-flex flex-column" id="chatContainer" role="log" aria-live="polite" aria-relevant="additions text">
+            <!-- Screen Reader Dynamic Live Announcer -->
+            <div id="interviewLiveAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
             <!-- Welcoming message -->
-            <div class="chat-bubble chat-bubble-agent">
+            <div class="chat-bubble chat-bubble-agent" role="article">
               <div class="d-flex justify-content-between align-items-start mb-1">
                 <b>Interview Agent:</b>
                 <button type="button" class="btn btn-sm btn-outline-primary btn-tts py-0 px-2 rounded-pill" title="Read message aloud" data-tts="Welcome to your AI mock placement interview! I have compiled 15 tailored questions based on your target company and skills. Speak clearly, explain your logic, and let's practice." aria-label="Read message aloud">
@@ -348,7 +350,7 @@
                   <!-- Eye Level Target Reticle -->
                   <div id="cameraEyeReticle" class="position-absolute top-50 start-50 translate-middle border border-2 border-primary rounded-circle opacity-50 pointer-events-none" style="width: 70px; height: 70px;"></div>
                 </div>
-                <canvas id="videoAnalysisCanvas" width="160" height="120" class="d-none"></canvas>
+                <canvas id="videoAnalysisCanvas" width="160" height="120" class="d-none" role="img" aria-label="Video stream analysis preview"></canvas>
               </div>
               
               <!-- Real-Time Non-Verbal Telemetry Dials -->
