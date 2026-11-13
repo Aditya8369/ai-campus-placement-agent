@@ -7916,6 +7916,100 @@ def placement_calendar_view():
     )
 
 
+def _ics_escape(value):
+    """Escapes text according to RFC 5545 content-line rules."""
+    return (
+        str(value or "")
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
+    )
+
+
+def _ics_fold_line(line, limit=75):
+    """Folds long iCalendar content lines without splitting UTF-8 bytes."""
+    if len(line) <= limit:
+        return [line]
+    chunks = [line[index:index + limit] for index in range(0, len(line), limit)]
+    return [chunks[0]] + [f" {chunk}" for chunk in chunks[1:]]
+
+
+@app.route("/calendar/export.ics", methods=["GET"])
+def export_calendar_ics():
+    """Exports selected or all owned preparation events as floating local-time ICS."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "default_student"
+    requested_ids = {
+        event_id.strip()
+        for event_id in request.args.get("event_ids", "").split(",")
+        if event_id.strip()
+    }
+    all_events = get_calendar_events(student_id=student_id)
+    if requested_ids:
+        events = [event for event in all_events if event.get("id") in requested_ids]
+    elif request.args.get("all") == "1":
+        events = all_events
+    else:
+        events = []
+
+    if not events:
+        return Response(
+            "Select at least one calendar event, or choose export all.",
+            status=400,
+            mimetype="text/plain"
+        )
+
+    now_utc = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//AI Campus Placement Agent//Preparation Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "X-WR-CALNAME:Placement Preparation",
+        "X-WR-CALDESC:Times are floating local times as stored; no timezone conversion is applied.",
+    ]
+    for event in events:
+        event_date = (event.get("event_date") or "").replace("-", "")
+        event_time = (event.get("event_time") or "").replace(":", "")
+        if len(event_date) != 8:
+            continue
+        description_parts = []
+        if event.get("description"):
+            description_parts.append(event["description"])
+        if event.get("company_name"):
+            description_parts.append(f"Company: {event['company_name']}")
+        if event.get("priority"):
+            description_parts.append(f"Priority: {event['priority']}")
+        description_parts.append("Timezone: floating local time as stored; no timezone conversion.")
+        lines.extend([
+            "BEGIN:VEVENT",
+            f"UID:{_ics_escape(event.get('id'))}@ai-campus-placement-agent",
+            f"DTSTAMP:{now_utc}",
+            f"SUMMARY:{_ics_escape(event.get('title'))}",
+            f"DESCRIPTION:{_ics_escape(' '.join(description_parts))}",
+        ])
+        if event_time:
+            lines.append(f"DTSTART:{event_date}T{event_time}00")
+        else:
+            lines.append(f"DTSTART;VALUE=DATE:{event_date}")
+        lines.extend([
+            f"CATEGORIES:{_ics_escape(event.get('event_type', 'preparation'))}",
+            "END:VEVENT",
+        ])
+    lines.append("END:VCALENDAR")
+    ics_content = "\r\n".join(
+        folded_line
+        for line in lines
+        for folded_line in _ics_fold_line(line)
+    ) + "\r\n"
+    response = Response(ics_content, mimetype="text/calendar; charset=utf-8")
+    response.headers["Content-Disposition"] = "attachment; filename=preparation_calendar.ics"
+    return response
+
+
 @app.route("/api/calendar/<event_id>", methods=["PUT", "POST", "DELETE"])
 def api_manage_calendar_event(event_id: str):
     """
