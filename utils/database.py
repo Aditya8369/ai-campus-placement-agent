@@ -342,6 +342,14 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_type TEXT DEFAULT 'Full-Time'")
         if "experience_level" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN experience_level TEXT DEFAULT 'Entry-Level'")
+        if "resume_analysis_id" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN resume_analysis_id TEXT")
+        if "resume_filename" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN resume_filename TEXT")
+        if "resume_version" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN resume_version INTEGER")
+        if "job_description_snapshot" not in app_cols:
+            cursor.execute("ALTER TABLE job_applications ADD COLUMN job_description_snapshot TEXT")
 
         # Schema migration for users table (#206)
         cursor.execute("PRAGMA table_info(users)")
@@ -1073,7 +1081,11 @@ def save_job_application(
     notes: Optional[str] = None,
     location: str = "Remote",
     job_type: str = "Full-Time",
-    experience_level: str = "Entry-Level"
+    experience_level: str = "Entry-Level",
+    resume_analysis_id: Optional[str] = None,
+    resume_filename: Optional[str] = None,
+    resume_version: Optional[int] = None,
+    job_description_snapshot: Optional[str] = None
 ) -> None:
     """
     Saves or updates a candidate job application record (#143, #193).
@@ -1087,8 +1099,9 @@ def save_job_application(
         cursor.execute("""
             INSERT OR REPLACE INTO job_applications (
                 id, student_id, company_name, role_title, status, application_date,
-                job_url, job_description, notes, location, job_type, experience_level
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                job_url, job_description, notes, location, job_type, experience_level,
+                resume_analysis_id, resume_filename, resume_version, job_description_snapshot
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             app_id,
             student_id.strip() if student_id else "default_student",
@@ -1101,7 +1114,11 @@ def save_job_application(
             (notes or "").strip(),
             (location or "Remote").strip(),
             (job_type or "Full-Time").strip(),
-            (experience_level or "Entry-Level").strip()
+            (experience_level or "Entry-Level").strip(),
+            (resume_analysis_id or "").strip() or None,
+            (resume_filename or "").strip() or None,
+            resume_version,
+            (job_description_snapshot or "").strip() or None
         ))
         conn.commit()
         logger.info(f"Saved job application {app_id} for student {student_id}")
@@ -1242,7 +1259,11 @@ def update_job_application(
     notes: Optional[str] = None,
     location: str = "Remote",
     job_type: str = "Full-Time",
-    experience_level: str = "Entry-Level"
+    experience_level: str = "Entry-Level",
+    resume_analysis_id: Optional[str] = None,
+    resume_filename: Optional[str] = None,
+    resume_version: Optional[int] = None,
+    job_description_snapshot: Optional[str] = None
 ) -> bool:
     """
     Updates an existing job application record with new details.
@@ -1261,7 +1282,11 @@ def update_job_application(
                 notes = ?,
                 location = ?,
                 job_type = ?,
-                experience_level = ?
+                experience_level = ?,
+                resume_analysis_id = ?,
+                resume_filename = ?,
+                resume_version = ?,
+                job_description_snapshot = ?
             WHERE id = ? AND student_id = ?
         """, (
             company_name.strip(),
@@ -1274,6 +1299,10 @@ def update_job_application(
             (location or "Remote").strip(),
             (job_type or "Full-Time").strip(),
             (experience_level or "Entry-Level").strip(),
+            (resume_analysis_id or "").strip() or None,
+            (resume_filename or "").strip() or None,
+            resume_version,
+            (job_description_snapshot or "").strip() or None,
             app_id.strip(),
             student_id.strip() if student_id else "default_student"
         ))

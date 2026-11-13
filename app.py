@@ -10096,6 +10096,21 @@ def _build_application_import_preview(student_id, headers, rows, mapping):
     return preview_rows
 
 
+def _resume_link_snapshot(student_id: str, analysis_id: str):
+    """Returns an owned analysis snapshot suitable for linking to an application."""
+    if not analysis_id:
+        return None
+    for version in get_student_versions(student_id):
+        if version.get("id") == analysis_id:
+            return {
+                "id": version["id"],
+                "filename": version.get("resume_filename") or "",
+                "version": version.get("version_number"),
+                "job_description": version.get("job_description") or "",
+            }
+    return None
+
+
 @app.route("/applications", methods=["GET", "POST"])
 @app.route("/api/applications", methods=["GET", "POST"])
 def job_applications_tracker():
@@ -10139,6 +10154,8 @@ def job_applications_tracker():
 
         app_date = (payload.get("application_date") or "").strip()
         job_url = (payload.get("job_url") or payload.get("url") or "").strip()
+        job_description = (payload.get("job_description") or "").strip()
+        resume_analysis_id = (payload.get("resume_analysis_id") or "").strip()
         notes = (payload.get("notes") or "").strip()
         location = (payload.get("location") or "Remote").strip()
         job_type = (payload.get("job_type") or "Full-Time").strip()
@@ -10153,6 +10170,16 @@ def job_applications_tracker():
             flash("Company name and job role are required.", "error")
             return redirect(url_for("job_applications_tracker", student_id=student_id))
 
+        resume_snapshot = _resume_link_snapshot(student_id, resume_analysis_id)
+        if resume_analysis_id and not resume_snapshot:
+            error_message = "The selected resume version is not available for this account."
+            if is_api_request:
+                return jsonify({"success": False, "error": error_message}), 400
+            flash(error_message, "error")
+            return redirect(url_for("job_applications_tracker", student_id=student_id))
+        if resume_snapshot:
+            job_description = resume_snapshot["job_description"]
+
         app_id = f"app-{uuid.uuid4().hex[:12]}"
         save_job_application(
             app_id=app_id,
@@ -10162,10 +10189,15 @@ def job_applications_tracker():
             status=status,
             application_date=app_date or None,
             job_url=job_url,
+            job_description=job_description,
             notes=notes,
             location=location,
             job_type=job_type,
-            experience_level=exp_level
+            experience_level=exp_level,
+            resume_analysis_id=resume_snapshot["id"] if resume_snapshot else None,
+            resume_filename=resume_snapshot["filename"] if resume_snapshot else None,
+            resume_version=resume_snapshot["version"] if resume_snapshot else None,
+            job_description_snapshot=job_description or None
         )
 
         # Notify candidate via email if preference enabled (#186)
@@ -10231,7 +10263,8 @@ def job_applications_tracker():
         location_filter=location_filter,
         job_type_filter=job_type_filter,
         exp_filter=exp_filter,
-        sort_by=sort_by
+        sort_by=sort_by,
+        resume_versions=get_student_versions(student_id)
     )
 
 
@@ -10372,6 +10405,21 @@ def api_application_detail_operations(app_id: str):
 
         app_date = payload.get("application_date") or existing.get("application_date")
         job_url = payload.get("job_url") if payload.get("job_url") is not None else existing.get("job_url")
+        resume_link_supplied = "resume_analysis_id" in payload
+        resume_analysis_id = (payload.get("resume_analysis_id") or "").strip()
+        resume_snapshot = None
+        if resume_link_supplied and resume_analysis_id:
+            resume_snapshot = _resume_link_snapshot(student_id, resume_analysis_id)
+            if not resume_snapshot:
+                return jsonify({
+                    "success": False,
+                    "error": "The selected resume version is not available for this account."
+                }), 400
+        job_description = payload.get("job_description")
+        if job_description is None:
+            job_description = existing.get("job_description_snapshot") or existing.get("job_description") or ""
+        if resume_snapshot:
+            job_description = resume_snapshot["job_description"]
         notes = payload.get("notes") if payload.get("notes") is not None else existing.get("notes")
         location = payload.get("location") or existing.get("location") or "Remote"
         job_type = payload.get("job_type") or existing.get("job_type") or "Full-Time"
@@ -10385,10 +10433,24 @@ def api_application_detail_operations(app_id: str):
             status=status,
             application_date=app_date,
             job_url=job_url,
+            job_description=job_description,
             notes=notes,
             location=location,
             job_type=job_type,
-            experience_level=exp_level
+            experience_level=exp_level,
+            resume_analysis_id=(
+                resume_snapshot["id"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_analysis_id"))
+            ),
+            resume_filename=(
+                resume_snapshot["filename"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_filename"))
+            ),
+            resume_version=(
+                resume_snapshot["version"] if resume_snapshot
+                else (None if resume_link_supplied else existing.get("resume_version"))
+            ),
+            job_description_snapshot=job_description or None
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)
