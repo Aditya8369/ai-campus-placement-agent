@@ -25,7 +25,12 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
 
-from utils.database import get_db_connection
+from utils.database import (
+    get_db_connection,
+    get_email_notification_preferences,
+    get_user_by_id
+)
+from utils.email_service import EmailNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +135,14 @@ def update_student_deadline_preferences(
     return get_student_deadline_preferences(student_id)
 
 
-def scan_and_generate_student_reminders(student_id: str) -> List[Dict[str, Any]]:
+def scan_and_generate_student_reminders(
+    student_id: str,
+    reference_date: Optional[datetime.date] = None
+) -> List[Dict[str, Any]]:
     """
     Scans a student's active job applications and calendar deadlines,
-    identifying approaching deadlines and upserting reminder records.
+    identifying approaching deadlines and upserting reminder records (#251, #298).
+    Supports explicit reference_date for deterministic clock testing.
     """
     sid = (student_id or "").strip()
     if not sid:
@@ -142,7 +151,7 @@ def scan_and_generate_student_reminders(student_id: str) -> List[Dict[str, Any]]
     preferences = get_student_deadline_preferences(sid)
     lead_days = preferences.get("alert_lead_days", 3)
 
-    today = datetime.now(timezone.utc).date()
+    today = reference_date or datetime.now(timezone.utc).date()
     max_scan_date = today + timedelta(days=lead_days)
 
     generated_reminders: List[Dict[str, Any]] = []
@@ -151,18 +160,33 @@ def scan_and_generate_student_reminders(student_id: str) -> List[Dict[str, Any]]
         ensure_deadline_reminders_table(conn)
         cursor = conn.cursor()
 
-        # 1. Scan job applications with deadlines (notes or fields)
-        cursor.execute("""
+        # 1. Scan job applications with deadlines (notes, fields, or deadline_date)
+        # Check available columns in job_applications
+        cursor.execute("PRAGMA table_info(job_applications)")
+        app_cols = [col[1] for col in cursor.fetchall()]
+        has_deadline_col = "deadline_date" in app_cols
+
+        query = f"""
             SELECT id, company_name, role_title, application_date, notes
+            {', deadline_date' if has_deadline_col else ''}
             FROM job_applications
             WHERE student_id = ? AND LOWER(status) NOT IN ('rejected', 'offer_accepted', 'withdrawn')
-        """, (sid,))
+        """
+        cursor.execute(query, (sid,))
         apps = cursor.fetchall()
 
         for a in apps:
-            app_id, comp, role, app_date, notes = a["id"], a["company_name"], a["role_title"], a["application_date"], a["notes"] or ""
-            # Inspect if notes or metadata contain a deadline date format
-            parsed_deadline = _extract_date_from_string(notes) or _extract_date_from_string(app_date)
+            app_id = a["id"]
+            comp = a["company_name"]
+            role = a["role_title"]
+            app_date = a["application_date"]
+            notes = a["notes"] or ""
+            explicit_deadline = a["deadline_date"] if has_deadline_col and "deadline_date" in a.keys() else None
+
+            # Priority 1: dedicated deadline_date field (#298)
+            # Priority 2: deadline parsed from notes text
+            # Priority 3: fallback to application_date
+            parsed_deadline = _parse_iso_date(explicit_deadline) or _extract_date_from_string(notes) or _extract_date_from_string(app_date)
             if parsed_deadline:
                 rem = _process_candidate_deadline(
                     conn, sid, "job_application", app_id,
@@ -315,3 +339,178 @@ def _extract_date_from_string(text: Optional[str]) -> Optional[datetime.date]:
         except Exception:
             return None
     return None
+
+
+def send_upcoming_deadline_reminders(
+    student_id: Optional[str] = None,
+    reference_time: Optional[datetime] = None,
+    days_ahead: int = 2
+) -> Dict[str, Any]:
+    """
+    Scheduled job / CLI service function (#298):
+    Finds active application & interview items due in the next `days_ahead` days (default: 2 days)
+    and sends exactly one reminder email per item.
+
+    Guarantees:
+    - Reminders are sent once for each upcoming deadline (records notification_dispatched_at).
+    - Students who turned email reminders off in preferences receive nothing.
+    - A failed email send does not crash the scheduler loop.
+    - Never logs email bodies.
+    - Unit tests can mock the mail client and supply fixed reference_time clock.
+    """
+    ref_now = reference_time or datetime.now(timezone.utc)
+    if isinstance(ref_now, datetime):
+        ref_date = ref_now.date()
+    else:
+        ref_date = ref_now
+
+    email_svc = EmailNotificationService()
+
+    # Step 1: Identify candidate student IDs to scan
+    candidate_ids: List[str] = []
+    with get_db_connection() as conn:
+        ensure_deadline_reminders_table(conn)
+        cursor = conn.cursor()
+        if student_id and student_id.strip():
+            candidate_ids = [student_id.strip()]
+        else:
+            cursor.execute("""
+                SELECT DISTINCT student_id FROM job_applications
+                UNION
+                SELECT DISTINCT student_id FROM preparation_calendar_events
+                UNION
+                SELECT DISTINCT student_id FROM student_deadline_preferences
+            """)
+            candidate_ids = [r[0] for r in cursor.fetchall() if r[0]]
+
+    # Step 2: Ensure reminders are up-to-date for each candidate
+    for sid in candidate_ids:
+        try:
+            scan_and_generate_student_reminders(sid, reference_date=ref_date)
+        except Exception as scan_err:
+            logger.warning(f"Error scanning deadlines for student {sid}: {scan_err}")
+
+    # Step 3: Query unacknowledged, unsent reminder items
+    sent_count = 0
+    skipped_count = 0
+    failed_count = 0
+    sent_details: List[Dict[str, Any]] = []
+
+    with get_db_connection() as conn:
+        ensure_deadline_reminders_table(conn)
+        cursor = conn.cursor()
+        if student_id and student_id.strip():
+            cursor.execute("""
+                SELECT id, student_id, source_type, source_id, title, company_name,
+                       deadline_date, urgency_level
+                FROM application_deadline_reminders
+                WHERE is_acknowledged = 0
+                  AND notification_dispatched_at IS NULL
+                  AND student_id = ?
+                ORDER BY deadline_date ASC
+            """, (student_id.strip(),))
+        else:
+            cursor.execute("""
+                SELECT id, student_id, source_type, source_id, title, company_name,
+                       deadline_date, urgency_level
+                FROM application_deadline_reminders
+                WHERE is_acknowledged = 0
+                  AND notification_dispatched_at IS NULL
+                ORDER BY deadline_date ASC
+            """)
+        pending_reminders = cursor.fetchall()
+
+    for rem in pending_reminders:
+        rem_id = rem["id"]
+        sid = rem["student_id"]
+        comp = rem["company_name"]
+        title = rem["title"]
+        d_str = rem["deadline_date"]
+
+        parsed_deadline = _parse_iso_date(d_str)
+        if not parsed_deadline:
+            continue
+
+        days_remaining = (parsed_deadline - ref_date).days
+        # Target: items due in the next 2 days (0 <= days_remaining <= days_ahead)
+        if not (0 <= days_remaining <= days_ahead):
+            continue
+
+        # Check student notification preferences
+        deadline_pref = get_student_deadline_preferences(sid)
+        email_pref = get_email_notification_preferences(sid)
+
+        # Check if disabled either in student_deadline_preferences or email_notification_preferences
+        if (
+            not deadline_pref.get("email_alerts_enabled", 1)
+            or not email_pref.get("email_enabled", True)
+            or not email_pref.get("notify_deadline_reminder", True)
+        ):
+            logger.info(f"Skipping deadline email for student '{sid}': reminders turned off in preferences.")
+            skipped_count += 1
+            continue
+
+        # Resolve destination email address and candidate name
+        user_info = get_user_by_id(sid)
+        recipient_email = (
+            email_pref.get("email")
+            or (user_info and user_info.get("email"))
+            or f"{sid}@student.campus.edu"
+        ).strip()
+
+        student_name = (user_info and user_info.get("name")) or sid
+
+        # Dispatch email
+        try:
+            sent = email_svc.send_deadline_reminder_email(
+                recipient_email=recipient_email,
+                student_name=student_name,
+                title=title,
+                company_name=comp,
+                deadline_date=d_str,
+                days_remaining=days_remaining
+            )
+            if sent:
+                now_iso = ref_now.isoformat() if isinstance(ref_now, datetime) else datetime.now(timezone.utc).isoformat()
+                with get_db_connection() as conn:
+                    c = conn.cursor()
+                    c.execute("""
+                        UPDATE application_deadline_reminders
+                        SET notification_dispatched_at = ?
+                        WHERE id = ?
+                    """, (now_iso, rem_id))
+                    conn.commit()
+
+                sent_count += 1
+                sent_details.append({
+                    "reminder_id": rem_id,
+                    "student_id": sid,
+                    "company_name": comp,
+                    "title": title,
+                    "deadline_date": d_str,
+                    "days_remaining": days_remaining,
+                    "recipient_email": recipient_email
+                })
+                logger.info(f"Deadline reminder sent for {comp} ({title}) to {recipient_email}")
+            else:
+                failed_count += 1
+                logger.error(f"Email service returned failure for deadline reminder {rem_id} to {recipient_email}")
+        except Exception as ex:
+            # A failed email send must not crash the scheduler
+            failed_count += 1
+            logger.error(f"Unexpected error sending deadline reminder {rem_id} to {recipient_email}: {ex}")
+
+    logger.info(
+        f"Completed deadline reminder job: scanned_students={len(candidate_ids)}, "
+        f"sent={sent_count}, skipped={skipped_count}, failed={failed_count}"
+    )
+
+    return {
+        "status": "success",
+        "scanned_students": len(candidate_ids),
+        "sent_count": sent_count,
+        "skipped_count": skipped_count,
+        "failed_count": failed_count,
+        "reminders_sent": sent_details
+    }
+
