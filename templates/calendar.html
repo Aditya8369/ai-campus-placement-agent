@@ -31,6 +31,9 @@
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
           <i class="fa-solid fa-house me-1"></i> Home
         </a>
+        <a href="{{ url_for('export_calendar_ics', all=1) }}" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-calendar-days me-1"></i> Export All (.ics)
+        </a>
         <button class="btn btn-primary btn-sm rounded-pill px-3 py-1" data-bs-toggle="modal" data-bs-target="#addEventModal">
           <i class="fa-solid fa-calendar-plus me-1"></i> Add Activity
         </button>
@@ -126,8 +129,16 @@
     <!-- Activities List / Schedule View -->
     <div class="card border-0 shadow-sm rounded-4 p-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold mb-0"><i class="fa-solid fa-timeline text-primary me-2"></i>Schedule for {{ current_month }}</h5>
-        <span class="badge bg-secondary rounded-pill">{% if pagination %}Showing {{ events|length }} of {{ pagination.total_records }} activities{% else %}{{ events|length }} activities{% endif %}</span>
+        <div>
+          <h5 class="fw-bold mb-0"><i class="fa-solid fa-timeline text-primary me-2"></i>Schedule for {{ current_month }}</h5>
+          <span class="small text-muted">Exported times remain exactly as stored and are treated as local floating times; no timezone conversion is applied.</span>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-secondary rounded-pill">{% if pagination %}Showing {{ events|length }} of {{ pagination.total_records }} activities{% else %}{{ events|length }} activities{% endif %}</span>
+          <button type="button" class="btn btn-outline-success btn-sm rounded-pill" id="exportSelectedCalendarEvents">
+            <i class="fa-solid fa-file-export me-1"></i> Export Selected
+          </button>
+        </div>
       </div>
 
       {% if events %}
@@ -135,6 +146,7 @@
         <table class="table table-hover align-middle">
           <thead class="table-light">
             <tr>
+              <th><span class="visually-hidden">Select</span></th>
               <th>Date &amp; Time</th>
               <th>Activity Title</th>
               <th>Category</th>
@@ -147,6 +159,9 @@
           <tbody>
             {% for evt in events %}
             <tr class="{{ 'today-highlight' if evt.event_date == today_date else '' }}">
+              <td>
+                <input type="checkbox" class="form-check-input calendar-event-checkbox" value="{{ evt.id }}" aria-label="Select {{ evt.title }} for export">
+              </td>
               <td class="fw-semibold text-nowrap">
                 <i class="fa-regular fa-calendar text-muted me-1"></i> {{ evt.event_date }}
                 {% if evt.event_date == today_date %}
@@ -207,6 +222,10 @@
       {% endif %}
     </div>
   </main>
+
+  <form id="calendarExportForm" method="GET" action="{{ url_for('export_calendar_ics') }}" class="d-none">
+    <input type="hidden" name="event_ids" id="calendarExportEventIds">
+  </form>
 
   <!-- Add Event Modal -->
   <div class="modal fade" id="addEventModal" tabindex="-1" aria-labelledby="addEventModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
@@ -274,6 +293,17 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
   <script>
+    document.getElementById("exportSelectedCalendarEvents")?.addEventListener("click", () => {
+      const selected = Array.from(document.querySelectorAll(".calendar-event-checkbox:checked"))
+        .map(checkbox => checkbox.value);
+      if (!selected.length) {
+        alert("Select at least one event to export.");
+        return;
+      }
+      document.getElementById("calendarExportEventIds").value = selected.join(",");
+      document.getElementById("calendarExportForm").submit();
+    });
+
     document.querySelectorAll(".btn-delete-evt").forEach(btn => {
       btn.addEventListener("click", async () => {
         const evtId = btn.getAttribute("data-evt-id");
