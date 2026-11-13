@@ -2442,3 +2442,27 @@ textarea:focus-visible {
   }
 }
 
+/* Password Visibility Toggle */
+.toggle-password-visibility {
+  border-top-left-radius: 0 !important;
+  border-bottom-left-radius: 0 !important;
+  cursor: pointer;
+  z-index: 2;
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
+
+.toggle-password-visibility:focus {
+  box-shadow: none !important;
+}
+
+[data-bs-theme="dark"] .toggle-password-visibility {
+  border-color: #495057;
+  color: #adb5bd;
+}
+
+[data-bs-theme="dark"] .toggle-password-visibility:hover {
+  background-color: #343a40;
+  color: #f8f9fa;
+}
+
+
