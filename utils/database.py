@@ -1344,6 +1344,41 @@ def get_application_stage_counts(student_id: str) -> Dict[str, int]:
     return counts
 
 
+def get_application_funnel_analytics(student_id: str) -> Dict[str, Any]:
+    """
+    Builds a user-scoped application funnel summary from current application stages.
+
+    Interview reach includes applications currently at Interview or later (Selected).
+    Success rates are withheld until five applications exist to avoid over-interpreting
+    very small samples.
+    """
+    counts = get_application_stage_counts(student_id)
+    total = counts["Total"]
+    interview_count = counts["Interview"] + counts["Selected"]
+    offer_count = counts["Selected"]
+    reliable = total >= 5
+
+    return {
+        "total_applications": total,
+        "stage_counts": counts,
+        "interview_count": interview_count,
+        "offer_count": offer_count,
+        "sample_size": total,
+        "minimum_sample_size": 5,
+        "has_enough_data": reliable,
+        "interview_rate": round(interview_count / total * 100, 1) if reliable else None,
+        "offer_rate": round(offer_count / total * 100, 1) if reliable else None,
+        "calculation_note": (
+            "Interview reach counts applications currently at Interview or Selected; "
+            "offers are applications currently marked Selected."
+        ),
+        "reliability_note": (
+            "Rates are shown after at least 5 application records; with fewer records, "
+            "counts are useful for tracking but too small for a reliable success rate."
+        ),
+    }
+
+
 def export_job_applications_csv(
     student_id: str,
     status_filter: Optional[str] = None

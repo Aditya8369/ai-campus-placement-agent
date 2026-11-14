@@ -73,6 +73,7 @@ from utils.database import (
     delete_job_application,
     update_job_application_status,
     get_application_stage_counts,
+    get_application_funnel_analytics,
     get_email_notification_preferences,
     update_email_notification_preferences,
     save_interview_experience,
@@ -10092,15 +10093,7 @@ def job_applications_tracker():
     json_body = request.get_json(silent=True) if request.is_json else {}
     if not isinstance(json_body, dict):
         json_body = {}
-    student_id = (
-        request.args.get("student_id")
-        or json_body.get("student_id")
-        or request.form.get("student_id")
-        or flask_session.get("user_id")
-        or (flask_session.get("user", {}).get("id") if isinstance(flask_session.get("user"), dict) else None)
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
+    student_id = _application_import_student_id()
     status_filter = request.args.get("status", "All")
     search_query = request.args.get("search", "").strip()
     location_filter = request.args.get("location", "All").strip()
@@ -10211,6 +10204,7 @@ def job_applications_tracker():
 
     all_user_apps = get_job_applications(student_id=student_id)
     stage_counts = get_application_stage_counts(student_id)
+    funnel_analytics = get_application_funnel_analytics(student_id)
 
     if is_api_request:
         return jsonify({
@@ -10219,6 +10213,7 @@ def job_applications_tracker():
             "count": len(applications),
             "total": len(all_user_apps),
             "stage_counts": stage_counts,
+            "funnel_analytics": funnel_analytics,
             "stages": APPLICATION_STAGES,
             "applications": applications
         }), 200
@@ -10228,6 +10223,7 @@ def job_applications_tracker():
         applications=applications,
         all_count=len(all_user_apps),
         stage_counts=stage_counts,
+        funnel_analytics=funnel_analytics,
         stages=APPLICATION_STAGES,
         student_id=student_id,
         current_status=status_filter,
@@ -10401,19 +10397,16 @@ def api_applications_stats():
     """
     Returns pipeline breakdown counts across all application stages.
     """
-    student_id = (
-        request.args.get("student_id")
-        or flask_session.get("user_id")
-        or flask_session.get("student_id")
-        or "default_student"
-    ).strip()
+    student_id = _application_import_student_id()
     counts = get_application_stage_counts(student_id)
+    funnel_analytics = get_application_funnel_analytics(student_id)
     return jsonify({
         "success": True,
         "student_id": student_id,
         "stages": APPLICATION_STAGES,
         "stage_counts": counts,
         "counts": counts
+        ,"funnel_analytics": funnel_analytics
     }), 200
 
 
