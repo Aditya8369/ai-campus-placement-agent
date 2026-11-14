@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Job Offers - AI Campus Placement{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-primary mb-1">
+                <i class="fas fa-balance-scale me-2"></i>Private Job Offers Comparison
+            </h2>
+            <p class="text-muted mb-0">Evaluate salary, bonuses, remote flexibility, and benefits side-by-side to make the best placement decision.</p>
+        </div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newOfferModal">
+            <i class="fas fa-plus me-1"></i> Add Offer
+        </button>
+    </div>
+
+    <!-- Available Offers Selection Form -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="fw-bold mb-3">Select Offers to Compare</h5>
+            {% if offers %}
+            <div class="row g-3">
+                {% for off in offers %}
+                <div class="col-md-4">
+                    <div class="border rounded p-3 h-100 bg-white">
+                        <div class="form-check">
+                            <input class="form-check-input offer-select-checkbox" type="checkbox" value="{{ off.id }}" id="chk-{{ off.id }}">
+                            <label class="form-check-label fw-bold" for="chk-{{ off.id }}">
+                                {{ off.role_title }} - {{ off.company_name }}
+                            </label>
+                        </div>
+                        <div class="text-muted small mt-2">
+                            <div><i class="fas fa-money-bill-wave me-1 text-success"></i> ${{ "{:,.0f}".format(off.total_compensation) }} / yr total</div>
+                            <div><i class="fas fa-map-marker-alt me-1 text-primary"></i> {{ off.location }} ({{ off.work_mode }})</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-outline-primary" onclick="triggerOffersComparison()">
+                    <i class="fas fa-columns me-1"></i> Compare Selected Offers
+                </button>
+            </div>
+            {% else %}
+            <div class="text-center py-4 text-muted">
+                <i class="fas fa-gift fa-2x mb-2 opacity-50"></i>
+                <p>No job offers saved yet. Click "Add Offer" to enter an offer letter.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Comparison Grid Container -->
+    <div id="comparison-results" style="display: none;" class="card border-0 shadow-sm mb-4">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped mb-0" id="comparison-table">
+                    <!-- Populated via JavaScript -->
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Offer Modal -->
+<div class="modal fade" id="newOfferModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">Add Private Job Offer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="offerForm">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Company Name</label>
+                        <input type="text" id="off-company" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Job Title / Role</label>
+                        <input type="text" id="off-role" class="form-control" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Base Salary ($)</label>
+                            <input type="number" id="off-base" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Bonus ($)</label>
+                            <input type="number" id="off-bonus" class="form-control" value="0">
+                        </div>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Annual Equity ($)</label>
+                            <input type="number" id="off-equity" class="form-control" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small fw-semibold">Work Mode</label>
+                            <select id="off-workmode" class="form-select">
+                                <option value="Hybrid">Hybrid</option>
+                                <option value="Remote">Remote</option>
+                                <option value="On-site">On-site</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Location</label>
+                        <input type="text" id="off-location" class="form-control" value="Remote">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Benefits & Perks</label>
+                        <textarea id="off-benefits" class="form-control" rows="2" placeholder="e.g. 401k match, health, relocation stipend"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary w-100" onclick="submitOffer()">Save Offer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function submitOffer() {
+    const payload = {
+        company_name: document.getElementById('off-company').value,
+        role_title: document.getElementById('off-role').value,
+        base_salary: document.getElementById('off-base').value,
+        bonus: document.getElementById('off-bonus').value,
+        equity_annual: document.getElementById('off-equity').value,
+        work_mode: document.getElementById('off-workmode').value,
+        location: document.getElementById('off-location').value,
+        benefits_summary: document.getElementById('off-benefits').value
+    };
+
+    try {
+        const res = await fetch('/api/offers', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            window.location.reload();
+        } else {
+            alert(data.error || 'Failed to save offer.');
+        }
+    } catch(err) {
+        console.error(err);
+        alert('Error saving offer.');
+    }
+}
+
+async function triggerOffersComparison() {
+    const checked = Array.from(document.querySelectorAll('.offer-select-checkbox:checked')).map(c => c.value);
+    if (checked.length < 2) {
+        alert('Please select at least two offers to compare.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/offers/compare', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({offer_ids: checked})
+        });
+        const data = await res.json();
+        if (!data.success) {
+            alert(data.error);
+            return;
+        }
+
+        renderComparisonMatrix(data.comparison);
+    } catch(err) {
+        console.error(err);
+        alert('Error loading offer comparison.');
+    }
+}
+
+function renderComparisonMatrix(matrix) {
+    const table = document.getElementById('comparison-table');
+    table.innerHTML = '';
+
+    // Header row
+    const thead = document.createElement('thead');
+    thead.className = 'table-light';
+    let headerHtml = '<tr><th style="width: 20%;">Criteria</th>';
+    matrix.offers.forEach(o => {
+        headerHtml += `<th class="text-center">${o.company_name} <br><small class="text-muted fw-normal">${o.role_title}</small></th>`;
+    });
+    headerHtml += '</tr>';
+    thead.innerHTML = headerHtml;
+    table.appendChild(thead);
+
+    // Body rows
+    const tbody = document.createElement('tbody');
+    matrix.attributes.forEach(attr => {
+        let rowHtml = `<tr><td class="fw-semibold">${attr.label}</td>`;
+        matrix.offers.forEach(o => {
+            let val = o[attr.key] || '--';
+            if (attr.format === 'currency' && val !== '--') {
+                val = '$' + Number(val).toLocaleString();
+            }
+            rowHtml += `<td class="text-center">${val}</td>`;
+        });
+        rowHtml += '</tr>';
+        tbody.innerHTML += rowHtml;
+    });
+    table.appendChild(tbody);
+
+    document.getElementById('comparison-results').style.display = 'block';
+}
+</script>
+{% endblock %}

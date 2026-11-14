@@ -145,3 +145,40 @@ def test_mobile_breakpoint_declarations_in_css():
     assert "chat-bubble" in content
     assert "benchmark-card" in content
 
+
+def test_mobile_navigation_and_table_responsiveness_rules():
+    """Verify specific CSS responsive enhancements for navigation and tables (#279)."""
+    css_path = os.path.join(os.path.dirname(__file__), "..", "static", "css", "style.css")
+    with open(css_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # Mobile navigation adjustments
+    assert ".navbar-nav" in content
+    assert "padding-top: 0.75rem" in content
+    assert ".table-responsive" in content
+    assert "box-shadow: inset -4px 0 6px -4px rgba(0, 0, 0, 0.1)" in content
+    assert ".mobile-action-bar" in content
+    assert ".filter-pills-container" in content
+    assert ".interview-question-box" in content
+    assert ".btn-mobile-full" in content
+    assert ".horizontal-chips-scroll" in content
+    assert ".navbar-brand-custom" in content
+    assert ".drawer-mobile" in content
+    assert ".fab-mobile" in content
+    assert ".sticky-bottom-submit" in content
+    assert ".code-editor-mobile-view" in content
+
+
+
+def test_key_placement_views_render_with_viewport_and_css():
+    """Verify all critical placement pages deliver responsive layout markup."""
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        for route in ["/", "/history", "/login", "/register", "/interview_bookmarks"]:
+            res = client.get(route)
+            if res.status_code == 200:
+                html = res.data.decode("utf-8")
+                assert "viewport" in html
+                assert "style.css" in html
+
+

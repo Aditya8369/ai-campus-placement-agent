@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Practice Saved Questions - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .practice-card {
+      background: var(--bs-card-bg, #fff);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 1.25rem;
+      transition: all 0.25s ease;
+    }
+    .badge-cat-technical {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    .badge-cat-behavioral {
+      background-color: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .badge-cat-hr {
+      background-color: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-cat-company-specific {
+      background-color: #f3e8ff;
+      color: #7e22ce;
+      border: 1px solid #e9d5ff;
+    }
+    .question-panel {
+      min-height: 480px;
+    }
+  </style>
+</head>
+
+<body class="bg-light practice-mode-page">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/interview/bookmarks" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-bookmark me-1"></i> Saved Questions
+        </a>
+        <a href="/" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 py-md-5" id="main-content" tabindex="-1">
+    <!-- Top Action & Progress Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-7">
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
+            <i class="fa-solid fa-bullseye me-1"></i> Focused Practice Mode
+          </span>
+          <span class="badge bg-light text-secondary border rounded-pill px-3 py-1" id="badgeTotalSaved">
+            {{ stats.total }} Saved Questions
+          </span>
+        </div>
+        <h2 class="fw-bold mb-1">Practice Your Saved Questions</h2>
+        <p class="text-muted mb-0 small">
+          Master targeted questions one-by-one with optional AI evaluations and completion tracking (#359).
+        </p>
+      </div>
+
+      <div class="col-md-5 text-md-end mt-3 mt-md-0">
+        <div class="d-inline-flex flex-column align-items-md-end">
+          <div class="small fw-semibold text-secondary mb-1">
+            Practice Completion: <span class="text-success fw-bold" id="headerProgressPct">{{ stats.percentage }}%</span>
+            (<span id="headerPracticedCount">{{ stats.practiced }}</span>/{{ stats.total }})
+          </div>
+          <div class="progress rounded-pill shadow-sm" style="height: 10px; width: 220px;">
+            <div id="practiceOverallProgressBar" class="progress-bar bg-success progress-bar-striped progress-bar-animated" 
+                 role="progressbar" style="width: {{ stats.percentage }}%" 
+                 aria-valuenow="{{ stats.percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filters & Scope Controls -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+      <div class="row g-3 align-items-center justify-content-between">
+        <div class="col-md-8">
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <span class="small fw-bold text-muted me-1"><i class="fa-solid fa-filter me-1"></i>Category:</span>
+            {% for cat in ['All', 'Technical', 'Behavioral', 'HR', 'Company-Specific'] %}
+            <a href="/interview/bookmarks/practice?category={{ cat }}{% if unpracticed_only %}&unpracticed_only=1{% endif %}" 
+               class="btn btn-sm rounded-pill px-3 {{ 'btn-dark' if active_category|lower == cat|lower or (cat == 'All' and (not active_category or active_category|lower == 'all')) else 'btn-outline-secondary' }}">
+              {{ cat }}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="col-md-4 text-md-end d-flex gap-2 justify-content-md-end align-items-center">
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input" type="checkbox" id="toggleUnpracticedOnly" {% if unpracticed_only %}checked{% endif %}>
+            <label class="form-check-label small fw-semibold text-secondary" for="toggleUnpracticedOnly">
+              Unpracticed Only
+            </label>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnResetPracticeProgress" title="Reset practice status for all questions">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {% if not bookmarks or bookmarks|length == 0 %}
+      <!-- Empty State -->
+      <div class="text-center py-5 bg-white rounded-4 border border-dashed shadow-sm">
+        <div class="mb-3">
+          <i class="fa-regular fa-circle-check fa-3x text-success opacity-75"></i>
+        </div>
+        <h4 class="fw-bold text-dark mb-1">No questions to practice</h4>
+        <p class="text-muted small mb-3">
+          {% if unpracticed_only %}
+            Awesome job! You have practiced all questions in this category.
+          {% else %}
+            You haven't bookmarked any questions yet. Bookmark questions during mock interviews to practice them here.
+          {% endif %}
+        </p>
+        <div class="d-flex justify-content-center gap-2">
+          {% if unpracticed_only %}
+            <a href="/interview/bookmarks/practice?category={{ active_category }}" class="btn btn-outline-primary btn-sm rounded-pill px-4">
+              <i class="fa-solid fa-repeat me-1"></i> Show All Questions
+            </a>
+          {% endif %}
+          <a href="/interview/bookmarks" class="btn btn-primary btn-sm rounded-pill px-4">
+            <i class="fa-solid fa-bookmark me-1"></i> Go to Saved Questions
+          </a>
+        </div>
+      </div>
+    {% else %}
+      <!-- Practice Carousel Panel -->
+      <div class="row justify-content-center">
+        <div class="col-lg-10">
+          <div class="card practice-card shadow-sm p-4 p-md-5 mb-4 question-panel position-relative">
+            
+            <!-- Question Top Bar -->
+            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="badge bg-dark text-white rounded-pill px-3 py-1 fs-6" id="questionCounterBadge">
+                  Question <span id="currentQuestionNumber">1</span> of {{ bookmarks|length }}
+                </span>
+
+                <span class="badge rounded-pill px-3 py-1" id="currentCategoryBadge">
+                  <!-- Category injected by JS -->
+                </span>
+
+                <span class="badge bg-light text-secondary border rounded-pill px-2 py-1 small" id="currentCompanyBadge">
+                  <!-- Company injected by JS -->
+                </span>
+              </div>
+
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnListenQuestion" title="Read question aloud">
+                  <i class="fa-solid fa-volume-high me-1"></i> Listen
+                </button>
+
+                <button type="button" class="btn btn-sm rounded-pill px-3" id="btnTogglePracticed">
+                  <i class="fa-regular fa-circle-check me-1"></i> <span>Mark Practiced</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Question Prompt Body -->
+            <div class="mb-4">
+              <h4 class="fw-bold text-dark lh-base fs-5" id="activeQuestionText">
+                <!-- Question Text -->
+              </h4>
+
+              <div class="bg-light p-3 rounded-3 small text-secondary mt-3 border d-none" id="activeQuestionNotesBox">
+                <i class="fa-regular fa-note-sticky text-warning me-1"></i>
+                <strong>Saved Note:</strong> <span id="activeQuestionNotes"></span>
+              </div>
+            </div>
+
+            <!-- Answer Recording Area -->
+            <div class="mb-4">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <label for="practiceAnswerInput" class="form-label fw-bold text-dark small mb-0">
+                  <i class="fa-solid fa-pen-to-square text-primary me-1"></i> Your Response:
+                </label>
+                <div class="small text-muted">
+                  <span id="answerWordCount">0</span> words &bull; <span id="answerCharCount">0</span> chars
+                </div>
+              </div>
+
+              <textarea class="form-control rounded-4 p-3 shadow-none" id="practiceAnswerInput" rows="5" 
+                        placeholder="Type or dictate your structured response here... Tip: use the STAR method (Situation, Task, Action, Result)."></textarea>
+            </div>
+
+            <!-- Action Bar -->
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-4">
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnEvaluateAnswer">
+                  <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Evaluate with AI
+                </button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnSaveDraftAnswer">
+                  <i class="fa-regular fa-floppy-disk me-1"></i> Save Draft
+                </button>
+              </div>
+
+              <!-- Question Carousel Navigation -->
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnPrevQuestion" disabled>
+                  <i class="fa-solid fa-arrow-left me-1"></i> Prev
+                </button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnNextQuestion">
+                  Next <i class="fa-solid fa-arrow-right ms-1"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Evaluation Feedback Section (Initially hidden) -->
+            <div class="card border rounded-4 p-4 bg-light d-none" id="evaluationCard">
+              <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-clipboard-check text-success fs-5"></i>
+                  <h5 class="fw-bold mb-0 text-dark">AI Evaluation &amp; Feedback</h5>
+                </div>
+                <span class="badge bg-success rounded-pill px-3 py-1 fs-6" id="evalScoreBadge">
+                  Score: --/100
+                </span>
+              </div>
+
+              <div class="row g-2 mb-3">
+                <div class="col-sm-6">
+                  <div class="bg-white p-2 rounded-3 border text-center">
+                    <span class="small text-muted d-block">Technical Accuracy</span>
+                    <span class="fw-bold text-primary fs-6" id="evalTechScore">--/100</span>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="bg-white p-2 rounded-3 border text-center">
+                    <span class="small text-muted d-block">Communication &amp; Clarity</span>
+                    <span class="fw-bold text-success fs-6" id="evalCommScore">--/100</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-3">
+                <h6 class="fw-bold text-dark small mb-1">Feedback Summary:</h6>
+                <p class="text-secondary small mb-0 lh-base" id="evalFeedbackText">--</p>
+              </div>
+
+              <div id="evalSuggestionsSection" class="d-none">
+                <h6 class="fw-bold text-dark small mb-1">Improvement Tips:</h6>
+                <ul class="text-secondary small ps-3 mb-0" id="evalSuggestionsList"></ul>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </main>
+
+  <!-- Live Toast Notification -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1080">
+    <div id="practiceToast" class="toast align-items-center text-bg-dark border-0 rounded-4 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex">
+        <div class="toast-body" id="practiceToastBody">
+          Action updated.
+        </div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const questionsData = {{ bookmarks|tojson }};
+    let currentIndex = 0;
+
+    // Support deep-linking to target question ID
+    const initialTargetId = "{{ target_question_id }}";
+    if (initialTargetId && questionsData.length > 0) {
+      const foundIdx = questionsData.findIndex(q => q.question_id === initialTargetId);
+      if (foundIdx !== -1) currentIndex = foundIdx;
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      if (!questionsData || questionsData.length === 0) return;
+
+      const currentQNumber = document.getElementById("currentQuestionNumber");
+      const currentCatBadge = document.getElementById("currentCategoryBadge");
+      const currentCompBadge = document.getElementById("currentCompanyBadge");
+      const questionTextEl = document.getElementById("activeQuestionText");
+      const notesBoxEl = document.getElementById("activeQuestionNotesBox");
+      const notesTextEl = document.getElementById("activeQuestionNotes");
+      const answerInput = document.getElementById("practiceAnswerInput");
+      const wordCountEl = document.getElementById("answerWordCount");
+      const charCountEl = document.getElementById("answerCharCount");
+
+      const btnPrev = document.getElementById("btnPrevQuestion");
+      const btnNext = document.getElementById("btnNextQuestion");
+      const btnTogglePracticed = document.getElementById("btnTogglePracticed");
+      const btnEvaluate = document.getElementById("btnEvaluateAnswer");
+      const btnSaveDraft = document.getElementById("btnSaveDraftAnswer");
+      const btnListen = document.getElementById("btnListenQuestion");
+
+      const evalCard = document.getElementById("evaluationCard");
+      const evalScoreBadge = document.getElementById("evalScoreBadge");
+      const evalTechScore = document.getElementById("evalTechScore");
+      const evalCommScore = document.getElementById("evalCommScore");
+      const evalFeedbackText = document.getElementById("evalFeedbackText");
+      const evalSuggestionsSection = document.getElementById("evalSuggestionsSection");
+      const evalSuggestionsList = document.getElementById("evalSuggestionsList");
+
+      const toastEl = document.getElementById("practiceToast");
+      const toastBody = document.getElementById("practiceToastBody");
+      const toast = toastEl ? new bootstrap.Toast(toastEl, { delay: 2500 }) : null;
+
+      function showToast(msg) {
+        if (toast && toastBody) {
+          toastBody.textContent = msg;
+          toast.show();
+        }
+      }
+
+      function updateCounts() {
+        const text = answerInput.value.trim();
+        const words = text ? text.split(/\s+/).length : 0;
+        wordCountEl.textContent = words;
+        charCountEl.textContent = text.length;
+      }
+
+      answerInput.addEventListener("input", updateCounts);
+
+      function renderCurrentQuestion() {
+        const q = questionsData[currentIndex];
+        if (!q) return;
+
+        currentQNumber.textContent = currentIndex + 1;
+        questionTextEl.textContent = q.question_text || "";
+
+        // Category Badge
+        const cat = q.category || "Technical";
+        currentCatBadge.textContent = cat;
+        currentCatBadge.className = "badge rounded-pill px-3 py-1";
+        const catLower = cat.toLowerCase();
+        if (catLower === "technical") currentCatBadge.classList.add("badge-cat-technical");
+        else if (catLower === "behavioral") currentCatBadge.classList.add("badge-cat-behavioral");
+        else if (catLower === "hr") currentCatBadge.classList.add("badge-cat-hr");
+        else currentCatBadge.classList.add("badge-cat-company-specific");
+
+        // Company Badge
+        if (q.company_name && q.company_name !== "General") {
+          currentCompBadge.textContent = q.company_name;
+          currentCompBadge.classList.remove("d-none");
+        } else {
+          currentCompBadge.classList.add("d-none");
+        }
+
+        // Notes
+        if (q.notes && q.notes.trim()) {
+          notesTextEl.textContent = q.notes;
+          notesBoxEl.classList.remove("d-none");
+        } else {
+          notesBoxEl.classList.add("d-none");
+        }
+
+        // Answer & Practiced State
+        answerInput.value = q.practice_answer || "";
+        updateCounts();
+
+        updatePracticedButtonState(q.is_practiced);
+
+        // Previous evaluation if available
+        const evalData = q.practice_evaluation;
+        if (evalData && (evalData.feedback || evalData.score || evalData.technical_accuracy)) {
+          showEvaluationData(evalData);
+        } else {
+          evalCard.classList.add("d-none");
+        }
+
+        // Nav buttons
+        btnPrev.disabled = (currentIndex === 0);
+        btnNext.disabled = (currentIndex === questionsData.length - 1);
+      }
+
+      function updatePracticedButtonState(isPracticed) {
+        if (isPracticed) {
+          btnTogglePracticed.className = "btn btn-sm btn-success rounded-pill px-3";
+          btnTogglePracticed.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> Practiced';
+        } else {
+          btnTogglePracticed.className = "btn btn-sm btn-outline-secondary rounded-pill px-3";
+          btnTogglePracticed.innerHTML = '<i class="fa-regular fa-circle-check me-1"></i> Mark Practiced';
+        }
+      }
+
+      function showEvaluationData(data) {
+        evalCard.classList.remove("d-none");
+        const score = data.score || data.technical_accuracy || 75;
+        evalScoreBadge.textContent = `Score: ${score}/100`;
+        evalTechScore.textContent = `${data.technical_accuracy || data.score || 75}/100`;
+        evalCommScore.textContent = `${data.communication_score || data.verbal_clarity_score || 75}/100`;
+        evalFeedbackText.textContent = data.feedback || "Answer evaluated successfully.";
+
+        const suggestions = data.suggestions || data.improvement_areas || [];
+        if (suggestions.length > 0) {
+          evalSuggestionsList.innerHTML = suggestions.map(s => `<li>${s}</li>`).join("");
+          evalSuggestionsSection.classList.remove("d-none");
+        } else {
+          evalSuggestionsSection.classList.add("d-none");
+        }
+      }
+
+      function updateGlobalProgress(stats) {
+        if (!stats) return;
+        const progressPctEl = document.getElementById("headerProgressPct");
+        const practicedCountEl = document.getElementById("headerPracticedCount");
+        const progressBarEl = document.getElementById("practiceOverallProgressBar");
+        if (progressPctEl) progressPctEl.textContent = `${stats.percentage}%`;
+        if (practicedCountEl) practicedCountEl.textContent = stats.practiced;
+        if (progressBarEl) {
+          progressBarEl.style.width = `${stats.percentage}%`;
+          progressBarEl.setAttribute("aria-valuenow", stats.percentage);
+        }
+      }
+
+      // Prev / Next Navigation
+      btnPrev.addEventListener("click", () => {
+        if (currentIndex > 0) {
+          currentIndex--;
+          renderCurrentQuestion();
+        }
+      });
+
+      btnNext.addEventListener("click", () => {
+        if (currentIndex < questionsData.length - 1) {
+          currentIndex++;
+          renderCurrentQuestion();
+        }
+      });
+
+      // TTS Listen
+      btnListen.addEventListener("click", () => {
+        const q = questionsData[currentIndex];
+        if (!q || !q.question_text) return;
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+          const utterance = new SpeechSynthesisUtterance(q.question_text);
+          utterance.rate = 1.0;
+          utterance.pitch = 1.0;
+          btnListen.innerHTML = '<i class="fa-solid fa-volume-high text-warning me-1"></i> Speaking...';
+          utterance.onend = () => {
+            btnListen.innerHTML = '<i class="fa-solid fa-volume-high me-1"></i> Listen';
+          };
+          window.speechSynthesis.speak(utterance);
+        } else {
+          showToast("Speech synthesis not supported in this browser.");
+        }
+      });
+
+      // Toggle Practiced Status
+      btnTogglePracticed.addEventListener("click", () => {
+        const q = questionsData[currentIndex];
+        if (!q) return;
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+        btnTogglePracticed.disabled = true;
+
+        fetch(`/api/interview/bookmarks/${encodeURIComponent(q.question_id)}/practice/status`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        })
+        .then(res => res.json())
+        .then(data => {
+          btnTogglePracticed.disabled = false;
+          if (data.success) {
+            q.is_practiced = data.is_practiced;
+            updatePracticedButtonState(data.is_practiced);
+            updateGlobalProgress(data.stats);
+            showToast(data.message || "Status updated");
+          }
+        })
+        .catch(err => {
+          btnTogglePracticed.disabled = false;
+          showToast("Failed to update practice status.");
+        });
+      });
+
+      // Save Draft Answer
+      btnSaveDraft.addEventListener("click", () => {
+        const q = questionsData[currentIndex];
+        if (!q) return;
+
+        const answerText = answerInput.value.trim();
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+        btnSaveDraft.disabled = true;
+
+        fetch(`/api/interview/bookmarks/${encodeURIComponent(q.question_id)}/practice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            answer: answerText,
+            is_practiced: q.is_practiced
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          btnSaveDraft.disabled = false;
+          if (data.success) {
+            q.practice_answer = answerText;
+            showToast("Draft answer saved successfully.");
+          }
+        })
+        .catch(err => {
+          btnSaveDraft.disabled = false;
+          showToast("Failed to save answer draft.");
+        });
+      });
+
+      // Evaluate with AI
+      btnEvaluate.addEventListener("click", () => {
+        const q = questionsData[currentIndex];
+        if (!q) return;
+
+        const answerText = answerInput.value.trim();
+        if (!answerText) {
+          showToast("Please type your response before requesting evaluation.");
+          return;
+        }
+
+        const originalBtnHTML = btnEvaluate.innerHTML;
+        btnEvaluate.disabled = true;
+        btnEvaluate.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Analyzing response...';
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+
+        fetch(`/api/interview/bookmarks/${encodeURIComponent(q.question_id)}/practice/evaluate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            answer: answerText
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          btnEvaluate.disabled = false;
+          btnEvaluate.innerHTML = originalBtnHTML;
+          if (data.success && data.evaluation) {
+            q.practice_answer = answerText;
+            q.is_practiced = true;
+            q.practice_evaluation = data.evaluation;
+            updatePracticedButtonState(true);
+            showEvaluationData(data.evaluation);
+            updateGlobalProgress(data.stats);
+            showToast("Answer evaluated and marked as practiced!");
+          } else {
+            showToast(data.message || data.error || "Evaluation failed.");
+          }
+        })
+        .catch(err => {
+          btnEvaluate.disabled = false;
+          btnEvaluate.innerHTML = originalBtnHTML;
+          showToast("Error during evaluation.");
+        });
+      });
+
+      // Toggle Unpracticed Only filter
+      const toggleUnpracticed = document.getElementById("toggleUnpracticedOnly");
+      if (toggleUnpracticed) {
+        toggleUnpracticed.addEventListener("change", () => {
+          const isChecked = toggleUnpracticed.checked;
+          const currentUrl = new URL(window.location.href);
+          if (isChecked) {
+            currentUrl.searchParams.set("unpracticed_only", "1");
+          } else {
+            currentUrl.searchParams.delete("unpracticed_only");
+          }
+          window.location.href = currentUrl.toString();
+        });
+      }
+
+      // Reset All Progress
+      const btnReset = document.getElementById("btnResetPracticeProgress");
+      if (btnReset) {
+        btnReset.addEventListener("click", () => {
+          if (!confirm("Are you sure you want to reset your practice progress for all saved questions?")) return;
+          const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+          fetch("/api/interview/bookmarks/practice/reset", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+              "X-Requested-With": "XMLHttpRequest"
+            }
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              showToast("Practice progress has been reset.");
+              setTimeout(() => window.location.reload(), 1000);
+            }
+          });
+        });
+      }
+
+      // Initial render
+      renderCurrentQuestion();
+    });
+  </script>
+</body>
+</html>
