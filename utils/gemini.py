@@ -528,6 +528,14 @@ def generate_json_response(
 
         except json.JSONDecodeError as jde:
             logger.error(f"JSON decoding failed. Content was: {raw_text[:500] if raw_text else 'None'}... Error: {jde}")
+            try:
+                from utils.gemini_response_validator import attempt_json_repair
+                repaired = attempt_json_repair(raw_text)
+                if repaired is not None and isinstance(repaired, (dict, list)):
+                    logger.info("Successfully recovered truncated/malformed Gemini JSON response (#277).")
+                    return repaired
+            except Exception as repair_err:
+                logger.debug(f"JSON repair attempt failed: {repair_err}")
             raise AIResponseFormatError(
                 f"Failed to parse Gemini response as valid JSON: {str(jde)}"
             )

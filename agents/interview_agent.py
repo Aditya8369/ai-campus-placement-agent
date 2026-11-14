@@ -422,12 +422,21 @@ class InterviewAgent:
             verdict = "Requires Active Preparation"
             summary_feedback = "Further practice needed on technical fundamentals and concise response structuring. Review the 6-week roadmap topics."
 
+        # Competency Breakdown across Technical Knowledge, Communication, Problem-Solving, Relevance (#267)
+        try:
+            from utils.interview_performance_breakdown import calculate_competency_breakdown
+            competency_analysis = calculate_competency_breakdown(answers_list)
+        except Exception as e_comp:
+            logger.warning(f"Could not calculate competency breakdown: {e_comp}")
+            competency_analysis = {}
+
         return {
             "total_answered": total_ans,
             "overall_score": overall_avg,
             "category_scores": category_breakdown,
             "readiness_verdict": verdict,
             "summary_feedback": summary_feedback,
+            "competency_breakdown": competency_analysis,
             "verbal_metrics": {
                 "average_verbal_clarity": avg_verbal,
                 "total_filler_words": total_filler_words,
