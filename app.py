@@ -13635,47 +13635,32 @@ def api_saved_job_description_item(saved_id):
 
 
 
-@app.route("/api/interview/question/flag", methods=["POST"])
-def api_interview_question_flag():
+@app.route("/api/user/search", methods=["GET"])
+def api_user_search():
     """
-    Flag an unsuitable mock interview question (#327).
+    Private search endpoint across all student saved records (#324).
     """
-    from utils.question_flag_service import flag_interview_question, VALID_FLAG_REASONS
+    from utils.saved_data_search_service import search_student_saved_data
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form
-
-    session_id = payload.get("session_id") or payload.get("interview_id") or "mock-session"
-    question_index = payload.get("question_index", 0)
-    question_text = payload.get("question_text") or payload.get("question", "")
-    reason = payload.get("reason") or "Irrelevant to Target Role"
-    comment = payload.get("comment", "")
-
+    query = request.args.get("q", "")
+    category = request.args.get("category", "all")
     try:
-        result = flag_interview_question(
-            student_id=student_id,
-            session_id=str(session_id),
-            question_index=int(question_index),
-            question_text=str(question_text),
-            reason=str(reason),
-            comment=str(comment)
-        )
-        return jsonify(result), 200
-    except ValueError as ve:
-        return jsonify({"success": False, "error": str(ve)}), 400
-    except PermissionError as pe:
-        return jsonify({"success": False, "error": str(pe)}), 403
-    except Exception as e:
-        logger.error(f"Error recording question flag: {e}")
-        return jsonify({"success": False, "error": "Internal error flagging question."}), 500
+        limit = min(50, max(1, int(request.args.get("limit", 20))))
+    except (ValueError, TypeError):
+        limit = 20
+
+    data = search_student_saved_data(student_id=student_id, query=query, filter_category=category, limit=limit)
+    return jsonify(data), 200
 
 
-@app.route("/api/interview/question/flag-reasons", methods=["GET"])
-def api_interview_question_flag_reasons():
+@app.route("/search", methods=["GET"])
+def search_page():
     """
-    Return available question flag categories (#327).
+    Search page UI for private student saved data (#324).
     """
-    from utils.question_flag_service import VALID_FLAG_REASONS
-    return jsonify({"success": True, "reasons": VALID_FLAG_REASONS}), 200
+    student_id = flask_session.get("user_id") or "default_student"
+    initial_query = request.args.get("q", "")
+    return render_template("search.html", student_id=student_id, initial_query=initial_query)
 
 
 if __name__ == "__main__":

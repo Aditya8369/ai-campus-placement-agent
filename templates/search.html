@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Search Saved Records - AI Campus Placement{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <!-- Header -->
+            <div class="text-center mb-4">
+                <h2 class="fw-bold text-primary">
+                    <i class="fas fa-search me-2"></i>Search Your Saved Information
+                </h2>
+                <p class="text-muted">
+                    Private and secure search across your resume analyses, mock interviews, tracked jobs, and study notes.
+                </p>
+            </div>
+
+            <!-- Search Form Card -->
+            <div class="card border-0 shadow-sm mb-4">
+                <div class="card-body p-4">
+                    <div class="row g-2 align-items-center">
+                        <div class="col-md-7">
+                            <div class="input-group">
+                                <span class="input-group-text bg-white border-end-0">
+                                    <i class="fas fa-search text-muted"></i>
+                                </span>
+                                <input type="text" id="search-input" class="form-control border-start-0" 
+                                       placeholder="Search keywords, topics, companies, questions..."
+                                       value="{{ initial_query }}">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <select id="category-filter" class="form-select">
+                                <option value="all">All Saved Categories</option>
+                                <option value="analyses">Resume Analyses</option>
+                                <option value="applications">Job Applications</option>
+                                <option value="interviews">Mock Interviews</option>
+                                <option value="notes">Preparation Notes</option>
+                                <option value="coding">Coding Submissions</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button id="search-btn" class="btn btn-primary w-100" onclick="performSearch()">
+                                Search
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Summary & Container -->
+            <div id="results-meta" class="d-flex justify-content-between align-items-center mb-3" style="display: none !important;">
+                <span class="text-muted small" id="results-count-text">Found 0 items</span>
+                <span class="badge bg-light text-secondary border" id="results-filter-badge">All</span>
+            </div>
+
+            <div id="results-container" class="d-flex flex-column gap-3">
+                <!-- Search results populated dynamically -->
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="text-center py-5 text-muted" style="display: none;">
+                <i class="fas fa-folder-open fa-3x mb-3 text-secondary opacity-50"></i>
+                <h5>No matching saved records found</h5>
+                <p class="small">Try refining your search terms or selecting a different category filter.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function performSearch() {
+    const q = document.getElementById('search-input').value.trim();
+    const category = document.getElementById('category-filter').value;
+    const container = document.getElementById('results-container');
+    const emptyState = document.getElementById('empty-state');
+    const metaBar = document.getElementById('results-meta');
+    const countText = document.getElementById('results-count-text');
+    const filterBadge = document.getElementById('results-filter-badge');
+
+    if (!q) {
+        container.innerHTML = '';
+        metaBar.style.setProperty('display', 'none', 'important');
+        emptyState.style.display = 'none';
+        return;
+    }
+
+    container.innerHTML = '<div class="text-center py-4 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Searching private records...</div>';
+
+    try {
+        const res = await fetch(`/api/user/search?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`);
+        const data = await res.json();
+
+        container.innerHTML = '';
+
+        if (!data.success || !data.results || data.results.length === 0) {
+            emptyState.style.display = 'block';
+            metaBar.style.setProperty('display', 'none', 'important');
+            return;
+        }
+
+        emptyState.style.display = 'none';
+        metaBar.style.setProperty('display', 'flex', 'important');
+        countText.textContent = `Found ${data.total_count} matching saved records`;
+        filterBadge.textContent = category.toUpperCase();
+
+        data.results.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'card border-0 shadow-sm border-start border-4 ' + getBorderColor(item.category);
+            card.innerHTML = `
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="badge ${getBadgeColor(item.category)} rounded-pill">${item.category}</span>
+                        <small class="text-muted">${item.date || ''}</small>
+                    </div>
+                    <h6 class="fw-bold mb-2">
+                        <a href="${item.url}" class="text-dark text-decoration-none hover-primary">${item.title}</a>
+                    </h6>
+                    <p class="card-text text-muted small mb-0">${item.snippet}</p>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    } catch(err) {
+        console.error(err);
+        container.innerHTML = '<div class="alert alert-danger">Error retrieving search results.</div>';
+    }
+}
+
+function getBorderColor(cat) {
+    switch(cat) {
+        case 'Analysis': return 'border-primary';
+        case 'Application': return 'border-success';
+        case 'Interview': return 'border-info';
+        case 'Note': return 'border-warning';
+        case 'Coding': return 'border-secondary';
+        default: return 'border-primary';
+    }
+}
+
+function getBadgeColor(cat) {
+    switch(cat) {
+        case 'Analysis': return 'bg-primary-subtle text-primary border border-primary-subtle';
+        case 'Application': return 'bg-success-subtle text-success border border-success-subtle';
+        case 'Interview': return 'bg-info-subtle text-info border border-info-subtle';
+        case 'Note': return 'bg-warning-subtle text-warning border border-warning-subtle';
+        case 'Coding': return 'bg-secondary-subtle text-secondary border border-secondary-subtle';
+        default: return 'bg-light text-dark';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('search-input');
+    if (input.value.trim()) {
+        performSearch();
+    }
+    input.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+});
+</script>
+{% endblock %}
