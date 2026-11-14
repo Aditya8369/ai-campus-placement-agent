@@ -246,6 +246,22 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
 
+        # Table 13a: Store private annotations attached to an individual analysis
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_annotations (
+                id TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL,
+                student_id TEXT NOT NULL,
+                annotation_type TEXT NOT NULL DEFAULT 'note',
+                section TEXT NOT NULL DEFAULT 'General',
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CHECK(annotation_type IN ('note', 'highlight'))
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_annotations_owner ON analysis_annotations (student_id, analysis_id, updated_at DESC)")
+
         # Table 13b: Store private saved job descriptions for reuse
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS saved_job_descriptions (
@@ -3647,6 +3663,154 @@ def get_note_category_counts(
         conn.close()
 
 
+def create_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_type: str,
+    section: str,
+    content: str,
+) -> Dict[str, Any]:
+    """Create a private user annotation scoped to one owned analysis."""
+    clean_type = annotation_type.strip().lower() if annotation_type else "note"
+    if clean_type not in ("note", "highlight"):
+        clean_type = "note"
+    clean_section = (section or "General").strip()[:100] or "General"
+    clean_content = (content or "").strip()
+    if not clean_content:
+        raise ValueError("Annotation content cannot be empty.")
+
+    annotation_id = f"annotation-{uuid.uuid4().hex[:12]}"
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO analysis_annotations
+                (id, analysis_id, student_id, annotation_type, section, content)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                annotation_id,
+                str(analysis_id).strip(),
+                (student_id or "default_student").strip(),
+                clean_type,
+                clean_section,
+                clean_content[:5000],
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM analysis_annotations WHERE id = ?",
+            (annotation_id,),
+        ).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_analysis_annotations(student_id: str, analysis_id: str) -> List[Dict[str, Any]]:
+    """Return only the requesting student's annotations for the specified analysis."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, analysis_id, student_id, annotation_type, section, content, created_at, updated_at
+            FROM analysis_annotations
+            WHERE student_id = ? AND analysis_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+            """,
+            ((student_id or "default_student").strip(), str(analysis_id).strip()),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Fetch one annotation only when it belongs to the requesting user and analysis."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, analysis_id, student_id, annotation_type, section, content, created_at, updated_at
+            FROM analysis_annotations
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_id: str,
+    annotation_type: str,
+    section: str,
+    content: str,
+) -> bool:
+    """Update an annotation only when both its owner and analysis match."""
+    clean_type = annotation_type.strip().lower() if annotation_type else "note"
+    if clean_type not in ("note", "highlight"):
+        clean_type = "note"
+    clean_section = (section or "General").strip()[:100] or "General"
+    clean_content = (content or "").strip()
+    if not clean_content:
+        return False
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE analysis_annotations
+            SET annotation_type = ?, section = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                clean_type,
+                clean_section,
+                clean_content[:5000],
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_analysis_annotation(student_id: str, analysis_id: str, annotation_id: str) -> bool:
+    """Delete an annotation only when it belongs to the requesting user and analysis."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            DELETE FROM analysis_annotations
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
 def record_viewed_job(
     student_id: str,
     job_id: str,
@@ -4012,6 +4176,10 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
 
+        # Count in analysis-specific private annotations
+        cursor.execute("SELECT COUNT(*) FROM analysis_annotations WHERE student_id = ?", (student_id,))
+        summary["tables"]["analysis_annotations"] = cursor.fetchone()[0]
+
         # Count in saved job descriptions
         cursor.execute("SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         summary["tables"]["saved_job_descriptions"] = cursor.fetchone()[0]
@@ -4089,6 +4257,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         # 12. Delete interview preparation notes
         cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         deleted_counts["interview_preparation_notes"] = cursor.rowcount
+
+        # 12a. Delete analysis-specific private annotations
+        cursor.execute("DELETE FROM analysis_annotations WHERE student_id = ?", (student_id,))
+        deleted_counts["analysis_annotations"] = cursor.rowcount
 
         # 12b. Delete saved job descriptions
         cursor.execute("DELETE FROM saved_job_descriptions WHERE student_id = ?", (student_id,))

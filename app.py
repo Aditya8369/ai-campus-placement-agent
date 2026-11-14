@@ -112,6 +112,11 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    create_analysis_annotation,
+    get_analysis_annotations,
+    get_analysis_annotation,
+    update_analysis_annotation,
+    delete_analysis_annotation,
     create_saved_job_description,
     get_saved_job_descriptions,
     get_saved_job_description_by_id,
@@ -2441,6 +2446,8 @@ def dashboard(analysis_id: str) -> str:
                 "skills": []
             }
 
+    analysis_annotations = get_analysis_annotations(student_id, analysis_id)
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -2461,8 +2468,126 @@ def dashboard(analysis_id: str) -> str:
         skills_comparison_json=json.dumps(skills_comparison),
         skill_evidence=skill_evidence,
         skill_evidence_json=json.dumps(skill_evidence),
-        streak=streak_data
+        streak=streak_data,
+        analysis_annotations=analysis_annotations
     )
+
+
+@app.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
+def save_analysis_annotation_view(analysis_id: str):
+    """Create or edit a private annotation attached to an owned analysis."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    annotation_id = (request.form.get("annotation_id") or "").strip()
+    annotation_type = request.form.get("annotation_type", "note").strip()
+    section = request.form.get("section", "General").strip()
+    content = request.form.get("content", "").strip()
+
+    if not content:
+        flash("Please enter a note or highlight before saving.", "warning")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+    if len(content) > 5000:
+        flash("Annotations must be 5,000 characters or fewer.", "warning")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+    try:
+        if annotation_id:
+            updated = update_analysis_annotation(
+                student_id, analysis_id, annotation_id, annotation_type, section, content
+            )
+            flash(
+                "Private analysis annotation updated." if updated else "Annotation not found or access denied.",
+                "success" if updated else "warning",
+            )
+        else:
+            create_analysis_annotation(student_id, analysis_id, annotation_type, section, content)
+            flash("Private analysis annotation saved.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/dashboard/<analysis_id>/annotations/<annotation_id>/delete", methods=["POST"])
+def delete_analysis_annotation_view(analysis_id: str, annotation_id: str):
+    """Delete an owned private annotation without exposing another user's data."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    deleted = delete_analysis_annotation(student_id, analysis_id, annotation_id)
+    flash(
+        "Private annotation deleted." if deleted else "Annotation not found or access denied.",
+        "success" if deleted else "warning",
+    )
+    return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/api/analyses/<analysis_id>/annotations", methods=["GET", "POST"])
+def api_analysis_annotations(analysis_id: str):
+    """List or create private annotations for the authenticated owner's analysis."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or access denied."}), 404
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    if request.method == "GET":
+        return jsonify({"success": True, "annotations": get_analysis_annotations(student_id, analysis_id)})
+
+    payload = request.get_json(silent=True) or request.form
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "Annotation content is required."}), 400
+    if len(content) > 5000:
+        return jsonify({"success": False, "error": "Annotations must be 5,000 characters or fewer."}), 400
+
+    annotation = create_analysis_annotation(
+        student_id,
+        analysis_id,
+        (payload.get("annotation_type") or "note").strip(),
+        (payload.get("section") or "General").strip(),
+        content,
+    )
+    return jsonify({"success": True, "annotation": annotation}), 201
+
+
+@app.route("/api/analyses/<analysis_id>/annotations/<annotation_id>", methods=["PUT", "PATCH", "DELETE"])
+def api_analysis_annotation_item(analysis_id: str, annotation_id: str):
+    """Edit or delete one private annotation with owner and analysis checks."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or access denied."}), 404
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    if not get_analysis_annotation(student_id, analysis_id, annotation_id):
+        return jsonify({"success": False, "error": "Annotation not found or access denied."}), 404
+
+    if request.method == "DELETE":
+        deleted = delete_analysis_annotation(student_id, analysis_id, annotation_id)
+        return jsonify({"success": deleted}), 200 if deleted else 404
+
+    payload = request.get_json(silent=True) or request.form
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "Annotation content is required."}), 400
+    if len(content) > 5000:
+        return jsonify({"success": False, "error": "Annotations must be 5,000 characters or fewer."}), 400
+
+    updated = update_analysis_annotation(
+        student_id,
+        analysis_id,
+        annotation_id,
+        (payload.get("annotation_type") or "note").strip(),
+        (payload.get("section") or "General").strip(),
+        content,
+    )
+    refreshed = get_analysis_annotation(student_id, analysis_id, annotation_id) if updated else None
+    return jsonify({"success": updated, "annotation": refreshed}), 200 if updated else 400
 
 
 @app.route("/api/analysis/<analysis_id>/skill-evidence", methods=["GET"])
