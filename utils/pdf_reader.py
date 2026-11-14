@@ -217,6 +217,16 @@ class ScannedPDFError(ValueError):
         self.min_required = min_required
 
 
+class PasswordProtectedPDFError(ValueError):
+    """Raised when a PDF requires a password before its text can be read."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            "This PDF is password-protected. Please upload an unlocked copy of your resume "
+            "or save/export the PDF without password protection, then try again."
+        )
+
+
 
 def validate_resume_text(text: str) -> Tuple[bool, str]:
     """
@@ -268,9 +278,7 @@ def extract_text_from_pdf(pdf_path: str) -> str:
         reader = PdfReader(pdf_path)
 
         if getattr(reader, "is_encrypted", False):
-            raise ValueError(
-                "The uploaded PDF is password-protected or encrypted. Please upload an unprotected PDF."
-            )
+            raise PasswordProtectedPDFError()
 
         num_pages = len(reader.pages)
         if num_pages == 0:
@@ -338,10 +346,16 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     except FileNotFoundError:
         logger.error(f"File not found: {pdf_path}")
         raise FileNotFoundError(f"Resume file was not found at path: {pdf_path}")
+    except PasswordProtectedPDFError:
+        logger.warning("Rejected password-protected PDF upload.")
+        raise
     except (ScannedPDFError, ValueError) as ve:
-        logger.error(f"Validation error reading PDF: {str(ve)}")
+        logger.error("Validation error reading PDF: %s", str(ve))
         raise ve
     except PdfReadError as pre:
+        if any(term in str(pre).lower() for term in ("decrypt", "password", "encrypted")):
+            logger.warning("Rejected password-protected PDF after parser decryption failure.")
+            raise PasswordProtectedPDFError() from pre
         logger.error(f"PyPDF2 ReadError encountered: {str(pre)}")
         raise ValueError("The uploaded PDF is corrupted or unreadable. Please check the file and try again.")
     except Exception as e:
