@@ -8,7 +8,7 @@ import re
 import secrets
 import hashlib
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from flask import (
@@ -66,6 +66,12 @@ from utils.database import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    create_auth_session,
+    get_active_auth_session,
+    touch_auth_session,
+    get_active_auth_sessions,
+    revoke_auth_session,
+    revoke_other_auth_sessions,
     save_job_application,
     get_job_applications,
     get_job_application_by_id,
@@ -290,6 +296,47 @@ app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
 
+
+def _session_client_label() -> str:
+    """Return a coarse client description without storing raw user-agent or network data."""
+    user_agent = request.user_agent
+    browser = (user_agent.browser or "").lower()
+    platform = (user_agent.platform or "").lower()
+
+    if "edge" in browser or "edg" in browser:
+        browser_name = "Edge"
+    elif "firefox" in browser:
+        browser_name = "Firefox"
+    elif "safari" in browser and "chrome" not in browser:
+        browser_name = "Safari"
+    elif "chrome" in browser:
+        browser_name = "Chrome"
+    else:
+        browser_name = "Web browser"
+
+    if platform in ("iphone", "ipad", "ios"):
+        platform_name = "iOS"
+    elif platform == "android":
+        platform_name = "Android"
+    elif platform == "windows":
+        platform_name = "Windows"
+    elif platform == "macos":
+        platform_name = "macOS"
+    elif platform == "linux":
+        platform_name = "Linux"
+    else:
+        platform_name = "another device"
+    return f"{browser_name} on {platform_name}"
+
+
+def _format_session_timestamp(timestamp: Any) -> str:
+    """Format registry timestamps consistently without exposing more than date and time."""
+    try:
+        return datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "Unknown"
+
+
 @app.before_request
 def require_login():
     now = time.time()
@@ -349,6 +396,41 @@ def require_login():
     }
 
     user_id = flask_session.get("user_id")
+
+    # Validate the server-side registry before allowing a signed cookie to access the account.
+    if user_id and request.endpoint not in ("logout", "api_session_logout"):
+        auth_session_id = flask_session.get("auth_session_id")
+        auth_session_token = flask_session.get("auth_session_token")
+        if auth_session_id and auth_session_token:
+            active_auth_session = get_active_auth_session(auth_session_id, auth_session_token, user_id)
+            if not active_auth_session:
+                logger.info("Rejected revoked or invalid authenticated session for user_id=%s", user_id)
+                flask_session.clear()
+                is_json_request = (
+                    request.path.startswith("/api/")
+                    or request.is_json
+                    or "application/json" in request.headers.get("Accept", "")
+                    or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+                )
+                if is_json_request:
+                    resp = jsonify({
+                        "status": "error",
+                        "error": "session_revoked",
+                        "message": "This session is no longer active. Please sign in again."
+                    })
+                    resp.status_code = 401
+                    resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                    return resp
+                flash("This session is no longer active. Please sign in again.", "warning")
+                resp = make_response(redirect(url_for("login")))
+                resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                return resp
+            if request.endpoint not in ("api_session_status", "static"):
+                touch_auth_session(auth_session_id, user_id)
+        elif not app.config.get("TESTING") or app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            new_auth_session = create_auth_session(user_id, _session_client_label())
+            flask_session["auth_session_id"] = new_auth_session["id"]
+            flask_session["auth_session_token"] = new_auth_session["token"]
 
     # Inactivity check for authenticated sessions
     if user_id:
@@ -935,6 +1017,10 @@ def api_session_logout():
     """
     API endpoint to securely terminate session and clear credentials.
     """
+    current_user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    if current_user_id and current_session_id:
+        revoke_auth_session(current_user_id, current_session_id)
     flask_session.clear()
     resp = jsonify({
         "status": "ok",
@@ -949,6 +1035,10 @@ def api_session_logout():
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
     was_expired = request.args.get("expired") == "1"
+    current_user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    if current_user_id and current_session_id:
+        revoke_auth_session(current_user_id, current_session_id)
     flask_session.clear()
     if was_expired:
         flash("Your session has expired due to inactivity. Please log in again.", "warning")
@@ -993,6 +1083,9 @@ def login():
         flask_session["user_name"] = user["name"]
         flask_session["last_activity"] = now
         flask_session["login_time"] = now
+        auth_session = create_auth_session(user["id"], _session_client_label())
+        flask_session["auth_session_id"] = auth_session["id"]
+        flask_session["auth_session_token"] = auth_session["token"]
         flask_session.permanent = True
 
         flash("Login successful.", "success")
@@ -1002,6 +1095,57 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/account/sessions", methods=["GET"])
+def account_sessions():
+    """Show the signed-in user's active sessions with privacy-conscious details."""
+    user_id = flask_session.get("user_id")
+    session_rows = get_active_auth_sessions(
+        user_id,
+        app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)),
+    )
+    current_session_id = flask_session.get("auth_session_id")
+    sessions = []
+    for session_row in session_rows:
+        session_item = dict(session_row)
+        session_item["is_current"] = session_item["id"] == current_session_id
+        session_item["created_display"] = _format_session_timestamp(session_item.get("created_at"))
+        session_item["last_seen_display"] = _format_session_timestamp(session_item.get("last_seen_at"))
+        sessions.append(session_item)
+    return render_template("account_sessions.html", sessions=sessions)
+
+
+@app.route("/account/sessions/revoke", methods=["POST"])
+def revoke_account_session():
+    """Revoke one of the current user's sessions, including the current session."""
+    user_id = flask_session.get("user_id")
+    session_id = (request.form.get("session_id") or "").strip()
+    current_session_id = flask_session.get("auth_session_id")
+    if not session_id or not revoke_auth_session(user_id, session_id):
+        flash("That session is no longer active.", "warning")
+        return redirect(url_for("account_sessions"))
+
+    if session_id == current_session_id:
+        flask_session.clear()
+        flash("This session has been revoked. Please sign in again.", "success")
+        return redirect(url_for("login"))
+
+    flash("The selected session was revoked.", "success")
+    return redirect(url_for("account_sessions"))
+
+
+@app.route("/account/sessions/revoke-others", methods=["POST"])
+def revoke_other_account_sessions():
+    """Revoke every active session except the session making this request."""
+    user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    revoked_count = revoke_other_auth_sessions(user_id, current_session_id)
+    flash(
+        f"Revoked {revoked_count} other session{'s' if revoked_count != 1 else ''}.",
+        "success",
+    )
+    return redirect(url_for("account_sessions"))
 
 
 @app.route("/account/delete", methods=["GET", "POST"])
