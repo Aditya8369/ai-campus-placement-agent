@@ -3557,6 +3557,53 @@ def api_evaluate_star():
         }), 500
 
 
+# ============================================================================
+# SUBJECT-BASED INTERVIEWS ENDPOINTS (#272)
+# ============================================================================
+
+@app.route("/api/interview/subjects", methods=["GET"])
+def api_get_interview_subjects():
+    """
+    Returns the catalog of technical subjects available for targeted interview practice
+    (Python, Java, SQL, DBMS, Operating Systems, Computer Networks).
+    """
+    from utils.subject_interview_service import get_subject_catalog
+    return jsonify({
+        "status": "success",
+        "subjects": get_subject_catalog()
+    }), 200
+
+
+@app.route("/api/interview/subject/generate", methods=["POST"])
+def api_generate_subject_interview_question():
+    """Generates a targeted mock interview question for a specific technical subject."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+
+    from utils.subject_interview_service import generate_subject_question
+    q_data = generate_subject_question(subject)
+    return jsonify({
+        "status": "success",
+        "data": q_data
+    }), 200
+
+
+@app.route("/api/interview/subject/evaluate", methods=["POST"])
+def api_evaluate_subject_interview_answer():
+    """Evaluates a student's answer against the technical subject rubric."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+
+    from utils.subject_interview_service import evaluate_subject_answer
+    eval_res = evaluate_subject_answer(subject, question, answer)
+    return jsonify({
+        "status": "success",
+        "evaluation": eval_res
+    }), 200
+
+
 @app.route("/interview/<analysis_id>/reset", methods=["POST"])
 def reset_interview_session(analysis_id: str):
     """
