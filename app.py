@@ -208,6 +208,7 @@ from utils.pdf_reader import (
     validate_file_size,
     validate_pdf_content,
     ScannedPDFError,
+    PasswordProtectedPDFError,
     MAX_RESUME_TEXT_CHARS,
     ALLOWED_RESUME_EXTENSIONS,
 )
@@ -1743,6 +1744,9 @@ def _extract_and_validate_resume(req):
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")
             return None, None, None, str(spe)
+        except PasswordProtectedPDFError:
+            logger.warning("Password-protected PDF rejected without logging credentials.")
+            return None, None, None, str(ppe)
         except ValueError as ve:
             logger.warning(f"Validation error reading resume file: {ve}")
             return None, None, None, str(ve)
