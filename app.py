@@ -2421,6 +2421,10 @@ def dashboard(analysis_id: str) -> str:
     # Prepare Skill Evidence Mapping (#250)
     results = analysis_record.get("results") or {}
     skill_evidence = results.get("skill_evidence_mapping")
+    from utils.link_checker import check_learning_resources
+    skill_gap_resources = check_learning_resources(
+        results.get("skill_gap") if isinstance(results.get("skill_gap"), list) else []
+    )
     if not skill_evidence or not skill_evidence.get("skills"):
         try:
             from utils.skill_evidence_mapper import map_skill_evidence
@@ -2461,6 +2465,7 @@ def dashboard(analysis_id: str) -> str:
         skills_comparison_json=json.dumps(skills_comparison),
         skill_evidence=skill_evidence,
         skill_evidence_json=json.dumps(skill_evidence),
+        skill_gap_resources=skill_gap_resources,
         streak=streak_data
     )
 

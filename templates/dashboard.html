@@ -1336,12 +1336,32 @@
             </tr>
           </thead>
           <tbody>
-            {% for gap in analysis.results.skill_gap %}
+            {% for gap in skill_gap_resources|default(analysis.results.skill_gap) %}
               <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority }}">
                 <td><b class="text-primary">{{ gap.skill }}</b></td>
                 <td><span class="badge bg-light text-dark border">{{ gap.importance }}</span></td>
                 <td>{{ gap.learning_time }}</td>
-                <td><span class="text-secondary small">{{ gap.learning_resource }}</span></td>
+                <td>
+                  <span class="text-secondary small">{{ gap.learning_resource }}</span>
+                  {% for resource_link in gap.resource_links|default([]) %}
+                    <div class="mt-1">
+                      <a href="{{ resource_link.url }}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none">
+                        <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>{{ resource_link.url }}
+                      </a>
+                      <span class="badge rounded-pill ms-1
+                        {% if resource_link.status == 'working' %}bg-success-subtle text-success border border-success-subtle
+                        {% elif resource_link.status == 'broken' %}bg-danger-subtle text-danger border border-danger-subtle
+                        {% else %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% endif %}"
+                        title="{{ resource_link.detail }}">
+                        <i class="fa-solid
+                          {% if resource_link.status == 'working' %}fa-circle-check
+                          {% elif resource_link.status == 'broken' %}fa-circle-xmark
+                          {% else %}fa-circle-question{% endif %} me-1"></i>
+                        {{ resource_link.label }}
+                      </span>
+                    </div>
+                  {% endfor %}
+                </td>
                 <td>
                   <div class="d-flex align-items-center justify-content-between gap-1">
                     <span class="small text-muted">{{ gap.project_suggestion }}</span>
