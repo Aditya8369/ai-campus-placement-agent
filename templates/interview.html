@@ -131,6 +131,14 @@
               <span class="badge bg-light text-primary border rounded-pill py-2 px-3 small">
                 Target: {{ company_name|default('Placement', true) }}
               </span>
+              <!-- Session Status Badge (#265) -->
+              <span id="sessionStatusBadge" class="badge rounded-pill py-2 px-3 small {% if session_status == 'Paused' %}bg-warning text-dark{% elif session_status == 'Completed' %}bg-success text-white{% else %}bg-info text-dark{% endif %}">
+                <i class="fa-solid {% if session_status == 'Paused' %}fa-circle-pause{% elif session_status == 'Completed' %}fa-circle-check{% else %}fa-circle-play{% endif %} me-1"></i> Status: <span id="sessionStatusText">{{ session_status|default('In Progress', true) }}</span>
+              </span>
+              <!-- Pause & Resume Button (#265) -->
+              <button type="button" id="btnPauseResumeSession" class="btn btn-sm btn-outline-warning rounded-pill px-3 py-1 fw-semibold" title="Pause or Resume interview session">
+                <i class="fa-solid fa-pause me-1"></i> <span id="btnPauseResumeLabel">Pause Interview</span>
+              </button>
             </div>
           </div>
 

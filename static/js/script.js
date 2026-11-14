@@ -1327,6 +1327,12 @@ function initMockInterview() {
   const transcriptWordCount = document.getElementById("transcriptWordCount");
   const toggleAutoTTS = document.getElementById("toggleAutoTTS");
 
+  // Pause and Resume Elements (#265)
+  const btnPauseResumeSession = document.getElementById("btnPauseResumeSession");
+  const btnPauseResumeLabel = document.getElementById("btnPauseResumeLabel");
+  const sessionStatusBadge = document.getElementById("sessionStatusBadge");
+  const sessionStatusText = document.getElementById("sessionStatusText");
+
   // Video Coach & Composure Telemetry Elements
   const btnToggleVideoCoach = document.getElementById("btnToggleVideoCoach");
   const videoCoachPanel = document.getElementById("videoCoachPanel");
@@ -1658,6 +1664,109 @@ function initMockInterview() {
         speakQuestionText(currentQText, initialTtsBtn);
       }
     }, 600);
+  }
+
+  // -------------------------------------------------------------
+  // 1b. Pause and Resume Mock Interview Logic (#265)
+  // -------------------------------------------------------------
+  if (btnPauseResumeSession) {
+    let isCurrentlyPaused = sessionStatusText?.innerText?.trim().toLowerCase() === "paused";
+
+    function updatePauseUI(isPaused) {
+      isCurrentlyPaused = isPaused;
+      if (isPaused) {
+        if (btnPauseResumeLabel) btnPauseResumeLabel.innerText = "Resume Interview";
+        btnPauseResumeSession.innerHTML = '<i class="fa-solid fa-play me-1"></i> <span id="btnPauseResumeLabel">Resume Interview</span>';
+        btnPauseResumeSession.classList.remove("btn-outline-warning");
+        btnPauseResumeSession.classList.add("btn-warning");
+        if (sessionStatusBadge) {
+          sessionStatusBadge.className = "badge rounded-pill py-2 px-3 small bg-warning text-dark";
+          sessionStatusBadge.innerHTML = '<i class="fa-solid fa-circle-pause me-1"></i> Status: <span id="sessionStatusText">Paused</span>';
+        }
+        if (btnSendAnswer) btnSendAnswer.disabled = true;
+        if (answerInput) {
+          answerInput.placeholder = "Interview is currently PAUSED. Click 'Resume Interview' above to continue.";
+        }
+      } else {
+        if (btnPauseResumeLabel) btnPauseResumeLabel.innerText = "Pause Interview";
+        btnPauseResumeSession.innerHTML = '<i class="fa-solid fa-pause me-1"></i> <span id="btnPauseResumeLabel">Pause Interview</span>';
+        btnPauseResumeSession.classList.remove("btn-warning");
+        btnPauseResumeSession.classList.add("btn-outline-warning");
+        if (sessionStatusBadge) {
+          sessionStatusBadge.className = "badge rounded-pill py-2 px-3 small bg-info text-dark";
+          sessionStatusBadge.innerHTML = '<i class="fa-solid fa-circle-play me-1"></i> Status: <span id="sessionStatusText">In Progress</span>';
+        }
+        if (btnSendAnswer) btnSendAnswer.disabled = false;
+        if (answerInput) {
+          answerInput.placeholder = "Type your response here or click 'Speak' to answer using your microphone...";
+        }
+      }
+    }
+
+    if (isCurrentlyPaused) {
+      updatePauseUI(true);
+    }
+
+    btnPauseResumeSession.addEventListener("click", async () => {
+      const targetSessionId = sessionId || analysisId;
+      if (!targetSessionId) return;
+
+      if (!isCurrentlyPaused) {
+        // Trigger PAUSE
+        const draft = answerInput ? answerInput.value : "";
+        btnPauseResumeSession.disabled = true;
+        try {
+          const resp = await fetch(`/api/interview/${encodeURIComponent(targetSessionId)}/pause`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || ""
+            },
+            body: JSON.stringify({
+              draft_answer: draft,
+              question_index: currentQuestionIdx
+            })
+          });
+          const res = await resp.json();
+          if (res.status === "success") {
+            updatePauseUI(true);
+            if (typeof showToast === "function") {
+              showToast("Interview paused. Your progress and answer draft have been saved securely.");
+            }
+          }
+        } catch (err) {
+          console.error("Failed to pause interview session:", err);
+        } finally {
+          btnPauseResumeSession.disabled = false;
+        }
+      } else {
+        // Trigger RESUME
+        btnPauseResumeSession.disabled = true;
+        try {
+          const resp = await fetch(`/api/interview/${encodeURIComponent(targetSessionId)}/resume`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || ""
+            }
+          });
+          const res = await resp.json();
+          if (res.status === "success") {
+            updatePauseUI(false);
+            if (res.data?.draft_answer && answerInput && !answerInput.value) {
+              answerInput.value = res.data.draft_answer;
+            }
+            if (typeof showToast === "function") {
+              showToast("Interview resumed! Welcome back.");
+            }
+          }
+        } catch (err) {
+          console.error("Failed to resume interview session:", err);
+        } finally {
+          btnPauseResumeSession.disabled = false;
+        }
+      }
+    });
   }
 
   // -------------------------------------------------------------

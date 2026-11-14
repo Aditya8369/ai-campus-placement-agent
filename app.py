@@ -3367,12 +3367,18 @@ def interview(analysis_id: str) -> str:
         )
         interview_session = get_interview_session(session_id)
 
+    # Check session state status (#265)
+    from utils.interview_session_service import ensure_interview_session_pause_table
+    ensure_interview_session_pause_table()
+    session_status = interview_session.get("status") or ("Completed" if interview_session.get("completed") else "In Progress")
+
     return render_template(
         "interview.html",
         interview=interview_session,
         analysis_id=analysis_id,
         session_id=session_id,
         active_round=active_round,
+        session_status=session_status,
         company_name=analysis_record.get("company_name", "General"),
     )
 
@@ -3495,6 +3501,18 @@ def submit_interview_answer(analysis_id: str):
 
         if is_completed:
             result_payload["summary"] = live_interview_agent.calculate_session_summary(answers_list)
+            # Mark session as completed in state registry (#265)
+            try:
+                from utils.interview_session_service import ensure_interview_session_pause_table
+                ensure_interview_session_pause_table()
+                conn = get_db_connection()
+                c = conn.cursor()
+                c.execute("UPDATE interviews SET status = 'Completed' WHERE id = ?", (session_id,))
+                c.execute("UPDATE interview_session_state SET status = 'Completed' WHERE session_id = ?", (session_id,))
+                conn.commit()
+                conn.close()
+            except Exception as e_comp:
+                logger.debug(f"Could not update status to completed: {e_comp}")
         else:
             result_payload["next_question"] = questions_list[next_question_index]
 
@@ -3503,6 +3521,106 @@ def submit_interview_answer(analysis_id: str):
     except Exception as e:
         logger.error(f"Failed to process answer submission: {str(e)}")
         return jsonify({"error": f"Internal process error evaluating response: {str(e)}"}), 500
+
+
+# ============================================================================
+# INTERVIEW SESSION PAUSE & RESUME ENDPOINTS (#265)
+# ============================================================================
+
+@app.route("/api/interview/<session_id>/pause", methods=["POST"])
+def api_pause_interview_session(session_id: str):
+    """
+    Pauses an ongoing mock interview session, saving the current question,
+    unsubmitted draft answer, and progress status.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    draft_answer = payload.get("draft_answer", "").strip()
+    q_index = payload.get("question_index")
+
+    try:
+        from utils.interview_session_service import pause_interview_session
+        result = pause_interview_session(
+            session_id=session_id,
+            student_id=str(student_id),
+            draft_answer=draft_answer,
+            question_index=int(q_index) if q_index is not None else None
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session paused successfully.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error pausing interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to pause interview session."}), 500
+
+
+@app.route("/api/interview/<session_id>/resume", methods=["POST", "GET"])
+def api_resume_interview_session(session_id: str):
+    """
+    Resumes a paused mock interview session and returns stored progress.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    try:
+        from utils.interview_session_service import resume_interview_session
+        result = resume_interview_session(
+            session_id=session_id,
+            student_id=str(student_id)
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session resumed.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error resuming interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to resume interview session."}), 500
+
+
+@app.route("/api/interview/sessions", methods=["GET"])
+def api_list_interview_sessions():
+    """
+    Lists interview sessions for the logged-in student along with their status
+    ('In Progress', 'Paused', or 'Completed').
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    try:
+        from utils.interview_session_service import get_student_interview_sessions_with_status
+        sessions = get_student_interview_sessions_with_status(str(student_id))
+        return jsonify({
+            "status": "success",
+            "count": len(sessions),
+            "sessions": sessions
+        }), 200
+    except Exception as e:
+        logger.error(f"Error listing interview sessions: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch interview sessions."}), 500
+
 
 
 @app.route("/api/interview/evaluate-star", methods=["POST"])
