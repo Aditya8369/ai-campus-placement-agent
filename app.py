@@ -13635,32 +13635,37 @@ def api_saved_job_description_item(saved_id):
 
 
 
-@app.route("/api/user/search", methods=["GET"])
-def api_user_search():
+@app.route("/api/validate/input", methods=["POST"])
+def api_validate_input():
     """
-    Private search endpoint across all student saved records (#324).
+    Central input validation testing and client pre-flight check endpoint (#276).
     """
-    from utils.saved_data_search_service import search_student_saved_data
-    student_id = flask_session.get("user_id") or "default_student"
-    query = request.args.get("q", "")
-    category = request.args.get("category", "all")
+    from utils.input_validator import (
+        validate_registration_payload,
+        validate_job_application_payload,
+        validate_interview_answer_payload,
+        ValidationError
+    )
+    payload = request.get_json(silent=True) or request.form
+    target_type = payload.get("type", "registration")
+    data = payload.get("data") or {}
+
     try:
-        limit = min(50, max(1, int(request.args.get("limit", 20))))
-    except (ValueError, TypeError):
-        limit = 20
+        if target_type == "registration":
+            validated = validate_registration_payload(data)
+        elif target_type == "job_application":
+            validated = validate_job_application_payload(data)
+        elif target_type == "interview_answer":
+            validated = validate_interview_answer_payload(data)
+        else:
+            return jsonify({"success": False, "error": f"Unknown validation schema type '{target_type}'."}), 400
 
-    data = search_student_saved_data(student_id=student_id, query=query, filter_category=category, limit=limit)
-    return jsonify(data), 200
-
-
-@app.route("/search", methods=["GET"])
-def search_page():
-    """
-    Search page UI for private student saved data (#324).
-    """
-    student_id = flask_session.get("user_id") or "default_student"
-    initial_query = request.args.get("q", "")
-    return render_template("search.html", student_id=student_id, initial_query=initial_query)
+        return jsonify({"success": True, "validated": validated}), 200
+    except ValidationError as ve:
+        return jsonify(ve.to_dict()), 422
+    except Exception as e:
+        logger.error(f"Error in input validation pre-flight: {e}")
+        return jsonify({"success": False, "error": "Internal validation error."}), 500
 
 
 if __name__ == "__main__":
