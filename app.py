@@ -13635,33 +13635,42 @@ def api_saved_job_description_item(saved_id):
 
 
 
-@app.route("/api/export/csv/<data_type>", methods=["GET"])
-def api_export_csv(data_type):
+@app.route("/api/interview/compare", methods=["POST"])
+def api_interview_compare():
     """
-    Export student placement preparation data to CSV (#274).
-    Supported types: applications, interviews, notes, coding.
+    Compare multiple interview sessions for the logged-in student (#273).
     """
-    from utils.csv_export_service import get_csv_export
+    from utils.interview_session_comparator import compare_interview_sessions
     student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    session_ids = payload.get("session_ids") or []
+    if isinstance(session_ids, str):
+        session_ids = [s.strip() for s in session_ids.split(",") if s.strip()]
+
+    if not session_ids or len(session_ids) < 2:
+        return jsonify({"success": False, "error": "Please provide at least two interview session IDs to compare."}), 400
+
     try:
-        csv_data, filename = get_csv_export(data_type, student_id)
-        response = Response(csv_data, mimetype="text/csv")
-        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return response
+        comparison = compare_interview_sessions(session_ids=session_ids, student_id=student_id)
+        return jsonify(comparison), 200
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except PermissionError as e:
+        return jsonify({"success": False, "error": str(e)}), 403
     except ValueError as e:
         return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
-        logger.error(f"Error generating CSV export for {data_type}: {e}")
-        return jsonify({"success": False, "error": "Internal error generating CSV export."}), 500
+        logger.error(f"Error during interview comparison: {e}")
+        return jsonify({"success": False, "error": "Internal error comparing interview sessions."}), 500
 
 
-@app.route("/export", methods=["GET"])
-def export_dashboard_page():
+@app.route("/interview/compare", methods=["GET"])
+def interview_compare_page():
     """
-    Dashboard page to download preparation data CSV files (#274).
+    Render interview comparison page (#273).
     """
     student_id = flask_session.get("user_id") or "default_student"
-    return render_template("csv_export.html", student_id=student_id)
+    return render_template("interview_compare.html", student_id=student_id)
 
 
 if __name__ == "__main__":

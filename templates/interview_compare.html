@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Interview Sessions - AI Placement Prep{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="fw-bold text-primary mb-1">
+                <i class="fas fa-chart-line me-2"></i>Interview Session Comparison
+            </h2>
+            <p class="text-muted mb-0">Evaluate progress, track score improvements, and pinpoint areas needing attention across mock sessions.</p>
+        </div>
+        <a href="/interview/sessions" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Sessions
+        </a>
+    </div>
+
+    <!-- Selection Controls -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <h5 class="card-title fw-bold text-dark mb-3">Select Sessions to Compare</h5>
+            <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label text-muted small fw-semibold">Baseline Session (Earlier)</label>
+                    <input type="text" id="session-id-1" class="form-control" placeholder="e.g. session-id-1">
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label text-muted small fw-semibold">Target Session (Recent)</label>
+                    <input type="text" id="session-id-2" class="form-control" placeholder="e.g. session-id-2">
+                </div>
+                <div class="col-md-2">
+                    <button id="compare-btn" class="btn btn-primary w-100" onclick="triggerComparison()">
+                        <i class="fas fa-balance-scale me-1"></i> Compare
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Comparison Results Container -->
+    <div id="comparison-results" style="display: none;">
+        <!-- Overview Delta Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm text-center py-3 bg-light">
+                    <div class="text-muted small fw-bold text-uppercase">Overall Delta</div>
+                    <h3 class="fw-bold mb-0 mt-2" id="delta-overall">--</h3>
+                    <small id="delta-trajectory" class="text-muted"></small>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm text-center py-3 bg-light">
+                    <div class="text-muted small fw-bold text-uppercase">Technical Shift</div>
+                    <h3 class="fw-bold mb-0 mt-2" id="delta-tech">--</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm text-center py-3 bg-light">
+                    <div class="text-muted small fw-bold text-uppercase">HR / Articulation</div>
+                    <h3 class="fw-bold mb-0 mt-2" id="delta-hr">--</h3>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card border-0 shadow-sm text-center py-3 bg-light">
+                    <div class="text-muted small fw-bold text-uppercase">STAR / Behavioral</div>
+                    <h3 class="fw-bold mb-0 mt-2" id="delta-beh">--</h3>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Breakdown Insights -->
+        <div class="row g-4 mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100 border-start border-success border-4">
+                    <div class="card-body">
+                        <h5 class="card-title text-success fw-bold">
+                            <i class="fas fa-check-circle me-2"></i>Key Improvements
+                        </h5>
+                        <ul id="improvements-list" class="list-group list-group-flush mt-3"></ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 shadow-sm h-100 border-start border-warning border-4">
+                    <div class="card-body">
+                        <h5 class="card-title text-warning fw-bold">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Areas Requiring Attention
+                        </h5>
+                        <ul id="attention-list" class="list-group list-group-flush mt-3"></ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function triggerComparison() {
+    const s1 = document.getElementById('session-id-1').value.trim();
+    const s2 = document.getElementById('session-id-2').value.trim();
+    if (!s1 || !s2) {
+        alert('Please enter both session IDs.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/interview/compare', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({session_ids: [s1, s2]})
+        });
+        const data = await res.json();
+        if (!data.success) {
+            alert(data.error || 'Comparison failed.');
+            return;
+        }
+
+        const summary = data.comparison_summary;
+        document.getElementById('comparison-results').style.display = 'block';
+        
+        const deltaElem = document.getElementById('delta-overall');
+        deltaElem.textContent = (summary.overall_score_delta >= 0 ? '+' : '') + summary.overall_score_delta + '%';
+        deltaElem.className = summary.overall_score_delta >= 0 ? 'fw-bold mb-0 mt-2 text-success' : 'fw-bold mb-0 mt-2 text-danger';
+        
+        document.getElementById('delta-trajectory').textContent = summary.overall_trajectory;
+        document.getElementById('delta-tech').textContent = (summary.category_deltas.Technical >= 0 ? '+' : '') + summary.category_deltas.Technical + '%';
+        document.getElementById('delta-hr').textContent = (summary.category_deltas.HR >= 0 ? '+' : '') + summary.category_deltas.HR + '%';
+        document.getElementById('delta-beh').textContent = (summary.category_deltas.Behavioral >= 0 ? '+' : '') + summary.category_deltas.Behavioral + '%';
+
+        const impList = document.getElementById('improvements-list');
+        impList.innerHTML = '';
+        summary.key_improvements.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item px-0 text-dark';
+            li.innerHTML = '<i class="fas fa-arrow-up text-success me-2"></i>' + item;
+            impList.appendChild(li);
+        });
+
+        const attList = document.getElementById('attention-list');
+        attList.innerHTML = '';
+        summary.attention_areas.forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item px-0 text-dark';
+            li.innerHTML = '<i class="fas fa-dot-circle text-warning me-2"></i>' + item;
+            attList.appendChild(li);
+        });
+    } catch(err) {
+        console.error(err);
+        alert('An unexpected error occurred while comparing sessions.');
+    }
+}
+</script>
+{% endblock %}
