@@ -153,6 +153,9 @@
           <a href="/download/{{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
             <i class="fa-solid fa-download me-1"></i> PDF Report
           </a>
+          <a href="{{ url_for('view_html_report', analysis_id=analysis_id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-file-lines me-1"></i> Read HTML report
+          </a>
         </div>
       </div>
 
@@ -421,6 +424,104 @@
         </div>
       </div>
     </div>
+
+    <!-- Private analysis annotations -->
+    <section class="card glass-card p-4 border-0 mb-4" aria-labelledby="privateAnnotationsHeading">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Private to you</span>
+          <h2 class="h4 fw-bold mb-1" id="privateAnnotationsHeading">
+            <i class="fa-solid fa-bookmark text-primary me-2"></i>Notes and highlights for this analysis
+          </h2>
+          <p class="text-secondary small mb-0">
+            Add reminders beside this result. These annotations are separate from AI-generated analysis, do not change your scores, and are not shown to other users.
+          </p>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-lg-5">
+          <form method="post" action="{{ url_for('save_analysis_annotation_view', analysis_id=analysis_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+              <label for="annotationType" class="form-label fw-semibold">Annotation type</label>
+              <select class="form-select" id="annotationType" name="annotation_type">
+                <option value="note">Private note</option>
+                <option value="highlight">Highlight / reminder</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="annotationSection" class="form-label fw-semibold">Related report area</label>
+              <select class="form-select" id="annotationSection" name="section">
+                <option>General</option>
+                <option>Resume feedback</option>
+                <option>Job match</option>
+                <option>Skill gaps</option>
+                <option>Learning roadmap</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="annotationContent" class="form-label fw-semibold">Your note</label>
+              <textarea class="form-control" id="annotationContent" name="content" rows="4" maxlength="5000" placeholder="For example: Add the database project to my resume."></textarea>
+            </div>
+            <button type="submit" class="btn btn-custom-primary rounded-pill px-4">
+              <i class="fa-solid fa-plus me-1"></i> Save private annotation
+            </button>
+          </form>
+        </div>
+
+        <div class="col-lg-7">
+          {% if analysis_annotations %}
+          <div class="vstack gap-3">
+            {% for annotation in analysis_annotations %}
+            <article class="border rounded-3 p-3 bg-white" aria-labelledby="annotation-{{ annotation.id }}">
+              <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                <div>
+                  <h3 class="h6 fw-bold mb-1" id="annotation-{{ annotation.id }}">
+                    {{ "Highlight" if annotation.annotation_type == "highlight" else "Private note" }}
+                  </h3>
+                  <span class="badge bg-light text-secondary border">{{ annotation.section }}</span>
+                </div>
+                <form method="post" action="{{ url_for('delete_analysis_annotation_view', analysis_id=analysis_id, annotation_id=annotation.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger" aria-label="Delete this private annotation">Delete</button>
+                </form>
+              </div>
+              <p class="mb-2 text-dark" style="white-space: pre-wrap;">{{ annotation.content }}</p>
+              <details>
+                <summary class="small text-primary">Edit annotation</summary>
+                <form method="post" action="{{ url_for('save_analysis_annotation_view', analysis_id=analysis_id) }}" class="mt-3">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="annotation_id" value="{{ annotation.id }}">
+                  <div class="row g-2">
+                    <div class="col-sm-5">
+                      <label class="form-label small" for="type-{{ annotation.id }}">Type</label>
+                      <select class="form-select form-select-sm" id="type-{{ annotation.id }}" name="annotation_type">
+                        <option value="note" {% if annotation.annotation_type == "note" %}selected{% endif %}>Private note</option>
+                        <option value="highlight" {% if annotation.annotation_type == "highlight" %}selected{% endif %}>Highlight / reminder</option>
+                      </select>
+                    </div>
+                    <div class="col-sm-7">
+                      <label class="form-label small" for="section-{{ annotation.id }}">Report area</label>
+                      <input class="form-control form-control-sm" id="section-{{ annotation.id }}" name="section" value="{{ annotation.section }}" maxlength="100">
+                    </div>
+                  </div>
+                  <label class="form-label small mt-2" for="content-{{ annotation.id }}">Your note</label>
+                  <textarea class="form-control form-control-sm" id="content-{{ annotation.id }}" name="content" rows="3" maxlength="5000">{{ annotation.content }}</textarea>
+                  <button type="submit" class="btn btn-sm btn-primary mt-2">Save changes</button>
+                </form>
+              </details>
+            </article>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="border rounded-3 p-4 bg-white text-secondary">
+            <p class="mb-0">You have not added any private notes or highlights to this analysis yet.</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </section>
 
     <!-- Company Hiring Readiness Benchmark Card -->
     {% set benchmark = analysis.results.job_match.get('company_benchmark') if analysis.results.job_match is mapping else none %}
@@ -1375,12 +1476,32 @@
             </tr>
           </thead>
           <tbody>
-            {% for gap in analysis.results.skill_gap %}
+            {% for gap in skill_gap_resources|default(analysis.results.skill_gap) %}
               <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority }}">
                 <td><b class="text-primary">{{ gap.skill }}</b></td>
                 <td><span class="badge bg-light text-dark border">{{ gap.importance }}</span></td>
                 <td>{{ gap.learning_time }}</td>
-                <td><span class="text-secondary small">{{ gap.learning_resource }}</span></td>
+                <td>
+                  <span class="text-secondary small">{{ gap.learning_resource }}</span>
+                  {% for resource_link in gap.resource_links|default([]) %}
+                    <div class="mt-1">
+                      <a href="{{ resource_link.url }}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none">
+                        <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>{{ resource_link.url }}
+                      </a>
+                      <span class="badge rounded-pill ms-1
+                        {% if resource_link.status == 'working' %}bg-success-subtle text-success border border-success-subtle
+                        {% elif resource_link.status == 'broken' %}bg-danger-subtle text-danger border border-danger-subtle
+                        {% else %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% endif %}"
+                        title="{{ resource_link.detail }}">
+                        <i class="fa-solid
+                          {% if resource_link.status == 'working' %}fa-circle-check
+                          {% elif resource_link.status == 'broken' %}fa-circle-xmark
+                          {% else %}fa-circle-question{% endif %} me-1"></i>
+                        {{ resource_link.label }}
+                      </span>
+                    </div>
+                  {% endfor %}
+                </td>
                 <td>
                   <div class="d-flex align-items-center justify-content-between gap-1">
                     <span class="small text-muted">{{ gap.project_suggestion }}</span>

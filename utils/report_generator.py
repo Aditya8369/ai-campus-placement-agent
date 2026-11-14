@@ -16,6 +16,11 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+from utils.output_localization import (
+    DEFAULT_OUTPUT_LOCALE,
+    output_text,
+    resolve_output_locale,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +190,8 @@ def safe_generate_report_with_recovery(
     generator_func,
     data: Any,
     output_path: str,
-    report_type: str = "Placement Report"
+    report_type: str = "Placement Report",
+    **generator_kwargs
 ) -> str:
     """
     Executes a report generator with automatic pre-validation and graceful error recovery (#202).
@@ -194,7 +200,7 @@ def safe_generate_report_with_recovery(
     try:
         sanitized_data = sanitize_report_data(data)
         os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
-        return generator_func(sanitized_data, output_path)
+        return generator_func(sanitized_data, output_path, **generator_kwargs)
     except Exception as primary_err:
         logger.error(f"Primary report generation for {report_type} failed: {primary_err}. Initiating safe fallback recovery.")
         return generate_fallback_pdf_report(
@@ -215,13 +221,19 @@ def escape_xml(value: Any) -> str:
         return ""
     return html.escape(str(value), quote=False)
 
-def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
+def generate_pdf_report(
+    analysis_data: dict,
+    output_path: str,
+    language: str = DEFAULT_OUTPUT_LOCALE,
+) -> str:
     analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a beautifully structured PDF placement readiness report.
     Converts metrics, skill gap, conflict advisories, and roadmap into a professional printable PDF.
     """
     try:
+        locale, used_fallback = resolve_output_locale(language)
+        t = lambda key: output_text(key, locale)
         logger.info("Generating PDF report at: %s", output_path)
 
         doc = SimpleDocTemplate(
@@ -329,10 +341,14 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
 
         # Cover section
         story.append(Spacer(1, 30))
-        story.append(Paragraph("AI CAMPUS PLACEMENT REPORT", title_style))
+        story.append(Paragraph(t("report_title"), title_style))
         story.append(Spacer(1, 10))
         target_company = escape_xml(analysis_data.get('company_name', 'Target Company'))
-        story.append(Paragraph(f"Preparation Analysis & Learning Roadmap for {target_company}", subtitle_style))
+        story.append(Paragraph(f"{t('report_subtitle')} {target_company}", subtitle_style))
+        story.append(Paragraph(
+            t("language_fallback") if used_fallback else t("language_notice"),
+            subtitle_style,
+        ))
         story.append(Spacer(1, 20))
 
         # Summary metrics
@@ -344,9 +360,9 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
         
         metrics_grid_data = [
             [
-                Paragraph("<b>ATS Score:</b>", body_style),
+                Paragraph(f"<b>{t('ats_score')}:</b>", body_style),
                 Paragraph(f"<b>{ats_score}/100</b>", body_style),
-                Paragraph("<b>Job Match Score:</b>", body_style),
+                Paragraph(f"<b>{t('job_match_score')}:</b>", body_style),
                 Paragraph(f"<b>{match_pct}%</b>", body_style)
             ]
         ]
@@ -368,13 +384,13 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
         story.append(Spacer(1, 25))
 
         # Summary block
-        story.append(Paragraph("Executive Resume Summary", h1_style))
-        summary_text = escape_xml(resume_analysis.get("summary", "No summary available."))
+        story.append(Paragraph(t("executive_summary"), h1_style))
+        summary_text = escape_xml(resume_analysis.get("summary", t("no_summary")))
         story.append(Paragraph(summary_text, body_style))
         story.append(Spacer(1, 15))
         
         # Overall Recommendation (fallback from root results or resume_analysis)
-        story.append(Paragraph("Overall Recommendation", h1_style))
+        story.append(Paragraph(t("overall_recommendation"), h1_style))
         rec_text = escape_xml(
             analysis_data.get("results", {}).get("overall_recommendation_summary")
             or resume_analysis.get("overall_recommendation")
@@ -402,52 +418,50 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
         story.append(PageBreak())
 
         # Resume feedback
-        story.append(Paragraph("Resume Analysis Details", h1_style))
-        story.append(Paragraph("Strengths", h2_style))
+        story.append(Paragraph(t("resume_details"), h1_style))
+        story.append(Paragraph(t("strengths"), h2_style))
         strengths = resume_analysis.get("strengths", [])
         if strengths:
             for strength in strengths:
                 story.append(Paragraph(f"&bull; {escape_xml(strength)}", bullet_style))
         else:
-            story.append(Paragraph("No specific strengths noted.", body_style))
+            story.append(Paragraph(t("no_strengths"), body_style))
         story.append(Spacer(1, 10))
 
-        story.append(Paragraph("Weaknesses / Areas of Improvement", h2_style))
+        story.append(Paragraph(t("weaknesses"), h2_style))
         weaknesses = resume_analysis.get("weaknesses", [])
         if weaknesses:
             for weakness in weaknesses:
                 story.append(Paragraph(f"&bull; {escape_xml(weakness)}", bullet_style))
         else:
-            story.append(Paragraph("No critical weaknesses detected.", body_style))
+            story.append(Paragraph(t("no_weaknesses"), body_style))
         story.append(Spacer(1, 10))
         
-        story.append(Paragraph("Grammar & Formatting Suggestions", h2_style))
+        story.append(Paragraph(t("grammar_formatting"), h2_style))
         all_suggs = resume_analysis.get("grammar_suggestions", []) + resume_analysis.get("formatting_suggestions", [])
         if all_suggs:
             for suggestion in all_suggs:
                 story.append(Paragraph(f"&bull; {escape_xml(suggestion)}", bullet_style))
         else:
-            story.append(Paragraph("Formatting and grammar follow standard industry guidelines.", body_style))
+            story.append(Paragraph(t("no_suggestions"), body_style))
         story.append(Spacer(1, 15))
 
         # Job-match adjustments
-        story.append(Paragraph("Top 5 Job Matching Adjustments", h1_style))
+        story.append(Paragraph(t("job_adjustments"), h1_style))
         changes = job_match.get("top_5_resume_changes", [])
         if changes:
             for idx, change in enumerate(changes, 1):
                 story.append(Paragraph(f"<b>{idx}.</b> {escape_xml(change)}", bullet_style))
         else:
-            story.append(Paragraph("No critical adjustments required for the target profile.", body_style))
+            story.append(Paragraph(t("no_adjustments"), body_style))
             
         story.append(PageBreak())
 
         # Skill-gaps table
-        story.append(Paragraph("Skill Gap Assessment", h1_style))
+        story.append(Paragraph(t("skill_gap"), h1_style))
         story.append(
             Paragraph(
-                "The table below documents critical skills required for your target role and "
-                "company that were not identified in your resume. Follow the recommended "
-                "learning paths and projects to build these skills.",
+                t("skill_gap_intro"),
                 body_style,
             )
         )
@@ -458,11 +472,11 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
         if skill_gaps:
             gap_table_data = [
                 [
-                    Paragraph("Skill", table_hdr_style),
-                    Paragraph("Importance", table_hdr_style),
-                    Paragraph("Estimated Time", table_hdr_style),
-                    Paragraph("Learning Resource &amp; Mini-Project", table_hdr_style),
-                    Paragraph("Priority", table_hdr_style),
+                    Paragraph(t("skill"), table_hdr_style),
+                    Paragraph(t("importance"), table_hdr_style),
+                    Paragraph(t("estimated_time"), table_hdr_style),
+                    Paragraph(t("learning_resource"), table_hdr_style),
+                    Paragraph(t("priority"), table_hdr_style),
                 ]
             ]
 
@@ -493,18 +507,17 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
             story.append(gap_table)
         else:
             story.append(
-                Paragraph("No major skill gaps identified relative to the target role.", body_style)
+                Paragraph(t("no_skill_gaps"), body_style)
             )
 
         story.append(Spacer(1, 15))
         story.append(PageBreak())
 
         # Six-week learning roadmap
-        story.append(Paragraph("6-Week Learning Roadmap", h1_style))
+        story.append(Paragraph(t("learning_roadmap"), h1_style))
         story.append(
             Paragraph(
-                "Follow this personalized study plan step-by-step over the next 6 weeks to "
-                "bridge any gaps and practice for interviews.",
+                t("learning_roadmap_intro"),
                 body_style,
             )
         )
@@ -514,21 +527,21 @@ def generate_pdf_report(analysis_data: dict, output_path: str) -> str:
         for w in roadmap_list:
             week_title = escape_xml(w.get('week', 'Week X'))
             hours = escape_xml(w.get('estimated_hours', 10))
-            topics = ", ".join(escape_xml(t) for t in w.get('topics', [])) or "None"
-            coding = ", ".join(escape_xml(c) for c in w.get('coding_practice', [])) or "None"
-            projects = ", ".join(escape_xml(p) for p in w.get('mini_projects', [])) or "None"
-            revision = ", ".join(escape_xml(r) for r in w.get('revision_tasks', [])) or "None"
+            topics = ", ".join(escape_xml(topic) for topic in w.get('topics', [])) or t("none")
+            coding = ", ".join(escape_xml(c) for c in w.get('coding_practice', [])) or t("none")
+            projects = ", ".join(escape_xml(p) for p in w.get('mini_projects', [])) or t("none")
+            revision = ", ".join(escape_xml(r) for r in w.get('revision_tasks', [])) or t("none")
             
             w_story = [
                 Paragraph(f"<b>{week_title}</b> ({hours} Hours)", h2_style),
-                Paragraph(f"<b>Topics to Cover:</b> {topics}", body_style),
-                Paragraph(f"<b>Coding Practice:</b> {coding}", body_style),
-                Paragraph(f"<b>Mini Project:</b> {projects}", body_style),
-                Paragraph(f"<b>Interview Questions:</b>", body_style)
+                Paragraph(f"<b>{t('topics')}:</b> {topics}", body_style),
+                Paragraph(f"<b>{t('coding_practice')}:</b> {coding}", body_style),
+                Paragraph(f"<b>{t('mini_project')}:</b> {projects}", body_style),
+                Paragraph(f"<b>{t('interview_questions')}:</b>", body_style)
             ]
             for iq in w.get("interview_questions", []):
                 w_story.append(Paragraph(f"  &bull; {escape_xml(iq)}", bullet_style))
-            w_story.append(Paragraph(f"<b>Revision Tasks:</b> {revision}", body_style))
+            w_story.append(Paragraph(f"<b>{t('revision_tasks')}:</b> {revision}", body_style))
             w_story.append(Spacer(1, 12))
             
             story.append(KeepTogether(w_story))
@@ -711,13 +724,19 @@ def generate_certificate_pdf(analysis_data: dict, output_path: str) -> str:
         raise RuntimeError(f"Certificate PDF generation failed: {exc}") from exc
 
 
-def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
+def generate_skills_gap_pdf(
+    analysis_data: dict,
+    output_path: str,
+    language: str = DEFAULT_OUTPUT_LOCALE,
+) -> str:
     analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a dedicated, beautifully formatted standalone Skills Gap & Upskilling PDF report (#136).
     Includes identified missing skills, priority rankings, learning resources, and mini-project recommendations.
     """
     try:
+        locale, used_fallback = resolve_output_locale(language)
+        t = lambda key: output_text(key, locale)
         logger.info("Generating standalone Skills Gap PDF report at: %s", output_path)
 
         doc = SimpleDocTemplate(
@@ -790,10 +809,14 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
         story = []
 
         # Header Title
-        story.append(Paragraph("<b>Campus Placement — Target Skill Gap & Learning Audit</b>", title_style))
+        story.append(Paragraph(f"<b>{t('skill_gap')}</b>", title_style))
         company = escape_xml(analysis_data.get("company_name", "Target Company"))
         created_at = escape_xml(analysis_data.get("created_at", "N/A"))
-        story.append(Paragraph(f"Candidate Placement Audit for <b>{company}</b> &bull; Generated: {created_at}", subtitle_style))
+        language_note = t("language_fallback") if used_fallback else t("language_notice")
+        story.append(Paragraph(
+            f"{t('target_company')}: <b>{company}</b> &bull; {created_at} &bull; {language_note}",
+            subtitle_style,
+        ))
 
         # Skill Gap data extraction
         results = analysis_data.get("results", {}) if isinstance(analysis_data.get("results"), dict) else {}
@@ -804,7 +827,7 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
             empty_box = [
                 [
                     Paragraph(
-                        "<b>🎉 Outstanding Readiness! No Critical Skill Gaps Detected</b><br/><br/>"
+                        f"<b>{t('no_skill_gaps')}</b><br/><br/>"
                         "Your resume fully satisfies the analyzed baseline requirements for this role. "
                         "Continue sharpening your interview problem solving and algorithmic fundamentals.",
                         body_style
@@ -824,16 +847,16 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
             )
             story.append(empty_table)
         else:
-            story.append(Paragraph(f"<b>Identified Competency Gaps ({len(skill_gaps)} Missing Competencies)</b>", h2_style))
+            story.append(Paragraph(f"<b>{t('skill_gap')} ({len(skill_gaps)})</b>", h2_style))
 
             # Table Header
             table_data = [
                 [
-                    Paragraph("<b>Missing Skill</b>", body_style),
-                    Paragraph("<b>Importance</b>", body_style),
-                    Paragraph("<b>Est. Time</b>", body_style),
-                    Paragraph("<b>Priority</b>", body_style),
-                    Paragraph("<b>Curated Platform / Project</b>", body_style),
+                    Paragraph(f"<b>{t('skill')}</b>", body_style),
+                    Paragraph(f"<b>{t('importance')}</b>", body_style),
+                    Paragraph(f"<b>{t('estimated_time')}</b>", body_style),
+                    Paragraph(f"<b>{t('priority')}</b>", body_style),
+                    Paragraph(f"<b>{t('learning_resource')}</b>", body_style),
                 ]
             ]
 
@@ -847,9 +870,9 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
 
                 p_bg = high_priority_red if priority == "High" else (med_priority_orange if priority == "Medium" else low_priority_green)
 
-                resource_block = f"<b>Resource:</b> {resource}"
+                resource_block = f"<b>{t('resource')}:</b> {resource}"
                 if proj:
-                    resource_block += f"<br/><b>Project:</b> {proj}"
+                    resource_block += f"<br/><b>{t('project')}:</b> {proj}"
 
                 table_data.append([
                     Paragraph(f"<b>{skill_name}</b>", body_style),
@@ -885,7 +908,7 @@ def generate_skills_gap_pdf(analysis_data: dict, output_path: str) -> str:
         # Footer Notice
         story.append(Spacer(1, 20))
         footer_p = Paragraph(
-            "<i>Report generated by AI Campus Placement Agent. Designed to accelerate syllabus roadmap planning and recruiter interview readiness.</i>",
+            f"<i>{t('generated_by')}. Designed to accelerate syllabus roadmap planning and recruiter interview readiness.</i>",
             subtitle_style
         )
         story.append(footer_p)
@@ -1512,13 +1535,19 @@ def generate_interview_transcript_markdown(
 
 
 
-def generate_student_preparation_summary_pdf(summary_data: dict, output_path: str) -> str:
+def generate_student_preparation_summary_pdf(
+    summary_data: dict,
+    output_path: str,
+    language: str = DEFAULT_OUTPUT_LOCALE,
+) -> str:
     """
     Generates a comprehensive printable PDF placement preparation summary report (#200).
     Aggregates profile readiness, resume analysis findings, coding performance,
     mock interview analytics, completed preparation tasks, and identified skill gaps.
     """
     try:
+        locale, used_fallback = resolve_output_locale(language)
+        t = lambda key: output_text(key, locale)
         logger.info("Generating Student Preparation Summary PDF at: %s", output_path)
 
         doc = SimpleDocTemplate(
@@ -1579,9 +1608,13 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
         elements = []
 
         # 1. Title & Header
-        elements.append(Paragraph("Placement Preparation Progress Summary", title_style))
+        elements.append(Paragraph(t("prep_summary_title"), title_style))
         student_id = escape_xml(summary_data.get("student_id", "Candidate"))
-        elements.append(Paragraph(f"Candidate: <b>{student_id}</b> &bull; Generated by AI Campus Placement Agent", subtitle_style))
+        language_note = t("language_fallback") if used_fallback else t("language_notice")
+        elements.append(Paragraph(
+            f"{t('candidate')}: <b>{student_id}</b> &bull; {t('generated_by')} &bull; {language_note}",
+            subtitle_style,
+        ))
         elements.append(Spacer(1, 10))
 
         # 2. Profile & Placement Readiness Box
@@ -1598,21 +1631,21 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
 
         profile_table_data = [
             [
-                Paragraph("<b>Candidate Name:</b>", body_style),
+                Paragraph(f"<b>{t('candidate_name')}:</b>", body_style),
                 Paragraph(name_str, body_style),
-                Paragraph("<b>Profile Readiness:</b>", body_style),
+                Paragraph(f"<b>{t('profile_readiness')}:</b>", body_style),
                 Paragraph(f"<b>{comp_pct}%</b>", body_bold),
             ],
             [
-                Paragraph("<b>Department:</b>", body_style),
+                Paragraph(f"<b>{t('department')}:</b>", body_style),
                 Paragraph(dept_str, body_style),
-                Paragraph("<b>Graduation Year:</b>", body_style),
+                Paragraph(f"<b>{t('graduation_year')}:</b>", body_style),
                 Paragraph(str(grad_str), body_style),
             ],
             [
-                Paragraph("<b>Target Role:</b>", body_style),
+                Paragraph(f"<b>{t('target_role')}:</b>", body_style),
                 Paragraph(role_str, body_style),
-                Paragraph("<b>Target Company:</b>", body_style),
+                Paragraph(f"<b>{t('target_company')}:</b>", body_style),
                 Paragraph(comp_str, body_style),
             ]
         ]
@@ -1628,7 +1661,7 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
         elements.append(Spacer(1, 12))
 
         # 3. Resume Analysis Findings
-        elements.append(Paragraph("1. Resume Analysis & Keyword Optimization", section_heading))
+        elements.append(Paragraph(f"1. {t('resume_details')}", section_heading))
         latest_analysis = summary_data.get("latest_analysis")
         if latest_analysis and latest_analysis.get("results"):
             res = latest_analysis["results"]
@@ -1637,9 +1670,9 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
             resume_file = escape_xml(latest_analysis.get("resume_filename", "Uploaded Resume"))
 
             analysis_summary = [
-                [Paragraph("<b>Evaluated Resume:</b>", body_style), Paragraph(resume_file, body_style)],
-                [Paragraph("<b>ATS Optimization Score:</b>", body_style), Paragraph(f"<b>{ats}/100</b>", body_bold)],
-                [Paragraph("<b>Job Match Likelihood:</b>", body_style), Paragraph(f"<b>{match_pct}%</b>", body_bold)],
+                [Paragraph(f"<b>{t('evaluated_resume')}:</b>", body_style), Paragraph(resume_file, body_style)],
+                [Paragraph(f"<b>{t('ats_optimization')}:</b>", body_style), Paragraph(f"<b>{ats}/100</b>", body_bold)],
+                [Paragraph(f"<b>{t('job_match_likelihood')}:</b>", body_style), Paragraph(f"<b>{match_pct}%</b>", body_bold)],
             ]
             at = Table(analysis_summary, colWidths=[160, 340])
             at.setStyle(TableStyle([
@@ -1651,11 +1684,11 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
             ]))
             elements.append(at)
         else:
-            elements.append(Paragraph("<i>No placement resume analysis uploaded yet. Candidates can upload PDF/DOCX resumes for instant ATS metrics.</i>", body_style))
+            elements.append(Paragraph(f"<i>{t('no_analysis')}</i>", body_style))
         elements.append(Spacer(1, 10))
 
         # 4. Coding Practice Progress
-        elements.append(Paragraph("2. Coding Assessment & DSA Submissions", section_heading))
+        elements.append(Paragraph(f"2. {t('coding_assessment')}", section_heading))
         c_stats = summary_data.get("coding_stats", {})
         c_total = c_stats.get("total_submissions", 0)
         c_passed = c_stats.get("passed_count", 0)
@@ -1663,9 +1696,9 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
 
         coding_table_data = [
             [
-                Paragraph("<b>Total Problems Attempted</b>", body_style),
-                Paragraph("<b>Passed / Accepted</b>", body_style),
-                Paragraph("<b>Overall Success Rate</b>", body_style),
+                Paragraph(f"<b>{t('total_attempted')}</b>", body_style),
+                Paragraph(f"<b>{t('passed_accepted')}</b>", body_style),
+                Paragraph(f"<b>{t('success_rate')}</b>", body_style),
             ],
             [
                 Paragraph(str(c_total), body_bold),
@@ -1687,7 +1720,7 @@ def generate_student_preparation_summary_pdf(summary_data: dict, output_path: st
         elements.append(Spacer(1, 10))
 
         # 5. Mock Interview Performance
-        elements.append(Paragraph("3. Mock Interview Simulation Analytics", section_heading))
+        elements.append(Paragraph(f"3. {t('mock_interview')}", section_heading))
         i_stats = summary_data.get("interview_stats", {})
         i_sessions = i_stats.get("total_sessions", 0)
         i_questions = i_stats.get("total_questions_answered", 0)

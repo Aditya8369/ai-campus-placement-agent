@@ -157,6 +157,9 @@
             <a href="/dashboard/{{ analysis.id }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1">
               <i class="fa-solid fa-eye me-1"></i> View Dashboard
             </a>
+            <a href="{{ url_for('view_html_report', analysis_id=analysis.id) }}" class="btn btn-outline-primary btn-sm rounded-pill" aria-label="Read HTML report for {{ analysis.company_name }}">
+              <i class="fa-solid fa-file-lines me-1"></i> HTML report
+            </a>
             <a href="/interview/{{ analysis.id }}" class="btn btn-outline-success btn-sm rounded-pill">
               <i class="fa-solid fa-microphone me-1"></i> Interview
             </a>

@@ -47,6 +47,7 @@
 
         {% if session.get('user_id') %}
   <span class="text-primary fw-semibold">{{ _t('nav_greeting', 'Hi') }}, {{ session.get('user_name') }}</span>
+          <a href="{{ url_for('account_sessions') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">Active sessions</a>
   <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
     <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">{{ _t('nav_logout', 'Logout') }}</button>
