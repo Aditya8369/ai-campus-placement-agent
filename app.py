@@ -13635,37 +13635,33 @@ def api_saved_job_description_item(saved_id):
 
 
 
-@app.route("/api/validate/input", methods=["POST"])
-def api_validate_input():
+@app.route("/api/export/csv/<data_type>", methods=["GET"])
+def api_export_csv(data_type):
     """
-    Central input validation testing and client pre-flight check endpoint (#276).
+    Export student placement preparation data to CSV (#274).
+    Supported types: applications, interviews, notes, coding.
     """
-    from utils.input_validator import (
-        validate_registration_payload,
-        validate_job_application_payload,
-        validate_interview_answer_payload,
-        ValidationError
-    )
-    payload = request.get_json(silent=True) or request.form
-    target_type = payload.get("type", "registration")
-    data = payload.get("data") or {}
-
+    from utils.csv_export_service import get_csv_export
+    student_id = flask_session.get("user_id") or "default_student"
     try:
-        if target_type == "registration":
-            validated = validate_registration_payload(data)
-        elif target_type == "job_application":
-            validated = validate_job_application_payload(data)
-        elif target_type == "interview_answer":
-            validated = validate_interview_answer_payload(data)
-        else:
-            return jsonify({"success": False, "error": f"Unknown validation schema type '{target_type}'."}), 400
-
-        return jsonify({"success": True, "validated": validated}), 200
-    except ValidationError as ve:
-        return jsonify(ve.to_dict()), 422
+        csv_data, filename = get_csv_export(data_type, student_id)
+        response = Response(csv_data, mimetype="text/csv")
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
     except Exception as e:
-        logger.error(f"Error in input validation pre-flight: {e}")
-        return jsonify({"success": False, "error": "Internal validation error."}), 500
+        logger.error(f"Error generating CSV export for {data_type}: {e}")
+        return jsonify({"success": False, "error": "Internal error generating CSV export."}), 500
+
+
+@app.route("/export", methods=["GET"])
+def export_dashboard_page():
+    """
+    Dashboard page to download preparation data CSV files (#274).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    return render_template("csv_export.html", student_id=student_id)
 
 
 if __name__ == "__main__":
