@@ -9630,6 +9630,20 @@ def download_pdf_report(analysis_id: str):
         return redirect(url_for("dashboard", analysis_id=analysis_id))
 
 
+@app.route("/report/<analysis_id>")
+def view_html_report(analysis_id: str):
+    """Renders an accessible, responsive HTML version of the placement report."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    return render_template(
+        "placement_report.html",
+        report_data=sanitize_report_data(analysis_record),
+    )
+
+
 @app.route("/download/skills-gap/<analysis_id>")
 def download_skills_gap_report(analysis_id: str):
     """

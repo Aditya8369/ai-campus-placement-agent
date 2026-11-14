@@ -153,6 +153,9 @@
           <a href="/download/{{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
             <i class="fa-solid fa-download me-1"></i> PDF Report
           </a>
+          <a href="{{ url_for('view_html_report', analysis_id=analysis_id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-file-lines me-1"></i> Read HTML report
+          </a>
         </div>
       </div>
 
