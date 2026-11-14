@@ -252,6 +252,12 @@ from utils.i18n import (
     DEFAULT_LOCALE,
     LOCALE_NAMES,
 )
+from utils.output_localization import (
+    DEFAULT_OUTPUT_LOCALE,
+    OUTPUT_LOCALE_NAMES,
+    SUPPORTED_OUTPUT_LOCALES,
+    resolve_output_locale,
+)
 
 # CSRF Protection & Token Security (#300)
 from utils.csrf import csrf, CSRFError, generate_csrf
@@ -3538,8 +3544,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -3553,7 +3567,7 @@ def download_pdf_report(analysis_id: str):
         return send_file(
             pdf_full_path,
             as_attachment=True,
-            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}.pdf",
+            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}_{output_language}.pdf",
             mimetype="application/pdf"
         )
 
@@ -3573,7 +3587,15 @@ def download_skills_gap_report(analysis_id: str):
             flash("Cannot generate Skills Gap report. Placement record not found.", "error")
             return redirect(url_for("index"))
 
-        pdf_output_name = f"Skills_Gap_Report_{analysis_id}.pdf"
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
+        pdf_output_name = f"Skills_Gap_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -3581,6 +3603,7 @@ def download_skills_gap_report(analysis_id: str):
                 generator_func=generate_skills_gap_pdf,
                 data=analysis_record,
                 output_path=pdf_full_path,
+                language=output_language,
                 report_type="Skills Gap and Upskilling Roadmap"
             )
 
@@ -4248,7 +4271,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -4341,7 +4365,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -5016,10 +5041,13 @@ def notification_settings_view():
         notify_status_change = request.form.get("notify_status_change") == "on"
         notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
         notify_deadline_reminder = request.form.get("notify_deadline_reminder") == "on"
+        requested_output_language = request.form.get("output_language", DEFAULT_OUTPUT_LOCALE)
+        output_language, output_language_fallback = resolve_output_locale(requested_output_language)
 
         update_email_notification_preferences(
             student_id=student_id,
             email=email or None,
+            output_language=output_language,
             email_enabled=email_enabled,
             notify_welcome=notify_welcome,
             notify_application_created=notify_application_created,
@@ -5035,7 +5063,13 @@ def notification_settings_view():
         except Exception as pref_err:
             logger.debug(f"Could not update student deadline preferences: {pref_err}")
 
-        flash("Email notification preferences updated successfully!", "success")
+        if output_language_fallback:
+            flash(
+                "The selected output language is not supported. Generated reports and summaries will use English.",
+                "warning",
+            )
+        else:
+            flash("Generated-output language preferences updated successfully!", "success")
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
@@ -5045,7 +5079,13 @@ def notification_settings_view():
             "preferences": prefs
         }), 200
 
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
+    return render_template(
+        "notification_settings.html",
+        prefs=prefs,
+        student_id=student_id,
+        output_locale_names=OUTPUT_LOCALE_NAMES,
+        supported_output_locales=SUPPORTED_OUTPUT_LOCALES,
+    )
 
 
 @app.route("/api/notifications/remind-interview", methods=["POST"])
@@ -5074,7 +5114,8 @@ def api_send_interview_reminder():
         company_name=company_name,
         interview_round=round_type,
         scheduled_time=scheduled_time,
-        interview_link=interview_link or None
+        interview_link=interview_link or None,
+        locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE),
     )
 
     return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
@@ -5264,8 +5305,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -7027,7 +7076,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -7099,7 +7149,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -9276,8 +9327,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -9285,13 +9344,14 @@ def download_pdf_report(analysis_id: str):
                 generator_func=generate_pdf_report,
                 data=analysis_record,
                 output_path=pdf_full_path,
-                report_type="Placement Readiness Comprehensive Report"
+                report_type="Placement Readiness Comprehensive Report",
+                language=output_language,
             )
 
         return send_file(
             pdf_full_path,
             as_attachment=True,
-            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}.pdf",
+            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}_{output_language}.pdf",
             mimetype="application/pdf"
         )
 
@@ -9312,7 +9372,15 @@ def download_skills_gap_report(analysis_id: str):
             flash("Cannot generate Skills Gap report. Placement record not found.", "error")
             return redirect(url_for("index"))
 
-        pdf_output_name = f"Skills_Gap_Report_{analysis_id}.pdf"
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
+        pdf_output_name = f"Skills_Gap_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -9320,7 +9388,8 @@ def download_skills_gap_report(analysis_id: str):
                 generator_func=generate_skills_gap_pdf,
                 data=analysis_record,
                 output_path=pdf_full_path,
-                report_type="Skills Gap and Upskilling Roadmap"
+                report_type="Skills Gap and Upskilling Roadmap",
+                language=output_language,
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -10182,7 +10251,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -10564,7 +10634,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -11308,7 +11379,12 @@ def download_student_preparation_summary_pdf(student_id: str = None):
         return redirect(url_for("index"))
 
     summary_data = get_student_preparation_summary_data(student_id)
-    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
+    output_language, used_language_fallback = resolve_output_locale(
+        get_email_notification_preferences(student_id).get("output_language", DEFAULT_OUTPUT_LOCALE)
+    )
+    if used_language_fallback:
+        flash("This report is only available in English for the selected language.", "warning")
+    output_filename = f"Placement_Preparation_Summary_{student_id}_{output_language}.pdf"
     
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -11319,7 +11395,8 @@ def download_student_preparation_summary_pdf(student_id: str = None):
             generator_func=generate_student_preparation_summary_pdf,
             data=summary_data,
             output_path=temp_pdf_path,
-            report_type="Student Placement Preparation Summary"
+            report_type="Student Placement Preparation Summary",
+            language=output_language,
         )
         return send_file(
             temp_pdf_path,
