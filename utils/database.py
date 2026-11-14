@@ -2,6 +2,9 @@ import sqlite3
 import json
 import logging
 import uuid
+import hashlib
+import secrets
+import time
 from typing import Optional, List, Dict, Any, Union
 import config
 
@@ -97,6 +100,20 @@ def init_db() -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table 5b: Server-side registry for revocable authenticated sessions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                client_label TEXT NOT NULL DEFAULT 'Web browser',
+                created_at REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                revoked_at REAL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, last_seen_at)")
 
                 # Table 6: Store user email notification preferences (#186, #298)
         cursor.execute("""
@@ -2054,6 +2071,116 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         )
         row = cursor.fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def create_auth_session(user_id: str, client_label: str) -> Dict[str, str]:
+    """Create an opaque, server-tracked session that can later be revoked."""
+    session_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO auth_sessions
+                (id, user_id, token_hash, client_label, created_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, user_id, token_hash, client_label or "Web browser", now, now),
+        )
+        conn.commit()
+        return {"id": session_id, "token": token}
+    finally:
+        conn.close()
+
+
+def get_active_auth_session(session_id: str, token: str, user_id: str) -> Optional[Dict[str, Any]]:
+    """Return a session only when its opaque token is valid and it has not been revoked."""
+    if not session_id or not token or not user_id:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, user_id, client_label, created_at, last_seen_at
+            FROM auth_sessions
+            WHERE id = ? AND user_id = ? AND token_hash = ? AND revoked_at IS NULL
+            """,
+            (session_id, user_id, token_hash),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def touch_auth_session(session_id: str, user_id: str) -> None:
+    """Update activity for a currently valid session without exposing client details."""
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "UPDATE auth_sessions SET last_seen_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+            (time.time(), session_id, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_active_auth_sessions(user_id: str, timeout_seconds: int) -> List[Dict[str, Any]]:
+    """List non-revoked sessions active within the configured inactivity window."""
+    cutoff = time.time() - max(int(timeout_seconds), 1)
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, client_label, created_at, last_seen_at
+            FROM auth_sessions
+            WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
+            ORDER BY last_seen_at DESC
+            """,
+            (user_id, cutoff),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def revoke_auth_session(user_id: str, session_id: str) -> bool:
+    """Revoke one session only when it belongs to the requesting user."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+            """,
+            (time.time(), session_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def revoke_other_auth_sessions(user_id: str, current_session_id: str) -> int:
+    """Revoke every active session for a user except the current one."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND id != ? AND revoked_at IS NULL
+            """,
+            (time.time(), user_id, current_session_id),
+        )
+        conn.commit()
+        return cursor.rowcount
     finally:
         conn.close()
 
@@ -4304,6 +4431,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         if cursor.fetchone():
             cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (student_id,))
             deleted_counts["recently_viewed_jobs"] = cursor.rowcount
+
+        # 15b. Delete server-side authentication sessions
+        cursor.execute("DELETE FROM auth_sessions WHERE user_id = ?", (student_id,))
+        deleted_counts["auth_sessions"] = cursor.rowcount
 
         # 16. Finally, delete the student account from users table
         cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))
