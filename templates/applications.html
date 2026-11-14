@@ -161,6 +161,73 @@
       </div>
     </section>
 
+    <!-- Personal Application Funnel Analytics -->
+    <section class="card border-0 shadow-sm rounded-4 p-4 mb-4" aria-labelledby="funnelAnalyticsHeading">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Your Search Progress</span>
+          <h4 class="fw-bold mb-1" id="funnelAnalyticsHeading">
+            <i class="fa-solid fa-chart-line text-primary me-2"></i>Personal Application Funnel
+          </h4>
+          <p class="text-secondary small mb-0">
+            Based only on your {{ funnel_analytics.total_applications }} tracked application record{{ '' if funnel_analytics.total_applications == 1 else 's' }}.
+          </p>
+        </div>
+        {% if funnel_analytics.has_enough_data %}
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2">
+            <i class="fa-solid fa-chart-simple me-1"></i>Rates based on {{ funnel_analytics.sample_size }} applications
+          </span>
+        {% endif %}
+      </div>
+
+      {% if funnel_analytics.total_applications == 0 %}
+        <div class="p-4 rounded-4 bg-light text-center text-secondary">
+          <i class="fa-solid fa-seedling fa-2x text-primary mb-2"></i>
+          <h6 class="fw-bold text-dark">Your funnel will appear here</h6>
+          <p class="small mb-3">Add applications to see how your search is progressing from application to interview and offer.</p>
+          <button class="btn btn-primary btn-sm rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#newApplicationModal">
+            <i class="fa-solid fa-plus me-1"></i> Add your first application
+          </button>
+        </div>
+      {% else %}
+        <div class="row g-3 mb-3">
+          <div class="col-6 col-md-3">
+            <div class="p-3 rounded-3 bg-light border h-100">
+              <div class="small text-muted">Applications</div>
+              <div class="fs-4 fw-bold text-dark">{{ funnel_analytics.total_applications }}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="p-3 rounded-3 bg-light border h-100">
+              <div class="small text-muted">Reached interview</div>
+              <div class="fs-4 fw-bold text-primary">{{ funnel_analytics.interview_count }}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="p-3 rounded-3 bg-light border h-100">
+              <div class="small text-muted">Offers (Selected)</div>
+              <div class="fs-4 fw-bold text-success">{{ funnel_analytics.offer_count }}</div>
+            </div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="p-3 rounded-3 bg-light border h-100">
+              <div class="small text-muted">Interview / offer rates</div>
+              {% if funnel_analytics.has_enough_data %}
+                <div class="fw-bold text-dark">{{ funnel_analytics.interview_rate }}% / {{ funnel_analytics.offer_rate }}%</div>
+              {% else %}
+                <div class="fw-bold text-secondary">Not enough data</div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="small text-secondary">
+          <i class="fa-solid fa-circle-info text-primary me-1"></i>
+          {{ funnel_analytics.calculation_note }}
+          {{ funnel_analytics.reliability_note }}
+        </div>
+      {% endif %}
+    </section>
+
     <!-- Advanced Search & Multi-Parameter Filter Toolbar -->
     <div class="card border-0 shadow-sm rounded-4 p-4 mb-4">
       <form method="GET" action="/applications" class="row g-3 align-items-end" id="filterForm">
