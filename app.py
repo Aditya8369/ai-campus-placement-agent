@@ -3558,50 +3558,39 @@ def api_evaluate_star():
 
 
 # ============================================================================
-# SUBJECT-BASED INTERVIEWS ENDPOINTS (#272)
+# INTERVIEW PERFORMANCE BREAKDOWN ENDPOINTS (#267)
 # ============================================================================
 
-@app.route("/api/interview/subjects", methods=["GET"])
-def api_get_interview_subjects():
+@app.route("/api/interview/<session_id>/breakdown", methods=["GET"])
+def api_get_interview_breakdown(session_id: str):
     """
-    Returns the catalog of technical subjects available for targeted interview practice
-    (Python, Java, SQL, DBMS, Operating Systems, Computer Networks).
+    Returns a comprehensive category and competency breakdown for a given interview session,
+    highlighting scores across Technical Knowledge, Communication, Problem-Solving,
+    Answer Relevance, along with top strengths and improvement areas.
     """
-    from utils.subject_interview_service import get_subject_catalog
-    return jsonify({
-        "status": "success",
-        "subjects": get_subject_catalog()
-    }), 200
+    try:
+        session = get_interview_session(session_id)
+        if not session:
+            return jsonify({"status": "error", "message": "Interview session not found."}), 404
 
+        from utils.interview_performance_breakdown import calculate_competency_breakdown
+        breakdown = calculate_competency_breakdown(session.get("answers", []))
+        summary = live_interview_agent.calculate_session_summary(session.get("answers", []))
 
-@app.route("/api/interview/subject/generate", methods=["POST"])
-def api_generate_subject_interview_question():
-    """Generates a targeted mock interview question for a specific technical subject."""
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
-    subject = payload.get("subject", "python")
-
-    from utils.subject_interview_service import generate_subject_question
-    q_data = generate_subject_question(subject)
-    return jsonify({
-        "status": "success",
-        "data": q_data
-    }), 200
-
-
-@app.route("/api/interview/subject/evaluate", methods=["POST"])
-def api_evaluate_subject_interview_answer():
-    """Evaluates a student's answer against the technical subject rubric."""
-    payload = request.get_json(silent=True) or request.form.to_dict() or {}
-    subject = payload.get("subject", "python")
-    question = payload.get("question", "")
-    answer = payload.get("answer", "")
-
-    from utils.subject_interview_service import evaluate_subject_answer
-    eval_res = evaluate_subject_answer(subject, question, answer)
-    return jsonify({
-        "status": "success",
-        "evaluation": eval_res
-    }), 200
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "overall_score": summary.get("overall_score", 0),
+            "readiness_verdict": summary.get("readiness_verdict"),
+            "category_scores": summary.get("category_scores", {}),
+            "competency_breakdown": breakdown,
+            "strengths": breakdown.get("strengths", []),
+            "improvements": breakdown.get("improvements", []),
+            "verbal_metrics": summary.get("verbal_metrics", {})
+        }), 200
+    except Exception as e:
+        logger.error(f"Error computing performance breakdown for {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to compute performance breakdown."}), 500
 
 
 @app.route("/interview/<analysis_id>/reset", methods=["POST"])

@@ -2313,6 +2313,45 @@ function initMockInterview() {
       if (modalStarRate) modalStarRate.innerText = `${summary.verbal_metrics.star_adherence_rate}`;
     }
 
+    // Populate Comprehensive Competency Breakdown (#267)
+    const compBreakdown = summary.competency_breakdown || {};
+    const comps = compBreakdown.competencies || {};
+
+    const bTechScore = document.getElementById("breakdownTechScore");
+    const bTechRating = document.getElementById("breakdownTechRating");
+    const bCommScore = document.getElementById("breakdownCommScore");
+    const bCommRating = document.getElementById("breakdownCommRating");
+    const bProbScore = document.getElementById("breakdownProbScore");
+    const bProbRating = document.getElementById("breakdownProbRating");
+    const bRelScore = document.getElementById("breakdownRelScore");
+    const bRelRating = document.getElementById("breakdownRelRating");
+
+    if (bTechScore && comps["Technical Knowledge"]) {
+      bTechScore.innerText = `${comps["Technical Knowledge"].score}%`;
+      if (bTechRating) bTechRating.innerText = comps["Technical Knowledge"].rating;
+    }
+    if (bCommScore && comps["Communication"]) {
+      bCommScore.innerText = `${comps["Communication"].score}%`;
+      if (bCommRating) bCommRating.innerText = comps["Communication"].rating;
+    }
+    if (bProbScore && comps["Problem-Solving"]) {
+      bProbScore.innerText = `${comps["Problem-Solving"].score}%`;
+      if (bProbRating) bProbRating.innerText = comps["Problem-Solving"].rating;
+    }
+    if (bRelScore && comps["Answer Relevance"]) {
+      bRelScore.innerText = `${comps["Answer Relevance"].score}%`;
+      if (bRelRating) bRelRating.innerText = comps["Answer Relevance"].rating;
+    }
+
+    const strengthsList = document.getElementById("modalStrengthsList");
+    if (strengthsList && compBreakdown.strengths?.length) {
+      strengthsList.innerHTML = compBreakdown.strengths.map((s) => `<li>${escapeHtml(s)}</li>`).join("");
+    }
+    const improvementsList = document.getElementById("modalImprovementsList");
+    if (improvementsList && compBreakdown.improvements?.length) {
+      improvementsList.innerHTML = compBreakdown.improvements.map((i) => `<li>${escapeHtml(i)}</li>`).join("");
+    }
+
     const bsModal = new bootstrap.Modal(modalEl);
     bsModal.show();
   }
