@@ -2289,6 +2289,12 @@ def dashboard(analysis_id: str) -> str:
     ats_score = int(resume_analysis.get("ats_score", 0))
     match_percentage = int(job_match.get("match_percentage", 0))
     skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
+    from utils.score_explanations import build_score_explanations
+    score_explanations = build_score_explanations(
+        resume_analysis=resume_analysis,
+        job_match=job_match,
+        resume_text=analysis_record.get("resume_text", ""),
+    )
 
     raw_jd = analysis_record.get("job_description", "") or ""
     has_custom_jd = bool(raw_jd.strip() and raw_jd.strip().lower() != "none provided. assume general software development engineer role.")
@@ -2349,7 +2355,8 @@ def dashboard(analysis_id: str) -> str:
         "status_summary": status_summary,
         "target_ats": target_ats,
         "target_match": target_match,
-        "top_recommendations": top_recommendations
+        "top_recommendations": top_recommendations,
+        "score_explanations": score_explanations,
     }
     # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
     results = analysis_record.get("results") or {}
@@ -2461,6 +2468,7 @@ def dashboard(analysis_id: str) -> str:
         skills_comparison_json=json.dumps(skills_comparison),
         skill_evidence=skill_evidence,
         skill_evidence_json=json.dumps(skill_evidence),
+        score_explanations=score_explanations,
         streak=streak_data
     )
 

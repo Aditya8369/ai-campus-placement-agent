@@ -277,6 +277,45 @@
         </div>
       </div>
 
+      <!-- Score Evidence Breakdown -->
+      {% set score_detail = r_sum.score_explanations if r_sum.score_explanations is defined else {} %}
+      <div class="p-3 p-md-4 rounded-4 bg-white border mb-4" id="scoreEvidenceSection">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">Score Evidence</span>
+            <h5 class="fw-bold mb-1"><i class="fa-solid fa-list-check text-primary me-2"></i>What shaped these scores?</h5>
+            <p class="text-secondary small mb-0">These signals explain the score; they do not guarantee an interview or job offer.</p>
+          </div>
+        </div>
+        <div class="row g-3">
+          {% for score_key, score_label, score_value, score_color in [
+            ('ats', 'ATS compatibility', r_sum.ats_score, 'success'),
+            ('job_match', 'Job match', r_sum.match_percentage ~ '%', 'primary')
+          ] %}
+            <div class="col-lg-6">
+              <div class="h-100 rounded-4 bg-light border p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                  <h6 class="fw-bold mb-0">{{ score_label }}</h6>
+                  <span class="badge bg-{{ score_color }}-subtle text-{{ score_color }} border border-{{ score_color }}-subtle rounded-pill">{{ score_value }}{% if score_key == 'ats' %}/100{% endif %}</span>
+                </div>
+                {% for factor in score_detail.get(score_key, []) %}
+                  <div class="{{ 'border-top pt-3 mt-3' if not loop.first else '' }}">
+                    <div class="fw-semibold small text-dark">{{ factor.title }}</div>
+                    <p class="small text-secondary mb-1">{{ factor.detail }}</p>
+                    {% for item in factor.evidence %}
+                      <div class="small text-muted ps-2 border-start border-2 border-{{ score_color }} mb-1">{{ item }}</div>
+                    {% endfor %}
+                    {% if factor.gap %}
+                      <div class="small text-warning-emphasis"><i class="fa-solid fa-arrow-trend-down me-1"></i>{{ factor.gap }}</div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
       <!-- Preparation Status Short Summary -->
       <div class="p-3 rounded-4 bg-light-subtle border mb-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
