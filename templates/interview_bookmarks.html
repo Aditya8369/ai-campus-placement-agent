@@ -91,6 +91,9 @@
         </p>
       </div>
       <div class="col-md-5 text-md-end mt-3 mt-md-0 d-flex gap-2 justify-content-md-end flex-wrap">
+        <a href="/interview/bookmarks/practice" class="btn btn-success rounded-pill px-3 shadow-sm btn-sm" title="Practice saved questions in focused mode">
+          <i class="fa-solid fa-bullseye me-1"></i> Practice Mode
+        </a>
         <a href="/interview/bookmarks/export" class="btn btn-outline-secondary rounded-pill px-3 shadow-sm btn-sm" title="Export saved questions to JSON">
           <i class="fa-solid fa-file-export me-1"></i> Export JSON
         </a>
@@ -278,12 +281,28 @@
 
           <!-- Action Footer -->
           <div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2">
-            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 btn-copy-question" 
-                    data-question="{{ b.question_text|escape }}"
-                    title="Copy question text to clipboard">
-              <i class="fa-regular fa-copy me-1"></i> Copy
-            </button>
             <div class="d-flex align-items-center gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 btn-copy-question" 
+                      data-question="{{ b.question_text|escape }}"
+                      title="Copy question text to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy
+              </button>
+              <a href="/interview/bookmarks/practice?question_id={{ b.question_id }}" 
+                 class="btn btn-sm btn-outline-success rounded-pill px-3" 
+                 title="Practice this question in focused mode">
+                <i class="fa-solid fa-play me-1"></i> Practice
+              </a>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              {% if b.is_practiced %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-check me-1"></i> Practiced
+                </span>
+              {% else %}
+                <span class="badge bg-light text-muted border rounded-pill px-2 py-1 small">
+                  <i class="fa-regular fa-clock me-1"></i> Unpracticed
+                </span>
+              {% endif %}
               <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-remove-bookmark" 
                       data-question-id="{{ b.question_id }}"
                       title="Remove bookmark">
