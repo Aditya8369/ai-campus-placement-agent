@@ -2560,9 +2560,306 @@ textarea:focus-visible {
   color: #adb5bd;
 }
 
-[data-bs-theme="dark"] .toggle-password-visibility:hover {
-  background-color: #343a40;
-  color: #f8f9fa;
+/* Mobile Navigation and Responsive Layout Enhancements (#279) */
+@media (max-width: 991.98px) {
+  /* Fluid and accessible navigation bar on tablet / mobile */
+  .navbar-nav {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    gap: 0.35rem;
+  }
+
+  .navbar-nav .nav-link {
+    padding: 0.6rem 1rem !important;
+    border-radius: var(--border-radius-sm, 8px);
+    font-size: 0.95rem;
+  }
+
+  .navbar-nav .nav-link:hover,
+  .navbar-nav .nav-link:focus {
+    background-color: var(--secondary-light, #e8f0fe);
+    color: var(--primary-blue, #1a73e8);
+  }
+
+  /* Improved touch targets for buttons and form elements (min 44px touch height) */
+  .btn,
+  .form-control,
+  .form-select,
+  .dropdown-toggle {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Prevent awkward table overflow on smaller viewports */
+  .table-responsive {
+    -webkit-overflow-scrolling: touch;
+    border-radius: var(--border-radius-sm, 8px);
+    box-shadow: inset -4px 0 6px -4px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Responsive card layouts */
+  .card {
+    border-radius: var(--border-radius-md, 16px);
+    margin-bottom: 1rem;
+  }
+
+  .card-body {
+    padding: 1.25rem !important;
+  }
+
+  /* Sticky mobile quick action bar */
+  .mobile-action-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1030;
+    background: var(--surface-bg, #ffffff);
+    border-top: 1px solid var(--border-color, #dadce0);
+    padding: 0.5rem 1rem;
+    box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Modal responsive sizing */
+  .modal-dialog {
+    margin: 0.5rem auto;
+    max-width: 95vw;
+  }
+
+  .modal-content {
+    border-radius: var(--border-radius-md, 16px);
+  }
+
+  /* Score radial progress and metric counters on mobile */
+  .metric-counter-tile {
+    padding: 1rem 0.75rem;
+  }
+
+  .metric-counter-tile h3 {
+    font-size: 1.5rem;
+  }
+
+  /* Filter pill scroll container */
+  .filter-pills-container {
+    overflow-x: auto;
+    white-space: nowrap;
+    padding-bottom: 0.5rem;
+    display: flex;
+    gap: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .filter-pills-container::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .filter-pills-container::-webkit-scrollbar-thumb {
+    background: var(--border-color, #dadce0);
+    border-radius: 4px;
+  }
 }
+
+@media (max-width: 767.98px) {
+  /* Medium phone and small tablet refinements */
+  .container,
+  .container-fluid {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  .hero-section {
+    padding: 2rem 0 !important;
+  }
+
+  .hero-title {
+    font-size: 1.85rem !important;
+    line-height: 1.25 !important;
+  }
+
+  .hero-subtitle {
+    font-size: 1rem !important;
+  }
+
+  /* Interview active question card mobile layout */
+  .interview-question-box {
+    padding: 1rem !important;
+    font-size: 1.05rem !important;
+  }
+
+  .interview-answer-textarea {
+    min-height: 140px !important;
+  }
+
+  /* Grid card collapse to single column */
+  .col-dashboard-card {
+    width: 100% !important;
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  /* Alert and badge mobile sizing */
+  .alert {
+    padding: 0.75rem 1rem !important;
+    font-size: 0.9rem !important;
+  }
+
+  .badge-status-pill {
+    padding: 0.35rem 0.65rem !important;
+    font-size: 0.8rem !important;
+  }
+}
+
+@media (max-width: 575.98px) {
+  /* Extra-small phone screens */
+  h1, .h1 {
+    font-size: 1.65rem !important;
+  }
+
+  h2, .h2 {
+    font-size: 1.4rem !important;
+  }
+
+  h3, .h3 {
+    font-size: 1.2rem !important;
+  }
+
+  .container {
+    padding-left: 0.85rem !important;
+    padding-right: 0.85rem !important;
+  }
+
+  /* Compact button groupings on small screens */
+  .btn-group-responsive {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.5rem;
+  }
+
+  .btn-group-responsive .btn {
+    width: 100%;
+  }
+
+  /* Full-width action buttons on checkout/submit panels */
+  .btn-mobile-full {
+    width: 100% !important;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Horizontal chips list scrollbar */
+  .horizontal-chips-scroll {
+    display: flex;
+    overflow-x: auto;
+    white-space: nowrap;
+    gap: 0.5rem;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Compact table font and paddings */
+  .table td, .table th {
+    padding: 0.5rem !important;
+    font-size: 0.85rem !important;
+  }
+
+  /* Header brand truncation for narrow screens */
+  .navbar-brand-custom {
+    max-width: 220px;
+  }
+
+  /* Mobile placement drawer and modal full-bleed options */
+  .drawer-mobile {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 280px;
+    height: 100vh;
+    z-index: 1050;
+    background: var(--surface-bg, #ffffff);
+    box-shadow: 4px 0 16px rgba(0, 0, 0, 0.15);
+    transform: translateX(-100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .drawer-mobile.show {
+    transform: translateX(0);
+  }
+
+  .drawer-mobile-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1040;
+    backdrop-filter: blur(2px);
+  }
+
+  /* Floating action button (FAB) for mobile quick tests */
+  .fab-mobile {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-blue, #1a73e8);
+    color: #ffffff;
+    box-shadow: 0 4px 12px rgba(26, 115, 232, 0.4);
+    z-index: 1020;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .fab-mobile:active {
+    transform: scale(0.92);
+  }
+
+  /* Touch pull-to-refresh and swipe indicators */
+  .swipe-indicator-bar {
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background-color: var(--border-color, #dadce0);
+    margin: 8px auto 16px auto;
+  }
+
+  /* Single column metric card stacks */
+  .metric-card-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .metric-card-stack .card {
+    margin-bottom: 0;
+  }
+
+  /* Code practice editor and console stacked layout */
+  .code-editor-mobile-view {
+    height: 320px !important;
+    font-size: 13px !important;
+  }
+
+  .code-console-mobile-view {
+    max-height: 180px;
+    font-size: 12px;
+  }
+
+  /* Full screen sticky bottom button for interview answer submissions */
+  .sticky-bottom-submit {
+    position: sticky;
+    bottom: 0;
+    background: var(--surface-bg, #ffffff);
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--border-color, #dadce0);
+    z-index: 1010;
+  }
+}
+}
+
+
 
 

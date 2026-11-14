@@ -233,7 +233,7 @@ def init_db() -> None:
             )
         """)
 
-        # Table 12b: Store bookmarked interview practice questions (#358)
+        # Table 12b: Store bookmarked interview practice questions (#358, #359)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS bookmarked_interview_questions (
                 id TEXT PRIMARY KEY,
@@ -244,11 +244,28 @@ def init_db() -> None:
                 company_name TEXT NOT NULL DEFAULT 'General',
                 notes TEXT DEFAULT '',
                 metadata_json TEXT DEFAULT '{}',
+                is_practiced INTEGER NOT NULL DEFAULT 0,
+                last_practiced_at TIMESTAMP,
+                practice_answer TEXT DEFAULT '',
+                practice_evaluation_json TEXT DEFAULT '{}',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(student_id, question_id)
             )
         """)
+        # Ensure #359 practice mode columns exist if table was previously created (#359)
+        cursor.execute("PRAGMA table_info(bookmarked_interview_questions)")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if "is_practiced" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN is_practiced INTEGER NOT NULL DEFAULT 0")
+        if "last_practiced_at" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN last_practiced_at TIMESTAMP")
+        if "practice_answer" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN practice_answer TEXT DEFAULT ''")
+        if "practice_evaluation_json" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN practice_evaluation_json TEXT DEFAULT '{}'")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_bookmarks_student ON bookmarked_interview_questions (student_id, category, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_bookmarks_practiced ON bookmarked_interview_questions (student_id, is_practiced, created_at DESC)")
 
         # Table 13: Store personal interview preparation notes (#235)
         cursor.execute("""
@@ -3755,31 +3772,39 @@ def remove_interview_bookmark(
 
 def get_interview_bookmarks(
     student_id: str,
-    category: Optional[str] = None
+    category: Optional[str] = None,
+    practiced_only: Optional[bool] = None
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves all bookmarked interview questions for a student (#358).
-    Optionally filters by category (Technical, Behavioral, HR, Company-Specific).
+    Retrieves all bookmarked interview questions for a student (#358, #359).
+    Optionally filters by category (Technical, Behavioral, HR, Company-Specific)
+    and practiced status.
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
         effective_student_id = (student_id or "default_student").strip()
 
+        conditions = ["student_id = ?"]
+        params = [effective_student_id]
+
         if category and category.strip().lower() not in ("all", ""):
-            cursor.execute("""
-                SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
-                FROM bookmarked_interview_questions
-                WHERE student_id = ? AND LOWER(category) = LOWER(?)
-                ORDER BY created_at DESC
-            """, (effective_student_id, category.strip()))
-        else:
-            cursor.execute("""
-                SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
-                FROM bookmarked_interview_questions
-                WHERE student_id = ?
-                ORDER BY created_at DESC
-            """, (effective_student_id,))
+            conditions.append("LOWER(category) = LOWER(?)")
+            params.append(category.strip())
+
+        if practiced_only is True:
+            conditions.append("is_practiced = 1")
+        elif practiced_only is False:
+            conditions.append("is_practiced = 0")
+
+        query = f"""
+            SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
+                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+            FROM bookmarked_interview_questions
+            WHERE {" AND ".join(conditions)}
+            ORDER BY created_at DESC
+        """
+        cursor.execute(query, tuple(params))
 
         rows = cursor.fetchall()
         bookmarks = []
@@ -3789,11 +3814,169 @@ def get_interview_bookmarks(
                 rec["metadata"] = json.loads(rec.get("metadata_json", "{}"))
             except Exception:
                 rec["metadata"] = {}
+            try:
+                rec["practice_evaluation"] = json.loads(rec.get("practice_evaluation_json", "{}"))
+            except Exception:
+                rec["practice_evaluation"] = {}
+            rec["is_practiced"] = bool(rec.get("is_practiced", 0))
             bookmarks.append(rec)
         return bookmarks
     except Exception as e:
         logger.error(f"Error fetching interview bookmarks for student {student_id}: {e}")
         return []
+    finally:
+        conn.close()
+
+
+def get_interview_bookmark_by_id(
+    student_id: str,
+    question_id: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single bookmarked interview question for a candidate (#359).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+
+        cursor.execute("""
+            SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
+                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+            FROM bookmarked_interview_questions
+            WHERE student_id = ? AND question_id = ?
+            LIMIT 1
+        """, (effective_student_id, q_id))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+        rec = dict(row)
+        try:
+            rec["metadata"] = json.loads(rec.get("metadata_json", "{}"))
+        except Exception:
+            rec["metadata"] = {}
+        try:
+            rec["practice_evaluation"] = json.loads(rec.get("practice_evaluation_json", "{}"))
+        except Exception:
+            rec["practice_evaluation"] = {}
+        rec["is_practiced"] = bool(rec.get("is_practiced", 0))
+        return rec
+    except Exception as e:
+        logger.error(f"Error fetching bookmark {question_id} for student {student_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def update_interview_bookmark_practice(
+    student_id: str,
+    question_id: str,
+    is_practiced: bool = True,
+    answer: str = "",
+    evaluation: Optional[Dict[str, Any]] = None
+) -> bool:
+    """
+    Updates the practice status and optionally stores the practice answer and evaluation (#359).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+        practiced_int = 1 if is_practiced else 0
+        eval_json = json.dumps(evaluation or {})
+
+        cursor.execute("""
+            UPDATE bookmarked_interview_questions
+            SET is_practiced = ?,
+                last_practiced_at = CURRENT_TIMESTAMP,
+                practice_answer = COALESCE(NULLIF(?, ''), practice_answer),
+                practice_evaluation_json = CASE WHEN ? != '{}' THEN ? ELSE practice_evaluation_json END
+            WHERE student_id = ? AND question_id = ?
+        """, (practiced_int, answer or "", eval_json, eval_json, effective_student_id, q_id))
+        conn.commit()
+        logger.info(f"Updated practice state for student {effective_student_id}, question {q_id} to {practiced_int}")
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error updating practice state for question {question_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def reset_interview_bookmarks_practice(
+    student_id: str,
+    question_id: Optional[str] = None
+) -> bool:
+    """
+    Resets practice progress for a specific question or all questions for a student (#359).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        if question_id:
+            cursor.execute("""
+                UPDATE bookmarked_interview_questions
+                SET is_practiced = 0,
+                    practice_answer = '',
+                    practice_evaluation_json = '{}'
+                WHERE student_id = ? AND question_id = ?
+            """, (effective_student_id, str(question_id).strip()))
+        else:
+            cursor.execute("""
+                UPDATE bookmarked_interview_questions
+                SET is_practiced = 0,
+                    practice_answer = '',
+                    practice_evaluation_json = '{}'
+                WHERE student_id = ?
+            """, (effective_student_id,))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception as e:
+        logger.error(f"Error resetting practice progress for student {student_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
+def get_interview_bookmark_practice_stats(
+    student_id: str
+) -> Dict[str, Any]:
+    """
+    Calculates practice progress metrics across bookmarked questions (#359).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        effective_student_id = (student_id or "default_student").strip()
+
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total,
+                SUM(CASE WHEN is_practiced = 1 THEN 1 ELSE 0 END) as practiced,
+                SUM(CASE WHEN is_practiced = 0 THEN 1 ELSE 0 END) as unpracticed
+            FROM bookmarked_interview_questions
+            WHERE student_id = ?
+        """, (effective_student_id,))
+        row = cursor.fetchone()
+        total = row["total"] if row and row["total"] else 0
+        practiced = row["practiced"] if row and row["practiced"] else 0
+        unpracticed = row["unpracticed"] if row and row["unpracticed"] else 0
+        pct = round((practiced / total) * 100, 1) if total > 0 else 0.0
+
+        return {
+            "total": total,
+            "practiced": practiced,
+            "unpracticed": unpracticed,
+            "percentage": pct
+        }
+    except Exception as e:
+        logger.error(f"Error calculating practice stats for student {student_id}: {e}")
+        return {"total": 0, "practiced": 0, "unpracticed": 0, "percentage": 0.0}
     finally:
         conn.close()
 
