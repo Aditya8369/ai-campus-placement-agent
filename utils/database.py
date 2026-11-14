@@ -103,6 +103,7 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS email_notification_preferences (
                 student_id TEXT PRIMARY KEY,
                 email TEXT,
+                output_language TEXT NOT NULL DEFAULT 'en',
                 email_enabled INTEGER NOT NULL DEFAULT 1,
                 notify_welcome INTEGER NOT NULL DEFAULT 1,
                 notify_application_created INTEGER NOT NULL DEFAULT 1,
@@ -362,6 +363,14 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
         if "token_created_at" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+
+        # Schema migration for generated-output language preferences
+        cursor.execute("PRAGMA table_info(email_notification_preferences)")
+        email_pref_cols = [col[1] for col in cursor.fetchall()]
+        if "output_language" not in email_pref_cols:
+            cursor.execute(
+                "ALTER TABLE email_notification_preferences ADD COLUMN output_language TEXT NOT NULL DEFAULT 'en'"
+            )
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -2067,6 +2076,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
             return {
                 "student_id": rec["student_id"],
                 "email": rec.get("email") or "",
+                "output_language": rec.get("output_language") or "en",
                 "email_enabled": bool(rec.get("email_enabled", 1)),
                 "notify_welcome": bool(rec.get("notify_welcome", 1)),
                 "notify_application_created": bool(rec.get("notify_application_created", 1)),
@@ -2077,6 +2087,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
         return {
             "student_id": effective_id,
             "email": "",
+            "output_language": "en",
             "email_enabled": True,
             "notify_welcome": True,
             "notify_application_created": True,
@@ -2089,6 +2100,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
         return {
             "student_id": student_id,
             "email": "",
+            "output_language": "en",
             "email_enabled": True,
             "notify_welcome": True,
             "notify_application_created": True,
@@ -2103,6 +2115,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
 def update_email_notification_preferences(
     student_id: str,
     email: Optional[str] = None,
+    output_language: str = "en",
     email_enabled: bool = True,
     notify_welcome: bool = True,
     notify_application_created: bool = True,
@@ -2119,12 +2132,13 @@ def update_email_notification_preferences(
         effective_id = (student_id or "default_student").strip()
         cursor.execute("""
             INSERT INTO email_notification_preferences (
-                student_id, email, email_enabled, notify_welcome,
+                student_id, email, output_language, email_enabled, notify_welcome,
                 notify_application_created, notify_status_change, notify_interview_reminder,
                 notify_deadline_reminder, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(student_id) DO UPDATE SET
                 email = coalesce(excluded.email, email_notification_preferences.email),
+                output_language = excluded.output_language,
                 email_enabled = excluded.email_enabled,
                 notify_welcome = excluded.notify_welcome,
                 notify_application_created = excluded.notify_application_created,
@@ -2135,6 +2149,7 @@ def update_email_notification_preferences(
         """, (
             effective_id,
             email.strip() if email else None,
+            (output_language or "en").strip().lower(),
             1 if email_enabled else 0,
             1 if notify_welcome else 0,
             1 if notify_application_created else 0,

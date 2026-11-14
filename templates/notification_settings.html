@@ -47,8 +47,8 @@
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, message in messages %}
-          <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} alert-dismissible fade show rounded-3" role="alert">
-            <i class="fa-solid {{ 'fa-circle-check text-success' if category == 'success' else 'fa-circle-exclamation text-danger' }} me-2"></i>
+          <div class="alert alert-{{ 'success' if category == 'success' else ('warning' if category == 'warning' else 'danger') }} alert-dismissible fade show rounded-3" role="alert">
+            <i class="fa-solid {{ 'fa-circle-check text-success' if category == 'success' else ('fa-triangle-exclamation text-warning' if category == 'warning' else 'fa-circle-exclamation text-danger') }} me-2"></i>
             {{ message }}
             <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
           </div>
@@ -71,6 +71,19 @@
                 <input type="email" class="form-control" id="email" name="email" value="{{ prefs.email }}" placeholder="your.name@university.edu">
               </div>
               <div class="form-text">All placement alerts and interview reminders will be delivered to this inbox.</div>
+            </div>
+
+            <div class="mb-4">
+              <label for="output_language" class="form-label fw-semibold">Language for generated reports and email summaries</label>
+              <select class="form-select" id="output_language" name="output_language">
+                {% for code in supported_output_locales %}
+                  <option value="{{ code }}" {% if prefs.output_language == code %}selected{% endif %}>{{ output_locale_names.get(code, code) }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text">
+                This controls generated reports and placement email summaries. Company names, technical terms, and links stay as provided.
+                English and Spanish are currently supported for these outputs; the interface may support additional languages.
+              </div>
             </div>
 
             <hr class="my-4">

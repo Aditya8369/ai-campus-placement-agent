@@ -4,6 +4,11 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Dict, Any, List, Optional
 import config
+from utils.output_localization import (
+    DEFAULT_OUTPUT_LOCALE,
+    output_text,
+    resolve_output_locale,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +36,24 @@ class EmailNotificationService:
         self.sender_email = getattr(config, "NOTIFICATION_SENDER_EMAIL", "placements@aicampus.edu")
         self.sender_name = "AI Campus Placement Agent"
 
-    def _format_html_layout(self, title: str, headline: str, body_content: str, cta_url: Optional[str] = None, cta_text: Optional[str] = None) -> str:
+    def _format_html_layout(
+        self,
+        title: str,
+        headline: str,
+        body_content: str,
+        cta_url: Optional[str] = None,
+        cta_text: Optional[str] = None,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
+    ) -> str:
         """
         Creates a clean, mobile-responsive HTML email template.
         """
+        resolved_locale, used_fallback = resolve_output_locale(locale)
+        language_notice = (
+            output_text("language_fallback", DEFAULT_OUTPUT_LOCALE)
+            if used_fallback
+            else output_text("language_notice", resolved_locale)
+        )
         cta_block = ""
         if cta_url and cta_text:
             cta_block = f"""
@@ -58,7 +77,7 @@ class EmailNotificationService:
             <!-- Header -->
             <div style="background: linear-gradient(135deg, #4f46e5 0%, #3730a3 100%); padding: 32px 24px; text-align: center; color: #ffffff;">
               <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.025em;">AI Campus Placement Agent</h1>
-              <p style="margin: 8px 0 0 0; font-size: 14px; color: #e0e7ff;">Your Autonomous Campus Placement Companion</p>
+              <p style="margin: 8px 0 0 0; font-size: 14px; color: #e0e7ff;">{language_notice}</p>
             </div>
             
             <!-- Content -->
@@ -129,7 +148,7 @@ class EmailNotificationService:
             logger.error(f"Unexpected error in email dispatch to {recipient_email}: {ex}")
             return False
 
-    def send_welcome_email(self, recipient_email: str, student_name: str) -> bool:
+    def send_welcome_email(self, recipient_email: str, student_name: str, locale: str = DEFAULT_OUTPUT_LOCALE) -> bool:
         """
         Dispatches welcome email upon student registration (#186).
         """
@@ -151,7 +170,8 @@ class EmailNotificationService:
             headline=headline,
             body_content=body,
             cta_url="http://localhost:5000/",
-            cta_text="Start First Placement Analysis"
+            cta_text="Start First Placement Analysis",
+            locale=locale,
         )
         return self.send_email(
             recipient_email=recipient_email,
@@ -163,7 +183,8 @@ class EmailNotificationService:
         self,
         recipient_email: str,
         reset_url: str,
-        student_name: str = ""
+        student_name: str = "",
+        locale: str = DEFAULT_OUTPUT_LOCALE,
     ) -> bool:
         """Send a secure password reset email."""
         import html
@@ -183,7 +204,8 @@ class EmailNotificationService:
             headline="Password Reset Request",
             body_content=body_content,
             cta_url=reset_url,
-            cta_text="Reset Password"
+            cta_text="Reset Password",
+            locale=locale,
         )
 
         plain_text = (
@@ -207,34 +229,58 @@ class EmailNotificationService:
         student_name: str,
         company_name: str,
         role_title: str,
-        applied_date: str
+        applied_date: str,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
     ) -> bool:
         """
         Dispatches confirmation when candidate logs a new application (#186).
         """
+        resolved_locale, _ = resolve_output_locale(locale)
         title = f"Application Recorded: {company_name}"
         headline = f"New Job Application Recorded for {company_name}"
+        company_label = "Empresa" if resolved_locale == "es" else "Company"
+        role_label = "Puesto" if resolved_locale == "es" else "Role"
+        date_label = "Fecha de solicitud" if resolved_locale == "es" else "Date Applied"
+        stage_label = "Etapa inicial" if resolved_locale == "es" else "Initial Stage"
+        applied_label = "Postulado" if resolved_locale == "es" else "Applied"
+        greeting = "Hola" if resolved_locale == "es" else "Hi"
+        recorded_message = (
+            "Has registrado correctamente una nueva solicitud de empleo en tu seguimiento:"
+            if resolved_locale == "es"
+            else "You have successfully logged a new job application in your Placement Tracker:"
+        )
+        follow_up = (
+            "Puedes seguir las etapas, guardar notas y adjuntar listas de preparación desde el panel de seguimiento."
+            if resolved_locale == "es"
+            else "You can track stages, record notes, and attach preparation checklists directly from the tracker dashboard."
+        )
         body = f"""
-        <p>Hi {student_name or 'there'},</p>
-        <p>You have successfully logged a new job application in your Placement Tracker:</p>
+        <p>{greeting} {student_name or 'there'},</p>
+        <p>{recorded_message}</p>
         <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; padding: 16px; border-radius: 8px; margin: 16px 0;">
-          <strong>Company:</strong> {company_name}<br>
-          <strong>Role:</strong> {role_title}<br>
-          <strong>Date Applied:</strong> {applied_date}<br>
-          <strong>Initial Stage:</strong> Applied
+          <strong>{company_label}:</strong> {company_name}<br>
+          <strong>{role_label}:</strong> {role_title}<br>
+          <strong>{date_label}:</strong> {applied_date}<br>
+          <strong>{stage_label}:</strong> {applied_label}
         </div>
-        <p>You can track stages, record notes, and attach preparation checklists directly from the tracker dashboard.</p>
+        <p>{follow_up}</p>
         """
         html = self._format_html_layout(
             title=title,
             headline=headline,
             body_content=body,
             cta_url="http://localhost:5000/applications",
-            cta_text="View Application Pipeline"
+            cta_text="Ver el flujo de solicitudes" if resolved_locale == "es" else "View Application Pipeline",
+            locale=locale,
+        )
+        subject = (
+            f"Solicitud registrada: {role_title} en {company_name}"
+            if resolved_locale == "es"
+            else f"Application Tracked: {role_title} at {company_name}"
         )
         return self.send_email(
             recipient_email=recipient_email,
-            subject=f"Application Tracked: {role_title} at {company_name}",
+            subject=subject,
             html_content=html
         )
 
@@ -246,7 +292,8 @@ class EmailNotificationService:
         role_title: str,
         previous_status: str,
         new_status: str,
-        notes: Optional[str] = None
+        notes: Optional[str] = None,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
     ) -> bool:
         """
         Dispatches notification when application pipeline stage changes (#186).
@@ -262,27 +309,48 @@ class EmailNotificationService:
 
         title = f"Application Status Updated: {company_name}"
         headline = f"Status Update: {company_name} - {role_title}"
-        notes_html = f"<p><strong>Notes:</strong> {notes}</p>" if notes else ""
+        resolved_locale, _ = resolve_output_locale(locale)
+        previous_label = "Etapa anterior" if resolved_locale == "es" else "Previous Stage"
+        new_label = "Nueva etapa" if resolved_locale == "es" else "New Stage"
+        notes_label = "Notas" if resolved_locale == "es" else "Notes"
+        notes_html = f"<p><strong>{notes_label}:</strong> {notes}</p>" if notes else ""
+        greeting = "Hola" if resolved_locale == "es" else "Hi"
+        transition_message = (
+            "El estado de tu solicitud para"
+            if resolved_locale == "es"
+            else "The status of your application for"
+        )
+        closing_message = (
+            "Revisa las próximas fechas límite y practica rondas de entrevista adaptadas en tu panel."
+            if resolved_locale == "es"
+            else "Make sure to review upcoming deadlines and practice tailored interview rounds on your dashboard."
+        )
         body = f"""
-        <p>Hi {student_name or 'there'},</p>
-        <p>The status of your application for <strong>{role_title}</strong> at <strong>{company_name}</strong> has transitioned:</p>
+        <p>{greeting} {student_name or 'there'},</p>
+        <p>{transition_message} <strong>{role_title}</strong> at <strong>{company_name}</strong> has transitioned:</p>
         <div style="background-color: #f8fafc; border-left: 4px solid {color}; padding: 16px; margin: 16px 0; border-radius: 4px;">
-          <div><span style="color: #64748b; font-size: 13px;">Previous Stage:</span> <strike>{previous_status}</strike></div>
-          <div style="font-size: 18px; font-weight: bold; color: {color}; margin-top: 4px;">New Stage: {new_status}</div>
+          <div><span style="color: #64748b; font-size: 13px;">{previous_label}:</span> <strike>{previous_status}</strike></div>
+          <div style="font-size: 18px; font-weight: bold; color: {color}; margin-top: 4px;">{new_label}: {new_status}</div>
           {notes_html}
         </div>
-        <p>Make sure to review upcoming deadlines and practice tailored interview rounds on your dashboard.</p>
+        <p>{closing_message}</p>
         """
         html = self._format_html_layout(
             title=title,
             headline=headline,
             body_content=body,
             cta_url="http://localhost:5000/applications",
-            cta_text="Open Job Tracker"
+            cta_text="Abrir el seguimiento" if resolved_locale == "es" else "Open Job Tracker",
+            locale=locale,
+        )
+        subject = (
+            f"Actualización de etapa [{new_status}]: {company_name} ({role_title})"
+            if resolved_locale == "es"
+            else f"Stage Update [{new_status}]: {company_name} ({role_title})"
         )
         return self.send_email(
             recipient_email=recipient_email,
-            subject=f"Stage Update [{new_status}]: {company_name} ({role_title})",
+            subject=subject,
             html_content=html
         )
 
@@ -293,35 +361,55 @@ class EmailNotificationService:
         company_name: str,
         interview_round: str,
         scheduled_time: str,
-        interview_link: Optional[str] = None
+        interview_link: Optional[str] = None,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
     ) -> bool:
         """
         Dispatches reminder for upcoming interview dates (#186).
         """
         title = f"Reminder: Upcoming Interview with {company_name}"
         headline = f"Interview Scheduled: {company_name}"
-        link_html = f"<p><strong>Meeting / Round Link:</strong> <a href='{interview_link}'>{interview_link}</a></p>" if interview_link else ""
+        resolved_locale, _ = resolve_output_locale(locale)
+        link_label = "Enlace de reunión / ronda" if resolved_locale == "es" else "Meeting / Round Link"
+        link_html = f"<p><strong>{link_label}:</strong> <a href='{interview_link}'>{interview_link}</a></p>" if interview_link else ""
+        greeting = "Hola" if resolved_locale == "es" else "Hi"
+        reminder_intro = (
+            "Este es un recordatorio de tu próxima ronda de entrevista de colocación:"
+            if resolved_locale == "es"
+            else "This is a reminder about your upcoming placement interview round:"
+        )
+        warmup = (
+            "Consejo: realiza una sesión de entrevista simulada de 5 minutos antes de tu llamada."
+            if resolved_locale == "es"
+            else "Quick Tip: Warm up your communication by doing a 5-minute simulated mock interview session before your real call."
+        )
         body = f"""
-        <p>Hi {student_name or 'there'},</p>
-        <p>This is a reminder about your upcoming placement interview round:</p>
+        <p>{greeting} {student_name or 'there'},</p>
+        <p>{reminder_intro}</p>
         <div style="background-color: #eef2ff; border: 1px solid #c7d2fe; padding: 16px; border-radius: 8px; margin: 16px 0;">
           <strong>Target Company:</strong> {company_name}<br>
           <strong>Round Category:</strong> {interview_round}<br>
           <strong>Scheduled Date/Time:</strong> {scheduled_time}<br>
           {link_html}
         </div>
-        <p>Quick Tip: Warm up your communication by doing a 5-minute simulated mock interview session before your real call.</p>
+        <p>{warmup}</p>
         """
         html = self._format_html_layout(
             title=title,
             headline=headline,
             body_content=body,
             cta_url="http://localhost:5000/interview-history",
-            cta_text="Launch Practice Warmup"
+            cta_text="Iniciar práctica" if resolved_locale == "es" else "Launch Practice Warmup",
+            locale=locale,
+        )
+        subject = (
+            f"Recordatorio: entrevista de {interview_round} con {company_name} a las {scheduled_time}"
+            if resolved_locale == "es"
+            else f"Reminder: {interview_round} Interview with {company_name} at {scheduled_time}"
         )
         return self.send_email(
             recipient_email=recipient_email,
-            subject=f"Reminder: {interview_round} Interview with {company_name} at {scheduled_time}",
+            subject=subject,
             html_content=html
         )
 
@@ -369,7 +457,8 @@ class EmailNotificationService:
         company_name: str,
         deadline_date: str,
         days_remaining: int,
-        portal_url: Optional[str] = None
+        portal_url: Optional[str] = None,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
     ) -> bool:
         """
         Dispatches deadline reminder email for upcoming application or interview milestones (#298).
@@ -381,6 +470,7 @@ class EmailNotificationService:
         safe_title = html.escape(title or "Application Deadline")
         safe_deadline = html.escape(deadline_date)
 
+        resolved_locale, _ = resolve_output_locale(locale)
         if days_remaining <= 0:
             urgency_text = "is due TODAY"
             subject_timing = "DUE TODAY"
@@ -399,19 +489,32 @@ class EmailNotificationService:
 
         cta = portal_url or "http://localhost:5000/applications"
 
+        target_label = "Fecha objetivo" if resolved_locale == "es" else "Target Date"
+        remaining_label = "Tiempo restante" if resolved_locale == "es" else "Time Remaining"
+        greeting = "Hola" if resolved_locale == "es" else "Hi"
+        reminder_message = (
+            "Este es un recordatorio automático de que tu fecha límite de solicitud registrada"
+            if resolved_locale == "es"
+            else "This is an automated reminder that your tracked application deadline"
+        )
+        preparation_message = (
+            "Asegúrate de completar a tiempo los materiales, evaluaciones en línea y tareas de preparación."
+            if resolved_locale == "es"
+            else "Make sure all required materials, online assessments, and interview prep milestones are completed on time."
+        )
         body = f"""
-        <p>Hi {safe_name},</p>
-        <p>This is an automated reminder that your tracked application deadline <strong>{urgency_text}</strong>:</p>
+        <p>{greeting} {safe_name},</p>
+        <p>{reminder_message} <strong>{urgency_text}</strong>:</p>
         <div style="background-color: {badge_bg}; border: 1px solid {badge_color}; padding: 16px; border-radius: 8px; margin: 16px 0;">
           <div style="font-size: 16px; font-weight: bold; color: {badge_color}; margin-bottom: 8px;">
             {safe_company} — {safe_title}
           </div>
           <div style="font-size: 14px; color: #1e293b;">
-            <strong>Target Date:</strong> {safe_deadline}<br>
-            <strong>Time Remaining:</strong> {days_remaining} day(s)
+            <strong>{target_label}:</strong> {safe_deadline}<br>
+            <strong>{remaining_label}:</strong> {days_remaining} day(s)
           </div>
         </div>
-        <p>Make sure all required materials, online assessments, and interview prep milestones are completed on time.</p>
+        <p>{preparation_message}</p>
         """
 
         html_content = self._format_html_layout(
@@ -419,10 +522,15 @@ class EmailNotificationService:
             headline="Upcoming Application Deadline",
             body_content=body,
             cta_url=cta,
-            cta_text="View Application in Tracker"
+            cta_text="Ver solicitud en el seguimiento" if resolved_locale == "es" else "View Application in Tracker",
+            locale=locale,
         )
 
-        subject = f"Reminder: {company_name} - {title} ({subject_timing})"
+        subject = (
+            f"Recordatorio: {company_name} - {title} ({subject_timing})"
+            if resolved_locale == "es"
+            else f"Reminder: {company_name} - {title} ({subject_timing})"
+        )
         return self.send_email(
             recipient_email=recipient_email,
             subject=subject,
