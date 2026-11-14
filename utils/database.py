@@ -2,6 +2,9 @@ import sqlite3
 import json
 import logging
 import uuid
+import hashlib
+import secrets
+import time
 from typing import Optional, List, Dict, Any, Union
 import config
 
@@ -98,11 +101,26 @@ def init_db() -> None:
             )
         """)
 
+        # Table 5b: Server-side registry for revocable authenticated sessions
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                client_label TEXT NOT NULL DEFAULT 'Web browser',
+                created_at REAL NOT NULL,
+                last_seen_at REAL NOT NULL,
+                revoked_at REAL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions (user_id, last_seen_at)")
+
                 # Table 6: Store user email notification preferences (#186, #298)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS email_notification_preferences (
                 student_id TEXT PRIMARY KEY,
                 email TEXT,
+                output_language TEXT NOT NULL DEFAULT 'en',
                 email_enabled INTEGER NOT NULL DEFAULT 1,
                 notify_welcome INTEGER NOT NULL DEFAULT 1,
                 notify_application_created INTEGER NOT NULL DEFAULT 1,
@@ -246,6 +264,22 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
 
+        # Table 13a: Store private annotations attached to an individual analysis
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS analysis_annotations (
+                id TEXT PRIMARY KEY,
+                analysis_id TEXT NOT NULL,
+                student_id TEXT NOT NULL,
+                annotation_type TEXT NOT NULL DEFAULT 'note',
+                section TEXT NOT NULL DEFAULT 'General',
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                CHECK(annotation_type IN ('note', 'highlight'))
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_annotations_owner ON analysis_annotations (student_id, analysis_id, updated_at DESC)")
+
         # Table 13b: Store private saved job descriptions for reuse
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS saved_job_descriptions (
@@ -362,6 +396,14 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
         if "token_created_at" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+
+        # Schema migration for generated-output language preferences
+        cursor.execute("PRAGMA table_info(email_notification_preferences)")
+        email_pref_cols = [col[1] for col in cursor.fetchall()]
+        if "output_language" not in email_pref_cols:
+            cursor.execute(
+                "ALTER TABLE email_notification_preferences ADD COLUMN output_language TEXT NOT NULL DEFAULT 'en'"
+            )
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -2033,6 +2075,116 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+def create_auth_session(user_id: str, client_label: str) -> Dict[str, str]:
+    """Create an opaque, server-tracked session that can later be revoked."""
+    session_id = str(uuid.uuid4())
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    now = time.time()
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO auth_sessions
+                (id, user_id, token_hash, client_label, created_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, user_id, token_hash, client_label or "Web browser", now, now),
+        )
+        conn.commit()
+        return {"id": session_id, "token": token}
+    finally:
+        conn.close()
+
+
+def get_active_auth_session(session_id: str, token: str, user_id: str) -> Optional[Dict[str, Any]]:
+    """Return a session only when its opaque token is valid and it has not been revoked."""
+    if not session_id or not token or not user_id:
+        return None
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, user_id, client_label, created_at, last_seen_at
+            FROM auth_sessions
+            WHERE id = ? AND user_id = ? AND token_hash = ? AND revoked_at IS NULL
+            """,
+            (session_id, user_id, token_hash),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def touch_auth_session(session_id: str, user_id: str) -> None:
+    """Update activity for a currently valid session without exposing client details."""
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            "UPDATE auth_sessions SET last_seen_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+            (time.time(), session_id, user_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_active_auth_sessions(user_id: str, timeout_seconds: int) -> List[Dict[str, Any]]:
+    """List non-revoked sessions active within the configured inactivity window."""
+    cutoff = time.time() - max(int(timeout_seconds), 1)
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, client_label, created_at, last_seen_at
+            FROM auth_sessions
+            WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
+            ORDER BY last_seen_at DESC
+            """,
+            (user_id, cutoff),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def revoke_auth_session(user_id: str, session_id: str) -> bool:
+    """Revoke one session only when it belongs to the requesting user."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE id = ? AND user_id = ? AND revoked_at IS NULL
+            """,
+            (time.time(), session_id, user_id),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def revoke_other_auth_sessions(user_id: str, current_session_id: str) -> int:
+    """Revoke every active session for a user except the current one."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND id != ? AND revoked_at IS NULL
+            """,
+            (time.time(), user_id, current_session_id),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
 def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
     """Retrieve a user by their ID."""
     conn = get_db_connection()
@@ -2067,6 +2219,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
             return {
                 "student_id": rec["student_id"],
                 "email": rec.get("email") or "",
+                "output_language": rec.get("output_language") or "en",
                 "email_enabled": bool(rec.get("email_enabled", 1)),
                 "notify_welcome": bool(rec.get("notify_welcome", 1)),
                 "notify_application_created": bool(rec.get("notify_application_created", 1)),
@@ -2077,6 +2230,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
         return {
             "student_id": effective_id,
             "email": "",
+            "output_language": "en",
             "email_enabled": True,
             "notify_welcome": True,
             "notify_application_created": True,
@@ -2089,6 +2243,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
         return {
             "student_id": student_id,
             "email": "",
+            "output_language": "en",
             "email_enabled": True,
             "notify_welcome": True,
             "notify_application_created": True,
@@ -2103,6 +2258,7 @@ def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
 def update_email_notification_preferences(
     student_id: str,
     email: Optional[str] = None,
+    output_language: str = "en",
     email_enabled: bool = True,
     notify_welcome: bool = True,
     notify_application_created: bool = True,
@@ -2119,12 +2275,13 @@ def update_email_notification_preferences(
         effective_id = (student_id or "default_student").strip()
         cursor.execute("""
             INSERT INTO email_notification_preferences (
-                student_id, email, email_enabled, notify_welcome,
+                student_id, email, output_language, email_enabled, notify_welcome,
                 notify_application_created, notify_status_change, notify_interview_reminder,
                 notify_deadline_reminder, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(student_id) DO UPDATE SET
                 email = coalesce(excluded.email, email_notification_preferences.email),
+                output_language = excluded.output_language,
                 email_enabled = excluded.email_enabled,
                 notify_welcome = excluded.notify_welcome,
                 notify_application_created = excluded.notify_application_created,
@@ -2135,6 +2292,7 @@ def update_email_notification_preferences(
         """, (
             effective_id,
             email.strip() if email else None,
+            (output_language or "en").strip().lower(),
             1 if email_enabled else 0,
             1 if notify_welcome else 0,
             1 if notify_application_created else 0,
@@ -3647,6 +3805,154 @@ def get_note_category_counts(
         conn.close()
 
 
+def create_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_type: str,
+    section: str,
+    content: str,
+) -> Dict[str, Any]:
+    """Create a private user annotation scoped to one owned analysis."""
+    clean_type = annotation_type.strip().lower() if annotation_type else "note"
+    if clean_type not in ("note", "highlight"):
+        clean_type = "note"
+    clean_section = (section or "General").strip()[:100] or "General"
+    clean_content = (content or "").strip()
+    if not clean_content:
+        raise ValueError("Annotation content cannot be empty.")
+
+    annotation_id = f"annotation-{uuid.uuid4().hex[:12]}"
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """
+            INSERT INTO analysis_annotations
+                (id, analysis_id, student_id, annotation_type, section, content)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                annotation_id,
+                str(analysis_id).strip(),
+                (student_id or "default_student").strip(),
+                clean_type,
+                clean_section,
+                clean_content[:5000],
+            ),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM analysis_annotations WHERE id = ?",
+            (annotation_id,),
+        ).fetchone()
+        return dict(row) if row else {}
+    finally:
+        conn.close()
+
+
+def get_analysis_annotations(student_id: str, analysis_id: str) -> List[Dict[str, Any]]:
+    """Return only the requesting student's annotations for the specified analysis."""
+    conn = get_db_connection()
+    try:
+        rows = conn.execute(
+            """
+            SELECT id, analysis_id, student_id, annotation_type, section, content, created_at, updated_at
+            FROM analysis_annotations
+            WHERE student_id = ? AND analysis_id = ?
+            ORDER BY updated_at DESC, created_at DESC
+            """,
+            ((student_id or "default_student").strip(), str(analysis_id).strip()),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_id: str,
+) -> Optional[Dict[str, Any]]:
+    """Fetch one annotation only when it belongs to the requesting user and analysis."""
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            """
+            SELECT id, analysis_id, student_id, annotation_type, section, content, created_at, updated_at
+            FROM analysis_annotations
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def update_analysis_annotation(
+    student_id: str,
+    analysis_id: str,
+    annotation_id: str,
+    annotation_type: str,
+    section: str,
+    content: str,
+) -> bool:
+    """Update an annotation only when both its owner and analysis match."""
+    clean_type = annotation_type.strip().lower() if annotation_type else "note"
+    if clean_type not in ("note", "highlight"):
+        clean_type = "note"
+    clean_section = (section or "General").strip()[:100] or "General"
+    clean_content = (content or "").strip()
+    if not clean_content:
+        return False
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE analysis_annotations
+            SET annotation_type = ?, section = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                clean_type,
+                clean_section,
+                clean_content[:5000],
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def delete_analysis_annotation(student_id: str, analysis_id: str, annotation_id: str) -> bool:
+    """Delete an annotation only when it belongs to the requesting user and analysis."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            DELETE FROM analysis_annotations
+            WHERE id = ? AND student_id = ? AND analysis_id = ?
+            """,
+            (
+                str(annotation_id).strip(),
+                (student_id or "default_student").strip(),
+                str(analysis_id).strip(),
+            ),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
 def record_viewed_job(
     student_id: str,
     job_id: str,
@@ -4012,6 +4318,10 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         summary["tables"]["interview_preparation_notes"] = cursor.fetchone()[0]
 
+        # Count in analysis-specific private annotations
+        cursor.execute("SELECT COUNT(*) FROM analysis_annotations WHERE student_id = ?", (student_id,))
+        summary["tables"]["analysis_annotations"] = cursor.fetchone()[0]
+
         # Count in saved job descriptions
         cursor.execute("SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         summary["tables"]["saved_job_descriptions"] = cursor.fetchone()[0]
@@ -4090,6 +4400,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         cursor.execute("DELETE FROM interview_preparation_notes WHERE student_id = ?", (student_id,))
         deleted_counts["interview_preparation_notes"] = cursor.rowcount
 
+        # 12a. Delete analysis-specific private annotations
+        cursor.execute("DELETE FROM analysis_annotations WHERE student_id = ?", (student_id,))
+        deleted_counts["analysis_annotations"] = cursor.rowcount
+
         # 12b. Delete saved job descriptions
         cursor.execute("DELETE FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         deleted_counts["saved_job_descriptions"] = cursor.rowcount
@@ -4117,6 +4431,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         if cursor.fetchone():
             cursor.execute("DELETE FROM recently_viewed_jobs WHERE student_id = ?", (student_id,))
             deleted_counts["recently_viewed_jobs"] = cursor.rowcount
+
+        # 15b. Delete server-side authentication sessions
+        cursor.execute("DELETE FROM auth_sessions WHERE user_id = ?", (student_id,))
+        deleted_counts["auth_sessions"] = cursor.rowcount
 
         # 16. Finally, delete the student account from users table
         cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))

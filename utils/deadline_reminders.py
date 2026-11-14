@@ -468,7 +468,8 @@ def send_upcoming_deadline_reminders(
                 title=title,
                 company_name=comp,
                 deadline_date=d_str,
-                days_remaining=days_remaining
+                days_remaining=days_remaining,
+                locale=email_pref.get("output_language", "en")
             )
             if sent:
                 now_iso = ref_now.isoformat() if isinstance(ref_now, datetime) else datetime.now(timezone.utc).isoformat()

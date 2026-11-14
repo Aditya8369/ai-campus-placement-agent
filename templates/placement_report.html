@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Placement Readiness Report - {{ report_data.company_name }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --blue: #175cd3;
+      --blue-light: #eef4ff;
+      --text: #1f2937;
+      --muted: #4b5563;
+      --border: #d1d5db;
+      --surface: #ffffff;
+      --page: #f8fafc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: var(--page);
+      color: var(--text);
+      font: 1rem/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+    }
+
+    a {
+      color: #155eef;
+    }
+
+    a:focus-visible,
+    button:focus-visible {
+      outline: 3px solid #f59e0b;
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      background: #111827;
+      color: #fff;
+      left: 1rem;
+      padding: .5rem .75rem;
+      position: absolute;
+      top: -4rem;
+      z-index: 1;
+    }
+
+    .skip-link:focus {
+      top: 1rem;
+    }
+
+    .container {
+      margin: 0 auto;
+      max-width: 1100px;
+      padding: 1rem;
+    }
+
+    .report-header,
+    .report-section,
+    .report-footer {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: .75rem;
+      margin-bottom: 1rem;
+      padding: 1.25rem;
+    }
+
+    .report-header {
+      border-top: .4rem solid var(--blue);
+    }
+
+    h1,
+    h2,
+    h3 {
+      line-height: 1.25;
+    }
+
+    h1 {
+      color: var(--blue);
+      font-size: clamp(1.7rem, 4vw, 2.5rem);
+      margin: 0 0 .5rem;
+    }
+
+    h2 {
+      border-bottom: 2px solid var(--blue-light);
+      color: var(--blue);
+      font-size: 1.45rem;
+      margin: 0 0 1rem;
+      padding-bottom: .4rem;
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      margin: 1.25rem 0 .5rem;
+    }
+
+    .meta,
+    .muted {
+      color: var(--muted);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+      margin-top: 1rem;
+    }
+
+    .button {
+      background: var(--blue);
+      border: 2px solid var(--blue);
+      border-radius: .4rem;
+      color: #fff;
+      display: inline-block;
+      font-weight: 600;
+      padding: .55rem .85rem;
+      text-decoration: none;
+    }
+
+    .button.secondary {
+      background: #fff;
+      color: var(--blue);
+    }
+
+    .metrics {
+      display: grid;
+      gap: .75rem;
+      grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+      margin-top: 1.25rem;
+    }
+
+    .metric {
+      background: var(--blue-light);
+      border: 1px solid #b8d2ff;
+      border-radius: .5rem;
+      padding: .9rem;
+    }
+
+    .metric dt {
+      font-weight: 700;
+    }
+
+    .metric dd {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin: .2rem 0 0;
+    }
+
+    ul,
+    ol {
+      padding-left: 1.5rem;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      min-width: 44rem;
+      width: 100%;
+    }
+
+    caption {
+      font-weight: 700;
+      margin-bottom: .5rem;
+      text-align: left;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--border);
+      padding: .7rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    .roadmap-item {
+      border-left: .3rem solid var(--blue);
+      margin: 1rem 0;
+      padding: .1rem 0 .1rem 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: .5rem;
+      }
+
+      .report-header,
+      .report-section,
+      .report-footer {
+        border-radius: .4rem;
+        padding: 1rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <a class="skip-link" href="#report-content">Skip to report content</a>
+  <div class="container">
+    <header class="report-header">
+      <p class="meta">AI Campus Placement Agent</p>
+      <h1>Placement Readiness Report</h1>
+      <p class="meta">
+        Preparation analysis and learning roadmap for <strong>{{ report_data.company_name }}</strong>.
+        Resume: {{ report_data.resume_filename }}. Evaluated: {{ report_data.created_at }}.
+      </p>
+      <nav class="actions" aria-label="Report actions">
+        <a class="button" href="{{ url_for('download_pdf_report', analysis_id=report_data.analysis_id) }}">Download PDF report</a>
+        <a class="button secondary" href="{{ url_for('dashboard', analysis_id=report_data.analysis_id) }}">Return to analysis dashboard</a>
+      </nav>
+      <dl class="metrics" aria-label="Placement scores">
+        <div class="metric">
+          <dt>ATS score</dt>
+          <dd>{{ report_data.ats_score }}/100</dd>
+        </div>
+        <div class="metric">
+          <dt>Job match score</dt>
+          <dd>{{ report_data.match_percentage }}%</dd>
+        </div>
+      </dl>
+    </header>
+
+    <main id="report-content">
+      <section class="report-section" aria-labelledby="summary-heading">
+        <h2 id="summary-heading">Executive resume summary</h2>
+        <p>{{ report_data.results.resume_analysis.summary or "No summary available." }}</p>
+      </section>
+
+      <section class="report-section" aria-labelledby="recommendation-heading">
+        <h2 id="recommendation-heading">Overall recommendation</h2>
+        <p>{{ report_data.results.overall_recommendation_summary or report_data.results.resume_analysis.overall_recommendation or "Overall campus placement analysis successfully compiled." }}</p>
+      </section>
+
+      {% if report_data.results.conflicts %}
+      <section class="report-section" aria-labelledby="advisory-heading">
+        <h2 id="advisory-heading">Placement advisory: contradictions detected</h2>
+        <p>Review these conflicting automated findings before finalizing your preparation plan.</p>
+        <ul>
+          {% for conflict in report_data.results.conflicts %}
+          <li><strong>{{ conflict.conflict_type or "Advisory" }}:</strong> {{ conflict.skill or "Unknown skill" }} — {{ conflict.rule_description or "Potential contradiction in skill classification." }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      <section class="report-section" aria-labelledby="resume-analysis-heading">
+        <h2 id="resume-analysis-heading">Resume analysis details</h2>
+        <h3>Strengths</h3>
+        {% if report_data.results.resume_analysis.strengths %}
+        <ul>{% for item in report_data.results.resume_analysis.strengths %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}<p class="muted">No specific strengths noted.</p>{% endif %}
+
+        <h3>Weaknesses and areas of improvement</h3>
+        {% if report_data.results.resume_analysis.weaknesses %}
+        <ul>{% for item in report_data.results.resume_analysis.weaknesses %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}<p class="muted">No critical weaknesses detected.</p>{% endif %}
+
+        <h3>Grammar and formatting suggestions</h3>
+        {% set suggestions = (report_data.results.resume_analysis.grammar_suggestions or []) + (report_data.results.resume_analysis.formatting_suggestions or []) %}
+        {% if suggestions %}
+        <ul>{% for item in suggestions %}<li>{{ item }}</li>{% endfor %}</ul>
+        {% else %}<p class="muted">Formatting and grammar follow standard industry guidelines.</p>{% endif %}
+      </section>
+
+      <section class="report-section" aria-labelledby="adjustments-heading">
+        <h2 id="adjustments-heading">Top five job-matching adjustments</h2>
+        {% if report_data.results.job_match.top_5_resume_changes %}
+        <ol>{% for item in report_data.results.job_match.top_5_resume_changes[:5] %}<li>{{ item }}</li>{% endfor %}</ol>
+        {% else %}<p class="muted">No critical adjustments required for the target profile.</p>{% endif %}
+      </section>
+
+      <section class="report-section" aria-labelledby="gaps-heading">
+        <h2 id="gaps-heading">Skill gap assessment</h2>
+        <p>The table documents skills required for the target role that were not identified in the resume, with suggested learning paths and projects.</p>
+        {% if report_data.results.skill_gap %}
+        <div class="table-wrap">
+          <table>
+            <caption>Identified skill gaps and preparation actions</caption>
+            <thead>
+              <tr>
+                <th scope="col">Skill</th>
+                <th scope="col">Importance</th>
+                <th scope="col">Estimated time</th>
+                <th scope="col">Learning resource and mini-project</th>
+                <th scope="col">Priority</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for gap in report_data.results.skill_gap %}
+              <tr>
+                <th scope="row">{{ gap.skill or "N/A" }}</th>
+                <td>{{ gap.importance or "N/A" }}</td>
+                <td>{{ gap.learning_time or "N/A" }}</td>
+                <td>
+                  {% set resource = gap.learning_resource or "" %}
+                  {% if resource.startswith("http://") or resource.startswith("https://") %}
+                  <a href="{{ resource }}">Open the {{ gap.skill or "skill" }} learning resource</a>
+                  {% else %}{{ resource or "No resource listed." }}{% endif %}
+                  <br><strong>Mini-project:</strong> {{ gap.project_suggestion or "N/A" }}
+                </td>
+                <td>{{ gap.priority or "N/A" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}<p class="muted">No major skill gaps identified relative to the target role.</p>{% endif %}
+      </section>
+
+      <section class="report-section" aria-labelledby="roadmap-heading">
+        <h2 id="roadmap-heading">Six-week learning roadmap</h2>
+        <p>Follow this personalized study plan to bridge gaps and practice for interviews.</p>
+        {% if report_data.results.learning_roadmap %}
+          {% for week in report_data.results.learning_roadmap %}
+          <article class="roadmap-item" aria-labelledby="week-{{ loop.index }}">
+            <h3 id="week-{{ loop.index }}">{{ week.week or "Week " ~ loop.index }} ({{ week.estimated_hours or 10 }} hours)</h3>
+            <p><strong>Topics to cover:</strong> {{ (week.topics or [])|join(", ") or "None" }}</p>
+            <p><strong>Coding practice:</strong> {{ (week.coding_practice or [])|join(", ") or "None" }}</p>
+            <p><strong>Mini-projects:</strong> {{ (week.mini_projects or [])|join(", ") or "None" }}</p>
+            {% if week.interview_questions %}<p><strong>Interview questions:</strong> {{ (week.interview_questions or [])|join("; ") }}</p>{% endif %}
+            <p><strong>Revision tasks:</strong> {{ (week.revision_tasks or [])|join(", ") or "None" }}</p>
+          </article>
+          {% endfor %}
+        {% else %}<p class="muted">No learning roadmap is available.</p>{% endif %}
+      </section>
+    </main>
+
+    <footer class="report-footer muted">
+      <p>This report summarizes the available automated placement analysis. Scores and recommendations are guidance, not a guarantee of an interview or job offer.</p>
+    </footer>
+  </div>
+</body>
+
+</html>

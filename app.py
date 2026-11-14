@@ -8,7 +8,7 @@ import re
 import secrets
 import hashlib
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
 from flask import (
@@ -66,6 +66,12 @@ from utils.database import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    create_auth_session,
+    get_active_auth_session,
+    touch_auth_session,
+    get_active_auth_sessions,
+    revoke_auth_session,
+    revoke_other_auth_sessions,
     save_job_application,
     get_job_applications,
     get_job_application_by_id,
@@ -112,6 +118,11 @@ from utils.database import (
     update_preparation_note,
     delete_preparation_note,
     get_note_category_counts,
+    create_analysis_annotation,
+    get_analysis_annotations,
+    get_analysis_annotation,
+    update_analysis_annotation,
+    delete_analysis_annotation,
     create_saved_job_description,
     get_saved_job_descriptions,
     get_saved_job_description_by_id,
@@ -197,6 +208,7 @@ from utils.pdf_reader import (
     validate_file_size,
     validate_pdf_content,
     ScannedPDFError,
+    PasswordProtectedPDFError,
     MAX_RESUME_TEXT_CHARS,
     ALLOWED_RESUME_EXTENSIONS,
 )
@@ -252,6 +264,12 @@ from utils.i18n import (
     DEFAULT_LOCALE,
     LOCALE_NAMES,
 )
+from utils.output_localization import (
+    DEFAULT_OUTPUT_LOCALE,
+    OUTPUT_LOCALE_NAMES,
+    SUPPORTED_OUTPUT_LOCALES,
+    resolve_output_locale,
+)
 
 # CSRF Protection & Token Security (#300)
 from utils.csrf import csrf, CSRFError, generate_csrf
@@ -289,6 +307,47 @@ csrf.init_app(app)
 app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+
+
+def _session_client_label() -> str:
+    """Return a coarse client description without storing raw user-agent or network data."""
+    user_agent = request.user_agent
+    browser = (user_agent.browser or "").lower()
+    platform = (user_agent.platform or "").lower()
+
+    if "edge" in browser or "edg" in browser:
+        browser_name = "Edge"
+    elif "firefox" in browser:
+        browser_name = "Firefox"
+    elif "safari" in browser and "chrome" not in browser:
+        browser_name = "Safari"
+    elif "chrome" in browser:
+        browser_name = "Chrome"
+    else:
+        browser_name = "Web browser"
+
+    if platform in ("iphone", "ipad", "ios"):
+        platform_name = "iOS"
+    elif platform == "android":
+        platform_name = "Android"
+    elif platform == "windows":
+        platform_name = "Windows"
+    elif platform == "macos":
+        platform_name = "macOS"
+    elif platform == "linux":
+        platform_name = "Linux"
+    else:
+        platform_name = "another device"
+    return f"{browser_name} on {platform_name}"
+
+
+def _format_session_timestamp(timestamp: Any) -> str:
+    """Format registry timestamps consistently without exposing more than date and time."""
+    try:
+        return datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return "Unknown"
+
 
 @app.before_request
 def require_login():
@@ -349,6 +408,41 @@ def require_login():
     }
 
     user_id = flask_session.get("user_id")
+
+    # Validate the server-side registry before allowing a signed cookie to access the account.
+    if user_id and request.endpoint not in ("logout", "api_session_logout"):
+        auth_session_id = flask_session.get("auth_session_id")
+        auth_session_token = flask_session.get("auth_session_token")
+        if auth_session_id and auth_session_token:
+            active_auth_session = get_active_auth_session(auth_session_id, auth_session_token, user_id)
+            if not active_auth_session:
+                logger.info("Rejected revoked or invalid authenticated session for user_id=%s", user_id)
+                flask_session.clear()
+                is_json_request = (
+                    request.path.startswith("/api/")
+                    or request.is_json
+                    or "application/json" in request.headers.get("Accept", "")
+                    or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+                )
+                if is_json_request:
+                    resp = jsonify({
+                        "status": "error",
+                        "error": "session_revoked",
+                        "message": "This session is no longer active. Please sign in again."
+                    })
+                    resp.status_code = 401
+                    resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                    return resp
+                flash("This session is no longer active. Please sign in again.", "warning")
+                resp = make_response(redirect(url_for("login")))
+                resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+                return resp
+            if request.endpoint not in ("api_session_status", "static"):
+                touch_auth_session(auth_session_id, user_id)
+        elif not app.config.get("TESTING") or app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            new_auth_session = create_auth_session(user_id, _session_client_label())
+            flask_session["auth_session_id"] = new_auth_session["id"]
+            flask_session["auth_session_token"] = new_auth_session["token"]
 
     # Inactivity check for authenticated sessions
     if user_id:
@@ -935,6 +1029,10 @@ def api_session_logout():
     """
     API endpoint to securely terminate session and clear credentials.
     """
+    current_user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    if current_user_id and current_session_id:
+        revoke_auth_session(current_user_id, current_session_id)
     flask_session.clear()
     resp = jsonify({
         "status": "ok",
@@ -949,6 +1047,10 @@ def api_session_logout():
 @app.route("/logout", methods=["GET", "POST"])
 def logout():
     was_expired = request.args.get("expired") == "1"
+    current_user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    if current_user_id and current_session_id:
+        revoke_auth_session(current_user_id, current_session_id)
     flask_session.clear()
     if was_expired:
         flash("Your session has expired due to inactivity. Please log in again.", "warning")
@@ -993,6 +1095,9 @@ def login():
         flask_session["user_name"] = user["name"]
         flask_session["last_activity"] = now
         flask_session["login_time"] = now
+        auth_session = create_auth_session(user["id"], _session_client_label())
+        flask_session["auth_session_id"] = auth_session["id"]
+        flask_session["auth_session_token"] = auth_session["token"]
         flask_session.permanent = True
 
         flash("Login successful.", "success")
@@ -1002,6 +1107,57 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/account/sessions", methods=["GET"])
+def account_sessions():
+    """Show the signed-in user's active sessions with privacy-conscious details."""
+    user_id = flask_session.get("user_id")
+    session_rows = get_active_auth_sessions(
+        user_id,
+        app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)),
+    )
+    current_session_id = flask_session.get("auth_session_id")
+    sessions = []
+    for session_row in session_rows:
+        session_item = dict(session_row)
+        session_item["is_current"] = session_item["id"] == current_session_id
+        session_item["created_display"] = _format_session_timestamp(session_item.get("created_at"))
+        session_item["last_seen_display"] = _format_session_timestamp(session_item.get("last_seen_at"))
+        sessions.append(session_item)
+    return render_template("account_sessions.html", sessions=sessions)
+
+
+@app.route("/account/sessions/revoke", methods=["POST"])
+def revoke_account_session():
+    """Revoke one of the current user's sessions, including the current session."""
+    user_id = flask_session.get("user_id")
+    session_id = (request.form.get("session_id") or "").strip()
+    current_session_id = flask_session.get("auth_session_id")
+    if not session_id or not revoke_auth_session(user_id, session_id):
+        flash("That session is no longer active.", "warning")
+        return redirect(url_for("account_sessions"))
+
+    if session_id == current_session_id:
+        flask_session.clear()
+        flash("This session has been revoked. Please sign in again.", "success")
+        return redirect(url_for("login"))
+
+    flash("The selected session was revoked.", "success")
+    return redirect(url_for("account_sessions"))
+
+
+@app.route("/account/sessions/revoke-others", methods=["POST"])
+def revoke_other_account_sessions():
+    """Revoke every active session except the session making this request."""
+    user_id = flask_session.get("user_id")
+    current_session_id = flask_session.get("auth_session_id")
+    revoked_count = revoke_other_auth_sessions(user_id, current_session_id)
+    flash(
+        f"Revoked {revoked_count} other session{'s' if revoked_count != 1 else ''}.",
+        "success",
+    )
+    return redirect(url_for("account_sessions"))
 
 
 @app.route("/account/delete", methods=["GET", "POST"])
@@ -1588,6 +1744,9 @@ def _extract_and_validate_resume(req):
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")
             return None, None, None, str(spe)
+        except PasswordProtectedPDFError:
+            logger.warning("Password-protected PDF rejected without logging credentials.")
+            return None, None, None, str(ppe)
         except ValueError as ve:
             logger.warning(f"Validation error reading resume file: {ve}")
             return None, None, None, str(ve)
@@ -2445,6 +2604,8 @@ def dashboard(analysis_id: str) -> str:
                 "skills": []
             }
 
+    analysis_annotations = get_analysis_annotations(student_id, analysis_id)
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -2468,6 +2629,123 @@ def dashboard(analysis_id: str) -> str:
         skill_gap_resources=skill_gap_resources,
         streak=streak_data
     )
+
+
+@app.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
+def save_analysis_annotation_view(analysis_id: str):
+    """Create or edit a private annotation attached to an owned analysis."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    annotation_id = (request.form.get("annotation_id") or "").strip()
+    annotation_type = request.form.get("annotation_type", "note").strip()
+    section = request.form.get("section", "General").strip()
+    content = request.form.get("content", "").strip()
+
+    if not content:
+        flash("Please enter a note or highlight before saving.", "warning")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+    if len(content) > 5000:
+        flash("Annotations must be 5,000 characters or fewer.", "warning")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+    try:
+        if annotation_id:
+            updated = update_analysis_annotation(
+                student_id, analysis_id, annotation_id, annotation_type, section, content
+            )
+            flash(
+                "Private analysis annotation updated." if updated else "Annotation not found or access denied.",
+                "success" if updated else "warning",
+            )
+        else:
+            create_analysis_annotation(student_id, analysis_id, annotation_type, section, content)
+            flash("Private analysis annotation saved.", "success")
+    except ValueError as exc:
+        flash(str(exc), "warning")
+    return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/dashboard/<analysis_id>/annotations/<annotation_id>/delete", methods=["POST"])
+def delete_analysis_annotation_view(analysis_id: str, annotation_id: str):
+    """Delete an owned private annotation without exposing another user's data."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    deleted = delete_analysis_annotation(student_id, analysis_id, annotation_id)
+    flash(
+        "Private annotation deleted." if deleted else "Annotation not found or access denied.",
+        "success" if deleted else "warning",
+    )
+    return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/api/analyses/<analysis_id>/annotations", methods=["GET", "POST"])
+def api_analysis_annotations(analysis_id: str):
+    """List or create private annotations for the authenticated owner's analysis."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or access denied."}), 404
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    if request.method == "GET":
+        return jsonify({"success": True, "annotations": get_analysis_annotations(student_id, analysis_id)})
+
+    payload = request.get_json(silent=True) or request.form
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "Annotation content is required."}), 400
+    if len(content) > 5000:
+        return jsonify({"success": False, "error": "Annotations must be 5,000 characters or fewer."}), 400
+
+    annotation = create_analysis_annotation(
+        student_id,
+        analysis_id,
+        (payload.get("annotation_type") or "note").strip(),
+        (payload.get("section") or "General").strip(),
+        content,
+    )
+    return jsonify({"success": True, "annotation": annotation}), 201
+
+
+@app.route("/api/analyses/<analysis_id>/annotations/<annotation_id>", methods=["PUT", "PATCH", "DELETE"])
+def api_analysis_annotation_item(analysis_id: str, annotation_id: str):
+    """Edit or delete one private annotation with owner and analysis checks."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or access denied."}), 404
+
+    student_id = analysis_record.get("student_id") or "default_student"
+    if not get_analysis_annotation(student_id, analysis_id, annotation_id):
+        return jsonify({"success": False, "error": "Annotation not found or access denied."}), 404
+
+    if request.method == "DELETE":
+        deleted = delete_analysis_annotation(student_id, analysis_id, annotation_id)
+        return jsonify({"success": deleted}), 200 if deleted else 404
+
+    payload = request.get_json(silent=True) or request.form
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"success": False, "error": "Annotation content is required."}), 400
+    if len(content) > 5000:
+        return jsonify({"success": False, "error": "Annotations must be 5,000 characters or fewer."}), 400
+
+    updated = update_analysis_annotation(
+        student_id,
+        analysis_id,
+        annotation_id,
+        (payload.get("annotation_type") or "note").strip(),
+        (payload.get("section") or "General").strip(),
+        content,
+    )
+    refreshed = get_analysis_annotation(student_id, analysis_id, annotation_id) if updated else None
+    return jsonify({"success": updated, "annotation": refreshed}), 200 if updated else 400
 
 
 @app.route("/api/analysis/<analysis_id>/skill-evidence", methods=["GET"])
@@ -3543,8 +3821,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -3558,7 +3844,7 @@ def download_pdf_report(analysis_id: str):
         return send_file(
             pdf_full_path,
             as_attachment=True,
-            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}.pdf",
+            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}_{output_language}.pdf",
             mimetype="application/pdf"
         )
 
@@ -3578,7 +3864,15 @@ def download_skills_gap_report(analysis_id: str):
             flash("Cannot generate Skills Gap report. Placement record not found.", "error")
             return redirect(url_for("index"))
 
-        pdf_output_name = f"Skills_Gap_Report_{analysis_id}.pdf"
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
+        pdf_output_name = f"Skills_Gap_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -3586,6 +3880,7 @@ def download_skills_gap_report(analysis_id: str):
                 generator_func=generate_skills_gap_pdf,
                 data=analysis_record,
                 output_path=pdf_full_path,
+                language=output_language,
                 report_type="Skills Gap and Upskilling Roadmap"
             )
 
@@ -4253,7 +4548,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -4346,7 +4642,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -5021,10 +5318,13 @@ def notification_settings_view():
         notify_status_change = request.form.get("notify_status_change") == "on"
         notify_interview_reminder = request.form.get("notify_interview_reminder") == "on"
         notify_deadline_reminder = request.form.get("notify_deadline_reminder") == "on"
+        requested_output_language = request.form.get("output_language", DEFAULT_OUTPUT_LOCALE)
+        output_language, output_language_fallback = resolve_output_locale(requested_output_language)
 
         update_email_notification_preferences(
             student_id=student_id,
             email=email or None,
+            output_language=output_language,
             email_enabled=email_enabled,
             notify_welcome=notify_welcome,
             notify_application_created=notify_application_created,
@@ -5040,7 +5340,13 @@ def notification_settings_view():
         except Exception as pref_err:
             logger.debug(f"Could not update student deadline preferences: {pref_err}")
 
-        flash("Email notification preferences updated successfully!", "success")
+        if output_language_fallback:
+            flash(
+                "The selected output language is not supported. Generated reports and summaries will use English.",
+                "warning",
+            )
+        else:
+            flash("Generated-output language preferences updated successfully!", "success")
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
@@ -5050,7 +5356,13 @@ def notification_settings_view():
             "preferences": prefs
         }), 200
 
-    return render_template("notification_settings.html", prefs=prefs, student_id=student_id)
+    return render_template(
+        "notification_settings.html",
+        prefs=prefs,
+        student_id=student_id,
+        output_locale_names=OUTPUT_LOCALE_NAMES,
+        supported_output_locales=SUPPORTED_OUTPUT_LOCALES,
+    )
 
 
 @app.route("/api/notifications/remind-interview", methods=["POST"])
@@ -5079,7 +5391,8 @@ def api_send_interview_reminder():
         company_name=company_name,
         interview_round=round_type,
         scheduled_time=scheduled_time,
-        interview_link=interview_link or None
+        interview_link=interview_link or None,
+        locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE),
     )
 
     return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
@@ -5269,8 +5582,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -7032,7 +7353,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -7104,7 +7426,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -9281,8 +9604,16 @@ def download_pdf_report(analysis_id: str):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
 
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
         # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}.pdf"
+        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -9290,13 +9621,14 @@ def download_pdf_report(analysis_id: str):
                 generator_func=generate_pdf_report,
                 data=analysis_record,
                 output_path=pdf_full_path,
-                report_type="Placement Readiness Comprehensive Report"
+                report_type="Placement Readiness Comprehensive Report",
+                language=output_language,
             )
 
         return send_file(
             pdf_full_path,
             as_attachment=True,
-            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}.pdf",
+            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}_{output_language}.pdf",
             mimetype="application/pdf"
         )
 
@@ -9304,6 +9636,20 @@ def download_pdf_report(analysis_id: str):
         logger.error(f"Failed to generate and serve PDF report: {str(e)}")
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/report/<analysis_id>")
+def view_html_report(analysis_id: str):
+    """Renders an accessible, responsive HTML version of the placement report."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("The requested placement analysis report could not be found.", "error")
+        return redirect(url_for("index"))
+
+    return render_template(
+        "placement_report.html",
+        report_data=sanitize_report_data(analysis_record),
+    )
 
 
 @app.route("/download/skills-gap/<analysis_id>")
@@ -9317,7 +9663,15 @@ def download_skills_gap_report(analysis_id: str):
             flash("Cannot generate Skills Gap report. Placement record not found.", "error")
             return redirect(url_for("index"))
 
-        pdf_output_name = f"Skills_Gap_Report_{analysis_id}.pdf"
+        output_language, used_language_fallback = resolve_output_locale(
+            get_email_notification_preferences(
+                flask_session.get("user_id") or analysis_record.get("student_id")
+            ).get("output_language", DEFAULT_OUTPUT_LOCALE)
+        )
+        if used_language_fallback:
+            flash("This report is only available in English for the selected language.", "warning")
+
+        pdf_output_name = f"Skills_Gap_Report_{analysis_id}_{output_language}.pdf"
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -9325,7 +9679,8 @@ def download_skills_gap_report(analysis_id: str):
                 generator_func=generate_skills_gap_pdf,
                 data=analysis_record,
                 output_path=pdf_full_path,
-                report_type="Skills Gap and Upskilling Roadmap"
+                report_type="Skills Gap and Upskilling Roadmap",
+                language=output_language,
             )
 
         company = analysis_record.get("company_name", "Target_Company").replace(" ", "_")
@@ -10187,7 +10542,8 @@ def job_applications_tracker():
                     student_name=student_id,
                     company_name=company,
                     role_title=role,
-                    applied_date=app_date or "Today"
+                    applied_date=app_date or "Today",
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Error sending application creation email: {mail_err}")
@@ -10569,7 +10925,8 @@ def api_update_application_status(app_id: str):
                     role_title=role,
                     previous_status="Previous Stage",
                     new_status=new_status,
-                    notes=payload.get("notes") or request.form.get("notes")
+                    notes=payload.get("notes") or request.form.get("notes"),
+                    locale=prefs.get("output_language", DEFAULT_OUTPUT_LOCALE)
                 )
         except Exception as mail_err:
             logger.warning(f"Failed to dispatch application status change email: {mail_err}")
@@ -11313,7 +11670,12 @@ def download_student_preparation_summary_pdf(student_id: str = None):
         return redirect(url_for("index"))
 
     summary_data = get_student_preparation_summary_data(student_id)
-    output_filename = f"Placement_Preparation_Summary_{student_id}.pdf"
+    output_language, used_language_fallback = resolve_output_locale(
+        get_email_notification_preferences(student_id).get("output_language", DEFAULT_OUTPUT_LOCALE)
+    )
+    if used_language_fallback:
+        flash("This report is only available in English for the selected language.", "warning")
+    output_filename = f"Placement_Preparation_Summary_{student_id}_{output_language}.pdf"
     
     import tempfile
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
@@ -11324,7 +11686,8 @@ def download_student_preparation_summary_pdf(student_id: str = None):
             generator_func=generate_student_preparation_summary_pdf,
             data=summary_data,
             output_path=temp_pdf_path,
-            report_type="Student Placement Preparation Summary"
+            report_type="Student Placement Preparation Summary",
+            language=output_language,
         )
         return send_file(
             temp_pdf_path,
