@@ -128,6 +128,7 @@ class StarEvaluationAgent:
             raw_json = generate_json_response(
                 system_instruction=prompts.STAR_SYSTEM_INSTRUCTION,
                 prompt=user_prompt,
+                feature="interview",
             )
 
             if isinstance(raw_json, dict) and "situation" in raw_json and "action" in raw_json:

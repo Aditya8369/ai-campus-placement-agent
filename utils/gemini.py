@@ -424,6 +424,7 @@ def generate_json_response(
     backoff_factor: Optional[float] = None,
     max_delay: Optional[float] = None,
     jitter: Optional[bool] = None,
+    feature: Optional[str] = None,
     _sleep_fn: Callable[[float], None] = time.sleep,
 ) -> dict:
     """
@@ -448,6 +449,15 @@ def generate_json_response(
     else:
         max_d = getattr(config, "GEMINI_RETRY_MAX_DELAY", 10.0)
     use_jitter = jitter if jitter is not None else getattr(config, "GEMINI_RETRY_JITTER", True)
+
+    # Determine effective feature for operational telemetry (#434)
+    effective_feature = (feature or "").strip().lower()
+    if not effective_feature:
+        try:
+            from utils.ai_metrics import get_current_ai_feature
+            effective_feature = get_current_ai_feature() or "analysis"
+        except Exception:
+            effective_feature = "analysis"
 
     total_attempts = max(1, retries + 1)
     client = get_gemini_client()
@@ -511,6 +521,22 @@ def generate_json_response(
             except Exception as log_err:
                 logger.debug(f"Non-fatal Gemini log error: {log_err}")
 
+            # Record AI call metrics without user content (#434)
+            try:
+                from utils.ai_metrics import record_ai_call_metric
+                record_ai_call_metric(
+                    feature=effective_feature,
+                    model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    latency_ms=latency_ms,
+                    token_count=total_tokens,
+                    prompt_tokens=prompt_tokens,
+                    candidate_tokens=candidate_tokens,
+                    success=True,
+                    error_type=None,
+                )
+            except Exception as metric_err:
+                logger.debug(f"Non-fatal AI metrics recording error: {metric_err}")
+
             logger.info("Successfully received Gemini response text. Attempting JSON parsing...")
             cleaned_json = _extract_json_string(raw_text)
             parsed_data = json.loads(cleaned_json)
@@ -540,16 +566,50 @@ def generate_json_response(
                 f"Failed to parse Gemini response as valid JSON: {str(jde)}"
             )
 
-        except AIResponseFormatError:
+        except AIResponseFormatError as afe:
+            # Record AI call metric failure for format error (#434)
+            try:
+                from utils.ai_metrics import record_ai_call_metric
+                latency_ms = int((time.time() - start_time) * 1000)
+                record_ai_call_metric(
+                    feature=effective_feature,
+                    model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    latency_ms=latency_ms,
+                    token_count=max(1, len(prompt) // 4),
+                    prompt_tokens=max(1, len(prompt) // 4),
+                    candidate_tokens=0,
+                    success=False,
+                    error_type="AIResponseFormatError",
+                )
+            except Exception:
+                pass
             # Format/truncation errors fail without exponential delay (handled by coordinator schema logic)
             raise
 
         except Exception as e:
+            classified = classify_gemini_error(e)
+            latency_ms = int((time.time() - start_time) * 1000)
+
+            # Record AI call metrics failure (#434)
+            try:
+                from utils.ai_metrics import record_ai_call_metric
+                record_ai_call_metric(
+                    feature=effective_feature,
+                    model=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
+                    latency_ms=latency_ms,
+                    token_count=max(1, len(prompt) // 4),
+                    prompt_tokens=max(1, len(prompt) // 4),
+                    candidate_tokens=0,
+                    success=False,
+                    error_type=classified.__class__.__name__,
+                )
+            except Exception as metric_err:
+                logger.debug(f"Non-fatal AI metrics recording error: {metric_err}")
+
             # Log failure to database if attempts are exhausted or non-retryable (#215)
             try:
                 from utils.database import log_gemini_api_call
                 from utils.prompt_security import redact_sensitive_information
-                latency_ms = int((time.time() - start_time) * 1000)
                 log_gemini_api_call(
                     endpoint="generate_json_response",
                     model_name=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
@@ -562,8 +622,6 @@ def generate_json_response(
                 )
             except Exception:
                 pass
-
-            classified = classify_gemini_error(e)
 
             # Check if this error is transient and we have remaining retry attempts
             if classified.retryable and attempt < total_attempts:

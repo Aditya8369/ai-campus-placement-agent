@@ -127,7 +127,8 @@ class CoordinatorAgent:
         try:
             raw_json_response = generate_json_response(
                 system_instruction=secure_system_instruction,
-                prompt=user_prompt
+                prompt=user_prompt,
+                feature="analysis"
             )
         except AIResponseFormatError as fmt_err:
             logger.warning(
@@ -143,7 +144,8 @@ class CoordinatorAgent:
             try:
                 raw_json_response = generate_json_response(
                     system_instruction=secure_system_instruction,
-                    prompt=reminder_prompt
+                    prompt=reminder_prompt,
+                    feature="analysis"
                 )
             except AIResponseFormatError:
                 logger.error("CoordinatorAgent: Retry also produced malformed/invalid JSON. Re-raising format error.")

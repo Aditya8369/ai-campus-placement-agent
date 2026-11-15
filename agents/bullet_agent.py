@@ -222,7 +222,8 @@ class BulletOptimizerAgent:
 
                 response_json = generate_json_response(
                     system_instruction=build_secure_system_instruction(prompts.BULLET_OPTIMIZER_SYSTEM_INSTRUCTION),
-                    prompt=user_prompt
+                    prompt=user_prompt,
+                    feature="analysis"
                 )
                 response_json = redact_sensitive_information(response_json)
 

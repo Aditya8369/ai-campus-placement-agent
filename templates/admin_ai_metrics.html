@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI API Usage & Performance Telemetry - Admin Portal</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Admin Navigation">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill fs-7 ms-2 py-1 px-2">
+          <i class="fa-solid fa-shield-halved me-1"></i> Admin Portal
+        </span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Dashboard Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container py-4 my-auto" id="adminAiMetricsContainer">
+    <!-- Header Title & Export Controls -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-microchip text-primary me-2"></i>AI Usage, Latency & Error Telemetry
+        </h2>
+        <p class="text-secondary small mb-0">
+          Operational observability across analysis, mock interview, and recruiter outreach AI calls.
+          Tracks daily volumes, average &amp; 95th percentile latency, failure rates, and error classifications without storing any prompt or resume content.
+        </p>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        {% set query_params = [] %}
+        {% if summary.filters.start_date %}{% set _ = query_params.append('start_date=' ~ summary.filters.start_date) %}{% endif %}
+        {% if summary.filters.end_date %}{% set _ = query_params.append('end_date=' ~ summary.filters.end_date) %}{% endif %}
+        {% if summary.filters.feature and summary.filters.feature != 'all' %}{% set _ = query_params.append('feature=' ~ summary.filters.feature) %}{% endif %}
+        {% set export_qs = ('?' ~ query_params|join('&')) if query_params else '' %}
+        <a href="/admin/ai-metrics/export.csv{{ export_qs }}" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" id="btnExportAiMetricsCsv" title="Export filtered AI metrics as CSV">
+          <i class="fa-solid fa-file-csv me-1"></i> Export Metrics CSV
+        </a>
+      </div>
+    </div>
+
+    <!-- Date Range & Feature Filter Card -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 bg-white mb-4" id="aiMetricsFilterCard">
+      <form method="GET" action="/admin/ai-metrics" class="row g-2 align-items-end" id="aiMetricsFilterForm">
+        <div class="col-sm-6 col-md-3">
+          <label for="startDateInput" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-regular fa-calendar me-1"></i> Start Date
+          </label>
+          <input type="date" class="form-control form-control-sm rounded-3" id="startDateInput" name="start_date" value="{{ summary.filters.start_date }}">
+        </div>
+        <div class="col-sm-6 col-md-3">
+          <label for="endDateInput" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-regular fa-calendar-check me-1"></i> End Date
+          </label>
+          <input type="date" class="form-control form-control-sm rounded-3" id="endDateInput" name="end_date" value="{{ summary.filters.end_date }}">
+        </div>
+        <div class="col-sm-6 col-md-3">
+          <label for="featureSelect" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-filter me-1"></i> Feature
+          </label>
+          <select class="form-select form-select-sm rounded-3" id="featureSelect" name="feature">
+            <option value="all" {% if summary.filters.feature == 'all' or not summary.filters.feature %}selected{% endif %}>All Features</option>
+            <option value="analysis" {% if summary.filters.feature == 'analysis' %}selected{% endif %}>Analysis</option>
+            <option value="interview" {% if summary.filters.feature == 'interview' %}selected{% endif %}>Interview</option>
+            <option value="outreach" {% if summary.filters.feature == 'outreach' %}selected{% endif %}>Outreach</option>
+            <option value="coding" {% if summary.filters.feature == 'coding' %}selected{% endif %}>Coding</option>
+          </select>
+        </div>
+        <div class="col-sm-6 col-md-3 d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1" id="btnApplyMetricsFilter">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Filter
+          </button>
+          <a href="/admin/ai-metrics" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Clear filters">
+            Reset
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <!-- KPI Overview Cards -->
+    <div class="row g-3 mb-4">
+      <!-- KPI 1: Total Calls -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Total AI Calls</span>
+            <span class="badge bg-primary-subtle text-primary rounded-pill"><i class="fa-solid fa-server"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiTotalCalls">{{ "{:,}".format(summary.total_calls) }}</h3>
+          <small class="text-muted d-block mt-1">
+            <span class="text-success fw-semibold">{{ summary.successful_calls }}</span> succeeded &bull;
+            <span class="text-danger fw-semibold">{{ summary.failed_calls }}</span> failed
+          </small>
+        </div>
+      </div>
+
+      <!-- KPI 2: Failure Rate -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Failure Rate</span>
+            {% set fail_badge = 'bg-success-subtle text-success' if summary.failure_rate_pct < 5.0 else ('bg-warning-subtle text-dark' if summary.failure_rate_pct < 15.0 else 'bg-danger-subtle text-danger') %}
+            <span class="badge {{ fail_badge }} rounded-pill"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 {{ 'text-success' if summary.failure_rate_pct < 5.0 else ('text-warning' if summary.failure_rate_pct < 15.0 else 'text-danger') }}" id="kpiFailureRate">
+            {{ summary.failure_rate_pct }}%
+          </h3>
+          <small class="text-muted d-block mt-1">
+            {{ summary.failed_calls }} failed out of {{ summary.total_calls }} calls
+          </small>
+        </div>
+      </div>
+
+      <!-- KPI 3: Average Latency -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">Average Latency</span>
+            <span class="badge bg-info-subtle text-info rounded-pill"><i class="fa-solid fa-stopwatch"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiAvgLatency">
+            {% if summary.avg_latency_ms >= 1000 %}
+              {{ "%.2f"|format(summary.avg_latency_ms / 1000.0) }} <span class="fs-6 fw-normal text-muted">sec</span>
+            {% else %}
+              {{ summary.avg_latency_ms }} <span class="fs-6 fw-normal text-muted">ms</span>
+            {% endif %}
+          </h3>
+          <small class="text-muted d-block mt-1">Mean duration per invocation</small>
+        </div>
+      </div>
+
+      <!-- KPI 4: 95th Percentile Latency -->
+      <div class="col-sm-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold text-uppercase">95th Percentile (p95)</span>
+            <span class="badge bg-warning-subtle text-dark rounded-pill"><i class="fa-solid fa-chart-line"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiP95Latency">
+            {% if summary.p95_latency_ms >= 1000 %}
+              {{ "%.2f"|format(summary.p95_latency_ms / 1000.0) }} <span class="fs-6 fw-normal text-muted">sec</span>
+            {% else %}
+              {{ summary.p95_latency_ms }} <span class="fs-6 fw-normal text-muted">ms</span>
+            {% endif %}
+          </h3>
+          <small class="text-muted d-block mt-1">95% of calls finished within this time</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Daily Invocation & Latency Charts -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4" id="aiMetricsChartsCard">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h5 class="fw-bold mb-0 text-dark">
+          <i class="fa-solid fa-chart-column text-primary me-2"></i>Daily Call Volume &amp; Latency Trends
+        </h5>
+        <span class="small text-muted">
+          Showing daily performance metrics
+        </span>
+      </div>
+
+      {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
+        <div style="position: relative; height: 260px; width: 100%;">
+          <canvas id="dailyMetricsChart" aria-label="Daily AI call volume and latency chart"></canvas>
+        </div>
+      {% else %}
+        <div class="p-5 text-center text-muted bg-light rounded-4" id="emptyMetricsChartBanner">
+          <i class="fa-solid fa-chart-line fa-3x mb-3 text-secondary opacity-50"></i>
+          <h6 class="fw-semibold text-dark">No AI calls recorded yet</h6>
+          <p class="small text-secondary mb-0">
+            Metrics will appear automatically as analyses, mock interviews, and outreach pitches are generated.
+          </p>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Two-Column Breakdown: Error Classifications & Feature Distribution -->
+    <div class="row g-4 mb-4">
+      <!-- Table: Most Common Error Types -->
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100" id="commonErrorsCard">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0 text-dark">
+              <i class="fa-solid fa-bug text-danger me-2"></i>Common Error Classifications
+            </h5>
+            <span class="badge bg-danger-subtle text-danger rounded-pill px-2 py-1 small">
+              {{ summary.failed_calls }} Total Failures
+            </span>
+          </div>
+
+          {% if summary.common_errors and summary.common_errors|length > 0 %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle small mb-0" id="commonErrorsTable">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Error Type</th>
+                    <th scope="col" class="text-center">Occurrences</th>
+                    <th scope="col" class="text-center">Share</th>
+                    <th scope="col" class="text-end">Last Observed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for err in summary.common_errors %}
+                    <tr>
+                      <td>
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill font-monospace">
+                          {{ err.error_type }}
+                        </span>
+                      </td>
+                      <td class="text-center fw-semibold text-dark">{{ err.count }}</td>
+                      <td class="text-center">
+                        <span class="text-secondary">{{ err.percentage_of_errors }}%</span>
+                      </td>
+                      <td class="text-end text-muted font-monospace small" style="font-size: 0.775rem;">
+                        {{ err.last_occurred }}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-4 text-center text-muted bg-light rounded-4 h-100 d-flex flex-column align-items-center justify-content-center" id="emptyErrorsBanner">
+              <i class="fa-solid fa-circle-check text-success fa-2x mb-2"></i>
+              <h6 class="fw-semibold text-dark mb-1">Zero AI Errors</h6>
+              <p class="small text-secondary mb-0">No API rate limits, timeouts, or failures recorded in this timeframe.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Table: Feature Breakdown -->
+      <div class="col-lg-6">
+        <div class="card border-0 shadow-sm rounded-4 p-4 bg-white h-100" id="featureBreakdownCard">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0 text-dark">
+              <i class="fa-solid fa-layer-group text-primary me-2"></i>Feature Breakdown
+            </h5>
+            <span class="badge bg-primary-subtle text-primary rounded-pill px-2 py-1 small">
+              {{ summary.feature_breakdown|length }} Features Active
+            </span>
+          </div>
+
+          {% if summary.feature_breakdown and summary.feature_breakdown|length > 0 %}
+            <div class="table-responsive">
+              <table class="table table-hover align-middle small mb-0" id="featureBreakdownTable">
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Feature</th>
+                    <th scope="col" class="text-center">Calls</th>
+                    <th scope="col" class="text-center">Fail Rate</th>
+                    <th scope="col" class="text-end">Avg Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for f in summary.feature_breakdown %}
+                    <tr>
+                      <td class="fw-semibold text-dark text-capitalize">
+                        {% if f.feature == 'analysis' %}
+                          <i class="fa-solid fa-file-pen text-primary me-1"></i> Analysis
+                        {% elif f.feature == 'interview' %}
+                          <i class="fa-solid fa-comments text-success me-1"></i> Interview
+                        {% elif f.feature == 'outreach' %}
+                          <i class="fa-solid fa-paper-plane text-info me-1"></i> Outreach
+                        {% elif f.feature == 'coding' %}
+                          <i class="fa-solid fa-code text-warning me-1"></i> Coding
+                        {% else %}
+                          <i class="fa-solid fa-microchip text-secondary me-1"></i> {{ f.feature }}
+                        {% endif %}
+                      </td>
+                      <td class="text-center fw-semibold">{{ "{:,}".format(f.call_count) }}</td>
+                      <td class="text-center">
+                        <span class="badge {{ 'bg-success-subtle text-success' if f.failure_rate_pct < 5.0 else 'bg-danger-subtle text-danger' }} rounded-pill">
+                          {{ f.failure_rate_pct }}%
+                        </span>
+                      </td>
+                      <td class="text-end text-secondary">
+                        {{ f.avg_latency_ms }} ms
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% else %}
+            <div class="p-4 text-center text-muted bg-light rounded-4 h-100 d-flex flex-column align-items-center justify-content-center" id="emptyFeaturesBanner">
+              <i class="fa-solid fa-inbox text-secondary opacity-50 fa-2x mb-2"></i>
+              <h6 class="fw-semibold text-dark mb-1">No Feature Calls</h6>
+              <p class="small text-secondary mb-0">Feature breakdowns will populate as services are exercised.</p>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Telemetry Log Table -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white mb-4" id="recentCallsCard">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h5 class="fw-bold mb-0 text-dark">
+          <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Recent AI Calls (Telemetry Only)
+        </h5>
+        <span class="small text-muted">
+          Showing up to 50 most recent records &bull; Strictly zero user prompts stored
+        </span>
+      </div>
+
+      {% if summary.recent_calls and summary.recent_calls|length > 0 %}
+        <div class="table-responsive">
+          <table class="table table-hover align-middle small mb-0" id="recentCallsTable">
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Timestamp</th>
+                <th scope="col">Feature</th>
+                <th scope="col">Model</th>
+                <th scope="col" class="text-center">Latency</th>
+                <th scope="col" class="text-center">Tokens</th>
+                <th scope="col" class="text-center">Status</th>
+                <th scope="col">Error Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for call in summary.recent_calls %}
+                <tr>
+                  <td class="font-monospace text-muted" style="font-size: 0.775rem;">
+                    {{ call.timestamp }}
+                  </td>
+                  <td class="text-capitalize fw-semibold text-dark">
+                    {{ call.feature }}
+                  </td>
+                  <td class="font-monospace text-secondary" style="font-size: 0.8rem;">
+                    {{ call.model }}
+                  </td>
+                  <td class="text-center">
+                    {{ call.latency_ms }} ms
+                  </td>
+                  <td class="text-center text-secondary">
+                    {{ call.token_count }}
+                  </td>
+                  <td class="text-center">
+                    {% if call.success == 1 %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+                        <i class="fa-solid fa-check me-1"></i> Success
+                      </span>
+                    {% else %}
+                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill">
+                        <i class="fa-solid fa-xmark me-1"></i> Failed
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if call.error_type %}
+                      <span class="badge bg-danger-subtle text-danger font-monospace">
+                        {{ call.error_type }}
+                      </span>
+                    {% else %}
+                      <span class="text-muted small">&mdash;</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="p-4 text-center text-muted bg-light rounded-4" id="emptyRecentCallsBanner">
+          <i class="fa-solid fa-database text-secondary opacity-50 fa-2x mb-2"></i>
+          <h6 class="fw-semibold text-dark mb-1">No AI telemetry records found</h6>
+          <p class="small text-secondary mb-0">Records will appear as AI interactions are processed.</p>
+        </div>
+      {% endif %}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-4 mt-auto">
+    <div class="container text-center text-secondary small">
+      <div class="mb-1">
+        &copy; 2026 AI Campus Placement Agent &bull; Administrative Observability Telemetry
+      </div>
+      <div>
+        <a href="/" class="text-secondary text-decoration-underline me-3">Student Portal</a>
+        <a href="/privacy" class="text-secondary text-decoration-underline">Privacy Notice</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Chart.js Initialization -->
+  {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const dailyData = {{ summary.daily_metrics|reverse|list|tojson }};
+      const dates = dailyData.map(d => d.date);
+      const totalCalls = dailyData.map(d => d.total_calls);
+      const failedCalls = dailyData.map(d => d.failed_calls);
+      const avgLatencies = dailyData.map(d => d.avg_latency_ms);
+      const p95Latencies = dailyData.map(d => d.p95_latency_ms);
+
+      const ctx = document.getElementById("dailyMetricsChart");
+      if (!ctx) return;
+
+      new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: dates,
+          datasets: [
+            {
+              label: "Successful Calls",
+              data: dailyData.map(d => d.successful_calls),
+              backgroundColor: "rgba(34, 197, 94, 0.7)",
+              borderColor: "rgb(34, 197, 94)",
+              borderWidth: 1,
+              yAxisID: "y"
+            },
+            {
+              label: "Failed Calls",
+              data: failedCalls,
+              backgroundColor: "rgba(239, 68, 68, 0.7)",
+              borderColor: "rgb(239, 68, 68)",
+              borderWidth: 1,
+              yAxisID: "y"
+            },
+            {
+              type: "line",
+              label: "Average Latency (ms)",
+              data: avgLatencies,
+              borderColor: "rgb(59, 130, 246)",
+              backgroundColor: "rgba(59, 130, 246, 0.1)",
+              borderWidth: 2,
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: "y1"
+            },
+            {
+              type: "line",
+              label: "p95 Latency (ms)",
+              data: p95Latencies,
+              borderColor: "rgb(245, 158, 11)",
+              backgroundColor: "rgba(245, 158, 11, 0.1)",
+              borderWidth: 2,
+              borderDash: [5, 5],
+              tension: 0.3,
+              pointRadius: 3,
+              yAxisID: "y1"
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: "index",
+            intersect: false
+          },
+          scales: {
+            x: {
+              stacked: true,
+              grid: { display: false }
+            },
+            y: {
+              type: "linear",
+              display: true,
+              position: "left",
+              stacked: true,
+              title: {
+                display: true,
+                text: "Call Count"
+              },
+              beginAtZero: true
+            },
+            y1: {
+              type: "linear",
+              display: true,
+              position: "right",
+              title: {
+                display: true,
+                text: "Latency (ms)"
+              },
+              beginAtZero: true,
+              grid: { drawOnChartArea: false }
+            }
+          }
+        }
+      });
+    });
+  </script>
+  {% endif %}
+</body>
+</html>

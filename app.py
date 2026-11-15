@@ -432,6 +432,9 @@ def require_login():
         "admin_moderation_queue_endpoint",
         "admin_moderate_experience_action_endpoint",
         "admin_experience_moderation_logs_endpoint",
+        "admin_ai_metrics_view",
+        "admin_ai_metrics_export_csv",
+        "api_admin_ai_metrics",
     }
 
     user_id = flask_session.get("user_id")
@@ -1570,6 +1573,95 @@ def api_gemini_usage_summary():
     return jsonify({
         "status": "success",
         "data": usage_data
+    })
+
+
+# ==============================================================================
+# AI API Usage, Latency & Error Telemetry Dashboard (#434)
+# ==============================================================================
+
+@app.route("/admin/ai-metrics", methods=["GET"])
+def admin_ai_metrics_view():
+    """
+    Admin-only dashboard displaying daily call counts, average and 95th percentile
+    latency, failure rate, and a table of the most common error types (#434).
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    feature = request.args.get("feature")
+
+    from utils.ai_metrics import get_ai_metrics_summary
+    summary = get_ai_metrics_summary(start_date=start_date, end_date=end_date, feature=feature)
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "data": summary})
+
+    return render_template("admin_ai_metrics.html", summary=summary)
+
+
+@app.route("/admin/ai-metrics/export.csv", methods=["GET"])
+def admin_ai_metrics_export_csv():
+    """
+    Admin-only CSV export of AI call telemetry (#434).
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    feature = request.args.get("feature")
+
+    from utils.ai_metrics import export_ai_metrics_csv
+    csv_data = export_ai_metrics_csv(start_date=start_date, end_date=end_date, feature=feature)
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=ai_call_metrics.csv"}
+    )
+
+
+@app.route("/api/admin/ai-metrics", methods=["GET"])
+def api_admin_ai_metrics():
+    """
+    Admin-only JSON API exposing AI call telemetry summary metrics (#434).
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    feature = request.args.get("feature")
+
+    from utils.ai_metrics import get_ai_metrics_summary
+    summary = get_ai_metrics_summary(start_date=start_date, end_date=end_date, feature=feature)
+
+    return jsonify({
+        "status": "success",
+        "data": summary
     })
 
 
