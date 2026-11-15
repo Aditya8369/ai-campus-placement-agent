@@ -449,10 +449,14 @@ def init_db() -> None:
                 id TEXT PRIMARY KEY,
                 student_id TEXT NOT NULL,
                 job_id TEXT NOT NULL,
-                job_title TEXT NOT NULL,
-                company TEXT NOT NULL,
+                job_title TEXT DEFAULT '',
+                company TEXT DEFAULT '',
+                company_name TEXT DEFAULT '',
+                role_title TEXT DEFAULT '',
                 location TEXT,
                 salary TEXT,
+                salary_range TEXT,
+                apply_url TEXT,
                 experience_level TEXT,
                 match_score INTEGER DEFAULT 0,
                 source_url TEXT,
@@ -461,6 +465,14 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_viewed_jobs_student ON recently_viewed_jobs (student_id, viewed_at DESC)")
+        cursor.execute("PRAGMA table_info(recently_viewed_jobs)")
+        rvj_cols = {col[1] for col in cursor.fetchall()}
+        for col_name in ["company_name", "role_title", "salary_range", "apply_url"]:
+            if col_name not in rvj_cols:
+                try:
+                    cursor.execute(f"ALTER TABLE recently_viewed_jobs ADD COLUMN {col_name} TEXT")
+                except Exception:
+                    pass
 
         # Email verification tokens table
         cursor.execute("""
