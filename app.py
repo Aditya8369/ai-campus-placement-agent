@@ -424,6 +424,9 @@ def require_login():
         "api_walkthrough",
         "api_walkthrough_dismiss",
         "api_walkthrough_reset",
+        "admin_moderation_queue_endpoint",
+        "admin_moderate_experience_action_endpoint",
+        "admin_experience_moderation_logs_endpoint",
     }
 
     user_id = flask_session.get("user_id")
@@ -14017,6 +14020,180 @@ def api_convert_calendar_time():
             return jsonify({"success": False, "error": "direction must be 'local_to_utc' or 'utc_to_local'"}), 400
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
+
+
+# ============================================================================
+# AI-GENERATED ANSWER QUALITY CHECKLIST ENDPOINTS (#257)
+# ============================================================================
+
+@app.route("/api/interview/answer-quality-audit", methods=["POST"])
+def api_audit_interview_answer_quality():
+    """
+    Audits a candidate's interview answer across the 6-point structured Quality Rubric:
+    direct question address, concrete examples, supported claims, technical explanation,
+    structural flow, and actionable next steps.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+    question_type = payload.get("question_type", "technical")
+
+    if not question:
+        return jsonify({"status": "error", "message": "Question prompt is required."}), 400
+
+    try:
+        from utils.answer_quality_checklist import audit_interview_answer_quality
+        audit_result = audit_interview_answer_quality(
+            question=question,
+            answer=answer,
+            question_type=question_type
+        )
+        return jsonify({
+            "status": "success",
+            "audit": audit_result
+        }), 200
+    except Exception as e:
+        logger.error(f"Error auditing answer quality: {e}")
+        return jsonify({"status": "error", "message": "Failed to analyze answer quality checklist."}), 500
+
+
+# ---------------------------------------------------------------------------
+# AI Analysis Feedback and Correction Reporting Endpoints (#262)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/analyses/feedback/categories", methods=["GET"])
+def api_get_feedback_categories():
+    """Retrieve list of valid AI analysis feedback and inaccuracy categories."""
+    from utils.analysis_feedback_service import FEEDBACK_CATEGORIES
+    return jsonify({
+        "success": True,
+        "categories": [
+            {"id": k, "title": v["title"], "description": v["description"]}
+            for k, v in FEEDBACK_CATEGORIES.items()
+        ]
+    }), 200
+
+
+@app.route("/api/analyses/<analysis_id>/feedback", methods=["POST"])
+def api_submit_analysis_feedback(analysis_id: str):
+    """Submit a correction or feedback report for an AI analysis."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    category = payload.get("category")
+    claim_detail = payload.get("claim_detail")
+    field_affected = payload.get("field_affected", "general")
+    proposed_correction = payload.get("proposed_correction")
+
+    try:
+        from utils.analysis_feedback_service import submit_analysis_feedback
+        report = submit_analysis_feedback(
+            analysis_id=analysis_id,
+            student_id=str(user_id),
+            category=category,
+            claim_detail=claim_detail,
+            field_affected=field_affected,
+            proposed_correction=proposed_correction,
+        )
+        return jsonify({
+            "success": True,
+            "message": "Feedback submitted successfully for review",
+            "report": report
+        }), 201
+    except PermissionError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except KeyError as ke:
+        return jsonify({"success": False, "error": str(ke)}), 404
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error submitting analysis feedback: {e}")
+        return jsonify({"success": False, "error": "Internal server error"}), 500
+
+
+@app.route("/api/analyses/<analysis_id>/feedback", methods=["GET"])
+def api_get_analysis_feedback(analysis_id: str):
+    """Retrieve all feedback reports for a given analysis."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.analysis_feedback_service import get_analysis_feedback_reports
+        reports = get_analysis_feedback_reports(analysis_id, student_id=str(user_id))
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "reports": reports
+        }), 200
+    except Exception as e:
+        logger.error(f"Error retrieving analysis feedback: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/admin/feedback-summary", methods=["GET"])
+def api_get_feedback_summary():
+    """Retrieve aggregated feedback and inaccuracy statistics across all analyses."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.analysis_feedback_service import get_feedback_summary_statistics
+        stats = get_feedback_summary_statistics()
+        return jsonify({"success": True, "statistics": stats}), 200
+    except Exception as e:
+        logger.error(f"Error fetching feedback summary stats: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Database Backup Retention Endpoints (#247)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/admin/database/backup/retention", methods=["GET", "POST"])
+def api_admin_backup_retention():
+    """
+    Manages database backup retention policy evaluation and pruning (#247).
+    GET: Evaluates backup inventory, age, and reclaimable space without deleting.
+    POST: Prunes expired backups older than retention window while preserving recent backups.
+    """
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret-key"):
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.backup_retention import evaluate_backup_retention, prune_expired_backups
+
+    if request.method == "GET":
+        retention_days = int(request.args.get("retention_days", 7))
+        min_preserved = int(request.args.get("min_preserved", 3))
+        eval_result = evaluate_backup_retention(
+            retention_days=retention_days,
+            min_preserved=min_preserved
+        )
+        return jsonify({
+            "success": True,
+            "data": eval_result
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        retention_days = int(payload.get("retention_days", 7))
+        min_preserved = int(payload.get("min_preserved", 3))
+        dry_run = bool(payload.get("dry_run", False))
+
+        prune_result = prune_expired_backups(
+            retention_days=retention_days,
+            min_preserved=min_preserved,
+            dry_run=dry_run
+        )
+        return jsonify({
+            "success": True,
+            "prune_result": prune_result
+        }), 200
 
 
 if __name__ == "__main__":
