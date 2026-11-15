@@ -98,7 +98,8 @@ def init_db() -> None:
                 name TEXT NOT NULL,
                 email TEXT NOT NULL COLLATE NOCASE UNIQUE,
                 password_hash TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                leaderboard_opt_in INTEGER NOT NULL DEFAULT 1
             )
         """)
 
@@ -407,7 +408,7 @@ def init_db() -> None:
         if "job_description_snapshot" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_description_snapshot TEXT")
 
-        # Schema migration for users table (#206)
+        # Schema migration for users table (#206, #360)
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [col[1] for col in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -416,6 +417,8 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN verification_token TEXT")
         if "token_created_at" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
+        if "leaderboard_opt_in" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN leaderboard_opt_in INTEGER NOT NULL DEFAULT 1")
 
         # Schema migration for generated-output language preferences
         cursor.execute("PRAGMA table_info(email_notification_preferences)")
@@ -1816,6 +1819,55 @@ def _seed_cohort_benchmarks(cursor: sqlite3.Cursor) -> None:
     logger.info(f"Seeded {len(seed_peers)} default peer cohort benchmark records.")
 
 
+def get_user_leaderboard_opt_in(user_id: Optional[str]) -> bool:
+    """
+    Retrieves the leaderboard participation preference for a user (#360).
+    Defaults to True (opted-in) for new or unregistered users or when omitted.
+    """
+    if not user_id:
+        return True
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT leaderboard_opt_in FROM users WHERE id = ?", (str(user_id),))
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return bool(row[0])
+        return True
+    except Exception as e:
+        logger.error(f"Error fetching leaderboard opt-in for user {user_id}: {e}")
+        return True
+    finally:
+        conn.close()
+
+
+def set_user_leaderboard_opt_in(user_id: str, opt_in: bool) -> bool:
+    """
+    Updates the leaderboard participation preference for a user (#360).
+    Uses safe upsert to ensure preferences persist reliably.
+    """
+    if not user_id:
+        return False
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        val = 1 if opt_in else 0
+        cursor.execute("UPDATE users SET leaderboard_opt_in = ? WHERE id = ?", (val, str(user_id)))
+        if cursor.rowcount == 0:
+            cursor.execute("""
+                INSERT INTO users (id, name, email, password_hash, leaderboard_opt_in)
+                VALUES (?, ?, ?, '', ?)
+                ON CONFLICT(id) DO UPDATE SET leaderboard_opt_in = excluded.leaderboard_opt_in
+            """, (str(user_id), f"Student_{user_id}", f"{user_id}@campus.local", val))
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.error(f"Error updating leaderboard opt-in for user {user_id}: {e}")
+        return False
+    finally:
+        conn.close()
+
+
 def record_or_update_cohort_benchmark(
     analysis_id: str,
     student_handle: str,
@@ -1911,11 +1963,12 @@ def get_cohort_benchmarks(
     grad_year: Optional[int] = None,
     search: Optional[str] = None,
     limit: int = 50,
-    offset: int = 0
+    offset: int = 0,
+    include_opted_out: bool = False
 ) -> List[Dict[str, Any]]:
     """
     Retrieves sorted cohort benchmark entries ordered by overall_score DESC.
-    Supports filtering by department, graduation year, and keyword search.
+    Supports filtering by department, graduation year, keyword search, and leaderboard opt-out (#360).
     """
     conn = get_db_connection()
     try:
@@ -1923,24 +1976,29 @@ def get_cohort_benchmarks(
         conditions = []
         params = []
 
+        if not include_opted_out:
+            conditions.append("COALESCE(u.leaderboard_opt_in, 1) = 1")
+
         if department and department.strip() and department.strip().lower() not in ("all", "any"):
-            conditions.append("LOWER(department) = LOWER(?)")
+            conditions.append("LOWER(cb.department) = LOWER(?)")
             params.append(department.strip())
 
         if grad_year and int(grad_year) > 0:
-            conditions.append("grad_year = ?")
+            conditions.append("cb.grad_year = ?")
             params.append(int(grad_year))
 
         if search and search.strip():
             kw = f"%{search.strip().lower()}%"
-            conditions.append("(LOWER(student_handle) LIKE ? OR LOWER(target_company) LIKE ? OR LOWER(department) LIKE ?)")
+            conditions.append("(LOWER(cb.student_handle) LIKE ? OR LOWER(cb.target_company) LIKE ? OR LOWER(cb.department) LIKE ?)")
             params.extend([kw, kw, kw])
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         query = f"""
-            SELECT * FROM cohort_benchmarks
+            SELECT cb.* FROM cohort_benchmarks cb
+            LEFT JOIN analyses a ON cb.analysis_id = a.id
+            LEFT JOIN users u ON a.student_id = u.id
             {where_clause}
-            ORDER BY overall_score DESC, ats_score DESC, job_match_score DESC
+            ORDER BY cb.overall_score DESC, cb.ats_score DESC, cb.job_match_score DESC
             LIMIT ? OFFSET ?
         """
         params.extend([limit, offset])
@@ -1964,11 +2022,13 @@ def get_cohort_benchmarks(
 
 def get_cohort_stats(
     department: Optional[str] = None,
-    grad_year: Optional[int] = None
+    grad_year: Optional[int] = None,
+    include_opted_out: bool = False
 ) -> Dict[str, Any]:
     """
     Computes aggregate metrics across the specified cohort segment:
     count, avg_ats, avg_match, avg_overall, max_score, and tier distribution.
+    Excludes opted-out candidates by default (#360).
     """
     conn = get_db_connection()
     try:
@@ -1976,12 +2036,15 @@ def get_cohort_stats(
         conditions = []
         params = []
 
+        if not include_opted_out:
+            conditions.append("COALESCE(u.leaderboard_opt_in, 1) = 1")
+
         if department and department.strip() and department.strip().lower() not in ("all", "any"):
-            conditions.append("LOWER(department) = LOWER(?)")
+            conditions.append("LOWER(cb.department) = LOWER(?)")
             params.append(department.strip())
 
         if grad_year and int(grad_year) > 0:
-            conditions.append("grad_year = ?")
+            conditions.append("cb.grad_year = ?")
             params.append(int(grad_year))
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
@@ -1989,15 +2052,17 @@ def get_cohort_stats(
         cursor.execute(f"""
             SELECT 
                 COUNT(*) as total_students,
-                COALESCE(AVG(ats_score), 0) as avg_ats,
-                COALESCE(AVG(job_match_score), 0) as avg_match,
-                COALESCE(AVG(overall_score), 0) as avg_overall,
-                COALESCE(MAX(overall_score), 0) as max_overall,
-                COALESCE(SUM(CASE WHEN tier = 'Platinum' THEN 1 ELSE 0 END), 0) as platinum_count,
-                COALESCE(SUM(CASE WHEN tier = 'Gold' THEN 1 ELSE 0 END), 0) as gold_count,
-                COALESCE(SUM(CASE WHEN tier = 'Silver' THEN 1 ELSE 0 END), 0) as silver_count,
-                COALESCE(SUM(CASE WHEN tier = 'Bronze' THEN 1 ELSE 0 END), 0) as bronze_count
-            FROM cohort_benchmarks
+                COALESCE(AVG(cb.ats_score), 0) as avg_ats,
+                COALESCE(AVG(cb.job_match_score), 0) as avg_match,
+                COALESCE(AVG(cb.overall_score), 0) as avg_overall,
+                COALESCE(MAX(cb.overall_score), 0) as max_overall,
+                COALESCE(SUM(CASE WHEN cb.tier = 'Platinum' THEN 1 ELSE 0 END), 0) as platinum_count,
+                COALESCE(SUM(CASE WHEN cb.tier = 'Gold' THEN 1 ELSE 0 END), 0) as gold_count,
+                COALESCE(SUM(CASE WHEN cb.tier = 'Silver' THEN 1 ELSE 0 END), 0) as silver_count,
+                COALESCE(SUM(CASE WHEN cb.tier = 'Bronze' THEN 1 ELSE 0 END), 0) as bronze_count
+            FROM cohort_benchmarks cb
+            LEFT JOIN analyses a ON cb.analysis_id = a.id
+            LEFT JOIN users u ON a.student_id = u.id
             {where_clause}
         """, params)
 
@@ -2009,10 +2074,12 @@ def get_cohort_stats(
 
         # Department distribution
         cursor.execute(f"""
-            SELECT department, COUNT(*) as count
-            FROM cohort_benchmarks
+            SELECT cb.department, COUNT(*) as count
+            FROM cohort_benchmarks cb
+            LEFT JOIN analyses a ON cb.analysis_id = a.id
+            LEFT JOIN users u ON a.student_id = u.id
             {where_clause}
-            GROUP BY department
+            GROUP BY cb.department
             ORDER BY count DESC
         """, params)
         stats["department_breakdown"] = [dict(r) for r in cursor.fetchall()]

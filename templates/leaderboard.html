@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Campus Placement Peer Leaderboard - AI Campus Placement Agent</title>
   <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -43,6 +44,18 @@
   <!-- Main Container -->
   <main class="container py-5 fade-in" id="main-content" tabindex="-1">
     
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'success' if category == 'success' else ('warning' if category == 'warning' else 'info') }} alert-dismissible fade show rounded-4 shadow-sm mb-4" role="alert">
+            <i class="fa-solid fa-circle-info me-2"></i>{{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
     <!-- Hero Header Card -->
     <div class="card glass-card p-4 p-md-5 mb-4 border-0">
       <div class="row align-items-center">
@@ -72,36 +85,101 @@
       </div>
     </div>
 
-    <!-- Active Candidate Standing Banner (if visiting from a dashboard analysis) -->
-    {% if candidate_percentile %}
-      <div class="card glass-card p-4 mb-4 border-0 bg-primary-subtle border-primary-subtle">
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-          <div class="d-flex align-items-center gap-3">
-            <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center shadow-sm" style="width: 52px; height: 52px; font-size: 1.5rem;">
-              <i class="fa-solid fa-user-graduate"></i>
-            </div>
-            <div>
-              <div class="d-flex align-items-center gap-2 flex-wrap">
-                <h5 class="fw-bold mb-0 text-dark">Your Standing: {{ candidate_percentile.student_handle }}</h5>
-                <span class="badge bg-success text-white rounded-pill px-3 py-1 fw-bold">
-                  <i class="fa-solid fa-trophy text-warning me-1"></i> {{ candidate_percentile.percentile_badge }}
-                </span>
-                <span class="badge tier-badge-{{ candidate_percentile.tier_badge_class }}">
-                  <i class="fa-solid {{ candidate_percentile.tier_icon }} me-1"></i> {{ candidate_percentile.tier }}
-                </span>
-              </div>
-              <small class="text-secondary d-block mt-1">
-                Rank <b>#{{ candidate_percentile.rank }}</b> out of <b>{{ candidate_percentile.total_peers }}</b> peers in {{ candidate_percentile.department }} ({{ candidate_percentile.grad_year }} Batch) • Overall Score: <b>{{ candidate_percentile.candidate_overall }}/100</b>
-              </small>
-            </div>
+    <!-- Leaderboard Privacy & Opt-Out Control Card (#360) -->
+    <div class="card glass-card p-3 p-md-4 mb-4 border-0 shadow-sm" id="leaderboardPrivacyCard">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="d-flex align-items-center gap-3">
+          <div class="rounded-circle bg-primary-subtle text-primary d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 46px; height: 46px; font-size: 1.25rem;">
+            <i class="fa-solid fa-shield-halved"></i>
           </div>
           <div>
-            <a href="/dashboard/{{ candidate_percentile.analysis_id }}" class="btn btn-primary rounded-pill px-4 btn-sm fw-semibold">
-              <i class="fa-solid fa-chart-line me-1"></i> View Full Dashboard
-            </a>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <h6 class="fw-bold mb-0 text-dark">Leaderboard Privacy &amp; Data Control</h6>
+              <span class="badge {{ 'bg-success' if user_opt_in else 'bg-secondary' }} rounded-pill px-2 py-1 small" id="privacyStatusBadge">
+                {{ 'Participation Active' if user_opt_in else 'Opted Out (Private)' }}
+              </span>
+            </div>
+            <p class="text-secondary small mb-0 mt-1">
+              What is shown: Anonymized handles (e.g., <em>Candidate_42</em>), branch, graduation year, target company, and evaluation scores. Real names, contact details, and resume files are <strong>never</strong> published.
+            </p>
           </div>
         </div>
+        <div class="d-flex align-items-center gap-2">
+          <form method="POST" action="/api/user/leaderboard-privacy" id="leaderboardPrivacyForm" class="d-inline-flex align-items-center m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% if current_analysis_id %}
+              <input type="hidden" name="analysis_id" value="{{ current_analysis_id }}">
+            {% endif %}
+            <input type="hidden" name="opt_in" value="{{ 'false' if user_opt_in else 'true' }}">
+            <button type="submit" class="btn btn-sm {{ 'btn-outline-danger' if user_opt_in else 'btn-success' }} rounded-pill px-3 py-2 fw-semibold" id="toggleLeaderboardPrivacyBtn">
+              <i class="fa-solid {{ 'fa-eye-slash' if user_opt_in else 'fa-check' }} me-1"></i>
+              {{ 'Opt Out of Leaderboard' if user_opt_in else 'Opt In to Leaderboard' }}
+            </button>
+          </form>
+        </div>
       </div>
+    </div>
+
+    <!-- Active Candidate Standing Banner (if visiting from a dashboard analysis) -->
+    {% if candidate_percentile %}
+      {% if candidate_percentile.is_opted_out %}
+        <div class="card glass-card p-4 mb-4 border-0 bg-warning-subtle border-warning-subtle">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="rounded-circle bg-warning text-dark d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 52px; height: 52px; font-size: 1.5rem;">
+                <i class="fa-solid fa-eye-slash"></i>
+              </div>
+              <div>
+                <h5 class="fw-bold mb-1 text-dark">Leaderboard Participation: Opted Out</h5>
+                <p class="text-secondary small mb-0">
+                  Your evaluation scores are currently private and excluded from the public leaderboard rankings and cohort averages.
+                </p>
+              </div>
+            </div>
+            <div>
+              <form method="POST" action="/api/user/leaderboard-privacy" class="d-inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="opt_in" value="true">
+                {% if current_analysis_id %}
+                  <input type="hidden" name="analysis_id" value="{{ current_analysis_id }}">
+                {% endif %}
+                <button type="submit" class="btn btn-primary rounded-pill px-4 btn-sm fw-semibold">
+                  <i class="fa-solid fa-trophy me-1"></i> Re-enable Participation
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+      {% else %}
+        <div class="card glass-card p-4 mb-4 border-0 bg-primary-subtle border-primary-subtle">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center shadow-sm flex-shrink-0" style="width: 52px; height: 52px; font-size: 1.5rem;">
+                <i class="fa-solid fa-user-graduate"></i>
+              </div>
+              <div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <h5 class="fw-bold mb-0 text-dark">Your Standing: {{ candidate_percentile.student_handle }}</h5>
+                  <span class="badge bg-success text-white rounded-pill px-3 py-1 fw-bold">
+                    <i class="fa-solid fa-trophy text-warning me-1"></i> {{ candidate_percentile.percentile_badge }}
+                  </span>
+                  <span class="badge tier-badge-{{ candidate_percentile.tier_badge_class }}">
+                    <i class="fa-solid {{ candidate_percentile.tier_icon }} me-1"></i> {{ candidate_percentile.tier }}
+                  </span>
+                </div>
+                <small class="text-secondary d-block mt-1">
+                  Rank <b>#{{ candidate_percentile.rank }}</b> out of <b>{{ candidate_percentile.total_peers }}</b> peers in {{ candidate_percentile.department }} ({{ candidate_percentile.grad_year }} Batch) • Overall Score: <b>{{ candidate_percentile.candidate_overall }}/100</b>
+                </small>
+              </div>
+            </div>
+            <div>
+              <a href="/dashboard/{{ candidate_percentile.analysis_id }}" class="btn btn-primary rounded-pill px-4 btn-sm fw-semibold">
+                <i class="fa-solid fa-chart-line me-1"></i> View Full Dashboard
+              </a>
+            </div>
+          </div>
+        </div>
+      {% endif %}
     {% endif %}
 
     <!-- Top Cohort Statistics (4 Cards) -->

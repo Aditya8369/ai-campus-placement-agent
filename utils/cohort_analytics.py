@@ -13,6 +13,7 @@ from utils.database import (
     record_or_update_cohort_benchmark,
     get_cohort_benchmark_by_analysis_id,
     get_analysis,
+    get_user_leaderboard_opt_in,
 )
 
 logger = logging.getLogger(__name__)
@@ -299,6 +300,12 @@ class CohortAnalyticsService:
 
         percentile_badge = f"Top {top_percent}% in {dept_short}"
 
+        # Check if candidate's user has opted out of the leaderboard (#360)
+        is_opted_out = False
+        record = get_analysis(analysis_id)
+        if record and record.get("student_id"):
+            is_opted_out = not get_user_leaderboard_opt_in(record.get("student_id"))
+
         return {
             "analysis_id": analysis_id,
             "student_handle": cand_bench.get("student_handle", "Student"),
@@ -322,7 +329,8 @@ class CohortAnalyticsService:
             "cohort_avg_overall": avg_overall,
             "ats_delta": ats_delta,
             "match_delta": match_delta,
-            "overall_delta": overall_delta
+            "overall_delta": overall_delta,
+            "is_opted_out": is_opted_out,
         }
 
     def get_leaderboard_view(
