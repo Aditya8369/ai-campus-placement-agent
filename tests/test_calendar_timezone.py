@@ -48,10 +48,12 @@ def setup_test_db(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
+    orig_enforce = app.config.get("ENFORCE_LOGIN_IN_TESTS", False)
     app.config["TESTING"] = True
     app.config["ENFORCE_LOGIN_IN_TESTS"] = True
     with app.test_client() as client:
         yield client
+    app.config["ENFORCE_LOGIN_IN_TESTS"] = orig_enforce
 
 
 def test_timezone_validation():

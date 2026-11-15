@@ -12482,6 +12482,7 @@ def move_coding_bookmark_endpoint(problem_id: str):
 # INTERVIEW EXPERIENCE MODERATION DASHBOARD ENDPOINTS (#252)
 # ============================================================================
 
+@app.route("/api/admin/moderation/experiences", methods=["GET"])
 def admin_moderation_queue_endpoint():
     """
     Administrative queue for inspecting submitted interview experiences,
@@ -13927,31 +13928,24 @@ def interview_compare_page():
 # Calendar Timezone Handling Endpoints (#261)
 # ---------------------------------------------------------------------------
 
-@app.route("/api/calendar/timezone", methods=["GET"])
-def api_get_calendar_timezone():
-    """Retrieve the configured timezone metadata for the logged-in student."""
+@app.route("/api/calendar/timezone", methods=["GET", "PUT"])
+def api_calendar_timezone():
+    """Retrieve or update the configured timezone metadata for the logged-in student."""
     user_id = flask_session.get("user_id")
     if not user_id:
         return jsonify({"success": False, "error": "Authentication required"}), 401
 
-    try:
-        from utils.calendar_timezone_service import get_student_timezone_info
-        info = get_student_timezone_info(user_id)
-        return jsonify({
-            "success": True,
-            "timezone": info
-        }), 200
-    except Exception as e:
-        logger.error(f"Error fetching timezone settings: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/calendar/timezone", methods=["PUT"])
-def api_set_calendar_timezone():
-    """Update timezone configuration for the logged-in student."""
-    user_id = flask_session.get("user_id")
-    if not user_id:
-        return jsonify({"success": False, "error": "Authentication required"}), 401
+    if request.method == "GET":
+        try:
+            from utils.calendar_timezone_service import get_student_timezone_info
+            info = get_student_timezone_info(user_id)
+            return jsonify({
+                "success": True,
+                "timezone": info
+            }), 200
+        except Exception as e:
+            logger.error(f"Error fetching timezone settings: {e}")
+            return jsonify({"success": False, "error": str(e)}), 500
 
     payload = request.get_json(silent=True) or {}
     tz_id = payload.get("timezone_id")
