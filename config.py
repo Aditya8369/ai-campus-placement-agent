@@ -131,5 +131,11 @@ EMAIL_DELIVERY_DISABLED = os.getenv("EMAIL_DELIVERY_DISABLED", "false").lower() 
 ENABLE_PII_REDACTION = os.getenv("ENABLE_PII_REDACTION", "true").lower() in ("true", "1", "yes")
 PII_REDACTION_ENABLED = ENABLE_PII_REDACTION
 
+# Analysis Result Input Hash Caching Configurations (#296)
+# Caches identical (resume, JD, company) submissions for 24 hours to conserve AI quota
+ANALYSIS_CACHE_ENABLED = os.getenv("ANALYSIS_CACHE_ENABLED", "true").lower() in ("true", "1", "yes")
+ANALYSIS_CACHE_TTL_HOURS = int(os.getenv("ANALYSIS_CACHE_TTL_HOURS", "24"))
+ANALYSIS_CACHE_EXPIRY_SECONDS = int(os.getenv("ANALYSIS_CACHE_EXPIRY_SECONDS", str(ANALYSIS_CACHE_TTL_HOURS * 3600)))
+
 
 

@@ -35,16 +35,17 @@ def test_internship_filtering_by_location():
 
 def test_internships_web_route():
     """Verify GET and AJAX requests to /internships endpoint."""
+    app.config["TESTING"] = True
     with app.test_client() as client:
         # Standard GET
-        res = client.get("/internships?skills=Python,SQL")
+        res = client.get("/internships?skills=Python,SQL&student_id=test_student")
         assert res.status_code == 200
         html = res.data.decode("utf-8")
-        assert "Internship Recommendation Agent" in html
+        assert "Internship Recommendation" in html
         assert "btnFilterInternships" in html
 
         # AJAX GET
-        res_json = client.get("/internships?skills=Python,SQL", headers={"X-Requested-With": "XMLHttpRequest"})
+        res_json = client.get("/internships?skills=Python,SQL&student_id=test_student", headers={"X-Requested-With": "XMLHttpRequest"})
         assert res_json.status_code == 200
         data = res_json.get_json()
         assert data["success"] is True

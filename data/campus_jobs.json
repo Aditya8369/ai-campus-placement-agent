@@ -8,14 +8,28 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹24 - ₹38 LPA",
-    "required_skills": ["Python", "C++", "Java", "Data Structures", "Algorithms", "System Design", "Git"],
-    "preferred_skills": ["Cloud Architecture", "Distributed Systems", "Machine Learning", "Linux"],
+    "salary_range": "\u20b924 - \u20b938 LPA",
+    "required_skills": [
+      "Python",
+      "C++",
+      "Java",
+      "Data Structures",
+      "Algorithms",
+      "System Design",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Cloud Architecture",
+      "Distributed Systems",
+      "Machine Learning",
+      "Linux"
+    ],
     "description": "Develop next-generation technologies that change how billions of users connect, explore, and interact. Tackle complex algorithmic problems across search, cloud infrastructure, and AI systems.",
     "apply_url": "https://careers.google.com/jobs/results/?q=University%20Graduate",
     "posted_date": "1 day ago",
     "deadline": "Active Drive - Rolling Basis",
-    "drive_mode": "National Campus Hiring"
+    "drive_mode": "National Campus Hiring",
+    "work_mode": "On-site"
   },
   {
     "id": "job-msft-sde-grad-2026",
@@ -26,14 +40,28 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹22 - ₹34 LPA",
-    "required_skills": ["C#", "C++", "Java", "Data Structures", "Algorithms", "Object-Oriented Design", "SQL"],
-    "preferred_skills": ["Azure", "Cloud Architecture", "REST APIs", "Microservices"],
+    "salary_range": "\u20b922 - \u20b934 LPA",
+    "required_skills": [
+      "C#",
+      "C++",
+      "Java",
+      "Data Structures",
+      "Algorithms",
+      "Object-Oriented Design",
+      "SQL"
+    ],
+    "preferred_skills": [
+      "Azure",
+      "Cloud Architecture",
+      "REST APIs",
+      "Microservices"
+    ],
     "description": "Design, build, and deploy large-scale cloud services, developer tools, and intelligent productivity suites. Work closely with Azure platform architects and product teams.",
     "apply_url": "https://careers.microsoft.com/v2/global/en/home.html",
     "posted_date": "2 days ago",
     "deadline": "Closes Nov 28, 2026",
-    "drive_mode": "Virtual Campus Drive"
+    "drive_mode": "Virtual Campus Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-amazon-sde1-2026",
@@ -44,14 +72,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹20 - ₹32 LPA",
-    "required_skills": ["Java", "Python", "Data Structures", "Algorithms", "Object Oriented Design", "DBMS"],
-    "preferred_skills": ["AWS", "NoSQL", "Distributed Systems", "Spring Boot"],
+    "salary_range": "\u20b920 - \u20b932 LPA",
+    "required_skills": [
+      "Java",
+      "Python",
+      "Data Structures",
+      "Algorithms",
+      "Object Oriented Design",
+      "DBMS"
+    ],
+    "preferred_skills": [
+      "AWS",
+      "NoSQL",
+      "Distributed Systems",
+      "Spring Boot"
+    ],
     "description": "Build high-throughput, low-latency microservices powering Amazon e-commerce, Prime, and AWS global infrastructure. Deliver customer-obsessed features at massive scale.",
     "apply_url": "https://amazon.jobs/en/job_categories/software-development",
     "posted_date": "3 days ago",
     "deadline": "Active Drive",
-    "drive_mode": "National Qualifier Drive"
+    "drive_mode": "National Qualifier Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-razorpay-ase-backend",
@@ -62,14 +103,29 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹16 - ₹24 LPA",
-    "required_skills": ["Python", "Go", "Java", "REST APIs", "Data Structures", "SQL", "Git"],
-    "preferred_skills": ["Kafka", "Redis", "Docker", "Microservices", "PostgreSQL"],
+    "salary_range": "\u20b916 - \u20b924 LPA",
+    "required_skills": [
+      "Python",
+      "Go",
+      "Java",
+      "REST APIs",
+      "Data Structures",
+      "SQL",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Kafka",
+      "Redis",
+      "Docker",
+      "Microservices",
+      "PostgreSQL"
+    ],
     "description": "Engineer robust and resilient payment gateway services processing millions of real-time financial transactions with ultra-high availability and sub-second latencies.",
     "apply_url": "https://razorpay.com/jobs/",
     "posted_date": "2 days ago",
     "deadline": "Closes Dec 05, 2026",
-    "drive_mode": "Campus Placement Drive"
+    "drive_mode": "Campus Placement Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-swiggy-sde-intern",
@@ -80,14 +136,28 @@
     "role_type": "Internship",
     "experience_level": "Final Year Students",
     "batch_eligibility": "2026 Batch",
-    "salary_range": "₹60,000/mo (Stipend) + ₹18 LPA PPO",
-    "required_skills": ["Java", "Python", "Data Structures", "Algorithms", "MySQL", "Git"],
-    "preferred_skills": ["Spring Boot", "Docker", "Redis", "REST APIs"],
+    "salary_range": "\u20b960,000/mo (Stipend) + \u20b918 LPA PPO",
+    "required_skills": [
+      "Java",
+      "Python",
+      "Data Structures",
+      "Algorithms",
+      "MySQL",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Spring Boot",
+      "Docker",
+      "Redis",
+      "REST APIs"
+    ],
     "description": "Collaborate with hyper-growth logistics and consumer tech engineering squads. Implement real-time dispatching, ordering, and delivery prediction algorithms.",
     "apply_url": "https://careers.swiggy.com/",
     "posted_date": "Just now",
     "deadline": "Limited Slots",
-    "drive_mode": "Summer & Autumn Internship"
+    "drive_mode": "Summer & Autumn Internship",
+    "work_mode": "On-site",
+    "duration": "6 Months"
   },
   {
     "id": "job-cisco-ace-hiring",
@@ -98,14 +168,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹14 - ₹19 LPA",
-    "required_skills": ["Python", "Computer Networks", "Linux", "REST APIs", "Cloud Fundamentals", "Git"],
-    "preferred_skills": ["Docker", "Kubernetes", "Ansible", "Cybersecurity Basics"],
+    "salary_range": "\u20b914 - \u20b919 LPA",
+    "required_skills": [
+      "Python",
+      "Computer Networks",
+      "Linux",
+      "REST APIs",
+      "Cloud Fundamentals",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Docker",
+      "Kubernetes",
+      "Ansible",
+      "Cybersecurity Basics"
+    ],
     "description": "Deploy state-of-the-art enterprise networking, cybersecurity, and cloud connectivity solutions for tier-1 enterprises and service providers globally.",
     "apply_url": "https://jobs.cisco.com/",
     "posted_date": "4 days ago",
     "deadline": "Active Drive",
-    "drive_mode": "On-Campus / Virtual"
+    "drive_mode": "On-Campus / Virtual",
+    "work_mode": "On-site"
   },
   {
     "id": "job-adobe-swe1-doc",
@@ -116,14 +199,26 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹18 - ₹28 LPA",
-    "required_skills": ["C++", "JavaScript", "Data Structures", "Algorithms", "Object-Oriented Design"],
-    "preferred_skills": ["React", "WebGL", "Machine Learning", "Cloud Services"],
+    "salary_range": "\u20b918 - \u20b928 LPA",
+    "required_skills": [
+      "C++",
+      "JavaScript",
+      "Data Structures",
+      "Algorithms",
+      "Object-Oriented Design"
+    ],
+    "preferred_skills": [
+      "React",
+      "WebGL",
+      "Machine Learning",
+      "Cloud Services"
+    ],
     "description": "Innovate on Adobe Creative Cloud and Document Cloud products used by millions of designers and businesses worldwide. Solve hard algorithmic rendering challenges.",
     "apply_url": "https://careers.adobe.com/us/en",
     "posted_date": "3 days ago",
     "deadline": "Active Drive",
-    "drive_mode": "National Placement Drive"
+    "drive_mode": "National Placement Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-oracle-ase-oci",
@@ -134,14 +229,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹15 - ₹22 LPA",
-    "required_skills": ["Java", "C++", "Data Structures", "SQL", "Linux", "Object Oriented Design"],
-    "preferred_skills": ["Kubernetes", "Docker", "Cloud Infrastructure", "Python"],
+    "salary_range": "\u20b915 - \u20b922 LPA",
+    "required_skills": [
+      "Java",
+      "C++",
+      "Data Structures",
+      "SQL",
+      "Linux",
+      "Object Oriented Design"
+    ],
+    "preferred_skills": [
+      "Kubernetes",
+      "Docker",
+      "Cloud Infrastructure",
+      "Python"
+    ],
     "description": "Contribute to enterprise-grade cloud native computing platforms, distributed relational databases, and high-performance serverless fabrics.",
     "apply_url": "https://www.oracle.com/corporate/careers/",
     "posted_date": "5 days ago",
     "deadline": "Rolling Basis",
-    "drive_mode": "Virtual Campus Drive"
+    "drive_mode": "Virtual Campus Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-tcs-digital-2026",
@@ -152,14 +260,26 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹7 - ₹9 LPA",
-    "required_skills": ["Python", "Java", "SQL", "DBMS", "Data Structures", "Communication"],
-    "preferred_skills": ["Cloud Fundamentals", "Machine Learning", "Web Development"],
+    "salary_range": "\u20b97 - \u20b99 LPA",
+    "required_skills": [
+      "Python",
+      "Java",
+      "SQL",
+      "DBMS",
+      "Data Structures",
+      "Communication"
+    ],
+    "preferred_skills": [
+      "Cloud Fundamentals",
+      "Machine Learning",
+      "Web Development"
+    ],
     "description": "Join the premier engineering cadre at TCS working on digital transformation, AI solutions, modern web architectures, and enterprise engineering projects.",
     "apply_url": "https://www.tcs.com/careers",
     "posted_date": "1 day ago",
     "deadline": "NQT Registration Open",
-    "drive_mode": "TCS NQT National Drive"
+    "drive_mode": "TCS NQT National Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-infosys-sp-2026",
@@ -170,14 +290,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹8 - ₹11 LPA",
-    "required_skills": ["Java", "Python", "Data Structures", "Algorithms", "SQL", "OOP"],
-    "preferred_skills": ["Full Stack Development", "Spring Boot", "React", "Cloud"],
+    "salary_range": "\u20b98 - \u20b911 LPA",
+    "required_skills": [
+      "Java",
+      "Python",
+      "Data Structures",
+      "Algorithms",
+      "SQL",
+      "OOP"
+    ],
+    "preferred_skills": [
+      "Full Stack Development",
+      "Spring Boot",
+      "React",
+      "Cloud"
+    ],
     "description": "High-impact elite coding role at Infosys building complex architecture patterns, microservices, and high-speed data pipelines for global Fortune 500 clients.",
     "apply_url": "https://www.infosys.com/careers/",
     "posted_date": "3 days ago",
     "deadline": "HackWithInfy / InfyTQ",
-    "drive_mode": "HackWithInfy Qualifier"
+    "drive_mode": "HackWithInfy Qualifier",
+    "work_mode": "On-site"
   },
   {
     "id": "job-accenture-aaea",
@@ -188,14 +321,26 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹6.5 - ₹8.5 LPA",
-    "required_skills": ["Java", "Python", "SQL", "DBMS", "Agile", "Cloud Fundamentals"],
-    "preferred_skills": ["DevOps", "API Integration", "JavaScript"],
+    "salary_range": "\u20b96.5 - \u20b98.5 LPA",
+    "required_skills": [
+      "Java",
+      "Python",
+      "SQL",
+      "DBMS",
+      "Agile",
+      "Cloud Fundamentals"
+    ],
+    "preferred_skills": [
+      "DevOps",
+      "API Integration",
+      "JavaScript"
+    ],
     "description": "Deliver cutting-edge software solutions leveraging modern development stacks, cloud transformation frameworks, and automated quality pipelines.",
     "apply_url": "https://www.accenture.com/in-en/careers",
     "posted_date": "4 days ago",
     "deadline": "Active National Drive",
-    "drive_mode": "Campus Placement Drive"
+    "drive_mode": "Campus Placement Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-capgemini-senior-analyst",
@@ -206,14 +351,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹5.5 - ₹7.5 LPA",
-    "required_skills": ["Java", "C++", "Python", "SQL", "Object-Oriented Design", "Git"],
-    "preferred_skills": ["AWS", "Azure", "Linux", "Data Structures"],
+    "salary_range": "\u20b95.5 - \u20b97.5 LPA",
+    "required_skills": [
+      "Java",
+      "C++",
+      "Python",
+      "SQL",
+      "Object-Oriented Design",
+      "Git"
+    ],
+    "preferred_skills": [
+      "AWS",
+      "Azure",
+      "Linux",
+      "Data Structures"
+    ],
     "description": "Participate in agile sprints delivering digital business platforms, automated data processing, and enterprise application modernization.",
     "apply_url": "https://www.capgemini.com/in-en/careers/",
     "posted_date": "6 days ago",
     "deadline": "Registration Closing Soon",
-    "drive_mode": "On-Campus Recruitment"
+    "drive_mode": "On-Campus Recruitment",
+    "work_mode": "On-site"
   },
   {
     "id": "job-zomato-frontend-fresher",
@@ -224,14 +382,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹14 - ₹20 LPA",
-    "required_skills": ["JavaScript", "TypeScript", "React", "HTML5", "CSS3", "Git"],
-    "preferred_skills": ["Next.js", "Redux", "Tailwind CSS", "REST APIs"],
+    "salary_range": "\u20b914 - \u20b920 LPA",
+    "required_skills": [
+      "JavaScript",
+      "TypeScript",
+      "React",
+      "HTML5",
+      "CSS3",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Next.js",
+      "Redux",
+      "Tailwind CSS",
+      "REST APIs"
+    ],
     "description": "Craft lightning-fast, accessible, and delightful user experiences for millions of food and grocery ordering users across web and mobile platforms.",
     "apply_url": "https://www.zomato.com/careers",
     "posted_date": "1 day ago",
     "deadline": "Active Open Hiring",
-    "drive_mode": "Direct Career Drive"
+    "drive_mode": "Direct Career Drive",
+    "work_mode": "Remote"
   },
   {
     "id": "job-flipkart-sde1-campus",
@@ -242,14 +413,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹18 - ₹26 LPA",
-    "required_skills": ["Java", "Data Structures", "Algorithms", "Object Oriented Design", "DBMS", "SQL"],
-    "preferred_skills": ["Spring Boot", "Distributed Systems", "Kafka", "Redis"],
+    "salary_range": "\u20b918 - \u20b926 LPA",
+    "required_skills": [
+      "Java",
+      "Data Structures",
+      "Algorithms",
+      "Object Oriented Design",
+      "DBMS",
+      "SQL"
+    ],
+    "preferred_skills": [
+      "Spring Boot",
+      "Distributed Systems",
+      "Kafka",
+      "Redis"
+    ],
     "description": "Architect high-performance checkout flows, inventory systems, and delivery tracking infrastructure powering India's leading e-commerce ecosystem.",
     "apply_url": "https://www.flipkartcareers.com/",
     "posted_date": "3 days ago",
     "deadline": "Campus Referral Drive",
-    "drive_mode": "National Campus Hiring"
+    "drive_mode": "National Campus Hiring",
+    "work_mode": "On-site"
   },
   {
     "id": "job-cred-backend-intern",
@@ -260,14 +444,28 @@
     "role_type": "Internship",
     "experience_level": "Pre-final / Final Year",
     "batch_eligibility": "2026 Batch",
-    "salary_range": "₹80,000/mo (Stipend) + ₹22 LPA PPO",
-    "required_skills": ["Golang", "Java", "Data Structures", "Algorithms", "REST APIs", "SQL"],
-    "preferred_skills": ["Microservices", "Redis", "Kafka", "Docker"],
+    "salary_range": "\u20b980,000/mo (Stipend) + \u20b922 LPA PPO",
+    "required_skills": [
+      "Golang",
+      "Java",
+      "Data Structures",
+      "Algorithms",
+      "REST APIs",
+      "SQL"
+    ],
+    "preferred_skills": [
+      "Microservices",
+      "Redis",
+      "Kafka",
+      "Docker"
+    ],
     "description": "Work on ultra-scalable backend systems handling secure transactions for India's creditworthy community. Build elegant event-driven microservices.",
     "apply_url": "https://cred.club/careers",
     "posted_date": "2 days ago",
     "deadline": "Hiring Rolling",
-    "drive_mode": "Internship Drive"
+    "drive_mode": "Internship Drive",
+    "work_mode": "On-site",
+    "duration": "6 Months"
   },
   {
     "id": "job-gs-tech-analyst",
@@ -278,14 +476,27 @@
     "role_type": "Internship",
     "experience_level": "Graduating 2026",
     "batch_eligibility": "2026 Batch",
-    "salary_range": "₹1,00,000/mo (Stipend)",
-    "required_skills": ["Java", "C++", "Python", "Data Structures", "Algorithms", "Linear Algebra"],
-    "preferred_skills": ["Financial Markets", "Distributed Computing", "Linux"],
+    "salary_range": "\u20b91,00,000/mo (Stipend)",
+    "required_skills": [
+      "Java",
+      "C++",
+      "Python",
+      "Data Structures",
+      "Algorithms",
+      "Linear Algebra"
+    ],
+    "preferred_skills": [
+      "Financial Markets",
+      "Distributed Computing",
+      "Linux"
+    ],
     "description": "Tackle challenging quantitative engineering and distributed systems problems at the heart of global financial transactions and investment trading.",
     "apply_url": "https://www.goldmansachs.com/careers/",
     "posted_date": "5 days ago",
     "deadline": "Applications Closing Soon",
-    "drive_mode": "Engineering Campus Hiring"
+    "drive_mode": "Engineering Campus Hiring",
+    "work_mode": "On-site",
+    "duration": "3 Months"
   },
   {
     "id": "job-uber-swe1-2026",
@@ -296,14 +507,27 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹22 - ₹36 LPA",
-    "required_skills": ["Go", "Java", "Python", "Data Structures", "Algorithms", "System Design"],
-    "preferred_skills": ["Distributed Systems", "Kafka", "gRPC", "Docker"],
+    "salary_range": "\u20b922 - \u20b936 LPA",
+    "required_skills": [
+      "Go",
+      "Java",
+      "Python",
+      "Data Structures",
+      "Algorithms",
+      "System Design"
+    ],
+    "preferred_skills": [
+      "Distributed Systems",
+      "Kafka",
+      "gRPC",
+      "Docker"
+    ],
     "description": "Design mission-critical infrastructure that powers mobility and delivery services across tens of thousands of cities globally every second.",
     "apply_url": "https://www.uber.com/in/en/careers/",
     "posted_date": "Just now",
     "deadline": "Active Hiring",
-    "drive_mode": "Virtual Campus Drive"
+    "drive_mode": "Virtual Campus Drive",
+    "work_mode": "On-site"
   },
   {
     "id": "job-atlassian-ase-remote",
@@ -314,14 +538,293 @@
     "role_type": "Full-time",
     "experience_level": "Fresher / 0-1 Years",
     "batch_eligibility": "2025 & 2026 Batch",
-    "salary_range": "₹20 - ₹30 LPA",
-    "required_skills": ["Java", "Kotlin", "TypeScript", "React", "Data Structures", "Git"],
-    "preferred_skills": ["AWS", "Microservices", "GraphQL", "CI/CD"],
+    "salary_range": "\u20b920 - \u20b930 LPA",
+    "required_skills": [
+      "Java",
+      "Kotlin",
+      "TypeScript",
+      "React",
+      "Data Structures",
+      "Git"
+    ],
+    "preferred_skills": [
+      "AWS",
+      "Microservices",
+      "GraphQL",
+      "CI/CD"
+    ],
     "description": "Collaborate remotely on world-class collaboration products including Jira, Confluence, and Bitbucket. Champion clean architecture and test-driven code.",
     "apply_url": "https://www.atlassian.com/company/careers",
     "posted_date": "4 days ago",
     "deadline": "Active Remote Drive",
-    "drive_mode": "Remote Hiring Drive"
+    "drive_mode": "Remote Hiring Drive",
+    "work_mode": "Remote"
+  },
+  {
+    "id": "job-google-summer-intern-2026",
+    "title": "Software Engineering Summer Intern 2026",
+    "company": "Google",
+    "logo_color": "#4285F4",
+    "location": "Bengaluru",
+    "work_mode": "Hybrid",
+    "role_type": "Internship",
+    "experience_level": "Student / Pre-final Year",
+    "batch_eligibility": "2026 & 2027 Batch",
+    "duration": "3 Months",
+    "salary_range": "\u20b91,15,000/mo (Stipend)",
+    "required_skills": [
+      "C++",
+      "Java",
+      "Python",
+      "Data Structures",
+      "Algorithms"
+    ],
+    "preferred_skills": [
+      "System Design",
+      "Cloud Architecture",
+      "Distributed Systems"
+    ],
+    "description": "Join Google engineering teams for a 12-week intensive summer internship solving algorithmic problems at global scale.",
+    "apply_url": "https://careers.google.com/students",
+    "posted_date": "1 day ago",
+    "deadline": "Closes Dec 15, 2026",
+    "drive_mode": "National Campus Drive"
+  },
+  {
+    "id": "job-microsoft-explore-intern-2026",
+    "title": "Software Engineering Intern - Explore 2026",
+    "company": "Microsoft",
+    "logo_color": "#00A4EF",
+    "location": "Hyderabad",
+    "work_mode": "Hybrid",
+    "role_type": "Internship",
+    "experience_level": "Student / 2nd & 3rd Year",
+    "batch_eligibility": "2026 & 2027 Batch",
+    "duration": "2 Months",
+    "salary_range": "\u20b985,000/mo (Stipend)",
+    "required_skills": [
+      "Python",
+      "C#",
+      "Data Structures",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Azure",
+      "Web Development",
+      "OOP"
+    ],
+    "description": "Summer internship rotation program across product management and software engineering for university students.",
+    "apply_url": "https://careers.microsoft.com/students",
+    "posted_date": "2 days ago",
+    "deadline": "Closes Dec 01, 2026",
+    "drive_mode": "Virtual Campus Drive"
+  },
+  {
+    "id": "job-amazon-sde-intern-6mo-2026",
+    "title": "Software Development Engineer Intern (6-Month Cohort)",
+    "company": "Amazon",
+    "logo_color": "#FF9900",
+    "location": "Bengaluru",
+    "work_mode": "On-site",
+    "role_type": "Internship",
+    "experience_level": "Final Year Student",
+    "batch_eligibility": "2026 Batch",
+    "duration": "6 Months",
+    "salary_range": "\u20b980,000/mo (Stipend) + PPO",
+    "required_skills": [
+      "Java",
+      "OOP",
+      "DBMS",
+      "Data Structures",
+      "Algorithms"
+    ],
+    "preferred_skills": [
+      "AWS",
+      "Spring Boot",
+      "Microservices"
+    ],
+    "description": "Six-month full-time internship working with Amazon core product teams with fast-track conversion to full-time SDE I.",
+    "apply_url": "https://amazon.jobs/university",
+    "posted_date": "3 days ago",
+    "deadline": "Active Drive - Rolling Basis",
+    "drive_mode": "National Qualifier Drive"
+  },
+  {
+    "id": "job-razorpay-frontend-intern-2026",
+    "title": "Frontend Engineering Intern (React/TypeScript)",
+    "company": "Razorpay",
+    "logo_color": "#0C2340",
+    "location": "Remote",
+    "work_mode": "Remote",
+    "role_type": "Internship",
+    "experience_level": "Student / Graduate",
+    "batch_eligibility": "2025 & 2026 Batch",
+    "duration": "3 Months",
+    "salary_range": "\u20b945,000/mo (Stipend)",
+    "required_skills": [
+      "React",
+      "JavaScript",
+      "TypeScript",
+      "HTML/CSS",
+      "Redux"
+    ],
+    "preferred_skills": [
+      "Next.js",
+      "TailwindCSS",
+      "REST APIs"
+    ],
+    "description": "Build slick, accessible web interfaces for millions of businesses paying and accepting transactions across India.",
+    "apply_url": "https://razorpay.com/jobs",
+    "posted_date": "Just now",
+    "deadline": "Closes Nov 28, 2026",
+    "drive_mode": "Virtual Internship Drive"
+  },
+  {
+    "id": "job-cred-data-intern-2026",
+    "title": "Data Science & Analytics Intern",
+    "company": "CRED",
+    "logo_color": "#111111",
+    "location": "Bengaluru",
+    "work_mode": "On-site",
+    "role_type": "Internship",
+    "experience_level": "Student / Graduate",
+    "batch_eligibility": "2025 & 2026 Batch",
+    "duration": "3 Months",
+    "salary_range": "\u20b975,000/mo (Stipend)",
+    "required_skills": [
+      "Python",
+      "SQL",
+      "Pandas",
+      "Machine Learning",
+      "Statistics"
+    ],
+    "preferred_skills": [
+      "Scikit-Learn",
+      "Tableau",
+      "Data Modeling"
+    ],
+    "description": "Analyze user engagement patterns, credit score dynamics, and fraud prevention signals in high-velocity fintech pipelines.",
+    "apply_url": "https://cred.club/careers",
+    "posted_date": "4 days ago",
+    "deadline": "Closes Nov 30, 2026",
+    "drive_mode": "Campus Internship"
+  },
+  {
+    "id": "job-hasura-devops-intern-2026",
+    "title": "Cloud & DevOps Engineering Intern",
+    "company": "Hasura",
+    "logo_color": "#136FFB",
+    "location": "Remote",
+    "work_mode": "Remote",
+    "role_type": "Internship",
+    "experience_level": "Student / Graduate",
+    "batch_eligibility": "2025 & 2026 Batch",
+    "duration": "6 Months",
+    "salary_range": "\u20b955,000/mo (Stipend)",
+    "required_skills": [
+      "Docker",
+      "Kubernetes",
+      "Linux",
+      "Go",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Terraform",
+      "CI/CD",
+      "AWS",
+      "Prometheus"
+    ],
+    "description": "Help scale and automate containerized cloud infrastructure powering millions of GraphQL queries every day.",
+    "apply_url": "https://hasura.io/careers",
+    "posted_date": "5 days ago",
+    "deadline": "Active Drive",
+    "drive_mode": "Remote Hiring"
+  },
+  {
+    "id": "job-postman-api-intern-2026",
+    "title": "API Platform Engineering Intern",
+    "company": "Postman",
+    "logo_color": "#FF6C37",
+    "location": "Bengaluru",
+    "work_mode": "Hybrid",
+    "role_type": "Internship",
+    "experience_level": "Student / Pre-final Year",
+    "batch_eligibility": "2026 Batch",
+    "duration": "6 Months",
+    "salary_range": "\u20b965,000/mo (Stipend)",
+    "required_skills": [
+      "Node.js",
+      "JavaScript",
+      "REST APIs",
+      "SQL",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Docker",
+      "TypeScript",
+      "API Testing"
+    ],
+    "description": "Work directly on the world leading API collaboration platform used by over 30 million developers.",
+    "apply_url": "https://www.postman.com/company/careers/",
+    "posted_date": "1 week ago",
+    "deadline": "Active Drive - Rolling Basis",
+    "drive_mode": "Campus Outreach"
+  },
+  {
+    "id": "job-pune-tech-intern-2026",
+    "title": "Backend Systems Intern (Python/FastAPI)",
+    "company": "Persistent Systems",
+    "logo_color": "#E85B25",
+    "location": "Pune",
+    "work_mode": "On-site",
+    "role_type": "Internship",
+    "experience_level": "Student / Graduate",
+    "batch_eligibility": "2025 & 2026 Batch",
+    "duration": "3 Months",
+    "salary_range": "\u20b935,000/mo (Stipend)",
+    "required_skills": [
+      "Python",
+      "FastAPI",
+      "SQL",
+      "Git"
+    ],
+    "preferred_skills": [
+      "Redis",
+      "Docker",
+      "PostgreSQL"
+    ],
+    "description": "Develop modern cloud-native backend microservices and REST endpoints for enterprise digital transformation.",
+    "apply_url": "https://www.persistent.com/careers/",
+    "posted_date": "3 days ago",
+    "deadline": "Closes Dec 20, 2026",
+    "drive_mode": "Pune Campus Drive"
+  },
+  {
+    "id": "job-academic-fellow-intern-2026",
+    "title": "Open Source AI Research Fellow",
+    "company": "Campus AI Research Lab",
+    "logo_color": "#6B7280",
+    "location": "Remote",
+    "work_mode": "Remote",
+    "role_type": "Internship",
+    "experience_level": "Student / Graduate",
+    "batch_eligibility": "All Batches",
+    "duration": "1-2 Months",
+    "salary_range": "Academic Credit / Certificate",
+    "required_skills": [
+      "Python",
+      "PyTorch",
+      "NLP",
+      "Git"
+    ],
+    "preferred_skills": [
+      "HuggingFace",
+      "Transformers"
+    ],
+    "description": "Collaborative research internship contributing to open-source foundation models and reproducible benchmark papers.",
+    "apply_url": "https://github.com/campus-ai-lab",
+    "posted_date": "Just now",
+    "deadline": "Active Drive - Rolling Basis",
+    "drive_mode": "Virtual Research Fellowship"
   }
 ]
-

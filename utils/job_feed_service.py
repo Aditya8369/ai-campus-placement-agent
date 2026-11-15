@@ -191,43 +191,275 @@ class JobFeedService:
         jobs: List[Dict[str, Any]],
         location: Optional[str] = None,
         role_type: Optional[str] = None,
-        search_query: Optional[str] = None
+        search_query: Optional[str] = None,
+        work_mode: Optional[str] = None,
+        stipend_type: Optional[str] = None,
+        duration: Optional[str] = None,
+        technology: Optional[str] = None,
+        deadline_status: Optional[str] = None,
+        include_unspecified: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Filters a list of jobs by location, role type, and search keyword.
+        Filters a list of jobs by comprehensive search and filter panel criteria (#356):
+        location, role type, search query, work mode (remote/on-site/hybrid),
+        stipend availability, duration, technology/skills, and application deadline status.
+        Gracefully handles listings with missing or unspecified attributes via include_unspecified.
         """
-        filtered = jobs
+        filtered = []
 
-        # Location filter
-        if location and location.strip() and location.strip().lower() not in ("all", "any"):
-            loc_clean = location.strip().lower()
-            filtered = [
-                j for j in filtered
-                if loc_clean in (j.get("location") or "").lower()
-            ]
+        for j in jobs:
+            meta = extract_job_filter_metadata(j)
 
-        # Role type filter
-        if role_type and role_type.strip() and role_type.strip().lower() not in ("all", "any"):
-            rt_clean = role_type.strip().lower()
-            filtered = [
-                j for j in filtered
-                if rt_clean in (j.get("role_type") or "").lower()
-            ]
+            # 1. Location filter
+            if location and location.strip() and location.strip().lower() not in ("all", "any"):
+                loc_clean = location.strip().lower()
+                if loc_clean not in (j.get("location") or "").lower():
+                    continue
 
-        # Search query filter (matches title, company, or skills)
-        if search_query and search_query.strip():
-            q = search_query.strip().lower()
-            def matches(job: Dict[str, Any]) -> bool:
-                if q in (job.get("title") or "").lower():
-                    return True
-                if q in (job.get("company") or "").lower():
-                    return True
-                if q in (job.get("description") or "").lower():
-                    return True
-                skills = [s.lower() for s in job.get("required_skills", []) + job.get("preferred_skills", [])]
-                return any(q in s for s in skills)
+            # 2. Role filter
+            if role_type and role_type.strip() and role_type.strip().lower() not in ("all", "any"):
+                rt_clean = role_type.strip().lower()
+                j_title = (j.get("title") or "").lower()
+                j_role = (j.get("role_type") or "").lower()
+                matched_role = False
+                if rt_clean in j_title or rt_clean in j_role:
+                    matched_role = True
+                elif any(k in rt_clean for k in ["sde", "software"]):
+                    matched_role = any(k in j_title for k in ["software", "sde", "developer", "engineer"])
+                elif "backend" in rt_clean:
+                    matched_role = any(k in j_title for k in ["backend", "api", "systems", "server"])
+                elif "frontend" in rt_clean:
+                    matched_role = any(k in j_title for k in ["frontend", "ui", "react", "web"])
+                elif any(k in rt_clean for k in ["data", "ai", "analytics"]):
+                    matched_role = any(k in j_title for k in ["data", "analytics", "ai", "machine learning", "ml", "research"])
+                elif any(k in rt_clean for k in ["cloud", "devops"]):
+                    matched_role = any(k in j_title for k in ["cloud", "devops", "sre", "infrastructure", "platform"])
+                if not matched_role:
+                    continue
 
-            filtered = [j for j in filtered if matches(j)]
+            # 3. Work Mode filter (Remote / On-site / Hybrid)
+            if work_mode and work_mode.strip() and work_mode.strip().lower() not in ("all", "any"):
+                wm_clean = work_mode.strip().lower()
+                meta_wm = meta["work_mode"].lower()
+                if wm_clean in meta_wm:
+                    pass
+                elif include_unspecified and not meta["work_mode_specified"]:
+                    pass
+                else:
+                    continue
+
+            # 4. Stipend Availability filter
+            if stipend_type and stipend_type.strip() and stipend_type.strip().lower() not in ("all", "any"):
+                st_clean = stipend_type.strip().lower()
+                if "paid" in st_clean:
+                    if meta["has_stipend"] is True:
+                        pass
+                    elif include_unspecified and not meta["stipend_specified"]:
+                        pass
+                    else:
+                        continue
+                elif "unpaid" in st_clean:
+                    if meta["has_stipend"] is False:
+                        pass
+                    elif include_unspecified and not meta["stipend_specified"]:
+                        pass
+                    else:
+                        continue
+
+            # 5. Duration filter (1-2 Months / 3 Months / 6 Months)
+            if duration and duration.strip() and duration.strip().lower() not in ("all", "any"):
+                dur_clean = duration.strip().lower()
+                dur_meta = meta["duration"].lower()
+                if ("1" in dur_clean or "2" in dur_clean) and ("1" in dur_meta or "2" in dur_meta):
+                    pass
+                elif "3" in dur_clean and "3" in dur_meta:
+                    pass
+                elif "6" in dur_clean and "6" in dur_meta:
+                    pass
+                elif dur_clean in dur_meta:
+                    pass
+                elif include_unspecified and not meta["duration_specified"]:
+                    pass
+                else:
+                    continue
+
+            # 6. Technology filter
+            if technology and technology.strip() and technology.strip().lower() not in ("all", "any"):
+                tech_clean = technology.strip().lower()
+                matched_tech = (
+                    any(tech_clean in t.lower() for t in meta["technologies"])
+                    or tech_clean in (j.get("title") or "").lower()
+                    or tech_clean in (j.get("description") or "").lower()
+                )
+                if not matched_tech:
+                    continue
+
+            # 7. Deadline status filter
+            if deadline_status and deadline_status.strip() and deadline_status.strip().lower() not in ("all", "any"):
+                dl_clean = deadline_status.strip().lower()
+                if "closing" in dl_clean or "soon" in dl_clean:
+                    if meta["deadline_status"] == "Closing Soon":
+                        pass
+                    elif include_unspecified and not meta["deadline_specified"]:
+                        pass
+                    else:
+                        continue
+                elif "active" in dl_clean or "open" in dl_clean or "rolling" in dl_clean:
+                    if meta["deadline_status"] == "Active Drives":
+                        pass
+                    elif include_unspecified and not meta["deadline_specified"]:
+                        pass
+                    else:
+                        continue
+
+            # 8. Search query filter (matches title, company, description, or skills)
+            if search_query and search_query.strip():
+                q = search_query.strip().lower()
+                def matches_q(job: Dict[str, Any]) -> bool:
+                    if q in (job.get("title") or "").lower():
+                        return True
+                    if q in (job.get("company") or "").lower():
+                        return True
+                    if q in (job.get("description") or "").lower():
+                        return True
+                    skills = [s.lower() for s in (job.get("required_skills") or []) + (job.get("preferred_skills") or [])]
+                    return any(q in s for s in skills)
+
+                if not matches_q(j):
+                    continue
+
+            # Retain normalized metadata on job object for presentation
+            enriched_job = dict(j)
+            enriched_job.update(meta)
+            filtered.append(enriched_job)
 
         return filtered
+
+
+def extract_job_filter_metadata(job: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Extracts and normalizes searchable filter dimensions for a job or internship listing (#356):
+    work_mode, stipend_type, duration, technologies, and deadline_status.
+    Tracks whether each dimension was explicitly specified or inferred/unspecified.
+    """
+    loc = (job.get("location") or "").strip()
+    loc_lower = loc.lower()
+    drive_mode = (job.get("drive_mode") or "").strip().lower()
+    desc = (job.get("description") or "").strip().lower()
+    title = (job.get("title") or "").strip().lower()
+    combined_text = f"{title} {desc} {loc_lower} {drive_mode}"
+
+    # 1. Work Mode (Remote / On-site / Hybrid)
+    raw_wm = (job.get("work_mode") or "").strip().lower()
+    if raw_wm in ("remote", "on-site", "onsite", "hybrid"):
+        work_mode = "Remote" if raw_wm == "remote" else ("Hybrid" if raw_wm == "hybrid" else "On-site")
+        work_mode_specified = True
+    elif "remote / hybrid" in loc_lower or "hybrid / remote" in loc_lower or loc_lower == "remote / hybrid":
+        work_mode = "Remote / Hybrid"
+        work_mode_specified = False
+    elif loc_lower == "remote" or ("remote" in loc_lower and "hybrid" not in loc_lower) or ("remote" in drive_mode and "hybrid" not in drive_mode) or "virtual" in drive_mode:
+        work_mode = "Remote"
+        work_mode_specified = True
+    elif loc_lower == "hybrid" or ("hybrid" in loc_lower and "remote" not in loc_lower) or ("hybrid" in drive_mode and "remote" not in drive_mode):
+        work_mode = "Hybrid"
+        work_mode_specified = True
+    elif loc and loc_lower not in ("remote / hybrid", "all", "flexible", "not specified"):
+        work_mode = "On-site"
+        work_mode_specified = True
+    else:
+        work_mode = "Not Specified"
+        work_mode_specified = False
+
+    # 2. Stipend Availability (Paid Stipend / Unpaid / Not Specified)
+    sal = (job.get("salary_range") or job.get("stipend") or "").strip()
+    sal_lower = sal.lower()
+    if any(k in sal_lower for k in ["stipend", "/mo", "lpa", "₹", "$", "eur", "usd", "rs", "inr"]) and "unpaid" not in sal_lower:
+        has_stipend = True
+        stipend_type = "Paid Stipend"
+        stipend_specified = True
+    elif "unpaid" in sal_lower or "unpaid" in desc or "academic credit" in sal_lower or "certificate" in sal_lower:
+        has_stipend = False
+        stipend_type = "Unpaid / Any"
+        stipend_specified = True
+    elif sal:
+        has_stipend = True
+        stipend_type = "Paid Stipend"
+        stipend_specified = True
+    else:
+        has_stipend = None
+        stipend_type = "Not Specified"
+        stipend_specified = False
+
+    # 3. Duration (1-2 Months / 3 Months / 6 Months / Not Specified)
+    raw_dur = (job.get("duration") or "").strip()
+    dur_lower = raw_dur.lower()
+    if ("6" in dur_lower and ("month" in dur_lower or "mo" in dur_lower)) or "6-month" in combined_text or "6 month" in combined_text or "semester" in combined_text:
+        duration = "6 Months"
+        duration_specified = True
+    elif "3" in dur_lower or "summer" in dur_lower or "3-month" in combined_text or "3 month" in combined_text or "summer" in combined_text or "12-week" in combined_text:
+        duration = "3 Months"
+        duration_specified = True
+    elif "2" in dur_lower or "1-2" in dur_lower or "2-month" in combined_text or "2 month" in combined_text or "8 week" in combined_text:
+        duration = "1-2 Months"
+        duration_specified = True
+    elif raw_dur:
+        duration = raw_dur
+        duration_specified = True
+    else:
+        duration = "Not Specified"
+        duration_specified = False
+
+    # 4. Technologies
+    req = job.get("required_skills") or []
+    pref = job.get("preferred_skills") or []
+    techs = {s.strip() for s in req + pref if s and s.strip()}
+    common_tech_catalog = [
+        "Python", "Java", "C++", "C#", "React", "JavaScript", "TypeScript",
+        "Node.js", "SQL", "Go", "Docker", "Kubernetes", "AWS", "Git",
+        "Machine Learning", "NLP", "FastAPI", "Spring Boot", "PostgreSQL"
+    ]
+    for ct in common_tech_catalog:
+        if ct.lower() in combined_text:
+            techs.add(ct)
+
+    # 5. Deadline Status (Active Drives / Closing Soon / Not Specified)
+    deadline_raw = (job.get("deadline") or "").strip()
+    dl_lower = deadline_raw.lower()
+    if any(k in dl_lower for k in ["closes", "closing", "deadline", "nov", "dec", "last date", "expires"]):
+        deadline_status = "Closing Soon"
+        deadline_specified = True
+    elif any(k in dl_lower for k in ["active", "open", "rolling"]):
+        deadline_status = "Active Drives"
+        deadline_specified = True
+    elif deadline_raw:
+        deadline_status = "Active Drives"
+        deadline_specified = True
+    else:
+        deadline_status = "Not Specified"
+        deadline_specified = False
+
+    # Track unspecified fields for user awareness
+    unspecified_fields = []
+    if not work_mode_specified:
+        unspecified_fields.append("work_mode")
+    if not stipend_specified:
+        unspecified_fields.append("stipend")
+    if not duration_specified:
+        unspecified_fields.append("duration")
+    if not deadline_specified:
+        unspecified_fields.append("deadline")
+
+    return {
+        "work_mode": work_mode,
+        "work_mode_specified": work_mode_specified,
+        "has_stipend": has_stipend,
+        "stipend_type": stipend_type,
+        "stipend_specified": stipend_specified,
+        "duration": duration,
+        "duration_specified": duration_specified,
+        "technologies": sorted(list(techs)),
+        "deadline_status": deadline_status,
+        "deadline_specified": deadline_specified,
+        "unspecified_fields": unspecified_fields
+    }
 

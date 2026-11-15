@@ -11,17 +11,44 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem("theme") || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-bs-theme", savedTheme);
+    })();
+  </script>
+  <style>
+    .filter-panel-card {
+      border-radius: 1.25rem;
+      border: 1px solid var(--bs-border-color, rgba(0,0,0,0.08));
+      background-color: var(--bs-card-bg, #ffffff);
+    }
+    .internship-card {
+      border-radius: 1.25rem;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      border: 1px solid var(--bs-border-color, rgba(0,0,0,0.08));
+      background-color: var(--bs-card-bg, #ffffff);
+    }
+    .internship-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08);
+    }
+    .filter-badge-pill {
+      font-size: 0.825rem;
+      font-weight: 500;
+    }
+  </style>
 </head>
-<body>
+<body class="bg-body-tertiary min-vh-100 d-flex flex-column text-body">
 
   <!-- Navigation -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+  <nav class="navbar navbar-expand-lg bg-body border-bottom py-2 py-md-3">
     <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
       <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
         <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
       </a>
       <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
-        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode" id="themeToggleBtn">
           <i class="fa-solid fa-moon"></i>
         </button>
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
@@ -33,72 +60,255 @@
 
   <!-- Main Container -->
   <main class="container py-5 fade-in">
-    <div class="card glass-card p-4 p-md-5 mb-4 border-0">
+    <div class="card filter-panel-card p-4 p-md-5 mb-4 shadow-xs">
       <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-bold text-uppercase small mb-2 d-inline-block" style="width: fit-content;">
         <i class="fa-solid fa-briefcase me-1"></i> Student Career Pipeline
       </span>
-      <h2 class="fw-bold mt-1 mb-2">Internship Recommendation Agent</h2>
+      <h2 class="fw-bold mt-1 mb-2">Internship Recommendation Engine</h2>
       <p class="text-secondary mb-0">
-        Discover verified campus placement internships and early-career apprentice opportunities matching your technical skills and target roles.
+        Discover verified campus placement internships and student apprentice drives matching your technical skills, preferred locations, and work preferences.
       </p>
     </div>
 
-    <!-- Filter & Preference Form -->
-    <div class="card glass-card p-4 border-0 mb-4">
+    <!-- Comprehensive Filter Panel (#356) -->
+    <div class="card filter-panel-card p-4 shadow-sm mb-4" id="internshipFilterPanel">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fa-solid fa-sliders text-primary fs-5"></i>
+          <h5 class="fw-bold mb-0">Search & Filter Panel</h5>
+        </div>
+        <div>
+          <a href="/internships?student_id={{ student_id }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnClearFiltersTop">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset Filters
+          </a>
+        </div>
+      </div>
+
       <form method="GET" action="/internships" id="internshipFilterForm">
-        <div class="row g-3 align-items-end">
-          <div class="col-md-5">
-            <label for="searchQuery" class="form-label small fw-semibold text-secondary">Search Roles or Companies</label>
-            <div class="input-group">
-              <span class="input-group-text bg-white border-end-0 text-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
-              <input type="text" class="form-control border-start-0" id="searchQuery" name="search" placeholder="e.g. Software, Cloud, Google..." value="{{ search_query }}">
-            </div>
+        <input type="hidden" name="student_id" value="{{ student_id }}">
+
+        <!-- Row 1: Search Query & Candidate Skills -->
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label for="searchQuery" class="form-label small fw-semibold text-secondary">
+              <i class="fa-solid fa-magnifying-glass me-1"></i> Search Roles, Companies, or Keywords
+            </label>
+            <input type="text" class="form-control rounded-pill" id="searchQuery" name="search" 
+                   placeholder="e.g. Software, Cloud, Google, Summer Intern..." value="{{ search_query }}">
           </div>
 
-          <div class="col-md-3">
+          <div class="col-md-6">
+            <label for="skillsInput" class="form-label small fw-semibold text-secondary">
+              <i class="fa-solid fa-code me-1"></i> Your Target Skills (comma-separated for match scoring)
+            </label>
+            <input type="text" class="form-control rounded-pill" id="skillsInput" name="skills" 
+                   value="{{ skills_str }}" placeholder="e.g. Python, SQL, React, Git, Java...">
+          </div>
+        </div>
+
+        <!-- Row 2: Comprehensive Multi-Dimensional Filters -->
+        <div class="row g-3 mb-3">
+          <!-- 1. Location Filter -->
+          <div class="col-md-4 col-lg-2">
             <label for="locationSelect" class="form-label small fw-semibold text-secondary">Location</label>
-            <select class="form-select rounded-pill" id="locationSelect" name="location">
-              <option value="All" {{ 'selected' if current_location == 'All' }}>All Locations</option>
+            <select class="form-select rounded-pill form-select-sm" id="locationSelect" name="location">
+              <option value="All" {{ 'selected' if not current_location or current_location == 'All' }}>All Locations</option>
               <option value="Bengaluru" {{ 'selected' if current_location == 'Bengaluru' }}>Bengaluru</option>
               <option value="Hyderabad" {{ 'selected' if current_location == 'Hyderabad' }}>Hyderabad</option>
               <option value="Pune" {{ 'selected' if current_location == 'Pune' }}>Pune</option>
-              <option value="Gurugram" {{ 'selected' if current_location == 'Gurugram' }}>Gurugram</option>
+              <option value="Mumbai" {{ 'selected' if current_location == 'Mumbai' }}>Mumbai</option>
+              <option value="Noida" {{ 'selected' if current_location == 'Noida' }}>Noida</option>
               <option value="Remote" {{ 'selected' if current_location == 'Remote' }}>Remote</option>
             </select>
           </div>
 
-          <div class="col-md-4">
-            <label for="skillsInput" class="form-label small fw-semibold text-secondary">Your Target Skills (comma separated)</label>
-            <input type="text" class="form-control rounded-pill" id="skillsInput" name="skills" value="{{ skills_str }}" placeholder="Python, SQL, React...">
+          <!-- 2. Work Mode Filter -->
+          <div class="col-md-4 col-lg-2">
+            <label for="workModeSelect" class="form-label small fw-semibold text-secondary">Work Mode</label>
+            <select class="form-select rounded-pill form-select-sm" id="workModeSelect" name="work_mode">
+              <option value="All" {{ 'selected' if not current_work_mode or current_work_mode == 'All' }}>All Modes</option>
+              <option value="Remote" {{ 'selected' if current_work_mode == 'Remote' }}>Remote</option>
+              <option value="On-site" {{ 'selected' if current_work_mode == 'On-site' }}>On-site</option>
+              <option value="Hybrid" {{ 'selected' if current_work_mode == 'Hybrid' }}>Hybrid</option>
+            </select>
+          </div>
+
+          <!-- 3. Stipend Availability Filter -->
+          <div class="col-md-4 col-lg-2">
+            <label for="stipendSelect" class="form-label small fw-semibold text-secondary">Stipend</label>
+            <select class="form-select rounded-pill form-select-sm" id="stipendSelect" name="stipend">
+              <option value="All" {{ 'selected' if not current_stipend or current_stipend == 'All' }}>All Stipends</option>
+              <option value="Paid Stipend" {{ 'selected' if current_stipend == 'Paid Stipend' }}>Paid Stipend</option>
+              <option value="Unpaid / Any" {{ 'selected' if current_stipend == 'Unpaid / Any' }}>Unpaid / Any</option>
+            </select>
+          </div>
+
+          <!-- 4. Duration Filter -->
+          <div class="col-md-4 col-lg-2">
+            <label for="durationSelect" class="form-label small fw-semibold text-secondary">Duration</label>
+            <select class="form-select rounded-pill form-select-sm" id="durationSelect" name="duration">
+              <option value="All" {{ 'selected' if not current_duration or current_duration == 'All' }}>All Durations</option>
+              <option value="1-2 Months" {{ 'selected' if current_duration == '1-2 Months' }}>1-2 Months</option>
+              <option value="3 Months" {{ 'selected' if current_duration == '3 Months' }}>3 Months (Summer)</option>
+              <option value="6 Months" {{ 'selected' if current_duration == '6 Months' }}>6 Months (Semester)</option>
+            </select>
+          </div>
+
+          <!-- 5. Technology Stack Filter -->
+          <div class="col-md-4 col-lg-2">
+            <label for="technologySelect" class="form-label small fw-semibold text-secondary">Technology</label>
+            <select class="form-select rounded-pill form-select-sm" id="technologySelect" name="technology">
+              <option value="All" {{ 'selected' if not current_technology or current_technology == 'All' }}>All Technologies</option>
+              <option value="Python" {{ 'selected' if current_technology == 'Python' }}>Python</option>
+              <option value="Java" {{ 'selected' if current_technology == 'Java' }}>Java</option>
+              <option value="C++" {{ 'selected' if current_technology == 'C++' }}>C++</option>
+              <option value="React" {{ 'selected' if current_technology == 'React' }}>React</option>
+              <option value="JavaScript" {{ 'selected' if current_technology == 'JavaScript' }}>JavaScript</option>
+              <option value="TypeScript" {{ 'selected' if current_technology == 'TypeScript' }}>TypeScript</option>
+              <option value="Node.js" {{ 'selected' if current_technology == 'Node.js' }}>Node.js</option>
+              <option value="SQL" {{ 'selected' if current_technology == 'SQL' }}>SQL / Database</option>
+              <option value="Docker" {{ 'selected' if current_technology == 'Docker' }}>Docker / Containers</option>
+              <option value="AWS" {{ 'selected' if current_technology == 'AWS' }}>AWS / Cloud</option>
+              <option value="Machine Learning" {{ 'selected' if current_technology == 'Machine Learning' }}>AI / ML</option>
+            </select>
+          </div>
+
+          <!-- 6. Role Type Filter -->
+          <div class="col-md-4 col-lg-2">
+            <label for="roleSelect" class="form-label small fw-semibold text-secondary">Role / Domain</label>
+            <select class="form-select rounded-pill form-select-sm" id="roleSelect" name="role">
+              <option value="All" {{ 'selected' if not current_role or current_role == 'All' }}>All Roles</option>
+              <option value="Software Engineer" {{ 'selected' if current_role == 'Software Engineer' }}>Software Engineer</option>
+              <option value="Backend Developer" {{ 'selected' if current_role == 'Backend Developer' }}>Backend Developer</option>
+              <option value="Frontend Developer" {{ 'selected' if current_role == 'Frontend Developer' }}>Frontend Developer</option>
+              <option value="Data & AI" {{ 'selected' if current_role == 'Data & AI' }}>Data Science & AI</option>
+              <option value="Cloud & DevOps" {{ 'selected' if current_role == 'Cloud & DevOps' }}>Cloud & DevOps</option>
+            </select>
           </div>
         </div>
 
-        <div class="text-end mt-3">
-          <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnFilterInternships">
-            <i class="fa-solid fa-filter me-1"></i> Match Opportunities
-          </button>
+        <!-- Row 3: Deadline & Options -->
+        <div class="row g-3 align-items-center pt-2 border-top">
+          <div class="col-md-4 col-lg-3">
+            <label for="deadlineSelect" class="form-label small fw-semibold text-secondary">Application Deadline</label>
+            <select class="form-select rounded-pill form-select-sm" id="deadlineSelect" name="deadline">
+              <option value="All" {{ 'selected' if not current_deadline or current_deadline == 'All' }}>All Deadlines</option>
+              <option value="Active Drives" {{ 'selected' if current_deadline == 'Active Drives' }}>Active / Open Drives</option>
+              <option value="Closing Soon" {{ 'selected' if current_deadline == 'Closing Soon' }}>Closing Soon (Upcoming)</option>
+            </select>
+          </div>
+
+          <div class="col-md-8 col-lg-5">
+            <div class="form-check mt-3 mt-md-4">
+              <input class="form-check-input" type="checkbox" id="includeUnspecifiedCheck" name="include_unspecified" value="true" {{ 'checked' if include_unspecified }}>
+              <label class="form-check-label small text-secondary" for="includeUnspecifiedCheck" title="Allow listings where the employer has not explicitly stated duration or stipend to remain visible with an informational tag">
+                Include opportunities with unspecified details for active filters
+              </label>
+            </div>
+          </div>
+
+          <div class="col-12 col-lg-4 text-lg-end mt-3">
+            <a href="/internships?student_id={{ student_id }}&skills={{ skills_str }}" class="btn btn-outline-secondary rounded-pill px-3 me-2" id="btnClearFilters">
+              <i class="fa-solid fa-xmark me-1"></i> Clear Filters
+            </a>
+            <button type="submit" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnFilterInternships">
+              <i class="fa-solid fa-filter me-1"></i> Match Opportunities
+            </button>
+          </div>
         </div>
       </form>
     </div>
 
+    <!-- Active Filters Display Pills -->
+    {% set has_active_filter = (search_query or (current_location and current_location != 'All') or (current_work_mode and current_work_mode != 'All') or (current_stipend and current_stipend != 'All') or (current_duration and current_duration != 'All') or (current_technology and current_technology != 'All') or (current_role and current_role != 'All') or (current_deadline and current_deadline != 'All')) %}
+    {% if has_active_filter %}
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-4 p-3 bg-body rounded-4 border" id="activeFilterTagsBar">
+        <span class="small fw-semibold text-secondary me-1"><i class="fa-solid fa-tags text-primary me-1"></i>Active Filters:</span>
+
+        {% if search_query %}
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Search: "{{ search_query }}"
+            <a href="/internships?student_id={{ student_id }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration={{ current_duration }}&technology={{ current_technology }}&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-primary ms-1 text-decoration-none" title="Remove search filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_location and current_location != 'All' %}
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Location: {{ current_location }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location=All&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration={{ current_duration }}&technology={{ current_technology }}&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-primary ms-1 text-decoration-none" title="Remove location filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_work_mode and current_work_mode != 'All' %}
+          <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Mode: {{ current_work_mode }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode=All&stipend={{ current_stipend }}&duration={{ current_duration }}&technology={{ current_technology }}&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-info ms-1 text-decoration-none" title="Remove work mode filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_stipend and current_stipend != 'All' %}
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Stipend: {{ current_stipend }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend=All&duration={{ current_duration }}&technology={{ current_technology }}&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-success ms-1 text-decoration-none" title="Remove stipend filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_duration and current_duration != 'All' %}
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Duration: {{ current_duration }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration=All&technology={{ current_technology }}&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-primary ms-1 text-decoration-none" title="Remove duration filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_technology and current_technology != 'All' %}
+          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Tech: {{ current_technology }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration={{ current_duration }}&technology=All&role={{ current_role }}&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-warning-emphasis ms-1 text-decoration-none" title="Remove technology filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_role and current_role != 'All' %}
+          <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Role: {{ current_role }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration={{ current_duration }}&technology={{ current_technology }}&role=All&deadline={{ current_deadline }}&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-secondary ms-1 text-decoration-none" title="Remove role filter">&times;</a>
+          </span>
+        {% endif %}
+
+        {% if current_deadline and current_deadline != 'All' %}
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1 filter-badge-pill">
+            Deadline: {{ current_deadline }}
+            <a href="/internships?student_id={{ student_id }}&search={{ search_query }}&location={{ current_location }}&work_mode={{ current_work_mode }}&stipend={{ current_stipend }}&duration={{ current_duration }}&technology={{ current_technology }}&role={{ current_role }}&deadline=All&include_unspecified={{ 'true' if include_unspecified else 'false' }}&skills={{ skills_str }}" class="text-danger ms-1 text-decoration-none" title="Remove deadline filter">&times;</a>
+          </span>
+        {% endif %}
+
+        <a href="/internships?student_id={{ student_id }}&skills={{ skills_str }}" class="small text-danger text-decoration-none ms-auto fw-semibold">
+          <i class="fa-solid fa-trash-can me-1"></i> Clear all filters
+        </a>
+      </div>
+    {% endif %}
+
     <!-- Recommendations Grid -->
     {% if data and data.success %}
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold mb-0 text-dark">
-          <i class="fa-solid fa-sparkles text-primary me-2"></i> Matched Opportunities ({{ data.total_found }})
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <h5 class="fw-bold mb-0 text-body">
+          <i class="fa-solid fa-sparkles text-primary me-2"></i> Matched Opportunities 
+          <span class="badge bg-primary rounded-pill ms-1 fs-6">{{ data.total_found }}</span>
         </h5>
+        <div class="small text-secondary">
+          Sorted by skills compatibility & relevance
+        </div>
       </div>
 
       <div class="row g-4" id="internshipsGrid">
         {% for opp in data.recommendations %}
           <div class="col-lg-6">
-            <div class="card border rounded-4 p-4 h-100 shadow-xs bg-white hover-card">
-              <div class="d-flex justify-content-between align-items-start mb-2">
+            <div class="card internship-card p-4 h-100 shadow-xs">
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
                 <div>
                   <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 fw-bold mb-1">
                     {{ opp.company }}
                   </span>
-                  <h5 class="fw-bold text-dark mb-0">{{ opp.title }}</h5>
+                  <h5 class="fw-bold text-body mb-0">{{ opp.title }}</h5>
                 </div>
                 <div class="text-end">
                   <span class="badge bg-success text-white rounded-pill px-3 py-2 fs-6 shadow-xs">
@@ -107,13 +317,66 @@
                 </div>
               </div>
 
-              <div class="d-flex flex-wrap gap-2 text-muted small mb-3">
-                <span><i class="fa-solid fa-location-dot text-danger me-1"></i>{{ opp.location }}</span>
-                <span>&bull;</span>
-                <span><i class="fa-solid fa-indian-rupee-sign text-success me-1"></i>{{ opp.salary_range }}</span>
-                <span>&bull;</span>
-                <span><i class="fa-solid fa-graduation-cap text-primary me-1"></i>{{ opp.batch_eligibility }}</span>
+              <!-- Filter Dimension Badges -->
+              <div class="d-flex flex-wrap gap-2 align-items-center mb-3 pt-1">
+                <!-- Location & Work Mode Badges -->
+                <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-location-dot text-danger me-1"></i>{{ opp.location }}
+                </span>
+
+                {% if opp.work_mode == 'Remote' %}
+                  <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill px-2 py-1 small">
+                    <i class="fa-solid fa-laptop-house me-1"></i>Remote
+                  </span>
+                {% elif opp.work_mode == 'Hybrid' %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small">
+                    <i class="fa-solid fa-building-user me-1"></i>Hybrid
+                  </span>
+                {% elif opp.work_mode == 'On-site' %}
+                  <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1 small">
+                    <i class="fa-solid fa-building me-1"></i>On-site
+                  </span>
+                {% else %}
+                  <span class="badge bg-body-secondary text-muted border rounded-pill px-2 py-1 small">
+                    <i class="fa-solid fa-question me-1"></i>Work Mode: Unspecified
+                  </span>
+                {% endif %}
+
+                <!-- Duration Badge -->
+                {% if opp.duration and opp.duration != 'Not Specified' %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small">
+                    <i class="fa-regular fa-calendar me-1"></i>{{ opp.duration }}
+                  </span>
+                {% else %}
+                  <span class="badge bg-body-secondary text-muted border rounded-pill px-2 py-1 small">
+                    <i class="fa-regular fa-calendar me-1"></i>Duration: Unspecified
+                  </span>
+                {% endif %}
+
+                <!-- Stipend Badge -->
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                  <i class="fa-solid fa-money-bill-wave me-1"></i>{{ opp.salary_range }}
+                </span>
+
+                <!-- Deadline Badge -->
+                {% if opp.deadline_status == 'Closing Soon' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 small">
+                    <i class="fa-regular fa-clock me-1"></i>{{ opp.deadline }}
+                  </span>
+                {% else %}
+                  <span class="badge bg-body-secondary text-secondary border rounded-pill px-2 py-1 small">
+                    <i class="fa-regular fa-clock me-1"></i>{{ opp.deadline }}
+                  </span>
+                {% endif %}
               </div>
+
+              <!-- Unspecified Filter Information Notice (#356) -->
+              {% if opp.unspecified_fields and opp.unspecified_fields|length > 0 and (current_work_mode != 'All' or current_stipend != 'All' or current_duration != 'All' or current_deadline != 'All') %}
+                <div class="alert alert-light border rounded-3 py-1 px-3 mb-2 small text-muted d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-circle-info text-secondary"></i>
+                  <span><b>Note:</b> {{ opp.unspecified_fields | join(', ') | replace('_', ' ') | title }} details are not explicitly provided by this listing.</span>
+                </div>
+              {% endif %}
 
               <!-- Matching Rationale Box -->
               <div class="alert alert-light border rounded-3 p-3 mb-3 small">
@@ -124,7 +387,7 @@
 
               <!-- Matched and Missing Skills Pills -->
               <div class="mb-3">
-                <small class="fw-bold text-dark d-block mb-1">Skills Overlap:</small>
+                <small class="fw-bold text-body d-block mb-1">Skills Overlap:</small>
                 <div class="d-flex flex-wrap gap-1">
                   {% for s in opp.matched_skills %}
                     <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2 small">
@@ -132,7 +395,7 @@
                     </span>
                   {% endfor %}
                   {% for s in opp.missing_skills[:3] %}
-                    <span class="badge bg-light text-secondary border rounded-pill py-1 px-2 small">
+                    <span class="badge bg-body-secondary text-secondary border rounded-pill py-1 px-2 small">
                       {{ s }}
                     </span>
                   {% endfor %}
@@ -140,12 +403,12 @@
               </div>
 
               <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
-                <span class="small text-muted"><i class="fa-regular fa-clock me-1"></i>{{ opp.posted_date }}</span>
+                <span class="small text-muted"><i class="fa-regular fa-calendar-check me-1"></i>{{ opp.posted_date }}</span>
                 <a href="{{ opp.apply_url }}" target="_blank" rel="noopener noreferrer" 
                    class="btn btn-sm btn-outline-primary rounded-pill px-3 apply-job-btn"
                    data-job-id="{{ opp.id or loop.index }}"
                    data-company="{{ opp.company }}"
-                   data-role="{{ opp.role }}"
+                   data-role="{{ opp.title }}"
                    data-location="{{ opp.location }}"
                    data-url="{{ opp.apply_url }}"
                    onclick="trackJobView(this)">
@@ -155,12 +418,19 @@
             </div>
           </div>
         {% else %}
-          <div class="col-12">
-            <div class="text-center py-5 bg-light rounded-4 border">
-              <i class="fa-solid fa-briefcase fa-3x text-muted mb-3 d-block"></i>
-              <h5 class="fw-bold text-dark mb-1">No Matching Internships Found</h5>
-              <p class="small text-secondary mb-3">Try widening your search terms or clearing your location filter.</p>
-              <a href="/internships" class="btn btn-sm btn-outline-primary rounded-pill px-3">Reset All Filters</a>
+          <!-- Graceful Empty State (#356) -->
+          <div class="col-12" id="internshipsEmptyState">
+            <div class="text-center py-5 bg-body rounded-4 border p-4">
+              <i class="fa-solid fa-filter-circle-xmark fa-3x text-secondary mb-3 d-block opacity-75"></i>
+              <h5 class="fw-bold text-body mb-2">No Matching Internships Found</h5>
+              <p class="text-secondary small mb-3 mx-auto" style="max-width: 500px;">
+                We could not find any internship openings matching your combined filter selections. Try broadening your location, selecting "All Durations", or checking the "Include opportunities with unspecified details" box.
+              </p>
+              <div class="d-flex flex-wrap justify-content-center gap-2">
+                <a href="/internships?student_id={{ student_id }}&skills={{ skills_str }}" class="btn btn-sm btn-primary rounded-pill px-4" id="btnResetFiltersEmpty">
+                  <i class="fa-solid fa-rotate-left me-1"></i> Reset All Filters
+                </a>
+              </div>
             </div>
           </div>
         {% endfor %}
@@ -168,13 +438,13 @@
     {% endif %}
 
     <!-- Recently Viewed Jobs Section (#201) -->
-    <section class="card glass-card p-4 p-md-5 border-0 mt-5 shadow-sm" id="recentlyViewedSection">
+    <section class="card filter-panel-card p-4 p-md-5 border-0 mt-5 shadow-sm" id="recentlyViewedSection">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2 border-bottom pb-3">
         <div>
           <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-semibold small mb-1">
             <i class="fa-solid fa-clock-rotate-left me-1"></i> Browsing History
           </span>
-          <h4 class="fw-bold mb-0 text-dark">Recently Viewed Jobs</h4>
+          <h4 class="fw-bold mb-0 text-body">Recently Viewed Jobs</h4>
           <p class="text-secondary small mb-0">Revisit internships and career opportunities you browsed earlier.</p>
         </div>
         {% if recently_viewed and recently_viewed|length > 0 %}
@@ -188,9 +458,9 @@
         <div class="row g-3" id="recentlyViewedContainer">
           {% for job in recently_viewed %}
             <div class="col-md-6 col-lg-4" id="viewed-job-card-{{ job.job_id }}">
-              <div class="card h-100 p-3 border rounded-3 bg-white shadow-sm hover-shadow transition position-relative">
+              <div class="card h-100 p-3 border rounded-3 bg-body shadow-sm hover-shadow transition position-relative">
                 <div class="d-flex justify-content-between align-items-start mb-2">
-                  <span class="badge bg-light text-primary border rounded-pill px-2 py-1 small fw-semibold">
+                  <span class="badge bg-body-secondary text-primary border rounded-pill px-2 py-1 small fw-semibold">
                     <i class="fa-solid fa-building me-1"></i>{{ job.company_name }}
                   </span>
                   <button type="button" class="btn btn-sm btn-link text-muted p-0 text-decoration-none" 
@@ -199,7 +469,7 @@
                     <i class="fa-solid fa-xmark"></i>
                   </button>
                 </div>
-                <h6 class="fw-bold mb-1 text-dark text-truncate" title="{{ job.role_title }}">{{ job.role_title }}</h6>
+                <h6 class="fw-bold mb-1 text-body text-truncate" title="{{ job.role_title }}">{{ job.role_title }}</h6>
                 <div class="text-secondary small mb-2">
                   <i class="fa-solid fa-location-dot me-1 text-muted"></i>{{ job.location or 'Remote' }}
                   {% if job.salary_range %}
@@ -221,9 +491,9 @@
           {% endfor %}
         </div>
       {% else %}
-        <div class="text-center py-4 bg-light rounded-3 border" id="recentlyViewedEmpty">
+        <div class="text-center py-4 bg-body rounded-3 border" id="recentlyViewedEmpty">
           <i class="fa-solid fa-clock-rotate-left fa-2x text-muted mb-2 d-block"></i>
-          <h6 class="fw-semibold text-dark mb-1">No Recently Viewed Jobs</h6>
+          <h6 class="fw-semibold text-body mb-1">No Recently Viewed Jobs</h6>
           <p class="small text-secondary mb-0">Opportunities you explore and click will automatically appear here for easy access.</p>
         </div>
       {% endif %}
@@ -232,7 +502,7 @@
   </main>
 
   <!-- Footer -->
-  <footer class="bg-white border-top py-4 mt-auto">
+  <footer class="bg-body border-top py-4 mt-auto">
     <div class="container text-center text-secondary small">
       &copy; 2026 AI Campus Placement Agent. Built by Deepika Gandla.
     </div>
@@ -243,6 +513,23 @@
   <!-- Custom JS -->
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
   <script>
+    // Theme toggle functionality
+    const themeBtn = document.getElementById("themeToggleBtn");
+    if (themeBtn) {
+      function syncThemeIcon() {
+        const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+        themeBtn.innerHTML = isDark ? '<i class="fa-solid fa-sun"></i>' : '<i class="fa-solid fa-moon"></i>';
+      }
+      syncThemeIcon();
+      themeBtn.addEventListener("click", () => {
+        const current = document.documentElement.getAttribute("data-bs-theme");
+        const next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-bs-theme", next);
+        localStorage.setItem("theme", next);
+        syncThemeIcon();
+      });
+    }
+
     function trackJobView(el) {
       const payload = {
         job_id: el.getAttribute('data-job-id'),

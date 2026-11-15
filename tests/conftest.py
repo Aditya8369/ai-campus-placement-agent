@@ -35,6 +35,25 @@ def reset_csrf_testing_state():
         app.config.pop("WTF_CSRF_ENABLED", None)
 
 
+@pytest.fixture(autouse=True)
+def reset_login_testing_state():
+    """Ensure login enforcement is reset between tests to prevent test pollution."""
+    from app import app
+    prev_enforce_login = app.config.get("ENFORCE_LOGIN_IN_TESTS")
+    prev_student_isolation = app.config.get("ENFORCE_STUDENT_ISOLATION")
+    app.config["TESTING"] = True
+    app.config["ENFORCE_LOGIN_IN_TESTS"] = False
+    yield
+    if prev_enforce_login is not None:
+        app.config["ENFORCE_LOGIN_IN_TESTS"] = prev_enforce_login
+    else:
+        app.config.pop("ENFORCE_LOGIN_IN_TESTS", None)
+    if prev_student_isolation is not None:
+        app.config["ENFORCE_STUDENT_ISOLATION"] = prev_student_isolation
+    else:
+        app.config.pop("ENFORCE_STUDENT_ISOLATION", None)
+
+
 
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""
