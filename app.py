@@ -10854,13 +10854,22 @@ def github_analyzer_view():
 @app.route("/internships", methods=["GET", "POST"])
 def internships_view():
     """
-    Interactive student internship recommendation engine (#142).
-    Matches candidate skills with real internship listings and explains match rationales.
+    Interactive student internship recommendation engine (#142, #356).
+    Matches candidate skills with real internship listings, computes skill alignments,
+    and supports multi-dimensional search filtering (location, work mode, stipend, duration, technology, deadline).
     """
     skills_raw = request.args.get("skills") or request.form.get("skills", "")
     role_filter = request.args.get("role") or request.form.get("role", "All")
     location_filter = request.args.get("location") or request.form.get("location", "All")
     search_query = request.args.get("search") or request.form.get("search", "")
+    work_mode_filter = request.args.get("work_mode") or request.form.get("work_mode", "All")
+    stipend_filter = request.args.get("stipend") or request.form.get("stipend", "All")
+    duration_filter = request.args.get("duration") or request.form.get("duration", "All")
+    technology_filter = request.args.get("technology") or request.form.get("technology", "All")
+    deadline_filter = request.args.get("deadline") or request.form.get("deadline", "All")
+
+    inc_unspec_param = request.args.get("include_unspecified", "") or request.form.get("include_unspecified", "")
+    include_unspecified = False if inc_unspec_param.lower() in ("false", "0", "no") else True
 
     student_id = (
         request.args.get("student_id")
@@ -10878,7 +10887,13 @@ def internships_view():
         candidate_skills=candidate_skills,
         preferred_role=None if role_filter == "All" else role_filter,
         location=None if location_filter == "All" else location_filter,
-        search_query=search_query
+        search_query=search_query,
+        work_mode=None if work_mode_filter == "All" else work_mode_filter,
+        stipend_type=None if stipend_filter == "All" else stipend_filter,
+        duration=None if duration_filter == "All" else duration_filter,
+        technology=None if technology_filter == "All" else technology_filter,
+        deadline_status=None if deadline_filter == "All" else deadline_filter,
+        include_unspecified=include_unspecified
     )
 
     recently_viewed = get_recently_viewed_jobs(student_id=student_id, limit=6)
@@ -10896,6 +10911,12 @@ def internships_view():
         skills_str=",".join(candidate_skills),
         current_role=role_filter,
         current_location=location_filter,
+        current_work_mode=work_mode_filter,
+        current_stipend=stipend_filter,
+        current_duration=duration_filter,
+        current_technology=technology_filter,
+        current_deadline=deadline_filter,
+        include_unspecified=include_unspecified,
         search_query=search_query
     )
 APPLICATION_STAGES = ["Applied", "Assessment", "Interview", "Selected", "Rejected"]

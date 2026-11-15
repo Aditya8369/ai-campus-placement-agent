@@ -27,13 +27,23 @@ class InternshipRecommendationAgent:
         preferred_role: Optional[str] = None,
         location: Optional[str] = None,
         search_query: Optional[str] = None,
+        work_mode: Optional[str] = None,
+        stipend_type: Optional[str] = None,
+        duration: Optional[str] = None,
+        technology: Optional[str] = None,
+        deadline_status: Optional[str] = None,
+        include_unspecified: bool = True,
         min_match: int = 20
     ) -> Dict[str, Any]:
         """
-        Retrieves real internship opportunities and scores them against candidate skills.
+        Retrieves real internship opportunities and scores them against candidate skills (#142, #356).
+        Applies multi-dimensional search filtering: location, role, work mode, stipend, duration,
+        technology, and application deadline status.
         """
         try:
             from utils.job_dedup_expiration import process_jobs_feed_with_expiration_and_dedup
+            from utils.job_feed_service import extract_job_filter_metadata
+
             raw_all_jobs = self.feed_service.get_all_jobs()
             processed_feed = process_jobs_feed_with_expiration_and_dedup(raw_all_jobs, hide_expired=False)
             all_jobs = processed_feed["jobs"]
@@ -53,7 +63,13 @@ class InternshipRecommendationAgent:
                 jobs=internships,
                 location=location,
                 role_type=preferred_role,
-                search_query=search_query
+                search_query=search_query,
+                work_mode=work_mode,
+                stipend_type=stipend_type,
+                duration=duration,
+                technology=technology,
+                deadline_status=deadline_status,
+                include_unspecified=include_unspecified
             )
 
             # Score each opportunity against candidate skills
@@ -61,6 +77,7 @@ class InternshipRecommendationAgent:
             recommendations = []
 
             for opp in filtered:
+                meta = extract_job_filter_metadata(opp)
                 req_skills = [s for s in opp.get("required_skills", [])]
                 pref_skills = [s for s in opp.get("preferred_skills", [])]
                 all_opp_skills = req_skills + pref_skills
@@ -96,21 +113,38 @@ class InternshipRecommendationAgent:
                     "company": opp.get("company"),
                     "logo_color": opp.get("logo_color", "#1a73e8"),
                     "location": opp.get("location", "Remote / Hybrid"),
+                    "work_mode": opp.get("work_mode") or meta.get("work_mode", "Not Specified"),
+                    "work_mode_specified": meta.get("work_mode_specified", False),
                     "role_type": opp.get("role_type", "Internship"),
+                    "duration": opp.get("duration") or meta.get("duration", "Not Specified"),
+                    "duration_specified": meta.get("duration_specified", False),
                     "salary_range": opp.get("salary_range", "Stipend Provided"),
+                    "stipend_type": meta.get("stipend_type", "Paid Stipend"),
+                    "stipend_specified": meta.get("stipend_specified", False),
                     "batch_eligibility": opp.get("batch_eligibility", "2025 & 2026 Batch"),
                     "description": opp.get("description", ""),
                     "apply_url": opp.get("apply_url", "https://careers.google.com"),
                     "match_percentage": match_percentage,
                     "matched_skills": matched,
                     "missing_skills": missing,
+                    "technologies": meta.get("technologies", []),
                     "rationale": rationale,
                     "posted_date": opp.get("posted_date", "Active Drive"),
-                    "deadline": opp.get("deadline", "Open")
+                    "deadline": opp.get("deadline", "Open"),
+                    "deadline_status": meta.get("deadline_status", "Active Drives"),
+                    "deadline_specified": meta.get("deadline_specified", False),
+                    "unspecified_fields": meta.get("unspecified_fields", [])
                 })
 
             # Sort by match percentage descending
             recommendations.sort(key=lambda x: x["match_percentage"], reverse=True)
+
+            # Available location and role options for dynamic UI dropdowns
+            available_locations = ["All", "Bengaluru", "Hyderabad", "Pune", "Mumbai", "Noida", "Remote"]
+            for opp in internships:
+                loc_cand = opp.get("location")
+                if loc_cand and loc_cand not in available_locations and loc_cand != "Remote / Hybrid":
+                    available_locations.append(loc_cand)
 
             return {
                 "success": True,
@@ -119,7 +153,22 @@ class InternshipRecommendationAgent:
                 "filters_applied": {
                     "role": preferred_role or "All",
                     "location": location or "All",
-                    "search": search_query or ""
+                    "search": search_query or "",
+                    "work_mode": work_mode or "All",
+                    "stipend": stipend_type or "All",
+                    "duration": duration or "All",
+                    "technology": technology or "All",
+                    "deadline": deadline_status or "All",
+                    "include_unspecified": include_unspecified
+                },
+                "filter_options": {
+                    "locations": available_locations,
+                    "work_modes": ["All", "Remote", "On-site", "Hybrid"],
+                    "stipends": ["All", "Paid Stipend", "Unpaid / Any"],
+                    "durations": ["All", "1-2 Months", "3 Months", "6 Months"],
+                    "technologies": ["All", "Python", "Java", "C++", "React", "JavaScript", "TypeScript", "Node.js", "SQL", "Go", "Docker", "Kubernetes", "AWS", "Machine Learning"],
+                    "roles": ["All", "Software Engineer", "Backend Developer", "Frontend Developer", "Data & AI", "Cloud & DevOps"],
+                    "deadlines": ["All", "Active Drives", "Closing Soon"]
                 }
             }
         except Exception as exc:
