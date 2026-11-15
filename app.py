@@ -148,6 +148,8 @@ from utils.database import (
     log_gemini_api_call,
     get_gemini_usage_summary,
     calculate_gemini_call_cost,
+    get_user_leaderboard_opt_in,
+    set_user_leaderboard_opt_in,
 )
 from utils.topic_practice_service import (
     get_supported_topics,
@@ -3263,6 +3265,9 @@ def leaderboard():
         except Exception:
             candidate_percentile = None
 
+    user_id = flask_session.get("user_id")
+    user_opt_in = get_user_leaderboard_opt_in(user_id) if user_id else True
+
     return render_template(
         "leaderboard.html",
         stats=view_data.get("stats", {}),
@@ -3272,8 +3277,68 @@ def leaderboard():
         total_ranked=view_data.get("total_ranked", 0),
         filters=view_data.get("filters", {}),
         current_analysis_id=current_analysis_id,
-        candidate_percentile=candidate_percentile
+        candidate_percentile=candidate_percentile,
+        user_opt_in=user_opt_in
     )
+
+
+@app.route("/api/user/leaderboard-privacy", methods=["GET", "POST"])
+def user_leaderboard_privacy():
+    """
+    Retrieves or updates the candidate's leaderboard participation preference (#360).
+    Requires authenticated session; bound strictly to flask_session['user_id'].
+    POST requests require CSRF protection.
+    """
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "success": False,
+                "error": "Authentication required to manage leaderboard privacy settings."
+            }), 401
+        flash("Please log in to manage your leaderboard privacy settings.", "warning")
+        return redirect(url_for("login"))
+
+    if request.method == "POST":
+        opt_in_val = True
+        if request.is_json:
+            payload = request.get_json(silent=True) or {}
+            raw = payload.get("opt_in")
+            if raw is not None:
+                opt_in_val = bool(raw)
+        else:
+            raw = request.form.get("opt_in")
+            if raw is not None:
+                opt_in_val = str(raw).strip().lower() in ("1", "true", "on", "yes")
+            else:
+                opt_in_val = False
+
+        set_user_leaderboard_opt_in(user_id, opt_in_val)
+        status_msg = (
+            "You are now included in the campus placement leaderboard."
+            if opt_in_val
+            else "You have opted out of the campus placement leaderboard. Your scores are now private."
+        )
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "success": True,
+                "opt_in": opt_in_val,
+                "message": status_msg
+            }), 200
+
+        flash(status_msg, "success" if opt_in_val else "info")
+        target_analysis_id = request.form.get("analysis_id", "").strip()
+        redirect_url = url_for("leaderboard", analysis_id=target_analysis_id) if target_analysis_id else url_for("leaderboard")
+        return redirect(redirect_url)
+
+    # GET request
+    opt_in = get_user_leaderboard_opt_in(user_id)
+    return jsonify({
+        "success": True,
+        "user_id": user_id,
+        "opt_in": opt_in
+    }), 200
 
 
 @app.route("/api/leaderboard", methods=["GET"])
