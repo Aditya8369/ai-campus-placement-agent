@@ -379,6 +379,26 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_created ON gemini_api_logs (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gemini_api_logs_status ON gemini_api_logs (status)")
 
+        # Table: Store AI Call Telemetry & Metrics (#434)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_call_metrics (
+                id TEXT PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                feature TEXT NOT NULL DEFAULT 'analysis',
+                model TEXT NOT NULL,
+                latency_ms REAL NOT NULL DEFAULT 0.0,
+                token_count INTEGER DEFAULT 0,
+                prompt_tokens INTEGER DEFAULT 0,
+                candidate_tokens INTEGER DEFAULT 0,
+                success INTEGER NOT NULL DEFAULT 1,
+                error_type TEXT
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_metrics_timestamp ON ai_call_metrics (timestamp DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_metrics_feature ON ai_call_metrics (feature)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_metrics_success ON ai_call_metrics (success)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_metrics_error ON ai_call_metrics (error_type)")
+
         
         # Schema migration: check if student_id, version_number and target_role exist in analyses
         cursor.execute("PRAGMA table_info(analyses)")
@@ -6094,3 +6114,12 @@ def export_analysis_section_feedback_csv() -> str:
         return output.getvalue()
     finally:
         conn.close()
+
+
+# Re-exports for AI call telemetry & metrics dashboard (#434)
+from utils.ai_metrics import (
+    record_ai_call_metric,
+    get_ai_metrics_summary,
+    export_ai_metrics_csv,
+    calculate_p95,
+)

@@ -79,6 +79,7 @@ graph TD
 8. **Dark / Light Theme Toggle**: Seamless single-click switching between light and dark modes with zero page reload, browser persistence (`localStorage`), default system preference detection (`prefers-color-scheme`), and high-contrast readability across dashboards, tables, interview chat, and study roadmaps.
 9. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 10. **Privacy Notice & Consent Protection**: Transparent plain-language privacy notice (`/privacy`), required candidate consent before processing resume text via the Gemini API, optional PII redaction (masking emails, phones, and addresses), local SQLite storage, and complete account deletion options.
+11. **Admin AI Usage & Performance Telemetry**: Comprehensive operational observability tracking per-call Gemini AI invocations (`ai_call_metrics` table). Records latency, token counts, success status, and error classifications across analysis, mock interview, and recruiter outreach without storing prompts or resume text. Provides an administrative dashboard (`/admin/ai-metrics`) with daily call volumes, average and 95th percentile (p95) latency, failure rates, most common error types, date range filtering, and CSV export.
 
 ---
 
