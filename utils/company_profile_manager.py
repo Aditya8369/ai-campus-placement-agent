@@ -170,6 +170,58 @@ def seed_default_company_profiles() -> int:
                     comp.get("headquarters")
                 ))
                 inserted += 1
+
+        # Also seed additional company profiles from data/companies.json if available
+        try:
+            from pathlib import Path
+            companies_json_path = Path(config.BASE_DIR) / "data" / "companies.json"
+            if companies_json_path.exists():
+                with open(companies_json_path, "r", encoding="utf-8") as f:
+                    comp_json_data = json.load(f)
+                for comp_name, comp_info in comp_json_data.items():
+                    cursor.execute("SELECT id FROM company_profiles WHERE LOWER(company_name) = LOWER(?)", (comp_name,))
+                    if not cursor.fetchone():
+                        c_id = str(uuid.uuid4())
+                        c_tier = "Tier 1" if comp_name in ["Adobe", "Flipkart", "Amazon", "Google", "Microsoft"] else ("Startup" if comp_name == "Zoho" else "Enterprise")
+                        c_ind = "Creative Media & Software" if comp_name == "Adobe" else ("E-Commerce & Supply Chain" if comp_name == "Flipkart" else ("SaaS & Business Software" if comp_name == "Zoho" else "IT Services & Consulting"))
+                        wf = []
+                        if comp_info.get("hiring_process"):
+                            wf.append(comp_info.get("hiring_process")[:120])
+                        if comp_info.get("technical_rounds"):
+                            wf.append(comp_info.get("technical_rounds")[:120])
+                        if comp_info.get("hr_rounds"):
+                            wf.append(comp_info.get("hr_rounds")[:120])
+                        if not wf:
+                            wf = ["Online Assessment", "Technical Interview", "HR Discussion"]
+                        
+                        tech_skills = comp_info.get("required_skills", []) or comp_info.get("frequent_topics", [])
+                        
+                        cursor.execute("""
+                            INSERT INTO company_profiles (
+                                id, company_name, industry, website_url, careers_url, overview,
+                                hiring_tier, hiring_workflow_json, primary_tech_stack_json,
+                                typical_ctc_range, headquarters, source_name, source_url, verification_status, is_active
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+                        """, (
+                            c_id,
+                            comp_name,
+                            c_ind,
+                            comp_info.get("source_url"),
+                            comp_info.get("source_url"),
+                            comp_info.get("overview"),
+                            c_tier,
+                            json.dumps(wf),
+                            json.dumps(tech_skills),
+                            "4.5 - 18 LPA" if c_tier == "Enterprise" else "15 - 35 LPA",
+                            "India",
+                            comp_info.get("source_name"),
+                            comp_info.get("source_url"),
+                            comp_info.get("verification_status", "verified")
+                        ))
+                        inserted += 1
+        except Exception as e:
+            logger.debug(f"Optional seed from companies.json skipped: {e}")
+
         conn.commit()
     return inserted
 
@@ -318,9 +370,12 @@ def get_company_profile_by_name(company_name: str) -> Optional[Dict[str, Any]]:
 def list_company_profiles(
     search_query: Optional[str] = None,
     tier_filter: Optional[str] = None,
+    industry_filter: Optional[str] = None,
+    tech_filter: Optional[str] = None,
+    process_query: Optional[str] = None,
     active_only: bool = True
 ) -> List[Dict[str, Any]]:
-    """Returns a filtered list of enterprise company profiles."""
+    """Returns a filtered list of enterprise company profiles supporting tier, industry, tech, and process queries."""
     with get_db_connection() as conn:
         ensure_company_profiles_table(conn)
         cursor = conn.cursor()
@@ -331,18 +386,67 @@ def list_company_profiles(
             query += " AND is_active = 1"
 
         if tier_filter and tier_filter.strip() and tier_filter.lower() != "all":
-            query += " AND hiring_tier = ?"
+            query += " AND LOWER(hiring_tier) = LOWER(?)"
             params.append(tier_filter.strip())
+
+        if industry_filter and industry_filter.strip() and industry_filter.lower() != "all":
+            query += " AND LOWER(industry) LIKE ?"
+            params.append(f"%{industry_filter.strip().lower()}%")
+
+        if tech_filter and tech_filter.strip() and tech_filter.lower() != "all":
+            query += " AND LOWER(primary_tech_stack_json) LIKE ?"
+            params.append(f"%{tech_filter.strip().lower()}%")
+
+        if process_query and process_query.strip() and process_query.lower() != "all":
+            query += " AND (LOWER(hiring_workflow_json) LIKE ? OR LOWER(overview) LIKE ?)"
+            pq = f"%{process_query.strip().lower()}%"
+            params.extend([pq, pq])
 
         if search_query and search_query.strip():
             sq = f"%{search_query.strip().lower()}%"
-            query += " AND (LOWER(company_name) LIKE ? OR LOWER(industry) LIKE ? OR LOWER(overview) LIKE ?)"
-            params.extend([sq, sq, sq])
+            query += " AND (LOWER(company_name) LIKE ? OR LOWER(industry) LIKE ? OR LOWER(overview) LIKE ? OR LOWER(primary_tech_stack_json) LIKE ? OR LOWER(hiring_workflow_json) LIKE ?)"
+            params.extend([sq, sq, sq, sq, sq])
 
         query += " ORDER BY company_name ASC"
         cursor.execute(query, params)
         rows = cursor.fetchall()
         return [_format_company_profile_row(r) for r in rows]
+
+
+def get_distinct_hiring_tiers() -> List[str]:
+    """Retrieves all distinct hiring tiers currently in the company profiles table."""
+    with get_db_connection() as conn:
+        ensure_company_profiles_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT hiring_tier FROM company_profiles WHERE is_active = 1 AND hiring_tier IS NOT NULL ORDER BY hiring_tier ASC")
+        return [r[0] for r in cursor.fetchall() if r[0]]
+
+
+def get_distinct_industries() -> List[str]:
+    """Retrieves all distinct industries currently in the company profiles table."""
+    with get_db_connection() as conn:
+        ensure_company_profiles_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT industry FROM company_profiles WHERE is_active = 1 AND industry IS NOT NULL ORDER BY industry ASC")
+        return [r[0] for r in cursor.fetchall() if r[0]]
+
+
+def get_distinct_tech_stacks() -> List[str]:
+    """Retrieves common unique tech stack skills extracted across company profiles."""
+    with get_db_connection() as conn:
+        ensure_company_profiles_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT primary_tech_stack_json FROM company_profiles WHERE is_active = 1")
+        tech_set = set()
+        for row in cursor.fetchall():
+            try:
+                skills = json.loads(row[0] or "[]")
+                for s in skills:
+                    if s and isinstance(s, str):
+                        tech_set.add(s.strip())
+            except Exception:
+                continue
+        return sorted(list(tech_set))
 
 
 def archive_company_profile(profile_id: str) -> bool:
