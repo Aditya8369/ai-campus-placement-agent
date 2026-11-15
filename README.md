@@ -79,6 +79,7 @@ graph TD
 8. **Dark / Light Theme Toggle**: Seamless single-click switching between light and dark modes with zero page reload, browser persistence (`localStorage`), default system preference detection (`prefers-color-scheme`), and high-contrast readability across dashboards, tables, interview chat, and study roadmaps.
 9. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 10. **Privacy Notice & Consent Protection**: Transparent plain-language privacy notice (`/privacy`), required candidate consent before processing resume text via the Gemini API, optional PII redaction (masking emails, phones, and addresses), local SQLite storage, and complete account deletion options.
+11. **'Try with a Sample Resume' Demo Mode**: Explore the full platform capabilities instantly without registration, login, or a Gemini API key. Loads a bundled, fictional candidate profile (Alex Chen, BS in CS from UC Berkeley) targeting a Google Software Development Engineer (SDE 1) position with pre-calculated ATS scoring, skill evidence mapping, and a 6-week preparation roadmap. A prominent "Demo data" banner marks all demo content, and demo results are never persisted to any user history or real database records.
 
 ---
 
