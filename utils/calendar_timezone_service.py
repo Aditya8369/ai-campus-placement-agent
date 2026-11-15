@@ -15,7 +15,28 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from typing import Any, Dict, List, Optional
-from dateutil import tz as dtz
+
+try:
+    from dateutil import tz as dtz
+except ImportError:
+    try:
+        import zoneinfo
+    except ImportError:
+        from backports import zoneinfo  # type: ignore
+
+    class _DateutilTzFallback:
+        UTC = dt.timezone.utc
+
+        @staticmethod
+        def gettz(tz_name: Optional[str] = None):
+            if not tz_name or tz_name.upper() in {"UTC", "GMT", "ETC/UTC"}:
+                return dt.timezone.utc
+            try:
+                return zoneinfo.ZoneInfo(tz_name)
+            except Exception:
+                return None
+
+    dtz = _DateutilTzFallback()
 
 from utils.database import get_db_connection
 
