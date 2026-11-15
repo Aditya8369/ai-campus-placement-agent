@@ -275,6 +275,7 @@ SYNTHETIC_SAMPLE_ANALYSIS_RECORD: Dict[str, Any] = {
         },
         "overall_recommendation_summary": "Alex is an outstanding candidate with demonstrated engineering curiosity and strong problem-solving skills. Following this 6-week roadmap will solidify advanced system design and caching competencies to ensure top placement results.",
         "skill_evidence_mapping": {
+            "total_skills": 7,
             "supported_skills_count": 5,
             "unsupported_skills_count": 1,
             "partial_skills_count": 1,
@@ -284,44 +285,162 @@ SYNTHETIC_SAMPLE_ANALYSIS_RECORD: Dict[str, Any] = {
                 {
                     "skill": "Python",
                     "status": "supported",
-                    "source_section": "Projects & Experience",
-                    "snippet": "Implemented distributed task workers and REST APIs in Python (Flask/FastAPI)."
+                    "evidence_level": "Strong Evidence",
+                    "is_supported": True,
+                    "badge_class": "success",
+                    "badge_icon": "fa-circle-check",
+                    "evidence_summary": "Demonstrated with practical implementation in Projects & Experience.",
+                    "evidence_locations": [
+                        {
+                            "section": "Work Experience",
+                            "context_title": "Software Engineering Intern at CloudTech Solutions",
+                            "snippet": "Built and optimized internal RESTful microservices in Python, improving reporting pipeline throughput by 25%.",
+                            "evidence_type": "work_experience"
+                        },
+                        {
+                            "section": "Projects",
+                            "context_title": "Distributed Task Queue & Background Worker System",
+                            "snippet": "Architected an asynchronous distributed task queue processing 5,000+ simulated jobs per minute with priority scheduling.",
+                            "evidence_type": "project"
+                        }
+                    ],
+                    "sections_found": ["Work Experience", "Projects"],
+                    "suggestions": [],
+                    "recommended_project": None,
+                    "example_bullet": None
                 },
                 {
                     "skill": "Data Structures & Algorithms",
                     "status": "supported",
-                    "source_section": "Projects & Education",
-                    "snippet": "Solved 350+ LeetCode problems; implemented Trie and Union-Find in projects."
+                    "evidence_level": "Strong Evidence",
+                    "is_supported": True,
+                    "badge_class": "success",
+                    "badge_icon": "fa-circle-check",
+                    "evidence_summary": "Demonstrated in competitive programming and coursework.",
+                    "evidence_locations": [
+                        {
+                            "section": "Awards & Leadership",
+                            "context_title": "LeetCode & Codeforces",
+                            "snippet": "Solved 350+ algorithmic challenges across LeetCode and Codeforces.",
+                            "evidence_type": "achievement"
+                        },
+                        {
+                            "section": "Education",
+                            "context_title": "UC Berkeley Coursework",
+                            "snippet": "Relevant Coursework: Data Structures & Algorithms, Operating Systems, Database Management.",
+                            "evidence_type": "coursework"
+                        }
+                    ],
+                    "sections_found": ["Awards & Leadership", "Education"],
+                    "suggestions": [],
+                    "recommended_project": None,
+                    "example_bullet": None
                 },
                 {
                     "skill": "REST APIs",
                     "status": "supported",
-                    "source_section": "Projects",
-                    "snippet": "Engineered microservice endpoints handling JSON payloads with JWT authentication."
+                    "evidence_level": "Strong Evidence",
+                    "is_supported": True,
+                    "badge_class": "success",
+                    "badge_icon": "fa-circle-check",
+                    "evidence_summary": "Demonstrated across internship and web development projects.",
+                    "evidence_locations": [
+                        {
+                            "section": "Work Experience",
+                            "context_title": "CloudTech Solutions",
+                            "snippet": "Built and optimized internal RESTful microservices in Python.",
+                            "evidence_type": "work_experience"
+                        }
+                    ],
+                    "sections_found": ["Work Experience"],
+                    "suggestions": [],
+                    "recommended_project": None,
+                    "example_bullet": None
                 },
                 {
                     "skill": "Docker",
                     "status": "supported",
-                    "source_section": "Projects",
-                    "snippet": "Containerized multi-container application using Docker and Docker Compose."
+                    "evidence_level": "Strong Evidence",
+                    "is_supported": True,
+                    "badge_class": "success",
+                    "badge_icon": "fa-circle-check",
+                    "evidence_summary": "Containerized microservices in distributed task queue project.",
+                    "evidence_locations": [
+                        {
+                            "section": "Projects",
+                            "context_title": "Distributed Task Queue",
+                            "snippet": "Containerized the application using Docker and Docker Compose for reproducible local deployment.",
+                            "evidence_type": "project"
+                        }
+                    ],
+                    "sections_found": ["Projects"],
+                    "suggestions": [],
+                    "recommended_project": None,
+                    "example_bullet": None
                 },
                 {
                     "skill": "SQL",
                     "status": "supported",
-                    "source_section": "Projects",
-                    "snippet": "Designed normalized relational schemas and optimized queries achieving sub-50ms latency."
+                    "evidence_level": "Strong Evidence",
+                    "is_supported": True,
+                    "badge_class": "success",
+                    "badge_icon": "fa-circle-check",
+                    "evidence_summary": "Relational schema design and optimized query indexing.",
+                    "evidence_locations": [
+                        {
+                            "section": "Projects",
+                            "context_title": "Campus Placement Portal",
+                            "snippet": "Designed normalized relational database schemas with indexed queries achieving sub-50ms API response latency.",
+                            "evidence_type": "project"
+                        }
+                    ],
+                    "sections_found": ["Projects"],
+                    "suggestions": [],
+                    "recommended_project": None,
+                    "example_bullet": None
                 },
                 {
                     "skill": "Redis",
                     "status": "partial",
-                    "source_section": "Skills List",
-                    "snippet": "Listed in skills section; practical caching layer implementation recommended."
+                    "evidence_level": "Partial Evidence",
+                    "is_supported": False,
+                    "badge_class": "warning",
+                    "badge_icon": "fa-triangle-exclamation",
+                    "evidence_summary": "Mentioned in skills and project tools, but lacks dedicated implementation bullet detailing cache strategies.",
+                    "evidence_locations": [
+                        {
+                            "section": "Projects",
+                            "context_title": "Collaborative Code Editor",
+                            "snippet": "Leveraged operational transformation algorithms and WebSockets for real-time document synchronization.",
+                            "evidence_type": "project"
+                        }
+                    ],
+                    "sections_found": ["Projects"],
+                    "suggestions": [
+                        "Add a bullet describing caching patterns (e.g., Cache-Aside, Write-Through).",
+                        "Recommended Project: High-throughput API cache layer with Redis Sentinel simulation",
+                        "Sample Resume Bullet: \"Integrated Redis caching layer with LRU eviction policy, reducing database read load by 60%.\""
+                    ],
+                    "recommended_project": "High-throughput API cache layer with Redis Sentinel simulation",
+                    "example_bullet": "Integrated Redis caching layer with LRU eviction policy, reducing database read load by 60%."
                 },
                 {
                     "skill": "Kubernetes",
                     "status": "unsupported",
-                    "source_section": "Missing",
-                    "snippet": "Mentioned as desired skill; no project bullets or hands-on evidence found."
+                    "evidence_level": "No Supporting Evidence",
+                    "is_supported": False,
+                    "badge_class": "danger",
+                    "badge_icon": "fa-circle-exclamation",
+                    "evidence_summary": "Required for target role, but no supporting project or work experience found.",
+                    "evidence_locations": [],
+                    "sections_found": [],
+                    "suggestions": [
+                        "Add a hands-on project deploying microservices to Minikube or GKE.",
+                        "Recommended Project: Containerized Microservices Cluster deployed on Minikube with Ingress routing",
+                        "Sample Resume Bullet: \"Authored Kubernetes manifests including Deployments, Services, and ConfigMaps for seamless microservice orchestration.\""
+                    ],
+                    "recommended_project": "Containerized Microservices Cluster deployed on Minikube with Ingress routing",
+                    "example_bullet": "Authored Kubernetes manifests including Deployments, Services, and ConfigMaps for seamless microservice orchestration."
                 }
             ]
         }
@@ -333,44 +452,140 @@ SYNTHETIC_SAMPLE_ANALYSIS_RECORD: Dict[str, Any] = {
 # ==============================================================================
 
 SYNTHETIC_SAMPLE_ROLE_PREPARATION: Dict[str, Any] = {
+    "success": True,
     "target_role": "Software Engineer",
-    "role_title": "Software Engineer (SDE 1)",
+    "role_title": "Software Engineer",
+    "tagline": "Data structures, scalable algorithms, system design, and software architecture.",
+    "icon": "fa-solid fa-code text-primary",
+    "color_class": "primary",
     "company_name": "Google",
     "is_demo": True,
+    "alignment_score": 88,
     "total_roadmap_tasks": 24,
     "match_score": 84,
     "role_summary": "Specialized curriculum focusing on algorithmic rigor, distributed microservices, caching architecture, and system scalability.",
-    "core_technologies": [
-        {"name": "Python", "category": "Primary Language", "level": "Advanced"},
-        {"name": "Data Structures & Algorithms", "category": "Foundations", "level": "Advanced"},
-        {"name": "System Design", "category": "Architecture", "level": "Intermediate"},
-        {"name": "Redis", "category": "Caching", "level": "Intermediate"},
-        {"name": "Docker", "category": "DevOps", "level": "Intermediate"},
-        {"name": "SQL & PostgreSQL", "category": "Databases", "level": "Advanced"}
-    ],
-    "roadmap": copy.deepcopy(SYNTHETIC_SAMPLE_ANALYSIS_RECORD["results"]["learning_roadmap"]),
+    "leveraged_skills": ["Python", "Data Structures & Algorithms", "SQL", "Git", "Docker"],
     "bridged_skill_gaps": [
+        "Distributed System Design",
+        "Redis Caching",
+        "Kubernetes Orchestration"
+    ],
+    "personalized_guidance": "Alex Chen's profile exhibits strong alignment with Google Software Engineer hiring benchmarks. Following this 6-week roadmap will solidify advanced system design and caching competencies.",
+    "core_technologies": [
+        {"name": "Python", "category": "Primary Language", "badge": "Core", "description": "Type hints, dataclasses, context managers, generators, and async/await syntax."},
+        {"name": "Data Structures & Algorithms", "category": "Foundations", "badge": "Essential", "description": "Trees, graphs, dynamic programming, sorting, and algorithmic complexity."},
+        {"name": "System Design", "category": "Architecture", "badge": "Enterprise", "description": "Scalability, horizontal partitioning, load balancing, and consistent hashing."},
+        {"name": "Redis", "category": "Caching", "badge": "Performance", "description": "In-memory caching, eviction policies, and cache invalidation strategies."},
+        {"name": "Docker", "category": "DevOps", "badge": "Deployment", "description": "Containerized microservice packaging, multi-stage builds, and reproducibility."},
+        {"name": "SQL & PostgreSQL", "category": "Databases", "badge": "Database", "description": "Relational schemas, query optimization, indexing, and ACID transactions."}
+    ],
+    "important_concepts": [
+        {"concept": "Algorithmic Complexity & Optimization", "details": "Mastering Big-O time and space trade-offs across data structures."},
+        {"concept": "System Design & Scalability", "details": "Designing resilient microservices, rate limiters, and distributed queues."},
+        {"concept": "In-Memory Caching Strategies", "details": "Preventing cache stampede, cache penetration, and implementing TTLs."}
+    ],
+    "technical_topics": [
         {
-            "skill": "Distributed System Design",
-            "curriculum_week": "Week 3",
-            "practical_project": "Scalable URL Shortener with Base62 encoding and SQLite/Redis"
+            "topic": "Core Algorithmic Rigor & Graph Traversals",
+            "importance": "High",
+            "estimated_hours": 12,
+            "skills": ["Data Structures & Algorithms", "Python"],
+            "summary": "BFS/DFS traversals, shortest path algorithms, and dynamic programming.",
+            "connected_gaps": [],
+            "connected_strengths": ["Python", "Data Structures & Algorithms"],
+            "is_priority": True
         },
         {
-            "skill": "Redis Caching",
-            "curriculum_week": "Week 4",
-            "practical_project": "High-throughput API cache layer with Redis Sentinel simulation"
-        },
-        {
-            "skill": "Kubernetes Orchestration",
-            "curriculum_week": "Week 5",
-            "practical_project": "Containerized Microservices Cluster deployed locally on Minikube"
+            "topic": "Distributed System Design & Microservice Scalability",
+            "importance": "High",
+            "estimated_hours": 14,
+            "skills": ["Distributed System Design", "Docker", "Redis"],
+            "summary": "Microservices decomposition, message queues, and caching architecture.",
+            "connected_gaps": ["Distributed System Design", "Redis"],
+            "connected_strengths": ["Docker"],
+            "is_priority": True
         }
     ],
+    "coding_questions": [
+        {
+            "title": "Two Sum & Pair Lookup Optimization",
+            "difficulty": "Easy",
+            "platform": "LeetCode",
+            "topic": "Arrays & Hash Map",
+            "skills_targeted": ["Arrays", "Hash Map"],
+            "practice_url": "https://leetcode.com/problems/two-sum/",
+            "description": "Given an array of integers nums and an integer target, return indices of two numbers that add up to target.",
+            "hints": ["Use a hash table to store visited numbers and their index for O(1) lookups."],
+            "targets_gap": None
+        },
+        {
+            "title": "Course Schedule II (Topological Sort)",
+            "difficulty": "Medium",
+            "platform": "LeetCode",
+            "topic": "Graphs & Topological Sort",
+            "skills_targeted": ["Graphs", "Topological Sort", "DAG"],
+            "practice_url": "https://leetcode.com/problems/course-schedule-ii/",
+            "description": "Return the ordering of courses you should finish to complete all courses given their prerequisites.",
+            "hints": ["Use Kahn's algorithm with in-degree array and queue of 0 in-degree nodes."],
+            "targets_gap": "Data Structures & Algorithms"
+        }
+    ],
+    "roadmap": copy.deepcopy(SYNTHETIC_SAMPLE_ANALYSIS_RECORD["results"]["learning_roadmap"]),
     "recommended_interview_focus": [
         "Time & Space complexity analysis for graph and DP problems.",
         "System design scalability bottlenecks, caching invalidation, and data partitioning.",
         "Behavioral STAR responses emphasizing team collaboration and technical debugging."
-    ]
+    ],
+    "ai_recommendation_explanation": {
+        "target_role": "Software Engineer",
+        "suitability_tier": "Strong Match",
+        "suitability_score": 88,
+        "recommendation_reason": "Recommended because your profile exhibits strong alignment (5 core skills) with Software Engineer requirements. Your demonstrated familiarity with Python, Data Structures & Algorithms, and SQL positions you well for technical screenings.",
+        "matching_skills": ["Python", "Data Structures & Algorithms", "SQL", "Git", "Docker"],
+        "matching_skills_count": 5,
+        "missing_skills": ["Redis", "Kubernetes", "Distributed System Design"],
+        "missing_skills_count": 3,
+        "missing_skills_impact": "In typical placement drives, candidates are evaluated on Redis, Kubernetes, and Distributed System Design. Mastering them will directly improve your technical assessment and interview clearance rates.",
+        "project_experience_relevance": {
+            "summary": "Your background demonstrates direct, hands-on project implementations in distributed backend architectures and full-stack web applications.",
+            "highlights": [
+                "Distributed Task Queue with asynchronous workers and exponential backoff retries.",
+                "Full-stack Campus Placement Portal with relational schema design and sub-50ms API response latency.",
+                "Real-time Collaborative Code Editor supporting multi-user document synchronization."
+            ]
+        },
+        "influencing_factors": [
+            {
+                "factor": "Technical Skill Overlap",
+                "weight": "High",
+                "score_pct": 85,
+                "badge_class": "success",
+                "description": "5 of your verified skills directly match this role's technology stack."
+            },
+            {
+                "factor": "Project & Experience Alignment",
+                "weight": "High",
+                "score_pct": 90,
+                "badge_class": "success",
+                "description": "Strong evidence from your backend engineering projects and software internship."
+            },
+            {
+                "factor": "Skill Gap Bridgeability",
+                "weight": "Medium",
+                "score_pct": 85,
+                "badge_class": "info",
+                "description": "3 bridgeable gaps can be readily mastered using our structured 6-week curriculum."
+            },
+            {
+                "factor": "Campus Placement Demand",
+                "weight": "High",
+                "score_pct": 95,
+                "badge_class": "primary",
+                "description": "Software Engineer is the highest-volume campus recruitment track among tier-1 technology employers."
+            }
+        ],
+        "actionable_summary": "Focus on algorithmic problem-solving speed (Tree & Graph traversals, Dynamic Programming) and system design trade-offs."
+    }
 }
 
 

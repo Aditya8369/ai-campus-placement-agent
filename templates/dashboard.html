@@ -52,6 +52,14 @@
           <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare with</span> Previous
         </a>
         {% endif %}
+        {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or session.get('is_demo_mode') %}
+        <span class="badge bg-warning text-dark border rounded-pill px-3 py-2 small fw-semibold" id="navDemoBadge">
+          <i class="fa-solid fa-flask-vial me-1"></i> Demo Mode
+        </span>
+        <a href="{{ url_for('demo_mode_exit') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3" id="btnNavExitDemo" title="Exit demo mode">
+          <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Exit Demo
+        </a>
+        {% endif %}
         <a href="/download/{{ analysis_id }}" class="btn btn-custom-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-download me-1"></i> <span class="d-none d-sm-inline">Download</span> PDF
         </a>
@@ -61,6 +69,34 @@
 
   <!-- Dashboard Content -->
   <main class="container py-5 fade-in" id="dashboardContainer" tabindex="-1" data-analysis-id="{{ analysis_id }}" data-company="{{ analysis.company_name }}" data-date="{{ analysis.created_at }}">
+    
+    <!-- Demo Data Banner (#435) -->
+    {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or session.get('is_demo_mode') %}
+    <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3 p-3" role="alert" id="demoDataBanner" style="background: linear-gradient(135deg, rgba(254, 243, 199, 0.95) 0%, rgba(255, 251, 235, 0.98) 100%); border-left: 5px solid #f59e0b !important;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark p-2" style="width: 44px; height: 44px;">
+          <i class="fa-solid fa-flask-vial fs-5"></i>
+        </div>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-warning text-dark rounded-pill px-2 py-1 small fw-bold">Demo Data</span>
+            <strong class="text-dark">Sample Evaluation Demonstration</strong>
+          </div>
+          <p class="text-muted small mb-0 mt-1">
+            Viewing evaluation results generated from a synthetic sample resume and job description. No AI calls were made and no data is saved to any user profile or history.
+          </p>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('demo_mode_exit') }}" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-2 fw-semibold" id="btnExitDemo">
+          <i class="fa-solid fa-arrow-left me-1"></i> Exit Demo
+        </a>
+        <a href="{{ url_for('index') }}#analysisForm" class="btn btn-primary btn-sm rounded-pill px-3 py-2 fw-semibold shadow-sm" id="btnUploadOwnResume">
+          <i class="fa-solid fa-cloud-arrow-up me-1"></i> Analyze My Own Resume
+        </a>
+      </div>
+    </div>
+    {% endif %}
     
     <!-- Cached Analysis Banner (#296) -->
     {% if is_cached %}
@@ -85,6 +121,38 @@
           <i class="fa-solid fa-arrows-rotate me-1"></i> Re-run Analysis
         </button>
       </form>
+    </div>
+    {% endif %}
+
+    <!-- Revision Comparison Notification Banner (#297) -->
+    {% if comparison is defined and comparison and comparison.has_previous %}
+    <div class="alert alert-info border-0 shadow-sm rounded-4 mb-4 p-3 d-flex flex-wrap align-items-center justify-content-between gap-3" id="comparePreviousBanner" role="region" aria-label="Resume Revision Comparison Alert">
+      <div class="d-flex align-items-center gap-3">
+        <div class="badge-icon-box bg-white text-primary rounded-circle p-2 shadow-sm d-flex align-items-center justify-content-center" style="width: 48px; height: 48px;">
+          <i class="fa-solid fa-code-compare fs-4"></i>
+        </div>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary rounded-pill px-2 py-1 small">Resume Revision Detected</span>
+            <span class="badge bg-{{ comparison.badge_class }}-subtle text-{{ comparison.badge_class }} border border-{{ comparison.badge_class }}-subtle rounded-pill px-2 py-1 small" id="compareBadge">
+              {{ comparison.badge_text }}
+            </span>
+          </div>
+          <h6 class="fw-bold text-dark mb-0 mt-1">
+            We found a previous analysis for {{ comparison.target_role }} at {{ comparison.company_name }}.
+          </h6>
+          <p class="text-muted small mb-0">
+            ATS Score: <strong>{{ comparison.ats_previous }}/100</strong> &rarr; <strong>{{ comparison.ats_current }}/100</strong>
+            ({{ '+' if comparison.score_difference > 0 else '' }}{{ comparison.score_difference }} pts)
+            &bull; {{ comparison.skills_added|length }} skills added &bull; {{ comparison.weaknesses_fixed|length }} weaknesses fixed
+          </p>
+        </div>
+      </div>
+      <div>
+        <a href="{{ url_for('compare_with_previous_analysis_view', analysis_id=analysis_id) }}" class="btn btn-primary rounded-pill px-4 py-2 shadow-sm fw-semibold" id="btnComparePrevious">
+          <i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Compare with my previous analysis
+        </a>
+      </div>
     </div>
     {% endif %}
 
@@ -1344,7 +1412,7 @@
           </h4>
         </div>
         <div class="d-flex align-items-center gap-2 flex-wrap">
-          {% if sem and sem.total_skills > 0 %}
+          {% if sem and sem.total_skills is defined and sem.total_skills > 0 %}
             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold" id="semSupportedBadge">
               <i class="fa-solid fa-circle-check me-1"></i> {{ sem.supported_skills_count }} Supported
             </span>
@@ -1364,7 +1432,7 @@
         Shows where your skills are demonstrated in your resume sections (Projects, Work Experience) and highlights skills that are merely listed without concrete supporting evidence.
       </p>
 
-      {% if sem and sem.total_skills > 0 %}
+      {% if sem and sem.total_skills is defined and sem.total_skills > 0 %}
         <!-- Evidence Overview Bar & Filter Controls -->
         <div class="p-3 bg-light rounded-4 border mb-4">
           <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -1987,15 +2055,16 @@
           </div>
 
           <!-- Project & Experience Relevance -->
+          {% set proj_rel = dash_ai_rec.project_experience_relevance if dash_ai_rec.project_experience_relevance is defined and dash_ai_rec.project_experience_relevance else {} %}
           <div class="p-3 bg-white rounded-3 border mb-3">
             <strong class="d-block text-dark small mb-1">
               <i class="fa-solid fa-briefcase text-primary me-1"></i> Project &amp; Experience Relevance:
             </strong>
             <p class="text-secondary small mb-2" id="dashAiProjectRelevanceText">
-              {{ dash_ai_rec.project_experience_relevance.summary|default('Evaluation of practical project alignment.') }}
+              {{ proj_rel.summary|default('Evaluation of practical project alignment.') }}
             </p>
             <ul class="small text-secondary ps-3 mb-0" id="dashAiProjectHighlightsList">
-              {% for highlight in (dash_ai_rec.project_experience_relevance.highlights|default([])) %}
+              {% for highlight in (proj_rel.highlights|default([])) %}
                 <li class="mb-1">{{ highlight }}</li>
               {% endfor %}
             </ul>

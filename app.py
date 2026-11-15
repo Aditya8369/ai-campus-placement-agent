@@ -222,6 +222,15 @@ from utils.analysis_cache import (
 )
 from utils.batch_analyzer import run_batch_company_comparison
 from agents.job_recommendation_agent import JobRecommendationAgent
+from utils.demo_mode import (
+    enter_demo_session,
+    exit_demo_session,
+    is_demo_session,
+    get_synthetic_sample_analysis,
+    get_synthetic_sample_role_prep,
+    SYNTHETIC_SAMPLE_RESUME_TEXT,
+    SYNTHETIC_SAMPLE_JOB_DESCRIPTION,
+)
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -432,9 +441,10 @@ def require_login():
         "admin_moderation_queue_endpoint",
         "admin_moderate_experience_action_endpoint",
         "admin_experience_moderation_logs_endpoint",
-        "admin_ai_metrics_view",
-        "admin_ai_metrics_export_csv",
-        "api_admin_ai_metrics",
+        "demo_mode_view",
+        "demo_mode_exit",
+        "api_demo_sample_resume",
+        "api_demo_sample_job_description",
     }
 
     user_id = flask_session.get("user_id")
@@ -530,7 +540,12 @@ def require_login():
             if request.endpoint not in ("api_session_status", "static"):
                 flask_session["last_activity"] = now
 
-    if request.endpoint in public_endpoints:
+    if (
+        request.endpoint in public_endpoints
+        or (request.view_args and request.view_args.get("analysis_id") in ("demo-sample-analysis", "demo_sample_analysis", "demo"))
+        or flask_session.get("is_demo_mode")
+        or flask_session.get("user_id") == "demo_visitor"
+    ):
         return None
 
     if not flask_session.get("user_id"):
@@ -586,6 +601,16 @@ def inject_session_config():
 
 def _is_student_authorized(record_or_student_id) -> bool:
     """Verifies that the requested resource belongs to the currently logged in student."""
+    if isinstance(record_or_student_id, dict):
+        if (
+            record_or_student_id.get("is_demo")
+            or record_or_student_id.get("id") in ("demo-sample-analysis", "demo_sample_analysis", "demo")
+            or record_or_student_id.get("student_id") == "demo_visitor"
+        ):
+            return True
+    elif record_or_student_id in ("demo-sample-analysis", "demo_sample_analysis", "demo", "demo_visitor"):
+        return True
+
     if app.config.get("TESTING") and not app.config.get("ENFORCE_STUDENT_ISOLATION"):
         return True
     current_uid = flask_session.get("user_id") or flask_session.get("user", {}).get("id") or flask_session.get("student_id")
@@ -2772,7 +2797,70 @@ def dashboard(analysis_id: str) -> str:
     previous_record = get_previous_analysis(student_id, current_version=current_version)
     delta_data = calculate_version_delta(analysis_record, previous_record)
     trend_series = build_longitudinal_series(all_versions)
-    initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
+
+    # Demo mode detection (#435)
+    is_demo = bool(
+        analysis_record.get("is_demo")
+        or analysis_id in ("demo-sample-analysis", "demo_sample_analysis", "demo")
+        or student_id == "demo_visitor"
+        or flask_session.get("is_demo_mode")
+    )
+
+    if is_demo:
+        initial_outreach = {
+            "tone": "formal",
+            "role_title": "Software Development Engineer (SDE 1)",
+            "company_name": "Google",
+            "cover_letter": (
+                "Dear University Recruiting Team at Google,\n\n"
+                "I am writing to express my enthusiastic interest in the Software Development Engineer (SDE 1) position at Google. "
+                "As a Computer Science student at UC Berkeley with hands-on experience developing asynchronous distributed task queues "
+                "and scalable microservices in Python, Redis, and Docker, I am eager to contribute to Google's engineering excellence.\n\n"
+                "Throughout my academic and project initiatives, I have focused on building performant, scalable applications. "
+                "In my Distributed Task Queue project, I architected background workers processing 5,000+ jobs per minute with priority scheduling "
+                "and exponential backoff retries, reducing failed job dropouts by 40%. During my software engineering internship at CloudTech Solutions, "
+                "I optimized RESTful microservices in Python, improving reporting pipeline throughput by 25%.\n\n"
+                "Google's culture of technical innovation, distributed systems leadership, and planetary-scale infrastructure deeply resonates with me. "
+                "I am confident that my strong foundations in data structures, algorithms, and practical backend engineering will enable me to make immediate "
+                "contributions to your team.\n\n"
+                "Thank you for your time and consideration. I welcome the opportunity to discuss how my background aligns with Google's mission.\n\n"
+                "Sincerely,\nAlex Chen\nSan Francisco, CA | (555) 019-2834 | alex.chen.demo@example.com"
+            ),
+            "linkedin_inmail": (
+                "Hi [Recruiter Name],\n\n"
+                "I hope you're having a great week! I follow Google's systems engineering work with great enthusiasm and noticed the campus Software Development Engineer (SDE 1) opening.\n\n"
+                "I am graduating in CS from UC Berkeley with practical experience in Python, distributed task queues, and microservices architecture. "
+                "I would love to connect and learn more about Google's campus recruiting timeline and software engineering teams.\n\n"
+                "Best regards,\nAlex Chen"
+            ),
+            "cold_email": (
+                "Subject: Application: Software Development Engineer (SDE 1) - Alex Chen\n\n"
+                "Dear Google Engineering Team,\n\n"
+                "I am reaching out regarding the campus Software Development Engineer (SDE 1) role. "
+                "With deep experience in Python backend engineering, distributed systems, and algorithmic problem solving (350+ LeetCode problems solved), "
+                "I believe my background would be an excellent fit for your engineering teams.\n\n"
+                "Key Highlights:\n"
+                "- UC Berkeley Computer Science (GPA: 3.82/4.0)\n"
+                "- Built distributed task queues with Redis handling 5,000+ jobs/min\n"
+                "- CloudTech Solutions SWE Intern: boosted microservice throughput by 25%\n\n"
+                "I've attached my resume and would welcome 10 minutes to discuss how my skill set can support Google's upcoming engineering goals.\n\n"
+                "Warm regards,\nAlex Chen"
+            ),
+            "subject_lines": [
+                "Software Development Engineer (SDE 1) Candidate - Python & Distributed Systems | Alex Chen",
+                "UC Berkeley CS Graduate - Application for SDE 1 - Alex Chen",
+                "Passionate about Google Engineering - Software Engineer Candidate Inquiry"
+            ],
+            "key_highlights": [
+                "Bachelor of Science in CS at UC Berkeley (GPA: 3.82 / 4.0)",
+                "Architected distributed task queue in Python/Redis processing 5,000+ jobs/min",
+                "Software Engineering Intern at CloudTech Solutions (improved throughput by 25%)",
+                "Practical exposure to Docker, REST APIs, and PostgreSQL with sub-50ms query latency"
+            ],
+            "is_demo": True
+        }
+    else:
+        initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
 
     # Target-scoped longitudinal comparison (#297)
     target_company = analysis_record.get("company_name", "General")
@@ -2824,14 +2912,17 @@ def dashboard(analysis_id: str) -> str:
     existing_skills = job_match.get("matched_skills") or []
     gap_names = [g.get("missing_skill") for g in skill_gap_items if isinstance(g, dict) and g.get("missing_skill")] or job_match.get("missing_skills", [])
 
-    initial_role_prep = role_prep_agent.generate_role_preparation(
-        target_role="Software Engineer",
-        existing_skills=existing_skills,
-        skill_gaps=gap_names,
-        company_name=analysis_record.get("company_name", "General"),
-        resume_text=analysis_record.get("resume_text", ""),
-        analysis_record=analysis_record
-    )
+    if is_demo:
+        initial_role_prep = get_synthetic_sample_role_prep()
+    else:
+        initial_role_prep = role_prep_agent.generate_role_preparation(
+            target_role="Software Engineer",
+            existing_skills=existing_skills,
+            skill_gaps=gap_names,
+            company_name=analysis_record.get("company_name", "General"),
+            resume_text=analysis_record.get("resume_text", ""),
+            analysis_record=analysis_record
+        )
     # Prepare verified Placement Readiness Summary data
     results = analysis_record.get("results") or {}
     resume_analysis = results.get("resume_analysis") or {}
@@ -3037,7 +3128,8 @@ def dashboard(analysis_id: str) -> str:
         score_explanations=score_explanations,
         streak=streak_data,
         comparison=comparison,
-        comparison_json=json.dumps(comparison)
+        comparison_json=json.dumps(comparison),
+        is_demo=is_demo
     )
 
 
@@ -3330,6 +3422,72 @@ def api_compare_with_previous(analysis_id: str):
         "weaknesses_fixed": comparison.get("weaknesses_fixed", []),
         "weaknesses_still_present": comparison.get("weaknesses_still_present", []),
         "trend_chart": comparison.get("trend_chart", [])
+    }), 200
+
+
+# ==============================================================================
+# SAMPLE RESUME DEMO MODE (#435)
+# ==============================================================================
+
+@app.route("/demo-analysis", methods=["GET"])
+@app.route("/try-sample", methods=["GET"])
+@app.route("/demo", methods=["GET", "POST"])
+def demo_mode_view():
+    """
+    Opens full placement evaluation with a bundled, fictional resume and sample
+    job description without requiring login or making AI calls (#435).
+    """
+    enter_demo_session(flask_session, time.time())
+    demo_id = "demo-sample-analysis"
+    target_url = url_for("dashboard", analysis_id=demo_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.accept_mimetypes.best == "application/json":
+        return jsonify({
+            "status": "success",
+            "message": "Demo session started.",
+            "is_demo": True,
+            "analysis_id": demo_id,
+            "redirect_url": target_url
+        }), 200
+
+    return redirect(target_url)
+
+
+@app.route("/demo/exit", methods=["GET", "POST"])
+@app.route("/demo-exit", methods=["GET", "POST"])
+def demo_mode_exit():
+    """
+    Exits demo mode and restores any pre-existing user session (#435).
+    """
+    was_authenticated, restored_uid = exit_demo_session(flask_session, time.time())
+    flash("You have exited demo mode.", "info")
+    return redirect(url_for("index"))
+
+
+@app.route("/api/demo/sample-resume", methods=["GET"])
+def api_demo_sample_resume():
+    """
+    Returns the synthetic bundled sample resume text and candidate profile metadata (#435).
+    """
+    return jsonify({
+        "status": "success",
+        "candidate_name": "Alex Chen",
+        "target_company": "Google",
+        "target_role": "Software Development Engineer (SDE 1)",
+        "resume_text": SYNTHETIC_SAMPLE_RESUME_TEXT.strip()
+    }), 200
+
+
+@app.route("/api/demo/sample-job-description", methods=["GET"])
+def api_demo_sample_job_description():
+    """
+    Returns the synthetic bundled sample job description (#435).
+    """
+    return jsonify({
+        "status": "success",
+        "company_name": "Google",
+        "target_role": "Software Development Engineer (SDE 1)",
+        "job_description": SYNTHETIC_SAMPLE_JOB_DESCRIPTION.strip()
     }), 200
 
 

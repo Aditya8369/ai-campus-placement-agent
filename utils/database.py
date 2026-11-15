@@ -1143,6 +1143,9 @@ def delete_analysis(analysis_id: str) -> bool:
     Deletes an analysis record and its corresponding interview sessions and benchmark entries.
     Returns True if an analysis was deleted, False if not found.
     """
+    if analysis_id in ("demo-sample-analysis", "demo_sample_analysis", "demo"):
+        return True
+
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -1174,6 +1177,7 @@ def get_analyses_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
             SELECT id, resume_filename, company_name, job_description, results_json,
                    student_id, version_number, created_at
             FROM analyses
+            WHERE student_id != 'demo_visitor' AND id NOT IN ('demo-sample-analysis', 'demo_sample_analysis', 'demo')
             ORDER BY created_at DESC, rowid DESC
         """
         params: List[Any] = []

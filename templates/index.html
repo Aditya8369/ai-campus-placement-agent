@@ -55,6 +55,7 @@
 {% else %}
   <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">{{ _t('nav_login', 'Login') }}</a>
   <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">{{ _t('nav_register', 'Register') }}</a>
+  <a href="{{ url_for('demo_mode_view') }}" class="btn btn-outline-success btn-sm rounded-pill px-3" id="btnNavTrySampleResume" title="Try with a sample resume without logging in"><i class="fa-solid fa-flask-vial me-1"></i> Sample Demo</a>
 {% endif %}
 
 <button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap btn-open-walkthrough" id="btnOpenWalkthrough" data-bs-toggle="modal" data-bs-target="#userWalkthroughModal" title="First-time user walkthrough & feature tour">
@@ -235,6 +236,13 @@
             <div class="d-flex align-items-center gap-2 text-secondary">
               <i class="fa-solid fa-check text-success"></i> {{ _t('hero_badge_interview', 'Live AI Mock Interviews') }}
             </div>
+          </div>
+          <div class="mt-4">
+            <a href="{{ url_for('demo_mode_view') }}" class="btn btn-outline-success rounded-pill px-4 py-2 fw-semibold d-inline-flex align-items-center gap-2 shadow-sm" id="btnHeroTrySampleResume" title="Explore full placement evaluation with a bundled sample resume and job description (No login or AI call required)">
+              <i class="fa-solid fa-flask-vial text-success"></i>
+              <span>Try with a sample resume</span>
+              <span class="badge bg-success text-white rounded-pill px-2 py-0 small">Instant Demo</span>
+            </a>
           </div>
         </div>
 
@@ -519,6 +527,16 @@
                   title="Clear all inputs and reset form without refreshing">
                   <i class="fa-solid fa-rotate-left me-2"></i> <span>Clear All</span>
                 </button>
+              </div>
+
+              <!-- Quick Demo Mode Callout (#435) -->
+              <div class="text-center mt-3 pt-3 border-top" id="demoModeCallout">
+                <p class="text-muted small mb-2">Want to see what the platform looks like first?</p>
+                <a href="{{ url_for('demo_mode_view') }}" class="btn btn-outline-success rounded-pill px-4 py-2 fw-semibold w-100 d-inline-flex align-items-center justify-content-center gap-2" id="btnTrySampleResume" title="Explore full placement evaluation with a bundled sample resume and job description (No login or AI call required)">
+                  <i class="fa-solid fa-flask-vial text-success"></i>
+                  <span>Try with a sample resume</span>
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-0 small ms-1">Instant Demo</span>
+                </a>
               </div>
             </form>
           </div>
