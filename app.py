@@ -213,6 +213,13 @@ from utils.resume_info_extractor import (
     reconstruct_resume_markdown
 )
 from utils.resume_pii_service import pii_service, REDACTION_TOKENS
+from utils.analysis_cache import (
+    compute_analysis_hash,
+    get_cached_analysis,
+    set_cached_analysis,
+)
+from utils.batch_analyzer import run_batch_company_comparison
+from agents.job_recommendation_agent import JobRecommendationAgent
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -1838,7 +1845,7 @@ def _extract_and_validate_resume(req):
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")
             return None, None, None, str(spe)
-        except PasswordProtectedPDFError:
+        except PasswordProtectedPDFError as ppe:
             logger.warning("Password-protected PDF rejected without logging credentials.")
             return None, None, None, str(ppe)
         except ValueError as ve:
@@ -9116,16 +9123,38 @@ def coding_submissions_view():
     question_filter = request.args.get("question", "").strip()
     language_filter = request.args.get("language", "All").strip()
     status_filter = request.args.get("status", "All").strip()
-    page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
 
-    all_matching_submissions = get_coding_submissions(
+    submissions = get_coding_submissions(
         student_id=student_id,
         question_title=question_filter or None,
         language_filter=language_filter,
         status_filter=status_filter
     )
-    return response
+
+    all_user_subs = get_coding_submissions(student_id=student_id)
+    passed_count = sum(1 for s in all_user_subs if s.get("passed"))
+    failed_count = len(all_user_subs) - passed_count
+    avg_score = round(sum(s.get("score", 0) for s in all_user_subs) / len(all_user_subs), 1) if all_user_subs else 0.0
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({
+            "success": True,
+            "count": len(submissions),
+            "submissions": submissions
+        }), 200
+
+    return render_template(
+        "coding_submissions.html",
+        submissions=submissions,
+        student_id=student_id,
+        question_filter=question_filter,
+        language_filter=language_filter,
+        status_filter=status_filter,
+        total_count=len(all_user_subs),
+        passed_count=passed_count,
+        failed_count=failed_count,
+        avg_score=avg_score
+    )
 
 
 @app.route("/interview/<analysis_id>/transcript")
@@ -12488,6 +12517,7 @@ def admin_moderation_queue_endpoint():
     }), 200
 
 
+@app.route("/api/admin/moderation/experiences/<exp_id>/action", methods=["POST"])
 def admin_moderate_experience_action_endpoint(exp_id: str):
     """
     Executes a moderation decision (approve, reject, flag, dismiss_report) on a submission.
@@ -12509,22 +12539,22 @@ def admin_moderate_experience_action_endpoint(exp_id: str):
     moderator_id = flask_session.get("user_id") or "admin"
 
     try:
-        safe_generate_report_with_recovery(
-            generator_func=generate_student_preparation_summary_pdf,
-            data=summary_data,
-            output_path=temp_pdf_path,
-            report_type="Student Placement Preparation Summary"
+        updated_experience = moderate_interview_experience(
+            experience_id=exp_id,
+            action=action,
+            moderator_id=str(moderator_id),
+            reason=reason
         )
-        return send_file(
-            temp_pdf_path,
-            as_attachment=True,
-            download_name=output_filename,
-            mimetype="application/pdf"
-        )
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully executed '{action}' on experience '{exp_id}'.",
+            "experience": updated_experience
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Failed to generate student preparation summary PDF: {e}")
-        flash("Could not generate preparation summary report. Please try again later.", "danger")
-        return redirect(url_for("index"))
+        logger.error(f"Moderation error: {e}")
+        return jsonify({"status": "error", "message": "Internal server error executing moderation."}), 500
 
 
 
@@ -13891,6 +13921,87 @@ def interview_compare_page():
     """
     student_id = flask_session.get("user_id") or "default_student"
     return render_template("interview_compare.html", student_id=student_id)
+
+
+# ---------------------------------------------------------------------------
+# Calendar Timezone Handling Endpoints (#261)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/calendar/timezone", methods=["GET"])
+def api_get_calendar_timezone():
+    """Retrieve the configured timezone metadata for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.calendar_timezone_service import get_student_timezone_info
+        info = get_student_timezone_info(user_id)
+        return jsonify({
+            "success": True,
+            "timezone": info
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching timezone settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/calendar/timezone", methods=["PUT"])
+def api_set_calendar_timezone():
+    """Update timezone configuration for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    tz_id = payload.get("timezone_id")
+    auto_detect = bool(payload.get("auto_detect", False))
+
+    if not tz_id or not isinstance(tz_id, str):
+        return jsonify({"success": False, "error": "timezone_id must be a non-empty string"}), 400
+
+    from utils.calendar_timezone_service import is_valid_timezone, set_student_timezone
+    if not is_valid_timezone(tz_id):
+        return jsonify({
+            "success": False,
+            "error": f"Invalid IANA timezone identifier: {tz_id}"
+        }), 400
+
+    try:
+        updated_info = set_student_timezone(user_id, tz_id, auto_detect=auto_detect)
+        return jsonify({
+            "success": True,
+            "message": f"Timezone successfully updated to {tz_id}",
+            "timezone": updated_info
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating timezone settings: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/calendar/convert-time", methods=["POST"])
+def api_convert_calendar_time():
+    """Utility endpoint to convert local wall-clock event time to UTC or vice versa."""
+    payload = request.get_json(silent=True) or {}
+    direction = payload.get("direction", "local_to_utc")
+    
+    from utils.calendar_timezone_service import convert_local_to_utc, convert_utc_to_local
+    try:
+        if direction == "local_to_utc":
+            date_str = payload.get("date", "")
+            time_str = payload.get("time", "00:00")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_local_to_utc(date_str, time_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        elif direction == "utc_to_local":
+            utc_str = payload.get("utc_timestamp", "")
+            tz_id = payload.get("timezone_id", "UTC")
+            res = convert_utc_to_local(utc_str, tz_id)
+            return jsonify({"success": True, "result": res}), 200
+        else:
+            return jsonify({"success": False, "error": "direction must be 'local_to_utc' or 'utc_to_local'"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 if __name__ == "__main__":
