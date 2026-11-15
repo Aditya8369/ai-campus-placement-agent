@@ -362,7 +362,8 @@ class CodingAssessmentAgent:
             logger.info(f"CodingAssessmentAgent: Requesting problem generation for {target_company} ({diff})")
             res = generate_json_response(
                 system_instruction=prompts.CODING_PROBLEM_SYSTEM_INSTRUCTION,
-                prompt=prompt
+                prompt=prompt,
+                feature="interview"
             )
 
             # Sanitize and validate generated problem structure
@@ -466,7 +467,8 @@ class CodingAssessmentAgent:
             logger.info(f"CodingAssessmentAgent: Evaluating {lang_normalized} solution for '{problem_title}'")
             res = generate_json_response(
                 system_instruction=prompts.CODING_EVAL_SYSTEM_INSTRUCTION,
-                prompt=prompt
+                prompt=prompt,
+                feature="interview"
             )
             return self._sanitize_evaluation_payload(res, problem, lang_normalized, clean_code)
 

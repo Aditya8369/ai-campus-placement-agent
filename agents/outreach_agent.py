@@ -121,7 +121,8 @@ class OutreachGeneratorAgent:
 
             raw_outreach = generate_json_response(
                 prompt=prompt,
-                system_instruction=build_secure_system_instruction(prompts.OUTREACH_SYSTEM_INSTRUCTION)
+                system_instruction=build_secure_system_instruction(prompts.OUTREACH_SYSTEM_INSTRUCTION),
+                feature="outreach"
             )
 
             validated = self._validate_and_sanitize_outreach(

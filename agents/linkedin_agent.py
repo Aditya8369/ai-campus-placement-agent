@@ -259,7 +259,7 @@ Return ONLY valid JSON matching this schema:
 }}
 """
         try:
-            data = generate_json_response(system_instruction=system_instruction, prompt=prompt)
+            data = generate_json_response(system_instruction=system_instruction, prompt=prompt, feature="outreach")
             if isinstance(data, dict):
                 rewrites = data.get("headline_rewrites", [])
                 suggestions = data.get("suggestions", [])

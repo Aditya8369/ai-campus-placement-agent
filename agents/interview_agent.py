@@ -252,7 +252,8 @@ class InterviewAgent:
             # Query Gemini for the answer evaluation with hardened security instructions
             res = generate_json_response(
                 system_instruction=build_secure_system_instruction(prompts.INTERVIEW_EVAL_SYSTEM_INSTRUCTION),
-                prompt=prompt
+                prompt=prompt,
+                feature="interview"
             )
             res = redact_sensitive_information(res)
 
