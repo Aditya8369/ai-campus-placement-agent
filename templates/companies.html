@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Company Hiring Profiles & Search - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/company-checklist" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-list-check me-1"></i> Checklists
+        </a>
+        <a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-briefcase me-1"></i> Internships
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+
+    <!-- Header Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4 bg-white">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1.5 rounded-pill fw-semibold text-uppercase small mb-2 d-inline-block">
+            <i class="fa-solid fa-building me-1"></i> Enterprise Placement Directory
+          </span>
+          <h2 class="fw-bold mt-1 mb-2">Campus Recruitment Companies</h2>
+          <p class="text-secondary mb-0">
+            Explore verified company profiles, recruitment workflows, expected CTC brackets, required skill sets, and preparation roadmaps across leading campus recruiters.
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <div class="d-inline-flex flex-column align-items-lg-end gap-1">
+            <span class="badge bg-dark-subtle text-dark border px-3 py-2 rounded-pill fs-6">
+              <i class="fa-solid fa-layer-group me-1"></i> {{ total_count }} Companies Listed
+            </span>
+            <small class="text-muted">Updated for 2026 Campus Drive Season</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Filter Card -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+      <form method="GET" action="/companies" id="companySearchFilterForm">
+        <div class="row g-3">
+          <!-- Text Search Bar -->
+          <div class="col-md-5">
+            <label for="companySearchInput" class="form-label small fw-semibold text-secondary">Search Companies</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-end-0 text-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
+              <input
+                type="text"
+                class="form-control border-start-0 bg-light"
+                id="companySearchInput"
+                name="search"
+                placeholder="Company name, overview, or keywords..."
+                value="{{ search_query }}"
+              >
+              {% if search_query %}
+              <a href="/companies" class="input-group-text bg-light text-muted text-decoration-none" title="Clear text search">
+                <i class="fa-solid fa-xmark"></i>
+              </a>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Hiring Tier Dropdown -->
+          <div class="col-md-2 col-sm-6">
+            <label for="tierSelect" class="form-label small fw-semibold text-secondary">Hiring Tier</label>
+            <select class="form-select bg-light" id="tierSelect" name="tier">
+              <option value="All" {% if tier_filter == 'All' %}selected{% endif %}>All Tiers</option>
+              {% for t in available_tiers %}
+              <option value="{{ t }}" {% if tier_filter|lower == t|lower %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Industry Dropdown -->
+          <div class="col-md-3 col-sm-6">
+            <label for="industrySelect" class="form-label small fw-semibold text-secondary">Industry</label>
+            <select class="form-select bg-light" id="industrySelect" name="industry">
+              <option value="All" {% if industry_filter == 'All' %}selected{% endif %}>All Industries</option>
+              {% for ind in available_industries %}
+              <option value="{{ ind }}" {% if industry_filter|lower == ind|lower %}selected{% endif %}>{{ ind }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Tech Stack Filter Dropdown -->
+          <div class="col-md-2 col-sm-6">
+            <label for="techSelect" class="form-label small fw-semibold text-secondary">Tech Stack</label>
+            <select class="form-select bg-light" id="techSelect" name="tech">
+              <option value="All" {% if tech_filter == 'All' %}selected{% endif %}>All Tech</option>
+              {% for tech in available_techs %}
+              <option value="{{ tech }}" {% if tech_filter|lower == tech|lower %}selected{% endif %}>{{ tech }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Process / Round Query -->
+          <div class="col-md-8 col-sm-6">
+            <label for="processInput" class="form-label small fw-semibold text-secondary">Hiring Process & Assessment Rounds</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-end-0 text-muted"><i class="fa-solid fa-list-ol"></i></span>
+              <input
+                type="text"
+                class="form-control border-start-0 bg-light"
+                id="processInput"
+                name="process"
+                placeholder="e.g. Assessment, Coding, System Design, HR..."
+                value="{{ process_query }}"
+              >
+            </div>
+          </div>
+
+          <!-- Actions -->
+          <div class="col-md-4 col-sm-6 d-flex align-items-end gap-2">
+            <button type="submit" class="btn btn-primary rounded-3 flex-grow-1">
+              <i class="fa-solid fa-filter me-1"></i> Apply Filters
+            </button>
+            {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query %}
+            <a href="/companies" class="btn btn-outline-secondary rounded-3" title="Reset all filters">
+              <i class="fa-solid fa-rotate-left"></i> Reset
+            </a>
+            {% endif %}
+          </div>
+        </div>
+      </form>
+
+      <!-- Active Filter Badges -->
+      {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query %}
+      <div class="d-flex flex-wrap align-items-center gap-2 pt-3 mt-3 border-top">
+        <span class="small text-muted fw-semibold me-1">Active Filters:</span>
+        {% if search_query %}
+        <span class="badge bg-light text-dark border p-2 rounded-pill">
+          Query: "{{ search_query }}"
+        </span>
+        {% endif %}
+        {% if tier_filter != 'All' %}
+        <span class="badge bg-primary-subtle text-primary border border-primary-subtle p-2 rounded-pill">
+          Tier: {{ tier_filter }}
+        </span>
+        {% endif %}
+        {% if industry_filter != 'All' %}
+        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle p-2 rounded-pill">
+          Industry: {{ industry_filter }}
+        </span>
+        {% endif %}
+        {% if tech_filter != 'All' %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle p-2 rounded-pill">
+          Tech: {{ tech_filter }}
+        </span>
+        {% endif %}
+        {% if process_query %}
+        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle p-2 rounded-pill">
+          Process: "{{ process_query }}"
+        </span>
+        {% endif %}
+        <a href="/companies" class="small text-danger text-decoration-none ms-2">Clear All</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Company Profiles Results Grid -->
+    {% if companies and companies|length > 0 %}
+    <div class="row g-4">
+      {% for company in companies %}
+      <div class="col-lg-4 col-md-6">
+        <div class="card h-100 border-0 shadow-sm rounded-4 p-4 d-flex flex-column bg-white transition-hover">
+          <!-- Card Header -->
+          <div class="d-flex align-items-start justify-content-between mb-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="rounded-3 bg-primary-subtle text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 1.25rem;">
+                {{ company.company_name[:2]|upper }}
+              </div>
+              <div>
+                <h5 class="fw-bold mb-0 text-dark">{{ company.company_name }}</h5>
+                <small class="text-muted d-block text-truncate" style="max-width: 180px;">
+                  <i class="fa-solid fa-location-dot me-1"></i>{{ company.headquarters or "India / Global" }}
+                </small>
+              </div>
+            </div>
+            <!-- Tier Badge -->
+            {% if company.hiring_tier == 'Tier 1' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2.5 py-1">
+              <i class="fa-solid fa-crown me-1 text-warning"></i> Tier 1
+            </span>
+            {% elif company.hiring_tier == 'Enterprise' or company.hiring_tier == 'MNC' %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2.5 py-1">
+              <i class="fa-solid fa-building me-1"></i> {{ company.hiring_tier }}
+            </span>
+            {% elif company.hiring_tier == 'Startup' %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5 py-1">
+              <i class="fa-solid fa-rocket me-1"></i> Startup
+            </span>
+            {% else %}
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2.5 py-1">
+              {{ company.hiring_tier }}
+            </span>
+            {% endif %}
+          </div>
+
+          <!-- Industry & CTC -->
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            <span class="badge bg-light text-secondary border rounded-pill">
+              <i class="fa-solid fa-industry me-1"></i> {{ company.industry }}
+            </span>
+            {% if company.typical_ctc_range %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">
+              <i class="fa-solid fa-indian-rupee-sign me-1"></i> {{ company.typical_ctc_range }}
+            </span>
+            {% endif %}
+          </div>
+
+          <!-- Overview -->
+          <p class="text-secondary small mb-3 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">
+            {{ company.overview }}
+          </p>
+
+          <!-- Tech Stack Tags -->
+          {% if company.primary_tech_stack and company.primary_tech_stack|length > 0 %}
+          <div class="mb-3">
+            <small class="text-muted fw-semibold d-block mb-1.5">Tech Stack:</small>
+            <div class="d-flex flex-wrap gap-1">
+              {% for tech in company.primary_tech_stack[:4] %}
+              <span class="badge bg-light text-dark border rounded-pill small py-1 px-2">{{ tech }}</span>
+              {% endfor %}
+              {% if company.primary_tech_stack|length > 4 %}
+              <span class="badge bg-light text-muted border rounded-pill small py-1 px-2">+{{ company.primary_tech_stack|length - 4 }} more</span>
+              {% endif %}
+            </div>
+          </div>
+          {% endif %}
+
+          <!-- Hiring Workflow Preview -->
+          {% if company.hiring_workflow and company.hiring_workflow|length > 0 %}
+          <div class="mb-4 pt-2 border-top">
+            <small class="text-muted fw-semibold d-block mb-1">Hiring Process ({{ company.hiring_workflow|length }} Stages):</small>
+            <ol class="small text-secondary ps-3 mb-0">
+              {% for round in company.hiring_workflow[:2] %}
+              <li class="text-truncate">{{ round }}</li>
+              {% endfor %}
+              {% if company.hiring_workflow|length > 2 %}
+              <li class="text-muted list-unstyled pt-1">
+                <small>+ {{ company.hiring_workflow|length - 2 }} additional assessment round(s)</small>
+              </li>
+              {% endif %}
+            </ol>
+          </div>
+          {% endif %}
+
+          <!-- Card Actions Footer -->
+          <div class="d-flex gap-2 pt-3 border-top mt-auto">
+            <button
+              type="button"
+              class="btn btn-outline-primary btn-sm rounded-3 flex-grow-1"
+              data-bs-toggle="modal"
+              data-bs-target="#companyModal{{ loop.index }}"
+            >
+              <i class="fa-solid fa-circle-info me-1"></i> View Profile
+            </button>
+            <a
+              href="/company-checklist?company={{ company.company_name }}"
+              class="btn btn-primary btn-sm rounded-3"
+              title="View Placement Checklist"
+            >
+              <i class="fa-solid fa-list-check me-1"></i> Prep
+            </a>
+            {% if company.careers_url or company.website_url %}
+            <a
+              href="{{ company.careers_url or company.website_url }}"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-outline-secondary btn-sm rounded-3"
+              title="Official Careers Portal"
+            >
+              <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            </a>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Detailed Modal for Company -->
+        <div class="modal fade" id="companyModal{{ loop.index }}" tabindex="-1" aria-labelledby="companyModalLabel{{ loop.index }}" aria-hidden="true">
+          <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content rounded-4 border-0 shadow">
+              <div class="modal-header border-bottom p-4">
+                <div class="d-flex align-items-center gap-3">
+                  <div class="rounded-3 bg-primary-subtle text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 1.25rem;">
+                    {{ company.company_name[:2]|upper }}
+                  </div>
+                  <div>
+                    <h5 class="modal-title fw-bold text-dark" id="companyModalLabel{{ loop.index }}">{{ company.company_name }}</h5>
+                    <div class="d-flex align-items-center gap-2 mt-1">
+                      <span class="badge bg-secondary-subtle text-secondary border rounded-pill">{{ company.industry }}</span>
+                      <span class="badge bg-light text-dark border rounded-pill">{{ company.hiring_tier }}</span>
+                    </div>
+                  </div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+
+              <div class="modal-body p-4">
+                <!-- Overview & Verification -->
+                <div class="mb-4">
+                  <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="fw-bold mb-0 text-dark">Company Overview</h6>
+                    {% if company.enriched and company.enriched.is_verified %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2.5 py-1 small">
+                      <i class="fa-solid fa-circle-check me-1"></i> Verified Criteria
+                    </span>
+                    {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2.5 py-1 small">
+                      General Suggestions
+                    </span>
+                    {% endif %}
+                  </div>
+                  <p class="text-secondary leading-relaxed mb-3">{{ company.overview }}</p>
+                  
+                  <div class="row g-2 p-3 bg-light rounded-3 small">
+                    <div class="col-sm-6">
+                      <span class="text-muted d-block">Headquarters:</span>
+                      <strong class="text-dark">{{ company.headquarters or "Global" }}</strong>
+                    </div>
+                    <div class="col-sm-6">
+                      <span class="text-muted d-block">Typical CTC Range:</span>
+                      <strong class="text-dark">{{ company.typical_ctc_range or "Industry Competitive" }}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Complete Hiring Process Workflow -->
+                {% if company.hiring_workflow and company.hiring_workflow|length > 0 %}
+                <div class="mb-4">
+                  <h6 class="fw-bold mb-2 text-dark">
+                    <i class="fa-solid fa-diagram-project text-primary me-2"></i>Recruitment & Assessment Process
+                  </h6>
+                  <div class="list-group list-group-flush border rounded-3 overflow-hidden">
+                    {% for stage in company.hiring_workflow %}
+                    <div class="list-group-item d-flex align-items-start gap-3 p-3 bg-white">
+                      <span class="badge bg-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 24px; height: 24px;">{{ loop.index }}</span>
+                      <div>
+                        <span class="fw-semibold text-dark">{{ stage }}</span>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+
+                <!-- Tech Stack & Required Skills -->
+                {% if company.primary_tech_stack and company.primary_tech_stack|length > 0 %}
+                <div class="mb-4">
+                  <h6 class="fw-bold mb-2 text-dark">
+                    <i class="fa-solid fa-code text-primary me-2"></i>Primary Tech Stack & Skill Requirements
+                  </h6>
+                  <div class="d-flex flex-wrap gap-2">
+                    {% for tech in company.primary_tech_stack %}
+                    <span class="badge bg-light text-dark border rounded-pill py-2 px-3">{{ tech }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
+
+                <!-- Verification Source & Season Status -->
+                {% if company.enriched %}
+                <div class="p-3 border rounded-3 bg-light mb-2">
+                  <div class="d-flex align-items-center justify-content-between small">
+                    <span class="text-muted">Information Source:</span>
+                    <span class="fw-semibold text-dark">{{ company.enriched.source_name }}</span>
+                  </div>
+                  <div class="d-flex align-items-center justify-content-between small mt-1">
+                    <span class="text-muted">Season Status:</span>
+                    <span class="badge bg-{{ company.enriched.freshness_badge }}-subtle text-{{ company.enriched.freshness_badge }} border rounded-pill">
+                      {{ company.enriched.freshness_label }}
+                    </span>
+                  </div>
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="modal-footer border-top p-3 bg-light">
+                <a href="/company-checklist?company={{ company.company_name }}" class="btn btn-primary rounded-3">
+                  <i class="fa-solid fa-list-check me-1"></i> Go to Preparation Checklist
+                </a>
+                {% if company.careers_url or company.website_url %}
+                <a href="{{ company.careers_url or company.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary rounded-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Official Careers
+                </a>
+                {% endif %}
+                <button type="button" class="btn btn-secondary rounded-3" data-bs-dismiss="modal">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Empty State -->
+    {% else %}
+    <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white my-4">
+      <div class="py-4">
+        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+          <i class="fa-solid fa-building-circle-xmark fs-1 text-muted"></i>
+        </div>
+        <h4 class="fw-bold mb-2 text-dark">No companies found matching your search</h4>
+        <p class="text-secondary max-w-md mx-auto mb-4" style="max-width: 500px;">
+          We couldn't find any enterprise company profiles matching the keyword 
+          {% if search_query %}<strong>"{{ search_query }}"</strong>{% endif %}
+          {% if tier_filter != 'All' %}in tier <strong>"{{ tier_filter }}"</strong>{% endif %}
+          {% if industry_filter != 'All' %}in industry <strong>"{{ industry_filter }}"</strong>{% endif %}.
+          Try adjusting your search terms, removing filters, or browsing all available recruiters.
+        </p>
+        <div class="d-flex justify-content-center gap-2">
+          <a href="/companies" class="btn btn-primary rounded-pill px-4">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset All Filters
+          </a>
+          <a href="/company-checklist" class="btn btn-outline-secondary rounded-pill px-4">
+            <i class="fa-solid fa-list-check me-1"></i> Explore Checklists
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

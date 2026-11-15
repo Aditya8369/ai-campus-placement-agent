@@ -191,6 +191,9 @@ from utils.company_profile_manager import (
     archive_company_profile,
     seed_default_company_profiles,
     enrich_company_hiring_guide,
+    get_distinct_hiring_tiers,
+    get_distinct_industries,
+    get_distinct_tech_stacks,
 )
 from utils.progress_tracker import (
     calculate_version_delta,
@@ -12805,6 +12808,75 @@ def send_deadline_reminders_cli():
 
 
 # ============================================================================
+# COMPANY SEARCH & FILTER EXPLORER PAGE (#354)
+# ============================================================================
+
+@app.route("/companies", methods=["GET"])
+def companies_search_view():
+    """
+    Company Search and Filter Explorer Page (#354).
+    Enables candidates to discover and filter campus hiring companies by
+    company name, industry, hiring tier, tech stack, and recruitment workflow.
+    """
+    seed_default_company_profiles()
+
+    search_query = (request.args.get("search") or "").strip()
+    tier_filter = (request.args.get("tier") or "All").strip()
+    industry_filter = (request.args.get("industry") or "All").strip()
+    tech_filter = (request.args.get("tech") or "All").strip()
+    process_query = (request.args.get("process") or "").strip()
+
+    companies = list_company_profiles(
+        search_query=search_query or None,
+        tier_filter=tier_filter if tier_filter.lower() != "all" else None,
+        industry_filter=industry_filter if industry_filter.lower() != "all" else None,
+        tech_filter=tech_filter if tech_filter.lower() != "all" else None,
+        process_query=process_query or None,
+        active_only=True
+    )
+
+    available_tiers = get_distinct_hiring_tiers()
+    available_industries = get_distinct_industries()
+    available_techs = get_distinct_tech_stacks()
+
+    # Enriched profiles with verification & freshness for modal details
+    enriched_companies = []
+    for c in companies:
+        c_copy = dict(c)
+        c_copy["enriched"] = enrich_company_hiring_guide(c.get("company_name", ""), c)
+        enriched_companies.append(c_copy)
+
+    # Check if AJAX or JSON response is requested
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.args.get("format") == "json":
+        return jsonify({
+            "status": "success",
+            "total_count": len(companies),
+            "companies": companies,
+            "filters": {
+                "search": search_query,
+                "tier": tier_filter,
+                "industry": industry_filter,
+                "tech": tech_filter,
+                "process": process_query
+            }
+        }), 200
+
+    return render_template(
+        "companies.html",
+        companies=enriched_companies,
+        total_count=len(enriched_companies),
+        search_query=search_query,
+        tier_filter=tier_filter,
+        industry_filter=industry_filter,
+        tech_filter=tech_filter,
+        process_query=process_query,
+        available_tiers=available_tiers,
+        available_industries=available_industries,
+        available_techs=available_techs,
+    )
+
+
+# ============================================================================
 # COMPANY PROFILE UPDATE MANAGEMENT SYSTEM (#250)
 # ============================================================================
 
@@ -12817,6 +12889,9 @@ def company_profiles_collection_endpoint():
     if request.method == "GET":
         search_query = request.args.get("search")
         tier_filter = request.args.get("tier")
+        industry_filter = request.args.get("industry")
+        tech_filter = request.args.get("tech")
+        process_query = request.args.get("process")
         include_inactive = request.args.get("include_inactive", "false").lower() == "true"
         
         # Auto-seed default directory if completely empty
@@ -12825,6 +12900,9 @@ def company_profiles_collection_endpoint():
         profiles = list_company_profiles(
             search_query=search_query,
             tier_filter=tier_filter,
+            industry_filter=industry_filter,
+            tech_filter=tech_filter,
+            process_query=process_query,
             active_only=not include_inactive
         )
         return jsonify({
