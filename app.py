@@ -14857,80 +14857,35 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# Downloadable Coding Practice Solutions Endpoints (#421)
+# Secure Coding Sandbox Endpoints (#420)
 # ---------------------------------------------------------
-@app.route("/api/coding/solutions", methods=["GET", "POST"])
-def api_coding_solutions():
+@app.route("/api/coding/execute-sandboxed", methods=["POST"])
+def api_execute_coding_sandbox():
     """
-    Submits or lists student coding practice solutions.
+    Executes student programming solutions with strict safety and resource limits.
     """
-    from utils.coding_export_service import coding_export_service
+    from utils.secure_coding_sandbox import secure_coding_sandbox
 
-    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    code_str = payload.get("code", "")
+    timeout = payload.get("timeout_seconds")
+    max_chars = payload.get("max_output_chars")
 
-    if request.method == "GET":
-        solutions = coding_export_service.list_student_solutions(student_id)
-        return jsonify({
-            "success": True,
-            "count": len(solutions),
-            "solutions": solutions
-        }), 200
+    if not code_str:
+        return jsonify({"success": False, "error": "code is required"}), 400
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        prob_id = payload.get("problem_id")
-        title = payload.get("problem_title", "Untitled Problem")
-        lang = payload.get("programming_language", "python")
-        code = payload.get("solution_code", "")
-        diff = payload.get("difficulty", "Medium")
-        tc = payload.get("time_complexity")
-        sc = payload.get("space_complexity")
-        notes = payload.get("notes")
-        is_passed = payload.get("is_passed", True)
+    timeout_val = float(timeout) if timeout else None
+    max_chars_val = int(max_chars) if max_chars else None
 
-        if not prob_id or not code:
-            return jsonify({"success": False, "error": "problem_id and solution_code are required"}), 400
+    result = secure_coding_sandbox.execute_code(
+        code_str=code_str,
+        timeout_seconds=timeout_val,
+        max_output_chars=max_chars_val
+    )
 
-        sub_id = coding_export_service.record_solution(
-            student_id=student_id,
-            problem_id=prob_id,
-            problem_title=title,
-            programming_language=lang,
-            solution_code=code,
-            difficulty=diff,
-            time_complexity=tc,
-            space_complexity=sc,
-            notes=notes,
-            is_passed=bool(is_passed)
-        )
-        return jsonify({
-            "success": True,
-            "submission_id": sub_id,
-            "message": "Solution recorded successfully."
-        }), 201
-
-
-@app.route("/api/coding/export-solutions", methods=["GET"])
-def api_export_coding_solutions():
-    """
-    Exports student coding solutions in Markdown or JSON format.
-    """
-    from utils.coding_export_service import coding_export_service
-
-    student_id = flask_session.get("user_id") or "default_student"
-    export_format = request.args.get("format", "markdown").lower()
-    problem_id = request.args.get("problem_id")
-
-    if export_format == "json":
-        data = coding_export_service.export_solutions_as_json(student_id, problem_id)
-        return jsonify({"success": True, "export": data}), 200
-
-    # Default: Markdown
-    md_text = coding_export_service.export_solutions_as_markdown(student_id, problem_id)
     return jsonify({
-        "success": True,
-        "format": "markdown",
-        "content": md_text
+        "success": result["status"] == "SUCCESS",
+        "result": result
     }), 200
 
 
