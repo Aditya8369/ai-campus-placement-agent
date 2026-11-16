@@ -32,6 +32,7 @@ from utils.migrations import run_database_migrations, get_migration_status
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    get_student_top_skill_gaps_for_company,
     get_student_preparation_summary_data,
     record_preparation_activity,
     get_student_streak,
@@ -252,6 +253,7 @@ from utils.gemini import (
 )
 try:
     from utils.report_generator import (
+        generate_company_cheat_sheet_pdf,
         generate_student_preparation_summary_pdf,
         generate_pdf_report,
         generate_certificate_pdf,
@@ -270,6 +272,7 @@ except ImportError:
         generate_interview_transcript_pdf,
         generate_interview_transcript_markdown,
     )
+    generate_company_cheat_sheet_pdf = None
     generate_student_preparation_summary_pdf = None
     safe_generate_report_with_recovery = None
     generate_fallback_pdf_report = None
@@ -289,6 +292,7 @@ from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
+from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
 from utils.i18n import (
     get_translation,
@@ -445,6 +449,7 @@ def require_login():
         "demo_mode_exit",
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
+        "download_company_cheat_sheet",
     }
 
     user_id = flask_session.get("user_id")
@@ -885,6 +890,7 @@ internship_agent = InternshipRecommendationAgent()
 linkedin_agent = LinkedInAgent()
 coding_practice_agent = CodingPracticeAgent()
 outreach_agent = OutreachGeneratorAgent()
+self_introduction_agent = SelfIntroductionAgent()
 
 def get_available_companies() -> list:
     """
@@ -1875,6 +1881,71 @@ def get_company_profile(company_name: str):
         logger.error(f"Error fetching company details for {company_name}: {e}")
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
 
+
+@app.route("/company/<company_name>/cheat-sheet", methods=["GET"])
+def download_company_cheat_sheet(company_name: str):
+    """
+    Produces and downloads a concise, single-page printable interview revision cheat sheet PDF (#433).
+    Includes company overview, typical rounds, key topics, top skills to revise,
+    and the student's top 3 identified skill gaps for that company (skipped gracefully if no analysis).
+    """
+    try:
+        clean_company = (company_name or "").strip()
+        companies_file = config.BASE_DIR / "data" / "companies.json"
+        company_data = None
+
+        if companies_file.exists():
+            with open(companies_file, "r", encoding="utf-8") as f:
+                all_companies = json.load(f)
+                # Exact match first, then case-insensitive lookup
+                if clean_company in all_companies:
+                    company_data = all_companies[clean_company]
+                else:
+                    for c_key, c_val in all_companies.items():
+                        if c_key.lower() == clean_company.lower():
+                            company_data = c_val
+                            clean_company = c_key
+                            break
+
+        if not company_data:
+            flash(f"Company profile for '{company_name}' was not found.", "error")
+            return redirect(url_for("companies_search_view"))
+
+        # Identify student and fetch top skill gaps for this company (if any)
+        student_id = request.args.get("student_id") or flask_session.get("user_id")
+        skill_gaps = []
+        if student_id:
+            try:
+                skill_gaps = get_student_top_skill_gaps_for_company(student_id, clean_company, limit=3)
+            except Exception as gap_err:
+                logger.warning("Could not fetch skill gaps for student %s: %s", student_id, gap_err)
+                skill_gaps = []
+
+        # Create output file in reports directory
+        safe_company_slug = "".join(c if c.isalnum() else "_" for c in clean_company)
+        student_slug = "".join(c if c.isalnum() else "_" for c in (student_id or "general"))
+        pdf_filename = f"Cheat_Sheet_{safe_company_slug}_{student_slug}.pdf"
+        os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+        pdf_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
+
+        generate_company_cheat_sheet_pdf(
+            company_name=clean_company,
+            company_data=company_data,
+            output_path=pdf_path,
+            skill_gaps=skill_gaps,
+        )
+
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=f"{safe_company_slug}_Interview_Cheat_Sheet.pdf",
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate company cheat sheet for {company_name}: {e}")
+        flash(f"Error compiling cheat sheet PDF: {e}", "error")
+        return redirect(url_for("companies_search_view"))
+
 def _extract_and_validate_resume(req):
     """
     Validates uploaded resume file or pasted text from Flask request.
@@ -2124,6 +2195,8 @@ def analyze():
             job_description=job_description,
             company_name=selected_company
         )
+        if isinstance(analysis_payload, dict):
+            analysis_payload["extracted_resume_text"] = extracted_resume_text
 
         save_analysis(
             analysis_id=file_uuid,
@@ -2862,6 +2935,13 @@ def dashboard(analysis_id: str) -> str:
     else:
         initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
 
+    # Generate initial Self-Introduction scripts ('Tell Me About Yourself') (#432)
+    initial_self_intro = self_introduction_agent.generate_scripts(
+        analysis_record=analysis_record,
+        target_role=analysis_record.get("target_role") or "Software Engineer",
+        target_company=analysis_record.get("company_name", "General"),
+    )
+
     # Target-scoped longitudinal comparison (#297)
     target_company = analysis_record.get("company_name", "General")
     target_role = analysis_record.get("target_role")
@@ -3104,6 +3184,25 @@ def dashboard(analysis_id: str) -> str:
         bool(analysis_record.get("is_cached"))
     )
 
+    # Prepare Resume Keyword Highlights (#430)
+    try:
+        from utils.resume_keyword_highlighter import prepare_keyword_highlight_data
+        keyword_highlighter = prepare_keyword_highlight_data(analysis_record)
+    except Exception as kh_err:
+        logger.warning(f"Error preparing keyword highlight data for dashboard: {kh_err}")
+        keyword_highlighter = {
+            "has_resume_text": False,
+            "raw_resume_text": "",
+            "highlighted_resume_html": "",
+            "plain_escaped_resume_html": "",
+            "matched_keywords": [],
+            "missing_keywords": [],
+            "missing_keywords_with_sections": [],
+            "matched_count": 0,
+            "missing_count": 0,
+            "total_keywords": 0,
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3129,6 +3228,8 @@ def dashboard(analysis_id: str) -> str:
         streak=streak_data,
         comparison=comparison,
         comparison_json=json.dumps(comparison),
+        initial_self_intro=initial_self_intro,
+        initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo
     )
 
@@ -3801,6 +3902,51 @@ def submit_interview_answer(analysis_id: str):
         if "star_score" in star_eval:
             evaluation_results["star_score"] = star_eval["star_score"]
 
+        # Timed Answer Mode metadata & telemetry (#431)
+        is_timed = bool(post_data.get("is_timed", False))
+        raw_taken = post_data.get("time_taken_seconds")
+        raw_limit = post_data.get("time_limit_seconds")
+
+        time_taken_seconds = None
+        if raw_taken is not None:
+            try:
+                time_taken_seconds = max(0, int(round(float(raw_taken))))
+            except (ValueError, TypeError):
+                time_taken_seconds = None
+
+        time_limit_seconds = None
+        if raw_limit is not None:
+            try:
+                time_limit_seconds = max(1, int(round(float(raw_limit))))
+            except (ValueError, TypeError):
+                time_limit_seconds = None
+
+        time_display = None
+        if is_timed or time_taken_seconds is not None:
+            def _format_time_sec(s_val: int) -> str:
+                m = s_val // 60
+                s = s_val % 60
+                return f"{m}:{s:02d}"
+
+            if time_taken_seconds is not None and time_limit_seconds is not None:
+                time_display = f"answered in {_format_time_sec(time_taken_seconds)} of {_format_time_sec(time_limit_seconds)}"
+            elif time_taken_seconds is not None:
+                time_display = f"answered in {_format_time_sec(time_taken_seconds)}"
+
+            evaluation_results["is_timed"] = True
+            evaluation_results["time_taken_seconds"] = time_taken_seconds
+            evaluation_results["time_limit_seconds"] = time_limit_seconds
+            evaluation_results["time_display"] = time_display
+
+            if time_limit_seconds is not None and time_taken_seconds is not None and time_taken_seconds >= time_limit_seconds:
+                evaluation_results["time_expired"] = True
+
+            # Include timing information in the feedback string if not already present
+            if time_display and "answered in" not in evaluation_results.get("feedback", "").lower():
+                time_prefix = f"({time_display.capitalize()})"
+                current_feedback = evaluation_results.get("feedback", "")
+                evaluation_results["feedback"] = f"{time_prefix} {current_feedback}".strip()
+
         # Structure response details
         response_record = {
             "question_index": question_index,
@@ -3808,7 +3954,11 @@ def submit_interview_answer(analysis_id: str):
             "question": target_question["question"],
             "is_behavioral": is_behav,
             "answer": candidate_response,
-            "evaluation": evaluation_results
+            "evaluation": evaluation_results,
+            "is_timed": is_timed or (time_taken_seconds is not None),
+            "time_taken_seconds": time_taken_seconds,
+            "time_limit_seconds": time_limit_seconds,
+            "time_display": time_display,
         }
 
         # Protection against duplicate submission attempts
@@ -3854,7 +4004,11 @@ def submit_interview_answer(analysis_id: str):
         result_payload = {
             "evaluation": evaluation_results,
             "next_index": next_question_index,
-            "completed": is_completed
+            "completed": is_completed,
+            "is_timed": is_timed or (time_taken_seconds is not None),
+            "time_taken_seconds": time_taken_seconds,
+            "time_limit_seconds": time_limit_seconds,
+            "time_display": time_display,
         }
 
         if is_completed:
@@ -10770,6 +10924,119 @@ def api_download_outreach(analysis_id: str = None):
     except Exception as e:
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Self-Introduction ('Tell Me About Yourself') Endpoints (#432)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/self-introduction/<analysis_id>/generate", methods=["POST"])
+def api_generate_self_intro(analysis_id: str):
+    """
+    Generates 30s, 60s, and 90s self-introduction scripts from verified resume details
+    and target role/company context without fabricating achievements (#432).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            return jsonify({
+                "success": False,
+                "error": "Analysis record not found or access denied."
+            }), 404
+
+        payload = request.get_json(silent=True) or request.form or {}
+        role_title = payload.get("role_title") or analysis_record.get("target_role") or "Software Engineer"
+        company_name = payload.get("company_name") or analysis_record.get("company_name") or "General"
+
+        intro_data = self_introduction_agent.generate_scripts(
+            analysis_record=analysis_record,
+            target_role=role_title,
+            target_company=company_name
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "data": intro_data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating self-introduction scripts for {analysis_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate self-introduction: {str(e)}"
+        }), 500
+
+
+@app.route("/api/self-introduction/calculate-time", methods=["POST"])
+def api_calculate_self_intro_time():
+    """
+    Computes word count, character count, estimated speaking duration, and formatted display
+    for arbitrary speech script text in real-time (#432).
+    """
+    try:
+        payload = request.get_json(silent=True) or request.form or {}
+        text = payload.get("text", "")
+        time_metrics = calculate_speaking_time(text)
+        return jsonify({
+            "success": True,
+            "metrics": time_metrics
+        }), 200
+    except Exception as e:
+        logger.error(f"Error calculating speaking time: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/self-introduction/<analysis_id>/practice", methods=["POST"])
+def api_practice_self_intro(analysis_id: str):
+    """
+    Evaluates student practice delivery text against the Present-Past-Future framework,
+    clarity, pacing, and target duration (#432).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            return jsonify({
+                "success": False,
+                "error": "Analysis record not found or access denied."
+            }), 404
+
+        payload = request.get_json(silent=True) or request.form or {}
+        practice_text = (payload.get("practice_text") or payload.get("text") or "").strip()
+        target_duration = int(payload.get("target_duration") or 60)
+        target_role = payload.get("role_title") or analysis_record.get("target_role") or "Software Engineer"
+        target_company = payload.get("company_name") or analysis_record.get("company_name") or "General"
+
+        if not practice_text:
+            return jsonify({
+                "success": False,
+                "error": "Practice script text cannot be empty."
+            }), 400
+
+        evaluation = self_introduction_agent.evaluate_practice_delivery(
+            practice_text=practice_text,
+            target_duration=target_duration,
+            target_role=target_role,
+            target_company=target_company,
+            analysis_record=analysis_record
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "evaluation": evaluation
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error evaluating self-introduction practice for {analysis_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to evaluate practice delivery: {str(e)}"
+        }), 500
+
 
 @app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
