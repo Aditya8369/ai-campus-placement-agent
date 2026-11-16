@@ -101,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCopySuggestions();
   initRoleBasedPrep();
   initSkillsComparisonChart();
+  initResumeKeywordHighlighter();
   initBackToTop();
   initCodingBookmarks();
   initInterviewBookmarks();
@@ -110,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSectionFeedback();
   initUserWalkthrough();
   initPasswordToggle();
+  initSelfIntroductionStudio();
 });
 
 /**
@@ -559,6 +561,17 @@ function initCompanyExplorer() {
             ${frequentTopicsHtml}
             ${requiredSkillsHtml}
             ${prepTipsHtml}
+          </div>
+
+          <!-- Download 1-Page Cheat Sheet Action Strip (#433) -->
+          <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded-3 border mt-3">
+            <div>
+              <span class="small fw-bold text-dark d-block"><i class="fa-solid fa-file-pdf text-success me-1"></i>Printable 1-Page Cheat Sheet</span>
+              <span class="small text-muted" style="font-size: 0.75rem;">Company overview, interview rounds, frequent topics, and skill gaps formatted for revision on the go.</span>
+            </div>
+            <a href="/company/${encodeURIComponent(data.company)}/cheat-sheet" class="btn btn-sm btn-success rounded-pill px-3 py-1.5 text-decoration-none">
+              <i class="fa-solid fa-download me-1"></i>Download Cheat Sheet
+            </a>
           </div>
         `;
       } else {
@@ -1367,6 +1380,250 @@ function initMockInterview() {
   let lastMeasuredWpm = 130;
   let lastMeasuredFillerCount = 0;
 
+  // Timed Answer Mode Elements & State (#431)
+  const toggleTimedMode = document.getElementById("toggleTimedMode");
+  const timedModeConfigDropdown = document.getElementById("timedModeConfigDropdown");
+  const btnTimedConfig = document.getElementById("btnTimedConfig");
+  const timedConfigLabel = document.getElementById("timedConfigLabel");
+  const selectTechTimeLimit = document.getElementById("selectTechTimeLimit");
+  const selectBehavTimeLimit = document.getElementById("selectBehavTimeLimit");
+  const selectHrTimeLimit = document.getElementById("selectHrTimeLimit");
+  const interviewTimerBar = document.getElementById("interviewTimerBar");
+  const timerCountdownBadge = document.getElementById("timerCountdownBadge");
+  const timerCountdownText = document.getElementById("timerCountdownText");
+  const timerAllocatedText = document.getElementById("timerAllocatedText");
+  const timerProgressBar = document.getElementById("timerProgressBar");
+  const timerStatusNotice = document.getElementById("timerStatusNotice");
+  const interviewTimerAnnouncer = document.getElementById("interviewTimerAnnouncer");
+
+  let isTimedMode = false;
+  let timerInterval = null;
+  let allocatedSeconds = 120;
+  let remainingSeconds = 120;
+  let questionStartTime = Date.now();
+  let hasAutoSubmitted = false;
+  let isTimerPaused = false;
+
+  const timeLimits = {
+    technical: parseInt(localStorage.getItem("mock_interview_limit_tech") || "120", 10),
+    behavioral: parseInt(localStorage.getItem("mock_interview_limit_behav") || "180", 10),
+    hr: parseInt(localStorage.getItem("mock_interview_limit_hr") || "120", 10),
+    default: 120,
+  };
+
+  if (selectTechTimeLimit) selectTechTimeLimit.value = String(timeLimits.technical);
+  if (selectBehavTimeLimit) selectBehavTimeLimit.value = String(timeLimits.behavioral);
+  if (selectHrTimeLimit) selectHrTimeLimit.value = String(timeLimits.hr);
+
+  function updateTimedConfigLabel() {
+    if (!timedConfigLabel) return;
+    const tMin = (timeLimits.technical / 60).toFixed(timeLimits.technical % 60 ? 1 : 0);
+    const bMin = (timeLimits.behavioral / 60).toFixed(timeLimits.behavioral % 60 ? 1 : 0);
+    timedConfigLabel.textContent = `${tMin}m Tech / ${bMin}m Behav`;
+  }
+  updateTimedConfigLabel();
+
+  function formatCountdownTime(totalSecs) {
+    const s = Math.max(0, Math.floor(totalSecs));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function getQuestionTimeLimit(qType) {
+    const t = (qType || "").toLowerCase();
+    if (t.includes("behav")) return timeLimits.behavioral;
+    if (t.includes("tech")) return timeLimits.technical;
+    if (t.includes("hr")) return timeLimits.hr;
+    return timeLimits.default;
+  }
+
+  function announceTimerWarning(message) {
+    if (!interviewTimerAnnouncer) return;
+    interviewTimerAnnouncer.textContent = "";
+    setTimeout(() => {
+      interviewTimerAnnouncer.textContent = message;
+    }, 50);
+  }
+
+  function stopQuestionTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function startQuestionTimer(qType) {
+    stopQuestionTimer();
+    if (!isTimedMode || !interviewTimerBar) {
+      if (interviewTimerBar) interviewTimerBar.classList.add("d-none");
+      return;
+    }
+
+    allocatedSeconds = getQuestionTimeLimit(qType);
+    remainingSeconds = allocatedSeconds;
+    questionStartTime = Date.now();
+    hasAutoSubmitted = false;
+    isTimerPaused = false;
+
+    interviewTimerBar.classList.remove("d-none");
+    if (timerAllocatedText) timerAllocatedText.textContent = `Allocated: ${formatCountdownTime(allocatedSeconds)}`;
+    if (timerCountdownText) timerCountdownText.textContent = formatCountdownTime(remainingSeconds);
+
+    if (timerCountdownBadge) {
+      timerCountdownBadge.className = "badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 font-monospace fs-6 fw-bold";
+    }
+    if (timerProgressBar) {
+      timerProgressBar.className = "progress-bar bg-primary";
+      timerProgressBar.style.width = "100%";
+      timerProgressBar.setAttribute("aria-valuenow", "100");
+    }
+    if (timerStatusNotice) {
+      timerStatusNotice.innerHTML = '<i class="fa-solid fa-hourglass-half text-primary me-1"></i> Timed Mode Active';
+    }
+    if (answerInput) {
+      answerInput.classList.remove("border-danger");
+    }
+
+    timerInterval = setInterval(() => {
+      if (isTimerPaused) return;
+
+      remainingSeconds--;
+      if (timerCountdownText) timerCountdownText.textContent = formatCountdownTime(remainingSeconds);
+
+      const percent = Math.max(0, Math.round((remainingSeconds / allocatedSeconds) * 100));
+      if (timerProgressBar) {
+        timerProgressBar.style.width = `${percent}%`;
+        timerProgressBar.setAttribute("aria-valuenow", String(percent));
+      }
+
+      // In the last 15 seconds: color change to warning/danger (#431)
+      if (remainingSeconds <= 15 && remainingSeconds > 0) {
+        if (timerCountdownBadge && !timerCountdownBadge.classList.contains("bg-danger")) {
+          timerCountdownBadge.className = "badge bg-danger text-white border border-danger rounded-pill px-3 py-2 font-monospace fs-6 fw-bold shadow-sm";
+        }
+        if (timerProgressBar && !timerProgressBar.classList.contains("bg-danger")) {
+          timerProgressBar.className = "progress-bar bg-danger progress-bar-striped progress-bar-animated";
+        }
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> ${remainingSeconds}s remaining! Auto-submitting soon...`;
+        }
+        if (answerInput) {
+          answerInput.classList.add("border-danger");
+        }
+
+        // Accessible time warnings (#431)
+        if (remainingSeconds === 15) {
+          announceTimerWarning("15 seconds remaining. Your response will auto-submit when the countdown reaches zero.");
+        } else if (remainingSeconds === 5) {
+          announceTimerWarning("5 seconds remaining.");
+        }
+      }
+
+      // Time runs out: auto-submit what has been typed (#431)
+      if (remainingSeconds <= 0) {
+        stopQuestionTimer();
+        if (timerCountdownText) timerCountdownText.textContent = "00:00";
+        if (timerProgressBar) timerProgressBar.style.width = "0%";
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-stopwatch text-danger me-1"></i> Time\'s up! Auto-submitting response...';
+        }
+        announceTimerWarning("Time expired! Auto-submitting your response.");
+
+        if (!hasAutoSubmitted) {
+          hasAutoSubmitted = true;
+          autoSubmitAnswer();
+        }
+      }
+    }, 1000);
+  }
+
+  function autoSubmitAnswer() {
+    if (!chatForm) return;
+    const sessionPaused = sessionStatusText?.innerText?.trim().toLowerCase() === "paused";
+    if (sessionPaused) return;
+
+    if (answerInput && !answerInput.value.trim()) {
+      answerInput.value = "(Time expired - auto-submitted)";
+    }
+    chatForm.requestSubmit();
+  }
+
+  // Initialize Timed Mode from saved setting (default is OFF - untimed) (#431)
+  const savedTimed = localStorage.getItem("mock_interview_timed_mode") === "true";
+  if (toggleTimedMode) {
+    toggleTimedMode.checked = savedTimed;
+    isTimedMode = savedTimed;
+    if (timedModeConfigDropdown) {
+      if (isTimedMode) timedModeConfigDropdown.classList.remove("d-none");
+      else timedModeConfigDropdown.classList.add("d-none");
+    }
+
+    toggleTimedMode.addEventListener("change", () => {
+      isTimedMode = toggleTimedMode.checked;
+      localStorage.setItem("mock_interview_timed_mode", isTimedMode ? "true" : "false");
+      if (timedModeConfigDropdown) {
+        if (isTimedMode) timedModeConfigDropdown.classList.remove("d-none");
+        else timedModeConfigDropdown.classList.add("d-none");
+      }
+
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode) {
+        startQuestionTimer(activeQType);
+        if (typeof showToast === "function") {
+          showToast(`Timed Mode enabled: ${formatCountdownTime(getQuestionTimeLimit(activeQType))} limit for this question.`);
+        }
+      } else {
+        stopQuestionTimer();
+        if (interviewTimerBar) interviewTimerBar.classList.add("d-none");
+        if (answerInput) answerInput.classList.remove("border-danger");
+        if (typeof showToast === "function") {
+          showToast("Timed Mode disabled. Untimed practice active.");
+        }
+      }
+    });
+  }
+
+  if (selectTechTimeLimit) {
+    selectTechTimeLimit.addEventListener("change", () => {
+      timeLimits.technical = parseInt(selectTechTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_tech", String(timeLimits.technical));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("tech")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+  if (selectBehavTimeLimit) {
+    selectBehavTimeLimit.addEventListener("change", () => {
+      timeLimits.behavioral = parseInt(selectBehavTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_behav", String(timeLimits.behavioral));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("behav")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+  if (selectHrTimeLimit) {
+    selectHrTimeLimit.addEventListener("change", () => {
+      timeLimits.hr = parseInt(selectHrTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_hr", String(timeLimits.hr));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("hr")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+
+  // Start question timer on initial load if timed mode is enabled
+  const initialQType = chatForm.getAttribute("data-question-type") || "Technical";
+  if (isTimedMode) {
+    startQuestionTimer(initialQType);
+  }
+
   // -------------------------------------------------------------
   // Web MediaStream Video Coach & Non-Verbal Composure Analyzer
   // -------------------------------------------------------------
@@ -1687,6 +1944,10 @@ function initMockInterview() {
         if (answerInput) {
           answerInput.placeholder = "Interview is currently PAUSED. Click 'Resume Interview' above to continue.";
         }
+        isTimerPaused = true;
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-circle-pause text-warning me-1"></i> Timer Paused';
+        }
       } else {
         if (btnPauseResumeLabel) btnPauseResumeLabel.innerText = "Pause Interview";
         btnPauseResumeSession.innerHTML = '<i class="fa-solid fa-pause me-1"></i> <span id="btnPauseResumeLabel">Pause Interview</span>';
@@ -1699,6 +1960,10 @@ function initMockInterview() {
         if (btnSendAnswer) btnSendAnswer.disabled = false;
         if (answerInput) {
           answerInput.placeholder = "Type your response here or click 'Speak' to answer using your microphone...";
+        }
+        isTimerPaused = false;
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-hourglass-half text-primary me-1"></i> Timed Mode Active';
         }
       }
     }
@@ -1994,6 +2259,18 @@ function initMockInterview() {
       resetSpeakingButtons();
     }
 
+    // Stop active question countdown timer (#431)
+    stopQuestionTimer();
+    const isAnswerTimed = isTimedMode;
+    let timeTakenSeconds = 0;
+    let timeLimitSeconds = null;
+    if (isAnswerTimed) {
+      timeLimitSeconds = allocatedSeconds;
+      timeTakenSeconds = Math.min(allocatedSeconds, Math.max(1, allocatedSeconds - remainingSeconds));
+    } else {
+      timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
+    }
+
     const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
@@ -2033,6 +2310,9 @@ function initMockInterview() {
           answer: answer,
           question_index: questionIndex,
           speech_metrics: finalSpeechMetrics,
+          is_timed: isAnswerTimed,
+          time_taken_seconds: timeTakenSeconds,
+          time_limit_seconds: timeLimitSeconds,
         }),
       });
 
@@ -2116,11 +2396,23 @@ function initMockInterview() {
         }
       }
 
+      const timeDisplayStr = result.time_display || evalData.time_display || "";
+      let timingBadgeHtml = "";
+      if (timeDisplayStr) {
+        const formattedDisplay = timeDisplayStr.charAt(0).toUpperCase() + timeDisplayStr.slice(1);
+        timingBadgeHtml = `
+          <span class="badge bg-secondary-subtle text-dark border rounded-pill px-2 py-1 small">
+            <i class="fa-regular fa-clock text-primary me-1"></i> ${escapeHtml(formattedDisplay)}
+          </span>
+        `;
+      }
+
       const feedbackText = `
         <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
           <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
             <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
           </span>
+          ${timingBadgeHtml}
         </div>
         <div class="mb-2 lh-base"><b>Feedback:</b> ${evalData.feedback}</div>
         <div class="row g-2 mt-2 mb-2">
@@ -2145,6 +2437,10 @@ function initMockInterview() {
       appendChatBubble(feedbackText, "evaluation");
 
       if (result.completed) {
+        stopQuestionTimer();
+        if (interviewTimerBar) {
+          interviewTimerBar.classList.add("d-none");
+        }
         appendChatBubble("<b>Congratulations! You have completed all mock interview questions.</b><br/>Please review your performance summary and export your transcript.", "agent");
         resetInputs(true);
         document.getElementById("btnBackToDashboard")?.classList.remove("btn-outline-secondary");
@@ -2175,7 +2471,13 @@ function initMockInterview() {
           `;
           const newBubble = appendChatBubble(nextBubbleHtml, "question");
           chatForm.setAttribute("data-question-index", nextQ.index);
+          chatForm.setAttribute("data-question-type", nextQ.type || "Technical");
           resetInputs();
+
+          // Start timer for next question if timed mode is enabled (#431)
+          if (isTimedMode) {
+            startQuestionTimer(nextQ.type || "Technical");
+          }
 
           // Auto-read question aloud if toggle is checked
           if (toggleAutoTTS && toggleAutoTTS.checked) {
@@ -2345,6 +2647,19 @@ function initMockInterview() {
     if (progressTextEl) progressTextEl.innerText = `${totalAnswered}/${totalQuestions} Questions Answered (${progPercent}%)`;
     if (progressBarEl) progressBarEl.style.width = `${progPercent}%`;
 
+    // Timing indicator badge (#431)
+    const evalTimingBadge = document.getElementById("evalTimingBadge");
+    const evalTimingText = document.getElementById("evalTimingText");
+    const timeDisplay = evaluation.time_display || "";
+    if (evalTimingBadge && evalTimingText) {
+      if (timeDisplay) {
+        evalTimingText.innerText = timeDisplay.charAt(0).toUpperCase() + timeDisplay.slice(1);
+        evalTimingBadge.classList.remove("d-none");
+      } else {
+        evalTimingBadge.classList.add("d-none");
+      }
+    }
+
     // Enable Download Transcript buttons after at least one answer has been submitted (#161)
     if (totalAnswered > 0) {
       enableDownloadTranscriptButtons();
@@ -2420,6 +2735,21 @@ function initMockInterview() {
       if (modalVerbalClarity) modalVerbalClarity.innerText = `${summary.verbal_metrics.average_verbal_clarity}%`;
       if (modalTotalFillers) modalTotalFillers.innerText = `${summary.verbal_metrics.total_filler_words}`;
       if (modalStarRate) modalStarRate.innerText = `${summary.verbal_metrics.star_adherence_rate}`;
+    }
+
+    // Display Timed Mode Pacing Metrics in Modal if available (#431)
+    const modalTimingStatsCard = document.getElementById("modalTimingStatsCard");
+    const modalTimedCount = document.getElementById("modalTimedCount");
+    const modalAvgAnswerTime = document.getElementById("modalAvgAnswerTime");
+    const modalWithinLimitRate = document.getElementById("modalWithinLimitRate");
+
+    if (summary.timing_summary && summary.timing_summary.total_timed_questions > 0 && modalTimingStatsCard) {
+      modalTimingStatsCard.classList.remove("d-none");
+      if (modalTimedCount) modalTimedCount.innerText = `${summary.timing_summary.total_timed_questions}`;
+      if (modalAvgAnswerTime) modalAvgAnswerTime.innerText = `${summary.timing_summary.formatted_avg_time || "--"}`;
+      if (modalWithinLimitRate) modalWithinLimitRate.innerText = `${summary.timing_summary.within_limit_percentage}%`;
+    } else if (modalTimingStatsCard) {
+      modalTimingStatsCard.classList.add("d-none");
     }
 
     // Populate Comprehensive Competency Breakdown (#267)
@@ -4055,6 +4385,24 @@ function initSkillsComparisonChart() {
 }
 
 /**
+ * Resume Keyword Highlighter & In-Context Preview (#430)
+ * Binds toggle switch to show/hide keyword highlights on extracted resume text.
+ */
+function initResumeKeywordHighlighter() {
+  const toggleBtn = document.getElementById("toggleKeywordHighlights");
+  const resumeContainer = document.getElementById("resumeHighlightedContent");
+  if (!toggleBtn || !resumeContainer) return;
+
+  toggleBtn.addEventListener("change", () => {
+    if (toggleBtn.checked) {
+      resumeContainer.classList.remove("highlights-hidden");
+    } else {
+      resumeContainer.classList.add("highlights-hidden");
+    }
+  });
+}
+
+/**
  * Back-to-Top Floating Action Button
  * Shows when scrolled down (> 300px), smoothly scrolls to top on click.
  * Ensures cross-browser compatibility and avoids interfering with touch devices.
@@ -5666,4 +6014,384 @@ function initPasswordToggle() {
     });
   });
 }
+
+/**
+ * Self-Introduction ('Tell Me About Yourself') Studio & Practice Coach (#432)
+ * Manages 30s/60s/90s pitch length switching, real-time word count & speaking time updates,
+ * script customization, and interactive practice evaluation.
+ */
+function initSelfIntroductionStudio() {
+  const card = document.getElementById("selfIntroSectionCard");
+  if (!card) return;
+
+  // Hydrate initial data if available
+  let selfIntroData = null;
+  try {
+    const raw = card.getAttribute("data-self-intro");
+    if (raw) {
+      selfIntroData = typeof raw === "string" ? JSON.parse(raw) : raw;
+    }
+  } catch (err) {
+    console.warn("Failed to parse initial self-intro data:", err);
+  }
+
+  // Active state
+  let currentDuration = 30; // 30, 60, or 90
+  const scriptsState = {
+    30: { script: "", structure: {} },
+    60: { script: "", structure: {} },
+    90: { script: "", structure: {} }
+  };
+
+  if (selfIntroData && selfIntroData.scripts) {
+    if (selfIntroData.scripts["30s"]) {
+      scriptsState[30].script = selfIntroData.scripts["30s"].script || "";
+      scriptsState[30].structure = selfIntroData.scripts["30s"].structure_breakdown || {};
+    }
+    if (selfIntroData.scripts["60s"]) {
+      scriptsState[60].script = selfIntroData.scripts["60s"].script || "";
+      scriptsState[60].structure = selfIntroData.scripts["60s"].structure_breakdown || {};
+    }
+    if (selfIntroData.scripts["90s"]) {
+      scriptsState[90].script = selfIntroData.scripts["90s"].script || "";
+      scriptsState[90].structure = selfIntroData.scripts["90s"].structure_breakdown || {};
+    }
+  }
+
+  // DOM Elements
+  const lenBtns = card.querySelectorAll(".self-intro-len-btn");
+  const scriptEditor = document.getElementById("selfIntroScriptEditor");
+  const speakingTimeBadge = document.getElementById("selfIntroSpeakingTime");
+  const wordCountBadge = document.getElementById("selfIntroWordCount");
+  const focusText = document.getElementById("selfIntroFocusText");
+  const btnCopyScript = document.getElementById("btnCopySelfIntroScript");
+  const btnLoadPractice = document.getElementById("btnLoadIntoPractice");
+  const practiceInput = document.getElementById("selfIntroPracticeInput");
+  const practiceStats = document.getElementById("practiceInputStats");
+  const btnAnalyzePractice = document.getElementById("btnAnalyzePracticePitch");
+  const btnRegenerate = document.getElementById("btnRegenerateSelfIntro");
+  const roleInput = document.getElementById("selfIntroRoleInput");
+  const companyInput = document.getElementById("selfIntroCompanyInput");
+
+  // Speaking time calculation helper (140 wpm rate)
+  function computeLiveStats(text) {
+    const words = (text || "").trim().split(/\s+/).filter(Boolean);
+    const count = words.length;
+    const seconds = count > 0 ? Math.round(count / (140 / 60)) : 0;
+    let formatted = `${seconds}s`;
+    if (seconds >= 60) {
+      const m = Math.floor(seconds / 60);
+      const s = seconds % 60;
+      formatted = s > 0 ? `${m}m ${s}s` : `${m}m`;
+    }
+    return { wordCount: count, seconds, formatted };
+  }
+
+  // Update UI stats for the active editor
+  function updateEditorStats() {
+    if (!scriptEditor) return;
+    const text = scriptEditor.value;
+    scriptsState[currentDuration].script = text;
+    const stats = computeLiveStats(text);
+    if (speakingTimeBadge) speakingTimeBadge.textContent = stats.formatted;
+    if (wordCountBadge) wordCountBadge.textContent = stats.wordCount;
+  }
+
+  // Duration length selector buttons
+  lenBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      // Save current script before switching
+      if (scriptEditor) {
+        scriptsState[currentDuration].script = scriptEditor.value;
+      }
+      lenBtns.forEach((b) => {
+        b.classList.remove("btn-primary", "active");
+        b.classList.add("btn-outline-secondary");
+      });
+      btn.classList.remove("btn-outline-secondary");
+      btn.classList.add("btn-primary", "active");
+
+      currentDuration = parseInt(btn.getAttribute("data-duration"), 10) || 30;
+
+      // Hydrate editor with target duration's script
+      if (scriptEditor) {
+        scriptEditor.value = scriptsState[currentDuration].script || "";
+      }
+
+      // Update focus hint
+      if (focusText) {
+        const struct = scriptsState[currentDuration].structure;
+        let hint = "Present role, background, and alignment";
+        if (struct && struct.present) {
+          hint = struct.present;
+        } else if (currentDuration === 30) {
+          hint = "Present background & core value proposition";
+        } else if (currentDuration === 60) {
+          hint = "Present foundation & past top project impact";
+        } else if (currentDuration === 90) {
+          hint = "Full Present-Past-Future narrative with metrics and company alignment";
+        }
+        focusText.innerHTML = `<strong>Structure Focus:</strong> ${escapeHtml(hint)}`;
+      }
+
+      updateEditorStats();
+    });
+  });
+
+  // Live input listener on the script editor
+  if (scriptEditor) {
+    scriptEditor.addEventListener("input", updateEditorStats);
+  }
+
+  // Copy Pitch to Clipboard
+  if (btnCopyScript && scriptEditor) {
+    btnCopyScript.addEventListener("click", () => {
+      const text = scriptEditor.value.trim();
+      if (!text) {
+        if (typeof showToast === "function") showToast("Nothing to copy yet", "info");
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        const originalHtml = btnCopyScript.innerHTML;
+        btnCopyScript.innerHTML = '<i class="fa-solid fa-check text-success me-1"></i> Copied!';
+        setTimeout(() => {
+          btnCopyScript.innerHTML = originalHtml;
+        }, 2000);
+      }).catch(() => {
+        if (typeof showToast === "function") showToast("Failed to copy to clipboard", "error");
+      });
+    });
+  }
+
+  // Load into Practice Coach
+  if (btnLoadPractice && practiceInput && scriptEditor) {
+    btnLoadPractice.addEventListener("click", () => {
+      practiceInput.value = scriptEditor.value;
+      updatePracticeStats();
+      practiceInput.focus();
+      if (typeof showToast === "function") {
+        showToast("Loaded pitch into Practice Coach! Adjust and click 'Analyze Pitch'.", "info");
+      }
+    });
+  }
+
+  // Practice input live stats
+  function updatePracticeStats() {
+    if (!practiceInput || !practiceStats) return;
+    const text = practiceInput.value;
+    const stats = computeLiveStats(text);
+    practiceStats.textContent = `${stats.wordCount} words • ~${stats.formatted} speaking time`;
+  }
+
+  if (practiceInput) {
+    practiceInput.addEventListener("input", updatePracticeStats);
+  }
+
+  // CSRF helper
+  function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute("content") : "";
+  }
+
+  // Regenerate Button Handler
+  if (btnRegenerate) {
+    btnRegenerate.addEventListener("click", async () => {
+      const analysisId = btnRegenerate.getAttribute("data-analysis-id");
+      if (!analysisId) return;
+
+      const role = roleInput ? roleInput.value.trim() : "";
+      const company = companyInput ? companyInput.value.trim() : "";
+      const spinner = document.getElementById("selfIntroSpinner");
+      const icon = document.getElementById("selfIntroIcon");
+
+      btnRegenerate.disabled = true;
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+
+      try {
+        const res = await fetch(`/api/self-introduction/${encodeURIComponent(analysisId)}/generate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken(),
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({ role_title: role, company_name: company })
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.data && data.data.scripts) {
+          const scripts = data.data.scripts;
+          if (scripts["30s"]) {
+            scriptsState[30].script = scripts["30s"].script || "";
+            scriptsState[30].structure = scripts["30s"].structure_breakdown || {};
+          }
+          if (scripts["60s"]) {
+            scriptsState[60].script = scripts["60s"].script || "";
+            scriptsState[60].structure = scripts["60s"].structure_breakdown || {};
+          }
+          if (scripts["90s"]) {
+            scriptsState[90].script = scripts["90s"].script || "";
+            scriptsState[90].structure = scripts["90s"].structure_breakdown || {};
+          }
+          if (scriptEditor) {
+            scriptEditor.value = scriptsState[currentDuration].script || "";
+            updateEditorStats();
+          }
+          if (typeof showToast === "function") {
+            showToast("Self-introduction scripts updated!", "success");
+          }
+        } else {
+          if (typeof showToast === "function") {
+            showToast(data.error || "Failed to regenerate self-introduction", "error");
+          }
+        }
+      } catch (err) {
+        console.error("Error regenerating self introduction:", err);
+        if (typeof showToast === "function") {
+          showToast("Network error while regenerating script.", "error");
+        }
+      } finally {
+        btnRegenerate.disabled = false;
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+      }
+    });
+  }
+
+  // Analyze Practice Pitch
+  if (btnAnalyzePractice) {
+    btnAnalyzePractice.addEventListener("click", async () => {
+      const analysisId = btnAnalyzePractice.getAttribute("data-analysis-id");
+      if (!analysisId || !practiceInput) return;
+
+      const text = practiceInput.value.trim();
+      if (!text) {
+        if (typeof showToast === "function") {
+          showToast("Please enter or paste your practice pitch first.", "warning");
+        }
+        return;
+      }
+
+      const spinner = document.getElementById("practiceSpinner");
+      const icon = document.getElementById("practiceIcon");
+      const resultsPane = document.getElementById("practiceFeedbackResults");
+      const placeholderPane = document.getElementById("practiceFeedbackPlaceholder");
+
+      btnAnalyzePractice.disabled = true;
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+
+      const role = roleInput ? roleInput.value.trim() : "";
+      const company = companyInput ? companyInput.value.trim() : "";
+
+      try {
+        const res = await fetch(`/api/self-introduction/${encodeURIComponent(analysisId)}/practice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken(),
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          body: JSON.stringify({
+            practice_text: text,
+            target_duration: currentDuration,
+            role_title: role,
+            company_name: company
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success && data.evaluation) {
+          const evalData = data.evaluation;
+          renderPracticeEvaluation(evalData);
+          if (placeholderPane) placeholderPane.style.display = "none";
+          if (resultsPane) resultsPane.style.display = "block";
+          if (typeof showToast === "function") {
+            showToast("Practice pitch evaluated successfully!", "success");
+          }
+        } else {
+          if (typeof showToast === "function") {
+            showToast(data.error || "Evaluation failed.", "error");
+          }
+        }
+      } catch (err) {
+        console.error("Error analyzing practice pitch:", err);
+        if (typeof showToast === "function") {
+          showToast("Network error while evaluating practice pitch.", "error");
+        }
+      } finally {
+        btnAnalyzePractice.disabled = false;
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+      }
+    });
+  }
+
+  // Render Practice Feedback Helper
+  function renderPracticeEvaluation(ev) {
+    const scoreBadge = document.getElementById("practiceClarityScore");
+    const verdictBadge = document.getElementById("practiceLengthVerdict");
+    const overviewEl = document.getElementById("practiceFeedbackOverview");
+    const strengthsEl = document.getElementById("practiceStrengthsList");
+    const improvementsEl = document.getElementById("practiceImprovementsList");
+
+    if (scoreBadge) {
+      scoreBadge.textContent = `${ev.clarity_score || 85} / 100`;
+    }
+    if (verdictBadge) {
+      verdictBadge.textContent = `${ev.length_verdict || 'Good Pacing'} (${ev.speaking_time_formatted || ''})`;
+      if ((ev.length_verdict || "").toLowerCase().includes("ideal") || (ev.length_verdict || "").toLowerCase().includes("good")) {
+        verdictBadge.className = "badge bg-success-subtle text-success border rounded-pill";
+      } else {
+        verdictBadge.className = "badge bg-warning-subtle text-warning border rounded-pill";
+      }
+    }
+
+    // Structure checklist icons
+    const struct = ev.structure_score || {};
+    updateCheckmark("badgePresentCheck", struct.has_present);
+    updateCheckmark("badgePastCheck", struct.has_past);
+    updateCheckmark("badgeFutureCheck", struct.has_future);
+
+    if (overviewEl) {
+      overviewEl.textContent = ev.feedback_summary || "";
+    }
+
+    if (strengthsEl) {
+      const items = ev.strengths || [];
+      if (items.length > 0) {
+        strengthsEl.innerHTML = `<h6 class="small fw-bold text-success mb-1"><i class="fa-solid fa-thumbs-up me-1"></i> Key Strengths:</h6><ul class="ps-3 mb-2 small text-secondary">${items.map(s => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`;
+      } else {
+        strengthsEl.innerHTML = "";
+      }
+    }
+
+    if (improvementsEl) {
+      const items = ev.improvements || [];
+      if (items.length > 0) {
+        improvementsEl.innerHTML = `<h6 class="small fw-bold text-warning mb-1"><i class="fa-solid fa-lightbulb me-1"></i> Opportunities to Refine:</h6><ul class="ps-3 mb-0 small text-secondary">${items.map(s => `<li>${escapeHtml(s)}</li>`).join("")}</ul>`;
+      } else {
+        improvementsEl.innerHTML = "";
+      }
+    }
+  }
+
+  function updateCheckmark(elemId, isValid) {
+    const el = document.getElementById(elemId);
+    if (!el) return;
+    if (isValid) {
+      el.innerHTML = '<i class="fa-solid fa-circle-check text-success"></i>';
+    } else {
+      el.innerHTML = '<i class="fa-solid fa-circle-xmark text-danger"></i>';
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+}
+
 

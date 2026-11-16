@@ -70,16 +70,17 @@ graph TD
 ## Features
 
 1. **Resume Analysis & ATS Scoring**: Extract text from PDF resumes, run grammar & style checks, identify weaknesses, and calculate a grounded ATS Score.
-2. **Job Description Matching**: Paste a Job Description to compare candidate metrics against corporate requirements, listing the exact changes needed to pass initial screenings.
+2. **Job Description Matching & In-Context Resume Keyword Highlighter**: Paste a Job Description to compare candidate metrics against corporate requirements, listing the exact changes needed to pass initial screenings. Inspect in-context keyword highlights across extracted resume text with whole-word matching, toggleable highlight styling, and a separate breakdown of missing keywords mapped to suggested resume sections (Skills, Projects, Experience).
 3. **Skill Gap Remediation Table**: Get a prioritizing list of missing skills detailing estimated learning times, resource links, and custom project suggestions.
 4. **6-Week Study Roadmap**: Access a weekly preparation calendar mapping theoretical topics, coding challenges, and revision items.
-5. **Interactive Mock Interview Simulator**: Engage in a live, conversational chat with the Interview Agent. Answers are evaluated dynamically on technical accuracy, communication style, and confidence indicators.
+5. **Interactive Mock Interview Simulator & Timed Answer Mode**: Engage in a live, conversational chat with the Interview Agent. Answers are evaluated dynamically on technical accuracy, communication style, verbal clarity, and STAR story structure. Practice under realistic exam conditions with optional **Timed Answer Mode** featuring per-question countdowns, configurable time limits (Technical, Behavioral, HR), last-15-second visual and screen-reader accessible warnings (`aria-live`), automatic submission on expiration, and pacing telemetry included in feedback and transcripts. Keep untimed mode by default.
 6. **Static Company Profiles**: Contains pre-cached interview processes, hiring guidelines, eligibility patterns, and preparation advice for 15 top campus recruiters: Google, Microsoft, Amazon, Adobe, Flipkart, Zoho, TCS, Infosys, Accenture, Capgemini, Wipro, Cognizant, Deloitte, HCLTech, and Tech Mahindra.
 7. **Comprehensive PDF Reports**: Generates and compiles a formatted, multi-page PDF document summarizing placement analysis and roadmaps using ReportLab.
 8. **Dark / Light Theme Toggle**: Seamless single-click switching between light and dark modes with zero page reload, browser persistence (`localStorage`), default system preference detection (`prefers-color-scheme`), and high-contrast readability across dashboards, tables, interview chat, and study roadmaps.
 9. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 10. **Privacy Notice & Consent Protection**: Transparent plain-language privacy notice (`/privacy`), required candidate consent before processing resume text via the Gemini API, optional PII redaction (masking emails, phones, and addresses), local SQLite storage, and complete account deletion options.
 11. **'Try with a Sample Resume' Demo Mode**: Explore the full platform capabilities instantly without registration, login, or a Gemini API key. Loads a bundled, fictional candidate profile (Alex Chen, BS in CS from UC Berkeley) targeting a Google Software Development Engineer (SDE 1) position with pre-calculated ATS scoring, skill evidence mapping, and a 6-week preparation roadmap. A prominent "Demo data" banner marks all demo content, and demo results are never persisted to any user history or real database records.
+12. **'Tell Me About Yourself' Introduction Builder & Practice Coach**: Generates tailored elevator pitch scripts from verified resume projects and target role/company context in three standard durations: 30 seconds (~65-85 words), 60 seconds (~130-160 words), and 90 seconds (~190-230 words) based on a 140 wpm conversational speaking rate. Features live-updating speaking time estimation as the text is edited, Present &rarr; Past &rarr; Future framework guidance, strict integrity enforcement against fabricating achievements not present in the resume, and an interactive practice coach that scores structure, clarity, and pacing.
 
 ---
 
@@ -336,6 +337,17 @@ The following features are being considered:
 - ✅ **Mock Interviews**: Interactive interview simulator with real-time evaluation
 - ✅ **PDF Reports**: Comprehensive placement readiness reports
 - ✅ **CI/CD Pipeline**: GitHub Actions for automated testing and validation
+
+---
+
+## Company Interview Cheat Sheet (One-Page Revision PDF)
+
+To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:
+- **One-Page Layout Guarantee**: Compact ReportLab formatting with defensive text truncation ensuring all company details fit strictly onto a single printed page.
+- **Drive-Focused Content**: Includes company overview, recruitment workflow, technical and HR interview rounds, key interview topics, top required skills, and drive-day revision tips.
+- **Personalized Skill Gap Targeting**: Seamlessly integrates the student's top 3 identified skill gaps for that company when previous analyses exist; skips the section cleanly and gracefully when the candidate has no analysis.
+- **XML/HTML Entity Escaping**: Robust escaping prevents rendering errors and parser crashes on special symbols such as `&`, `<`, `>`, quotes, and `C++`.
+- **Direct Downloads**: Accessible from the Company Explorer modal, the Companies Directory (`/companies`), and the Preparation Checklist (`/company-checklist`).
 
 ---
 
