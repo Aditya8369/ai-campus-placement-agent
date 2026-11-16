@@ -9,7 +9,7 @@ This guide details how to deploy the **AI Campus Placement Agent** to Vercel and
 The AI Campus Placement Agent is a Python Flask WSGI application configured to run seamlessly as a Serverless Function on Vercel:
 
 - **WSGI Entrypoint (`api/index.py`)**: Exposes the Flask application instance (`app`) to Vercel's Python Serverless Runtime.
-- **Routing Configuration (`vercel.json`)**: Employs URL rewrites to route all incoming HTTP requests (`/(.*)`) to the serverless entrypoint `/api/index.py`. Static assets in `/static` are automatically served with high-performance caching.
+- **Routing Configuration (`vercel.json`)**: Declares `api/index.py` as a Python serverless function and uses a catch-all route to forward incoming HTTP requests to it. This preserves the original request path for Flask route matching; a generic rewrite would expose `/api/index.py` to Flask and cause every request to be treated as an unauthenticated API call.
 - **Serverless Ephemeral Storage**: When deployed on Vercel (`VERCEL=1`), all persistent file operations (SQLite database, file uploads, PDF reports, database backups) are automatically directed to `/tmp`, which provides 512 MB of writable scratch space per function instance.
 
 ---
@@ -31,7 +31,7 @@ During deployment review, the live site returned HTTP 500 `FUNCTION_INVOCATION_F
 4. **Strict Secret Key Requirement Fallback (`config.py`)**:
    - If `FLASK_ENV=production` was configured without setting `FLASK_SECRET_KEY`, `config.py` threw an unhandled `RuntimeError`, killing the function.
 5. **Missing Vercel Serverless Entrypoint & Config**:
-   - Without `vercel.json` rewrites and `api/index.py`, Vercel could not determine how to map incoming web traffic to the Flask application.
+   - Without the explicit `vercel.json` Python build/route and `api/index.py`, Vercel could not reliably map incoming web traffic to the Flask application.
 
 ### Solutions Applied
 - Added `Union` to imports in `utils/database.py`.

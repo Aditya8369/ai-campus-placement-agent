@@ -46,8 +46,29 @@ def check_configuration_files() -> Tuple[bool, List[str]]:
         try:
             with open(vercel_json_path, "r", encoding="utf-8") as f:
                 v_data = json.load(f)
-                if "rewrites" not in v_data and "builds" not in v_data and "routes" not in v_data:
-                    issues.append("vercel.json is missing 'rewrites' routing configuration.")
+                if "builds" not in v_data or "routes" not in v_data:
+                    issues.append(
+                        "vercel.json must define a Python build and catch-all route."
+                    )
+                else:
+                    has_python_build = any(
+                        build.get("src") == "api/index.py"
+                        and build.get("use") == "@vercel/python"
+                        for build in v_data["builds"]
+                    )
+                    has_catch_all_route = any(
+                        route.get("src") == "/(.*)"
+                        and route.get("dest") == "api/index.py"
+                        for route in v_data["routes"]
+                    )
+                    if not has_python_build:
+                        issues.append(
+                            "vercel.json is missing the api/index.py Python build."
+                        )
+                    if not has_catch_all_route:
+                        issues.append(
+                            "vercel.json is missing the api/index.py catch-all route."
+                        )
         except Exception as e:
             issues.append(f"Invalid vercel.json syntax: {e}")
 

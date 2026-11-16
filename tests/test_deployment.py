@@ -29,8 +29,14 @@ def test_vercel_configuration_files_exist():
     vercel_json = base_dir / "vercel.json"
     with open(vercel_json, "r", encoding="utf-8") as f:
         data = json.load(f)
-        assert "rewrites" in data
-        assert any(r.get("destination") == "/api/index.py" for r in data["rewrites"])
+        assert "builds" in data
+        assert any(
+            build.get("src") == "api/index.py"
+            and build.get("use") == "@vercel/python"
+            for build in data["builds"]
+        )
+        assert "routes" in data
+        assert any(route.get("dest") == "api/index.py" for route in data["routes"])
 
 
 def test_api_index_entrypoint():
