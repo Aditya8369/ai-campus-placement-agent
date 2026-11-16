@@ -14589,6 +14589,75 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Recommendation Dismissal Endpoints (#416)
+# ---------------------------------------------------------
+@app.route("/api/recommendations/dismiss", methods=["POST"])
+def api_dismiss_recommendation():
+    """
+    Marks an AI recommendation as not relevant with a student-chosen reason.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    rec_id = payload.get("recommendation_id")
+    rec_title = payload.get("recommendation_title", "Untitled Recommendation")
+    rec_type = payload.get("recommendation_type", "skill_recommendation")
+    reason = payload.get("reason", "Not interested in this technology / domain")
+    custom_notes = payload.get("custom_notes")
+
+    if not rec_id:
+        return jsonify({"success": False, "error": "recommendation_id is required"}), 400
+
+    result = recommendation_dismissal_service.dismiss_recommendation(
+        student_id=student_id,
+        recommendation_id=rec_id,
+        recommendation_title=rec_title,
+        recommendation_type=rec_type,
+        reason=reason,
+        custom_notes=custom_notes
+    )
+
+    return jsonify(result), 200
+
+
+@app.route("/api/recommendations/dismissed", methods=["GET"])
+def api_get_dismissed_recommendations():
+    """
+    Retrieves all recommendations dismissed by the current student.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    dismissed = recommendation_dismissal_service.list_dismissed_recommendations(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(dismissed),
+        "dismissed": dismissed
+    }), 200
+
+
+@app.route("/api/recommendations/undismiss/<rec_id>", methods=["POST", "DELETE"])
+def api_undismiss_recommendation(rec_id):
+    """
+    Restores a previously dismissed recommendation.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = recommendation_dismissal_service.undismiss_recommendation(student_id, rec_id)
+
+    if not restored:
+        return jsonify({"success": False, "error": "Dismissed recommendation not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": f"Recommendation '{rec_id}' restored to active feed."
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
