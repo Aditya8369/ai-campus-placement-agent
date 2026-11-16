@@ -14589,6 +14589,58 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Report Watermark Service Endpoints (#409)
+# ---------------------------------------------------------
+@app.route("/api/reports/watermark", methods=["POST"])
+def api_apply_report_watermark():
+    """
+    Applies or previews a security watermark on reports and documents.
+    Supports both HTML and plain-text report formats.
+    """
+    from utils.report_watermark_service import report_watermark_service
+
+    data = request.get_json(silent=True) or request.form
+    content = data.get("content", "")
+    content_format = data.get("format", "html").lower()
+    doc_type = data.get("document_type", "Placement Preparation Report")
+    custom_notice = data.get("custom_notice")
+    student_id = data.get("student_id") or flask_session.get("user_id") or "STUDENT"
+    include_banner = data.get("include_banner", True)
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    if content_format == "html":
+        watermarked = report_watermark_service.apply_watermark_to_html(
+            html_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice,
+            include_banner=bool(include_banner)
+        )
+    else:
+        watermarked = report_watermark_service.apply_watermark_to_plain_text(
+            text_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice
+        )
+
+    metadata = report_watermark_service.generate_watermark_metadata(
+        student_id=student_id,
+        document_type=doc_type,
+        custom_text=custom_notice
+    )
+
+    return jsonify({
+        "success": True,
+        "format": content_format,
+        "watermarked_content": watermarked,
+        "metadata": metadata
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
