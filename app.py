@@ -14857,102 +14857,66 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# In-App Notification Center Endpoints (#418)
+# Accidental Deletion Undo & Restore Endpoints (#417)
 # ---------------------------------------------------------
-@app.route("/api/notifications/unread-count", methods=["GET"])
-def api_get_unread_notification_count():
+@app.route("/api/trash/items", methods=["GET"])
+def api_list_trash_items():
     """
-    Returns unread in-app notification count for the active student.
+    Lists soft-deleted items available for restore in the student's trash.
     """
-    from utils.in_app_notification_service import in_app_notification_service
+    from utils.restore_service import restore_service
 
     student_id = flask_session.get("user_id") or "default_student"
-    count = in_app_notification_service.get_unread_count(student_id)
-    return jsonify({"success": True, "unread_count": count}), 200
+    items = restore_service.list_trash_items(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(items),
+        "items": items
+    }), 200
 
 
-@app.route("/api/notifications", methods=["GET", "POST"])
-def api_in_app_notifications():
+@app.route("/api/trash/soft-delete", methods=["POST"])
+def api_soft_delete_item():
     """
-    Retrieves or creates in-app notifications.
+    Soft-deletes an entity into the recycle bin with undo grace period.
     """
-    from utils.in_app_notification_service import in_app_notification_service
+    from utils.restore_service import restore_service
 
     student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
 
-    if request.method == "GET":
-        is_read_param = request.args.get("is_read")
-        is_read = None
-        if is_read_param is not None:
-            is_read = is_read_param.lower() in ("true", "1")
-        category = request.args.get("category")
-        limit = int(request.args.get("limit", 50))
+    entity_type = payload.get("entity_type", "generic")
+    entity_id = payload.get("entity_id")
+    entity_title = payload.get("entity_title", "Untitled Item")
+    original_data = payload.get("original_data") or {}
 
-        items = in_app_notification_service.list_notifications(
-            student_id=student_id,
-            is_read=is_read,
-            category=category,
-            limit=limit
-        )
-        unread = in_app_notification_service.get_unread_count(student_id)
-        return jsonify({
-            "success": True,
-            "unread_count": unread,
-            "count": len(items),
-            "notifications": items
-        }), 200
+    if not entity_id:
+        return jsonify({"success": False, "error": "entity_id is required"}), 400
 
-    if request.method == "POST":
-        payload = request.get_json(silent=True) or request.form
-        title = payload.get("title", "New Alert")
-        message = payload.get("message", "")
-        category = payload.get("category", "system_alert")
-        priority = payload.get("priority", "normal")
-        action_url = payload.get("action_url")
-        target_student = payload.get("student_id") or student_id
-
-        if not message:
-            return jsonify({"success": False, "error": "message is required"}), 400
-
-        nid = in_app_notification_service.create_notification(
-            student_id=target_student,
-            title=title,
-            message=message,
-            category=category,
-            priority=priority,
-            action_url=action_url
-        )
-        return jsonify({"success": True, "notification_id": nid}), 201
+    result = restore_service.soft_delete_item(
+        student_id=student_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        entity_title=entity_title,
+        original_data=original_data
+    )
+    return jsonify(result), 200
 
 
-@app.route("/api/notifications/<int:nid>/read", methods=["POST"])
-def api_mark_notification_read(nid):
-    """Marks a single notification as read."""
-    from utils.in_app_notification_service import in_app_notification_service
+@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
+def api_undo_soft_deletion(undo_token):
+    """
+    Restores a soft-deleted item using its undo token.
+    """
+    from utils.restore_service import restore_service
 
     student_id = flask_session.get("user_id") or "default_student"
-    success = in_app_notification_service.mark_as_read(student_id, nid)
-    return jsonify({"success": success}), 200 if success else 404
+    restored = restore_service.restore_item(student_id, undo_token)
 
+    if not restored.get("success"):
+        return jsonify(restored), 400
 
-@app.route("/api/notifications/mark-all-read", methods=["POST"])
-def api_mark_all_notifications_read():
-    """Marks all notifications as read for current student."""
-    from utils.in_app_notification_service import in_app_notification_service
-
-    student_id = flask_session.get("user_id") or "default_student"
-    count = in_app_notification_service.mark_all_as_read(student_id)
-    return jsonify({"success": True, "updated_count": count}), 200
-
-
-@app.route("/api/notifications/<int:nid>", methods=["DELETE"])
-def api_delete_in_app_notification(nid):
-    """Deletes an in-app notification."""
-    from utils.in_app_notification_service import in_app_notification_service
-
-    student_id = flask_session.get("user_id") or "default_student"
-    deleted = in_app_notification_service.delete_notification(student_id, nid)
-    return jsonify({"success": deleted}), 200 if deleted else 404
+    return jsonify(restored), 200
 
 
 if __name__ == "__main__":
