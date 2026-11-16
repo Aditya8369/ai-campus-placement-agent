@@ -14589,6 +14589,73 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Notification Delivery History Endpoints (#419)
+# ---------------------------------------------------------
+@app.route("/api/notifications/delivery-history", methods=["GET"])
+def api_get_delivery_history():
+    """
+    Returns audit trail of dispatched notifications for the student.
+    """
+    from utils.delivery_history_service import delivery_history_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    channel = request.args.get("channel")
+    status = request.args.get("status")
+    limit = int(request.args.get("limit", 50))
+
+    history = delivery_history_service.list_delivery_history(
+        student_id=student_id,
+        channel=channel,
+        status=status,
+        limit=limit
+    )
+    metrics = delivery_history_service.get_delivery_metrics(student_id)
+
+    return jsonify({
+        "success": True,
+        "metrics": metrics,
+        "count": len(history),
+        "history": history
+    }), 200
+
+
+@app.route("/api/notifications/delivery-history", methods=["POST"])
+def api_log_delivery_attempt():
+    """
+    Records an outbound notification delivery attempt into the history log.
+    """
+    from utils.delivery_history_service import delivery_history_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    channel = payload.get("channel", "email")
+    recipient = payload.get("recipient", "student@example.com")
+    template_name = payload.get("template_name", "general_alert")
+    subject = payload.get("subject", "Campus Placement Alert")
+    status = payload.get("status", "DELIVERED")
+    error_summary = payload.get("error_summary")
+    latency_ms = int(payload.get("latency_ms", 120))
+
+    log_id = delivery_history_service.log_delivery(
+        student_id=student_id,
+        channel=channel,
+        recipient=recipient,
+        template_name=template_name,
+        subject=subject,
+        status=status,
+        error_summary=error_summary,
+        latency_ms=latency_ms
+    )
+
+    return jsonify({
+        "success": True,
+        "log_id": log_id,
+        "message": "Delivery logged successfully."
+    }), 201
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
