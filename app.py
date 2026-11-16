@@ -14589,6 +14589,90 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Preparation Goal & Target-Date Planner Endpoints (#422)
+# ---------------------------------------------------------
+@app.route("/api/goals", methods=["GET", "POST"])
+def api_preparation_goals():
+    """
+    Creates or lists student target-date preparation plans and milestone metrics.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        goals = goal_planner_service.list_student_goals(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(goals),
+            "goals": goals
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("goal_title", "My Placement Goal")
+        role = payload.get("target_role", "Software Engineer")
+        target_date = payload.get("target_date")
+        target_coding = int(payload.get("target_coding_problems", 50))
+        target_mock = int(payload.get("target_mock_interviews", 5))
+        resume_ready = bool(payload.get("resume_completed", False))
+        notes = payload.get("notes")
+
+        if not target_date:
+            return jsonify({"success": False, "error": "target_date (YYYY-MM-DD) is required"}), 400
+
+        try:
+            goal_id = goal_planner_service.create_goal(
+                student_id=student_id,
+                goal_title=title,
+                target_role=role,
+                target_date_str=target_date,
+                target_coding_problems=target_coding,
+                target_mock_interviews=target_mock,
+                resume_completed=resume_ready,
+                notes=notes
+            )
+        except ValueError as ve:
+            return jsonify({"success": False, "error": f"Invalid date format: {str(ve)}"}), 400
+
+        return jsonify({
+            "success": True,
+            "goal_id": goal_id,
+            "message": "Preparation goal created successfully."
+        }), 201
+
+
+@app.route("/api/goals/<int:gid>/progress", methods=["PUT", "POST"])
+def api_update_goal_progress(gid):
+    """
+    Updates completion numbers for coding problems, mock interviews, or resume status.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    completed_coding = payload.get("completed_coding_problems")
+    completed_interviews = payload.get("completed_mock_interviews")
+    resume_completed = payload.get("resume_completed")
+    status = payload.get("status")
+
+    updated = goal_planner_service.update_goal_progress(
+        student_id=student_id,
+        goal_id=gid,
+        completed_coding=int(completed_coding) if completed_coding is not None else None,
+        completed_interviews=int(completed_interviews) if completed_interviews is not None else None,
+        resume_completed=bool(resume_completed) if resume_completed is not None else None,
+        status=status
+    )
+
+    if not updated:
+        return jsonify({"success": False, "error": "Goal not found or no updates provided"}), 404
+
+    return jsonify({"success": True, "message": "Goal progress updated successfully."}), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
