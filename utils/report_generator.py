@@ -1440,6 +1440,17 @@ def generate_interview_transcript_markdown(
             "",
         ])
 
+    timing_m = summary_data.get("timing_summary")
+    if isinstance(timing_m, dict) and timing_m:
+        lines.extend([
+            "### Timed Answer Mode Performance",
+            "",
+            f"- **Total Timed Questions:** {timing_m.get('total_timed_questions', 0)}",
+            f"- **Average Time per Answer:** {timing_m.get('average_time_formatted', 'N/A')}",
+            f"- **Answers Within Time Limit:** {timing_m.get('within_limit_count', 0)} ({timing_m.get('within_limit_percentage', 0)}%)",
+            "",
+        ])
+
     lines.extend([
         "---",
         "",
@@ -1465,6 +1476,16 @@ def generate_interview_transcript_markdown(
             conf = eval_data.get("confidence_score", 50)
             verbal = eval_data.get("verbal_clarity_score", comm)
 
+            evaluated_scores = [
+                f"- Technical Accuracy: **{tech}/100**",
+                f"- Communication Score: **{comm}/100**",
+                f"- Confidence Score: **{conf}/100**",
+                f"- Verbal Clarity: **{verbal}/100**",
+            ]
+            t_disp = item.get("time_display") or eval_data.get("time_display")
+            if t_disp:
+                evaluated_scores.append(f"- Timing: **{t_disp.capitalize()}**")
+
             lines.extend([
                 f"### Question {q_num} [{q_type} Round]",
                 f"**Question:** {q_text}",
@@ -1473,10 +1494,7 @@ def generate_interview_transcript_markdown(
                 f"> {ans_text}",
                 "",
                 "**Evaluated Scores:**",
-                f"- Technical Accuracy: **{tech}/100**",
-                f"- Communication Score: **{comm}/100**",
-                f"- Confidence Score: **{conf}/100**",
-                f"- Verbal Clarity: **{verbal}/100**",
+                *evaluated_scores,
                 "",
             ])
 
