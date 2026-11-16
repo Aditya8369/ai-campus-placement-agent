@@ -14589,6 +14589,29 @@ def api_admin_backup_retention():
         }), 200
 
 
+
+@app.route("/api/user/security-activity", methods=["GET"])
+def api_user_security_activity():
+    """
+    Returns the user's security event history (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return jsonify({"success": True, "events": events}), 200
+
+
+@app.route("/security-activity", methods=["GET"])
+def security_activity_page():
+    """
+    Renders the account security activity log page (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return render_template("security_activity.html", user_id=user_id, events=events)
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
