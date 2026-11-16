@@ -121,12 +121,59 @@
             <h4 class="fw-bold mb-0">
               <i class="fa-solid fa-comments text-primary me-2"></i> Mock Interview Simulator
             </h4>
-            <div class="d-flex align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
               <div class="form-check form-switch mb-0 bg-light border rounded-pill px-3 py-1 d-flex align-items-center gap-2" title="Automatically read questions aloud using AI Voice Synthesis">
                 <input class="form-check-input ms-0 mt-0" type="checkbox" id="toggleAutoTTS" checked>
                 <label class="form-check-label small fw-semibold text-secondary" for="toggleAutoTTS">
                   <i class="fa-solid fa-volume-high text-primary me-1"></i> Auto-Speak
                 </label>
+              </div>
+
+              <!-- Timed Mode Toggle & Config (#431) -->
+              <div class="form-check form-switch mb-0 bg-light border rounded-pill px-3 py-1 d-flex align-items-center gap-2" title="Enable timed answer mode with countdown per question">
+                <input class="form-check-input ms-0 mt-0" type="checkbox" id="toggleTimedMode" role="switch" aria-label="Toggle Timed Mode">
+                <label class="form-check-label small fw-semibold text-secondary" for="toggleTimedMode">
+                  <i class="fa-solid fa-stopwatch text-danger me-1"></i> Timed Mode
+                </label>
+              </div>
+
+              <!-- Timed Mode Configuration Dropdown (#431) -->
+              <div class="dropdown d-none" id="timedModeConfigDropdown">
+                <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 dropdown-toggle small" type="button" id="btnTimedConfig" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false" title="Configure question countdown limits">
+                  <i class="fa-solid fa-sliders me-1 text-primary"></i> <span id="timedConfigLabel">2m Tech / 3m Behav</span>
+                </button>
+                <div class="dropdown-menu dropdown-menu-end p-3 shadow rounded-4 border-0" style="min-width: 290px;" aria-labelledby="btnTimedConfig">
+                  <h6 class="dropdown-header px-0 text-dark fw-bold mb-2">
+                    <i class="fa-solid fa-stopwatch text-danger me-1"></i> Question Time Limits
+                  </h6>
+                  <p class="small text-muted mb-3">Configure countdown limits per round. Answers auto-submit when the countdown reaches zero.</p>
+                  <div class="mb-2">
+                    <label for="selectTechTimeLimit" class="form-label small fw-semibold text-secondary mb-1">Technical Questions:</label>
+                    <select class="form-select form-select-sm rounded-pill" id="selectTechTimeLimit" aria-label="Technical question time limit">
+                      <option value="60">1 minute (60s)</option>
+                      <option value="90">1.5 minutes (90s)</option>
+                      <option value="120" selected>2 minutes (120s) - Recommended</option>
+                      <option value="180">3 minutes (180s)</option>
+                    </select>
+                  </div>
+                  <div class="mb-2">
+                    <label for="selectBehavTimeLimit" class="form-label small fw-semibold text-secondary mb-1">Behavioral Questions:</label>
+                    <select class="form-select form-select-sm rounded-pill" id="selectBehavTimeLimit" aria-label="Behavioral question time limit">
+                      <option value="120">2 minutes (120s)</option>
+                      <option value="180" selected>3 minutes (180s) - Recommended</option>
+                      <option value="240">4 minutes (240s)</option>
+                      <option value="300">5 minutes (300s)</option>
+                    </select>
+                  </div>
+                  <div class="mb-1">
+                    <label for="selectHrTimeLimit" class="form-label small fw-semibold text-secondary mb-1">HR Questions:</label>
+                    <select class="form-select form-select-sm rounded-pill" id="selectHrTimeLimit" aria-label="HR question time limit">
+                      <option value="60">1 minute (60s)</option>
+                      <option value="120" selected>2 minutes (120s) - Recommended</option>
+                      <option value="180">3 minutes (180s)</option>
+                    </select>
+                  </div>
+                </div>
               </div>
               <span class="badge bg-light text-primary border rounded-pill py-2 px-3 small">
                 Target: {{ company_name|default('Placement', true) }}
@@ -218,10 +265,15 @@
                 <div class="lh-base">{{ ans.answer }}</div>
               </div>
               <div class="chat-bubble chat-bubble-evaluation">
-                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom flex-wrap gap-2">
                   <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
                     <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
                   </span>
+                  {% if ans.time_display or (ans.evaluation and ans.evaluation.time_display) %}
+                    <span class="badge bg-secondary-subtle text-dark border border-secondary-subtle rounded-pill px-3 py-1">
+                      <i class="fa-regular fa-clock text-primary me-1"></i> {{ (ans.time_display or ans.evaluation.time_display)|capitalize }}
+                    </span>
+                  {% endif %}
                 </div>
                 <div class="mb-2 lh-base"><b>Feedback:</b> {{ ans.evaluation.feedback }}</div>
                 <div class="row g-2 mt-2 mb-2">
@@ -293,7 +345,7 @@
             <!-- Display current active question if not completed -->
             {% if not interview.completed and interview.questions and interview.current_question_index < interview.questions|length %}
               {% set current_q = interview.questions[interview.current_question_index] %}
-              <div class="chat-bubble chat-bubble-question" id="currentQuestionBubble">
+              <div class="chat-bubble chat-bubble-question" id="currentQuestionBubble" data-question-type="{{ current_q.type|default('Technical', true) }}">
                 <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
                   <span class="badge bg-primary text-white rounded-pill px-3 py-1 shadow-sm">
                     <i class="fa-solid fa-play me-1"></i> Active Question {{ current_q.index + 1 }} &bull; {{ current_q.type }}
@@ -472,9 +524,33 @@
             </div>
           </div>
 
+          <!-- Timed Mode Live Countdown Bar (#431) -->
+          <div id="interviewTimerBar" class="d-none mb-3 p-3 rounded-4 border bg-light shadow-xs transition-all">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 font-monospace fs-6 fw-bold" id="timerCountdownBadge" role="timer" aria-label="Time remaining for current question">
+                  <i class="fa-regular fa-clock me-1"></i> <span id="timerCountdownText">02:00</span>
+                </span>
+                <span class="small text-muted fw-semibold" id="timerAllocatedText">Allocated: 2:00</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-white text-secondary border rounded-pill px-2 py-1 small" id="timerStatusNotice">
+                  <i class="fa-solid fa-hourglass-half text-primary me-1"></i> Timed Mode Active
+                </span>
+              </div>
+            </div>
+            <div class="progress rounded-pill" style="height: 8px;">
+              <div id="timerProgressBar" class="progress-bar bg-primary" role="progressbar" style="width: 100%" aria-valuenow="100" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+          </div>
+
+          <!-- Accessible Screen Reader Timer Announcer (#431) -->
+          <div id="interviewTimerAnnouncer" class="visually-hidden" role="status" aria-live="assertive" aria-atomic="true"></div>
+
           <!-- Answer Input Form -->
           {% if not interview.completed %}
-            <form id="chatForm" data-question-index="{{ interview.current_question_index }}" data-analysis-id="{{ analysis_id }}" data-total-questions="{{ interview.questions|length }}">
+            {% set active_q_type = current_q.type if current_q is defined and current_q else 'Technical' %}
+            <form id="chatForm" data-question-index="{{ interview.current_question_index }}" data-analysis-id="{{ analysis_id }}" data-total-questions="{{ interview.questions|length }}" data-question-type="{{ active_q_type }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <div class="input-group">
                 <textarea id="answerInput" class="form-control rounded-start-3" rows="3" placeholder="Type or speak your answer here... Be descriptive and structured (STAR method)." aria-label="Type your interview answer"></textarea>
@@ -542,7 +618,12 @@
         <!-- Latest response evaluation card -->
         {% set last_eval = interview.answers[-1].evaluation if interview.answers else None %}
         <div class="card glass-card p-4 border-0 {% if not last_eval %}d-none{% endif %}" id="evaluationPanel">
-          <h5 class="fw-bold mb-4"><i class="fa-solid fa-gauge-high text-primary me-2"></i> Response Evaluation</h5>
+          <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0"><i class="fa-solid fa-gauge-high text-primary me-2"></i> Response Evaluation</h5>
+            <span class="badge bg-secondary-subtle text-dark border rounded-pill px-2 py-1 small {% if not (last_eval and last_eval.time_display) %}d-none{% endif %}" id="evalTimingBadge">
+              <i class="fa-regular fa-clock text-primary me-1"></i> <span id="evalTimingText">{{ last_eval.time_display|capitalize if last_eval and last_eval.time_display else '' }}</span>
+            </span>
+          </div>
           
           <!-- Accuracy Gauge -->
           <div class="mb-4">
@@ -928,6 +1009,24 @@
               <div class="col-sm-4">
                 <span class="small text-muted d-block">STAR Adherence</span>
                 <span class="fw-bold text-success fs-5" id="modalStarRate">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Timed Mode Pacing Metrics Row (#431) -->
+          <div class="card bg-light border-0 p-3 rounded-3 text-center mb-4 d-none" id="modalTimingStatsCard">
+            <div class="row g-2 align-items-center">
+              <div class="col-sm-4">
+                <span class="small text-muted d-block">Timed Questions</span>
+                <span class="fw-bold text-primary fs-5" id="modalTimedCount">--</span>
+              </div>
+              <div class="col-sm-4 border-start border-end">
+                <span class="small text-muted d-block">Average Answer Time</span>
+                <span class="fw-bold text-success fs-5" id="modalAvgAnswerTime">--</span>
+              </div>
+              <div class="col-sm-4">
+                <span class="small text-muted d-block">Within Time Limit</span>
+                <span class="fw-bold text-info fs-5" id="modalWithinLimitRate">--</span>
               </div>
             </div>
           </div>
