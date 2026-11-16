@@ -1367,6 +1367,250 @@ function initMockInterview() {
   let lastMeasuredWpm = 130;
   let lastMeasuredFillerCount = 0;
 
+  // Timed Answer Mode Elements & State (#431)
+  const toggleTimedMode = document.getElementById("toggleTimedMode");
+  const timedModeConfigDropdown = document.getElementById("timedModeConfigDropdown");
+  const btnTimedConfig = document.getElementById("btnTimedConfig");
+  const timedConfigLabel = document.getElementById("timedConfigLabel");
+  const selectTechTimeLimit = document.getElementById("selectTechTimeLimit");
+  const selectBehavTimeLimit = document.getElementById("selectBehavTimeLimit");
+  const selectHrTimeLimit = document.getElementById("selectHrTimeLimit");
+  const interviewTimerBar = document.getElementById("interviewTimerBar");
+  const timerCountdownBadge = document.getElementById("timerCountdownBadge");
+  const timerCountdownText = document.getElementById("timerCountdownText");
+  const timerAllocatedText = document.getElementById("timerAllocatedText");
+  const timerProgressBar = document.getElementById("timerProgressBar");
+  const timerStatusNotice = document.getElementById("timerStatusNotice");
+  const interviewTimerAnnouncer = document.getElementById("interviewTimerAnnouncer");
+
+  let isTimedMode = false;
+  let timerInterval = null;
+  let allocatedSeconds = 120;
+  let remainingSeconds = 120;
+  let questionStartTime = Date.now();
+  let hasAutoSubmitted = false;
+  let isTimerPaused = false;
+
+  const timeLimits = {
+    technical: parseInt(localStorage.getItem("mock_interview_limit_tech") || "120", 10),
+    behavioral: parseInt(localStorage.getItem("mock_interview_limit_behav") || "180", 10),
+    hr: parseInt(localStorage.getItem("mock_interview_limit_hr") || "120", 10),
+    default: 120,
+  };
+
+  if (selectTechTimeLimit) selectTechTimeLimit.value = String(timeLimits.technical);
+  if (selectBehavTimeLimit) selectBehavTimeLimit.value = String(timeLimits.behavioral);
+  if (selectHrTimeLimit) selectHrTimeLimit.value = String(timeLimits.hr);
+
+  function updateTimedConfigLabel() {
+    if (!timedConfigLabel) return;
+    const tMin = (timeLimits.technical / 60).toFixed(timeLimits.technical % 60 ? 1 : 0);
+    const bMin = (timeLimits.behavioral / 60).toFixed(timeLimits.behavioral % 60 ? 1 : 0);
+    timedConfigLabel.textContent = `${tMin}m Tech / ${bMin}m Behav`;
+  }
+  updateTimedConfigLabel();
+
+  function formatCountdownTime(totalSecs) {
+    const s = Math.max(0, Math.floor(totalSecs));
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  }
+
+  function getQuestionTimeLimit(qType) {
+    const t = (qType || "").toLowerCase();
+    if (t.includes("behav")) return timeLimits.behavioral;
+    if (t.includes("tech")) return timeLimits.technical;
+    if (t.includes("hr")) return timeLimits.hr;
+    return timeLimits.default;
+  }
+
+  function announceTimerWarning(message) {
+    if (!interviewTimerAnnouncer) return;
+    interviewTimerAnnouncer.textContent = "";
+    setTimeout(() => {
+      interviewTimerAnnouncer.textContent = message;
+    }, 50);
+  }
+
+  function stopQuestionTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function startQuestionTimer(qType) {
+    stopQuestionTimer();
+    if (!isTimedMode || !interviewTimerBar) {
+      if (interviewTimerBar) interviewTimerBar.classList.add("d-none");
+      return;
+    }
+
+    allocatedSeconds = getQuestionTimeLimit(qType);
+    remainingSeconds = allocatedSeconds;
+    questionStartTime = Date.now();
+    hasAutoSubmitted = false;
+    isTimerPaused = false;
+
+    interviewTimerBar.classList.remove("d-none");
+    if (timerAllocatedText) timerAllocatedText.textContent = `Allocated: ${formatCountdownTime(allocatedSeconds)}`;
+    if (timerCountdownText) timerCountdownText.textContent = formatCountdownTime(remainingSeconds);
+
+    if (timerCountdownBadge) {
+      timerCountdownBadge.className = "badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-2 font-monospace fs-6 fw-bold";
+    }
+    if (timerProgressBar) {
+      timerProgressBar.className = "progress-bar bg-primary";
+      timerProgressBar.style.width = "100%";
+      timerProgressBar.setAttribute("aria-valuenow", "100");
+    }
+    if (timerStatusNotice) {
+      timerStatusNotice.innerHTML = '<i class="fa-solid fa-hourglass-half text-primary me-1"></i> Timed Mode Active';
+    }
+    if (answerInput) {
+      answerInput.classList.remove("border-danger");
+    }
+
+    timerInterval = setInterval(() => {
+      if (isTimerPaused) return;
+
+      remainingSeconds--;
+      if (timerCountdownText) timerCountdownText.textContent = formatCountdownTime(remainingSeconds);
+
+      const percent = Math.max(0, Math.round((remainingSeconds / allocatedSeconds) * 100));
+      if (timerProgressBar) {
+        timerProgressBar.style.width = `${percent}%`;
+        timerProgressBar.setAttribute("aria-valuenow", String(percent));
+      }
+
+      // In the last 15 seconds: color change to warning/danger (#431)
+      if (remainingSeconds <= 15 && remainingSeconds > 0) {
+        if (timerCountdownBadge && !timerCountdownBadge.classList.contains("bg-danger")) {
+          timerCountdownBadge.className = "badge bg-danger text-white border border-danger rounded-pill px-3 py-2 font-monospace fs-6 fw-bold shadow-sm";
+        }
+        if (timerProgressBar && !timerProgressBar.classList.contains("bg-danger")) {
+          timerProgressBar.className = "progress-bar bg-danger progress-bar-striped progress-bar-animated";
+        }
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-danger me-1"></i> ${remainingSeconds}s remaining! Auto-submitting soon...`;
+        }
+        if (answerInput) {
+          answerInput.classList.add("border-danger");
+        }
+
+        // Accessible time warnings (#431)
+        if (remainingSeconds === 15) {
+          announceTimerWarning("15 seconds remaining. Your response will auto-submit when the countdown reaches zero.");
+        } else if (remainingSeconds === 5) {
+          announceTimerWarning("5 seconds remaining.");
+        }
+      }
+
+      // Time runs out: auto-submit what has been typed (#431)
+      if (remainingSeconds <= 0) {
+        stopQuestionTimer();
+        if (timerCountdownText) timerCountdownText.textContent = "00:00";
+        if (timerProgressBar) timerProgressBar.style.width = "0%";
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-stopwatch text-danger me-1"></i> Time\'s up! Auto-submitting response...';
+        }
+        announceTimerWarning("Time expired! Auto-submitting your response.");
+
+        if (!hasAutoSubmitted) {
+          hasAutoSubmitted = true;
+          autoSubmitAnswer();
+        }
+      }
+    }, 1000);
+  }
+
+  function autoSubmitAnswer() {
+    if (!chatForm) return;
+    const sessionPaused = sessionStatusText?.innerText?.trim().toLowerCase() === "paused";
+    if (sessionPaused) return;
+
+    if (answerInput && !answerInput.value.trim()) {
+      answerInput.value = "(Time expired - auto-submitted)";
+    }
+    chatForm.requestSubmit();
+  }
+
+  // Initialize Timed Mode from saved setting (default is OFF - untimed) (#431)
+  const savedTimed = localStorage.getItem("mock_interview_timed_mode") === "true";
+  if (toggleTimedMode) {
+    toggleTimedMode.checked = savedTimed;
+    isTimedMode = savedTimed;
+    if (timedModeConfigDropdown) {
+      if (isTimedMode) timedModeConfigDropdown.classList.remove("d-none");
+      else timedModeConfigDropdown.classList.add("d-none");
+    }
+
+    toggleTimedMode.addEventListener("change", () => {
+      isTimedMode = toggleTimedMode.checked;
+      localStorage.setItem("mock_interview_timed_mode", isTimedMode ? "true" : "false");
+      if (timedModeConfigDropdown) {
+        if (isTimedMode) timedModeConfigDropdown.classList.remove("d-none");
+        else timedModeConfigDropdown.classList.add("d-none");
+      }
+
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode) {
+        startQuestionTimer(activeQType);
+        if (typeof showToast === "function") {
+          showToast(`Timed Mode enabled: ${formatCountdownTime(getQuestionTimeLimit(activeQType))} limit for this question.`);
+        }
+      } else {
+        stopQuestionTimer();
+        if (interviewTimerBar) interviewTimerBar.classList.add("d-none");
+        if (answerInput) answerInput.classList.remove("border-danger");
+        if (typeof showToast === "function") {
+          showToast("Timed Mode disabled. Untimed practice active.");
+        }
+      }
+    });
+  }
+
+  if (selectTechTimeLimit) {
+    selectTechTimeLimit.addEventListener("change", () => {
+      timeLimits.technical = parseInt(selectTechTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_tech", String(timeLimits.technical));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("tech")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+  if (selectBehavTimeLimit) {
+    selectBehavTimeLimit.addEventListener("change", () => {
+      timeLimits.behavioral = parseInt(selectBehavTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_behav", String(timeLimits.behavioral));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("behav")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+  if (selectHrTimeLimit) {
+    selectHrTimeLimit.addEventListener("change", () => {
+      timeLimits.hr = parseInt(selectHrTimeLimit.value, 10);
+      localStorage.setItem("mock_interview_limit_hr", String(timeLimits.hr));
+      updateTimedConfigLabel();
+      const activeQType = chatForm.getAttribute("data-question-type") || "Technical";
+      if (isTimedMode && activeQType.toLowerCase().includes("hr")) {
+        startQuestionTimer(activeQType);
+      }
+    });
+  }
+
+  // Start question timer on initial load if timed mode is enabled
+  const initialQType = chatForm.getAttribute("data-question-type") || "Technical";
+  if (isTimedMode) {
+    startQuestionTimer(initialQType);
+  }
+
   // -------------------------------------------------------------
   // Web MediaStream Video Coach & Non-Verbal Composure Analyzer
   // -------------------------------------------------------------
@@ -1687,6 +1931,10 @@ function initMockInterview() {
         if (answerInput) {
           answerInput.placeholder = "Interview is currently PAUSED. Click 'Resume Interview' above to continue.";
         }
+        isTimerPaused = true;
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-circle-pause text-warning me-1"></i> Timer Paused';
+        }
       } else {
         if (btnPauseResumeLabel) btnPauseResumeLabel.innerText = "Pause Interview";
         btnPauseResumeSession.innerHTML = '<i class="fa-solid fa-pause me-1"></i> <span id="btnPauseResumeLabel">Pause Interview</span>';
@@ -1699,6 +1947,10 @@ function initMockInterview() {
         if (btnSendAnswer) btnSendAnswer.disabled = false;
         if (answerInput) {
           answerInput.placeholder = "Type your response here or click 'Speak' to answer using your microphone...";
+        }
+        isTimerPaused = false;
+        if (timerStatusNotice) {
+          timerStatusNotice.innerHTML = '<i class="fa-solid fa-hourglass-half text-primary me-1"></i> Timed Mode Active';
         }
       }
     }
@@ -1994,6 +2246,18 @@ function initMockInterview() {
       resetSpeakingButtons();
     }
 
+    // Stop active question countdown timer (#431)
+    stopQuestionTimer();
+    const isAnswerTimed = isTimedMode;
+    let timeTakenSeconds = 0;
+    let timeLimitSeconds = null;
+    if (isAnswerTimed) {
+      timeLimitSeconds = allocatedSeconds;
+      timeTakenSeconds = Math.min(allocatedSeconds, Math.max(1, allocatedSeconds - remainingSeconds));
+    } else {
+      timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
+    }
+
     const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
@@ -2033,6 +2297,9 @@ function initMockInterview() {
           answer: answer,
           question_index: questionIndex,
           speech_metrics: finalSpeechMetrics,
+          is_timed: isAnswerTimed,
+          time_taken_seconds: timeTakenSeconds,
+          time_limit_seconds: timeLimitSeconds,
         }),
       });
 
@@ -2116,11 +2383,23 @@ function initMockInterview() {
         }
       }
 
+      const timeDisplayStr = result.time_display || evalData.time_display || "";
+      let timingBadgeHtml = "";
+      if (timeDisplayStr) {
+        const formattedDisplay = timeDisplayStr.charAt(0).toUpperCase() + timeDisplayStr.slice(1);
+        timingBadgeHtml = `
+          <span class="badge bg-secondary-subtle text-dark border rounded-pill px-2 py-1 small">
+            <i class="fa-regular fa-clock text-primary me-1"></i> ${escapeHtml(formattedDisplay)}
+          </span>
+        `;
+      }
+
       const feedbackText = `
         <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
           <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
             <i class="fa-solid fa-clipboard-check me-1"></i> AI Feedback &amp; Analysis
           </span>
+          ${timingBadgeHtml}
         </div>
         <div class="mb-2 lh-base"><b>Feedback:</b> ${evalData.feedback}</div>
         <div class="row g-2 mt-2 mb-2">
@@ -2145,6 +2424,10 @@ function initMockInterview() {
       appendChatBubble(feedbackText, "evaluation");
 
       if (result.completed) {
+        stopQuestionTimer();
+        if (interviewTimerBar) {
+          interviewTimerBar.classList.add("d-none");
+        }
         appendChatBubble("<b>Congratulations! You have completed all mock interview questions.</b><br/>Please review your performance summary and export your transcript.", "agent");
         resetInputs(true);
         document.getElementById("btnBackToDashboard")?.classList.remove("btn-outline-secondary");
@@ -2175,7 +2458,13 @@ function initMockInterview() {
           `;
           const newBubble = appendChatBubble(nextBubbleHtml, "question");
           chatForm.setAttribute("data-question-index", nextQ.index);
+          chatForm.setAttribute("data-question-type", nextQ.type || "Technical");
           resetInputs();
+
+          // Start timer for next question if timed mode is enabled (#431)
+          if (isTimedMode) {
+            startQuestionTimer(nextQ.type || "Technical");
+          }
 
           // Auto-read question aloud if toggle is checked
           if (toggleAutoTTS && toggleAutoTTS.checked) {
@@ -2345,6 +2634,19 @@ function initMockInterview() {
     if (progressTextEl) progressTextEl.innerText = `${totalAnswered}/${totalQuestions} Questions Answered (${progPercent}%)`;
     if (progressBarEl) progressBarEl.style.width = `${progPercent}%`;
 
+    // Timing indicator badge (#431)
+    const evalTimingBadge = document.getElementById("evalTimingBadge");
+    const evalTimingText = document.getElementById("evalTimingText");
+    const timeDisplay = evaluation.time_display || "";
+    if (evalTimingBadge && evalTimingText) {
+      if (timeDisplay) {
+        evalTimingText.innerText = timeDisplay.charAt(0).toUpperCase() + timeDisplay.slice(1);
+        evalTimingBadge.classList.remove("d-none");
+      } else {
+        evalTimingBadge.classList.add("d-none");
+      }
+    }
+
     // Enable Download Transcript buttons after at least one answer has been submitted (#161)
     if (totalAnswered > 0) {
       enableDownloadTranscriptButtons();
@@ -2420,6 +2722,21 @@ function initMockInterview() {
       if (modalVerbalClarity) modalVerbalClarity.innerText = `${summary.verbal_metrics.average_verbal_clarity}%`;
       if (modalTotalFillers) modalTotalFillers.innerText = `${summary.verbal_metrics.total_filler_words}`;
       if (modalStarRate) modalStarRate.innerText = `${summary.verbal_metrics.star_adherence_rate}`;
+    }
+
+    // Display Timed Mode Pacing Metrics in Modal if available (#431)
+    const modalTimingStatsCard = document.getElementById("modalTimingStatsCard");
+    const modalTimedCount = document.getElementById("modalTimedCount");
+    const modalAvgAnswerTime = document.getElementById("modalAvgAnswerTime");
+    const modalWithinLimitRate = document.getElementById("modalWithinLimitRate");
+
+    if (summary.timing_summary && summary.timing_summary.total_timed_questions > 0 && modalTimingStatsCard) {
+      modalTimingStatsCard.classList.remove("d-none");
+      if (modalTimedCount) modalTimedCount.innerText = `${summary.timing_summary.total_timed_questions}`;
+      if (modalAvgAnswerTime) modalAvgAnswerTime.innerText = `${summary.timing_summary.formatted_avg_time || "--"}`;
+      if (modalWithinLimitRate) modalWithinLimitRate.innerText = `${summary.timing_summary.within_limit_percentage}%`;
+    } else if (modalTimingStatsCard) {
+      modalTimingStatsCard.classList.add("d-none");
     }
 
     // Populate Comprehensive Competency Breakdown (#267)
