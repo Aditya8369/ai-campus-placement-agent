@@ -14867,6 +14867,7 @@ def api_admin_cleanup_orphaned_files():
     dry_run = bool(payload.get("dry_run", False))
     min_age_minutes = int(payload.get("min_age_minutes", 30))
 
+    payload = request.get_json(silent=True) or request.form or {}
     try:
         result = cleanup_orphaned_files(min_age_minutes=min_age_minutes, dry_run=dry_run)
         return jsonify(result), 200
