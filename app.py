@@ -14856,56 +14856,27 @@ def api_admin_backup_retention():
         }), 200
 
 
-# ---------------------------------------------------------
-# Report Watermark Service Endpoints (#409)
-# ---------------------------------------------------------
-@app.route("/api/reports/watermark", methods=["POST"])
-def api_apply_report_watermark():
+
+@app.route("/api/user/security-activity", methods=["GET"])
+def api_user_security_activity():
     """
-    Applies or previews a security watermark on reports and documents.
-    Supports both HTML and plain-text report formats.
+    Returns the user's security event history (#407).
     """
-    from utils.report_watermark_service import report_watermark_service
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return jsonify({"success": True, "events": events}), 200
 
-    data = request.get_json(silent=True) or request.form
-    content = data.get("content", "")
-    content_format = data.get("format", "html").lower()
-    doc_type = data.get("document_type", "Placement Preparation Report")
-    custom_notice = data.get("custom_notice")
-    student_id = data.get("student_id") or flask_session.get("user_id") or "STUDENT"
-    include_banner = data.get("include_banner", True)
 
-    if not content:
-        return jsonify({"success": False, "error": "content is required"}), 400
-
-    if content_format == "html":
-        watermarked = report_watermark_service.apply_watermark_to_html(
-            html_content=content,
-            student_id=student_id,
-            document_type=doc_type,
-            custom_text=custom_notice,
-            include_banner=bool(include_banner)
-        )
-    else:
-        watermarked = report_watermark_service.apply_watermark_to_plain_text(
-            text_content=content,
-            student_id=student_id,
-            document_type=doc_type,
-            custom_text=custom_notice
-        )
-
-    metadata = report_watermark_service.generate_watermark_metadata(
-        student_id=student_id,
-        document_type=doc_type,
-        custom_text=custom_notice
-    )
-
-    return jsonify({
-        "success": True,
-        "format": content_format,
-        "watermarked_content": watermarked,
-        "metadata": metadata
-    }), 200
+@app.route("/security-activity", methods=["GET"])
+def security_activity_page():
+    """
+    Renders the account security activity log page (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return render_template("security_activity.html", user_id=user_id, events=events)
 
 
 if __name__ == "__main__":
