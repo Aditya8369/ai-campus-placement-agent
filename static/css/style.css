@@ -2858,6 +2858,76 @@ textarea:focus-visible {
     z-index: 1010;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Resume Keyword Highlighter & In-Context Preview (#430)                     */
+/* -------------------------------------------------------------------------- */
+.resume-keyword-matched {
+  background-color: #d1e7dd;
+  color: #0f5132;
+  font-weight: 600;
+  padding: 0.12rem 0.3rem;
+  border-radius: 4px;
+  border: 1px solid #badbcc;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+[data-bs-theme="dark"] .resume-keyword-matched {
+  background-color: rgba(25, 135, 84, 0.3) !important;
+  color: #75b798 !important;
+  border-color: rgba(25, 135, 84, 0.5) !important;
+}
+
+.highlights-hidden .resume-keyword-matched {
+  background-color: transparent !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+  border: none !important;
+  padding: 0 !important;
+}
+
+.resume-preview-box {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--bs-font-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 0.85rem;
+  line-height: 1.65;
+  max-height: 480px;
+  overflow-y: auto;
+  color: var(--bs-body-color, #212529);
+}
+
+[data-bs-theme="dark"] .resume-preview-box {
+  background-color: #1e2227 !important;
+  color: #e6edf3 !important;
+  border-color: #30363d !important;
+}
+
+.legend-matched-indicator {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  background-color: #d1e7dd;
+  border: 1px solid #badbcc;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+[data-bs-theme="dark"] .legend-matched-indicator {
+  background-color: rgba(25, 135, 84, 0.3);
+  border-color: rgba(25, 135, 84, 0.5);
+}
+
+.missing-keyword-item {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.missing-keyword-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
 }
 
 

@@ -483,3 +483,136 @@ Return a single JSON object strictly matching this schema:
 }}
 Ensure the output is valid JSON only.
 """
+
+# ==============================================================================
+# Self-Introduction ('Tell Me About Yourself') Builder & Coach Prompts (#432)
+# ==============================================================================
+
+SELF_INTRO_SYSTEM_INSTRUCTION = """
+You are an expert executive interview coach specializing in campus placement preparation.
+Your task is to craft high-impact, authentic 'Tell Me About Yourself' elevator pitches
+for a candidate targeting a specific company and role, based STRICTLY on their verified resume data.
+
+CRITICAL INTEGRITY RULE:
+DO NOT INVENT, FABRICATE, OR EMBELLISH achievements, qualifications, degrees, metrics,
+companies, or projects that are not present in the provided resume data.
+All claims, skills, tools, and background must be directly grounded in the student's actual resume profile.
+
+The introductions must follow the proven 'Present -> Past -> Future' structure:
+1. Present: Who you are right now (education, current focus, core technical domain).
+2. Past: Key 1-2 projects, internships, or practical technical experiences directly from the resume demonstrating impact.
+3. Future: Why you are excited about this target role and how you can add immediate value to this specific target company.
+
+You must provide scripts in three distinct lengths:
+- 30 seconds (~65-85 words, target ~75 words): Fast elevator pitch.
+- 60 seconds (~130-160 words, target ~145 words): Standard HR round opening introduction.
+- 90 seconds (~190-230 words, target ~210 words): In-depth walkthrough covering technical depth and culture fit.
+
+Strict Rules:
+1. Respond ONLY with valid JSON. No markdown backticks (like ```json), no preamble, and no postamble.
+2. Adhere strictly to the requested approximate word count boundaries for each length.
+3. Keep the language natural, conversational, professional, and confident when spoken aloud.
+"""
+
+SELF_INTRO_USER_PROMPT_TEMPLATE = """
+Generate tailored 'Tell Me About Yourself' self-introduction scripts for this candidate:
+
+Target Company: {company_name}
+Target Role Title: {role_title}
+
+Candidate Verified Resume Profile:
+- Full Name / Identifier: {candidate_name}
+- Technical Skills: {skills}
+- Resume Strengths: {strengths}
+- Resume Summary: {resume_summary}
+- Projects & Practical Experience: {experience_context}
+
+Company Context & Culture:
+{company_details}
+
+Generate a single JSON object strictly matching this schema:
+{{
+  "candidate_name": "{candidate_name}",
+  "role_title": "{role_title}",
+  "company_name": "{company_name}",
+  "scripts": {{
+    "30": {{
+      "target_seconds": 30,
+      "approx_words": "65-85 words",
+      "script": "[Conversational present-past-future pitch in ~75 words grounded only in resume facts...]"
+    }},
+    "60": {{
+      "target_seconds": 60,
+      "approx_words": "130-160 words",
+      "script": "[Balanced present-past-future introduction in ~145 words grounded only in resume facts...]"
+    }},
+    "90": {{
+      "target_seconds": 90,
+      "approx_words": "190-230 words",
+      "script": "[Comprehensive present-past-future walkthrough in ~210 words grounded only in resume facts...]"
+    }}
+  }}
+}}
+Ensure the output is valid JSON only.
+"""
+
+SELF_INTRO_PRACTICE_SYSTEM_INSTRUCTION = """
+You are an expert HR interview coach evaluating a student's practice delivery of "Tell me about yourself".
+Analyze the student's spoken/written introduction across three key criteria:
+1. Structure (Present, Past, Future alignment):
+   - Present: Current education, student status, core skills.
+   - Past: Relevant academic/internship projects, problem solving.
+   - Future: Motivation for the target role/company and forward-looking value.
+2. Clarity & Impact:
+   - Coherence, conciseness, avoiding rambles or overly dense jargon, confident tone.
+3. Length & Delivery Pace:
+   - Word count and estimated speaking time at a standard conversational pace (130-150 words per minute).
+   - Guidance on whether it's too brisk (<45 words), ideal (60-220 words), or rambling (>260 words).
+
+Strict Rules:
+1. Respond ONLY with valid JSON. No markdown backticks, no preamble, and no postamble.
+2. Provide constructive, actionable, and encouraging feedback with specific sentences to refine.
+"""
+
+SELF_INTRO_PRACTICE_USER_PROMPT_TEMPLATE = """
+Evaluate this student's practice "Tell me about yourself" answer for the following target context:
+
+Target Company: {company_name}
+Target Role Title: {role_title}
+Candidate Resume Context: {resume_context}
+
+Student's Practice Script:
+\"\"\"
+{practice_text}
+\"\"\"
+
+Return a single JSON object strictly matching this schema:
+{{
+  "word_count": {word_count},
+  "estimated_speaking_seconds": {estimated_speaking_seconds},
+  "structure_analysis": {{
+    "has_present": true,
+    "has_past": true,
+    "has_future": true,
+    "feedback": "Feedback on how well the present, past, and future phases are articulated."
+  }},
+  "clarity_analysis": {{
+    "score": 85,
+    "feedback": "Feedback on clarity, flow, and conciseness."
+  }},
+  "length_analysis": {{
+    "verdict": "Ideal / Too Brief / Rambling",
+    "feedback": "Feedback on whether the pacing and word count fit a 30, 60, or 90 second pitch."
+  }},
+  "strengths": [
+    "Specific positive element 1",
+    "Specific positive element 2"
+  ],
+  "improvements": [
+    "Specific actionable improvement 1",
+    "Specific actionable improvement 2"
+  ],
+  "suggested_revision": "A polished version of the student's practice text maintaining their own voice."
+}}
+Ensure the output is valid JSON only.
+"""
