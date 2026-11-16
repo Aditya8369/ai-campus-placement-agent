@@ -14857,66 +14857,72 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# Accidental Deletion Undo & Restore Endpoints (#417)
+# Recommendation Dismissal Endpoints (#416)
 # ---------------------------------------------------------
-@app.route("/api/trash/items", methods=["GET"])
-def api_list_trash_items():
+@app.route("/api/recommendations/dismiss", methods=["POST"])
+def api_dismiss_recommendation():
     """
-    Lists soft-deleted items available for restore in the student's trash.
+    Marks an AI recommendation as not relevant with a student-chosen reason.
     """
-    from utils.restore_service import restore_service
-
-    student_id = flask_session.get("user_id") or "default_student"
-    items = restore_service.list_trash_items(student_id)
-    return jsonify({
-        "success": True,
-        "count": len(items),
-        "items": items
-    }), 200
-
-
-@app.route("/api/trash/soft-delete", methods=["POST"])
-def api_soft_delete_item():
-    """
-    Soft-deletes an entity into the recycle bin with undo grace period.
-    """
-    from utils.restore_service import restore_service
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
 
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form
 
-    entity_type = payload.get("entity_type", "generic")
-    entity_id = payload.get("entity_id")
-    entity_title = payload.get("entity_title", "Untitled Item")
-    original_data = payload.get("original_data") or {}
+    rec_id = payload.get("recommendation_id")
+    rec_title = payload.get("recommendation_title", "Untitled Recommendation")
+    rec_type = payload.get("recommendation_type", "skill_recommendation")
+    reason = payload.get("reason", "Not interested in this technology / domain")
+    custom_notes = payload.get("custom_notes")
 
-    if not entity_id:
-        return jsonify({"success": False, "error": "entity_id is required"}), 400
+    if not rec_id:
+        return jsonify({"success": False, "error": "recommendation_id is required"}), 400
 
-    result = restore_service.soft_delete_item(
+    result = recommendation_dismissal_service.dismiss_recommendation(
         student_id=student_id,
-        entity_type=entity_type,
-        entity_id=str(entity_id),
-        entity_title=entity_title,
-        original_data=original_data
+        recommendation_id=rec_id,
+        recommendation_title=rec_title,
+        recommendation_type=rec_type,
+        reason=reason,
+        custom_notes=custom_notes
     )
+
     return jsonify(result), 200
 
 
-@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
-def api_undo_soft_deletion(undo_token):
+@app.route("/api/recommendations/dismissed", methods=["GET"])
+def api_get_dismissed_recommendations():
     """
-    Restores a soft-deleted item using its undo token.
+    Retrieves all recommendations dismissed by the current student.
     """
-    from utils.restore_service import restore_service
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
 
     student_id = flask_session.get("user_id") or "default_student"
-    restored = restore_service.restore_item(student_id, undo_token)
+    dismissed = recommendation_dismissal_service.list_dismissed_recommendations(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(dismissed),
+        "dismissed": dismissed
+    }), 200
 
-    if not restored.get("success"):
-        return jsonify(restored), 400
 
-    return jsonify(restored), 200
+@app.route("/api/recommendations/undismiss/<rec_id>", methods=["POST", "DELETE"])
+def api_undismiss_recommendation(rec_id):
+    """
+    Restores a previously dismissed recommendation.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = recommendation_dismissal_service.undismiss_recommendation(student_id, rec_id)
+
+    if not restored:
+        return jsonify({"success": False, "error": "Dismissed recommendation not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": f"Recommendation '{rec_id}' restored to active feed."
+    }), 200
 
 
 if __name__ == "__main__":
