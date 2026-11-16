@@ -14857,29 +14857,54 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# Resume Language Detection Endpoint (#410)
+# Report Watermark Service Endpoints (#409)
 # ---------------------------------------------------------
-@app.route("/api/resume/detect-language", methods=["POST"])
-def api_detect_resume_language():
+@app.route("/api/reports/watermark", methods=["POST"])
+def api_apply_report_watermark():
     """
-    Analyzes resume text to determine primary language.
-    Provides non-blocking warnings if non-English content is detected.
+    Applies or previews a security watermark on reports and documents.
+    Supports both HTML and plain-text report formats.
     """
-    from utils.resume_language_detector import resume_language_detector
+    from utils.report_watermark_service import report_watermark_service
 
-    payload = request.get_json(silent=True) or request.form
-    resume_text = payload.get("resume_text", "")
+    data = request.get_json(silent=True) or request.form
+    content = data.get("content", "")
+    content_format = data.get("format", "html").lower()
+    doc_type = data.get("document_type", "Placement Preparation Report")
+    custom_notice = data.get("custom_notice")
+    student_id = data.get("student_id") or flask_session.get("user_id") or "STUDENT"
+    include_banner = data.get("include_banner", True)
 
-    if not resume_text:
-        return jsonify({
-            "success": False,
-            "error": "resume_text is required for language detection"
-        }), 400
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
 
-    result = resume_language_detector.detect_language(resume_text)
+    if content_format == "html":
+        watermarked = report_watermark_service.apply_watermark_to_html(
+            html_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice,
+            include_banner=bool(include_banner)
+        )
+    else:
+        watermarked = report_watermark_service.apply_watermark_to_plain_text(
+            text_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice
+        )
+
+    metadata = report_watermark_service.generate_watermark_metadata(
+        student_id=student_id,
+        document_type=doc_type,
+        custom_text=custom_notice
+    )
+
     return jsonify({
         "success": True,
-        "detection": result
+        "format": content_format,
+        "watermarked_content": watermarked,
+        "metadata": metadata
     }), 200
 
 
