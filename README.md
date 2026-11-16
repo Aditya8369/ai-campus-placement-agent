@@ -70,7 +70,7 @@ graph TD
 ## Features
 
 1. **Resume Analysis & ATS Scoring**: Extract text from PDF resumes, run grammar & style checks, identify weaknesses, and calculate a grounded ATS Score.
-2. **Job Description Matching**: Paste a Job Description to compare candidate metrics against corporate requirements, listing the exact changes needed to pass initial screenings.
+2. **Job Description Matching & In-Context Resume Keyword Highlighter**: Paste a Job Description to compare candidate metrics against corporate requirements, listing the exact changes needed to pass initial screenings. Inspect in-context keyword highlights across extracted resume text with whole-word matching, toggleable highlight styling, and a separate breakdown of missing keywords mapped to suggested resume sections (Skills, Projects, Experience).
 3. **Skill Gap Remediation Table**: Get a prioritizing list of missing skills detailing estimated learning times, resource links, and custom project suggestions.
 4. **6-Week Study Roadmap**: Access a weekly preparation calendar mapping theoretical topics, coding challenges, and revision items.
 5. **Interactive Mock Interview Simulator**: Engage in a live, conversational chat with the Interview Agent. Answers are evaluated dynamically on technical accuracy, communication style, and confidence indicators.

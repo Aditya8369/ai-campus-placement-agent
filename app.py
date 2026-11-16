@@ -2124,6 +2124,8 @@ def analyze():
             job_description=job_description,
             company_name=selected_company
         )
+        if isinstance(analysis_payload, dict):
+            analysis_payload["extracted_resume_text"] = extracted_resume_text
 
         save_analysis(
             analysis_id=file_uuid,
@@ -3104,6 +3106,25 @@ def dashboard(analysis_id: str) -> str:
         bool(analysis_record.get("is_cached"))
     )
 
+    # Prepare Resume Keyword Highlights (#430)
+    try:
+        from utils.resume_keyword_highlighter import prepare_keyword_highlight_data
+        keyword_highlighter = prepare_keyword_highlight_data(analysis_record)
+    except Exception as kh_err:
+        logger.warning(f"Error preparing keyword highlight data for dashboard: {kh_err}")
+        keyword_highlighter = {
+            "has_resume_text": False,
+            "raw_resume_text": "",
+            "highlighted_resume_html": "",
+            "plain_escaped_resume_html": "",
+            "matched_keywords": [],
+            "missing_keywords": [],
+            "missing_keywords_with_sections": [],
+            "matched_count": 0,
+            "missing_count": 0,
+            "total_keywords": 0,
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3129,7 +3150,8 @@ def dashboard(analysis_id: str) -> str:
         streak=streak_data,
         comparison=comparison,
         comparison_json=json.dumps(comparison),
-        is_demo=is_demo
+        is_demo=is_demo,
+        keyword_highlighter=keyword_highlighter
     )
 
 

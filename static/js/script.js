@@ -101,6 +101,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initCopySuggestions();
   initRoleBasedPrep();
   initSkillsComparisonChart();
+  initResumeKeywordHighlighter();
   initBackToTop();
   initCodingBookmarks();
   initInterviewBookmarks();
@@ -4052,6 +4053,24 @@ function initSkillsComparisonChart() {
   if (centerVal) {
     centerVal.innerText = `${matchPct}%`;
   }
+}
+
+/**
+ * Resume Keyword Highlighter & In-Context Preview (#430)
+ * Binds toggle switch to show/hide keyword highlights on extracted resume text.
+ */
+function initResumeKeywordHighlighter() {
+  const toggleBtn = document.getElementById("toggleKeywordHighlights");
+  const resumeContainer = document.getElementById("resumeHighlightedContent");
+  if (!toggleBtn || !resumeContainer) return;
+
+  toggleBtn.addEventListener("change", () => {
+    if (toggleBtn.checked) {
+      resumeContainer.classList.remove("highlights-hidden");
+    } else {
+      resumeContainer.classList.add("highlights-hidden");
+    }
+  });
 }
 
 /**
