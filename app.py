@@ -14857,48 +14857,74 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# AI Model and Prompt Versioning Endpoints (#413)
+# Duplicate Resume Upload Detection Endpoints (#412)
 # ---------------------------------------------------------
-@app.route("/api/analysis/version-metadata", methods=["GET", "POST"])
-def api_analysis_version_metadata():
+@app.route("/api/resume/check-duplicate", methods=["POST"])
+def api_check_duplicate_resume():
     """
-    Records or retrieves AI model name, version, and prompt version hash
-    for a placement evaluation run.
+    Checks if an uploaded resume file or text matches previous uploads.
+    Returns status without blocking the user.
     """
-    from utils.ai_versioning_service import ai_versioning_service
+    from utils.duplicate_resume_service import duplicate_resume_service
 
-    if request.method == "GET":
-        analysis_id = request.args.get("analysis_id")
-        if not analysis_id:
-            return jsonify({"success": False, "error": "analysis_id is required"}), 400
-        info = ai_versioning_service.get_analysis_version_info(analysis_id)
-        if not info:
-            return jsonify({"success": False, "error": "Version info not found"}), 404
-        return jsonify({"success": True, "metadata": info}), 200
+    student_id = flask_session.get("user_id") or "default_student"
 
-    if request.method == "POST":
+    if "resume" in request.files:
+        file = request.files["resume"]
+        file_bytes = file.read()
+        filename = file.filename or "resume.pdf"
+        extracted_text = request.form.get("extracted_text", "")
+    else:
         payload = request.get_json(silent=True) or request.form
-        analysis_id = payload.get("analysis_id")
-        if not analysis_id:
-            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        content = payload.get("content", "")
+        file_bytes = content.encode("utf-8")
+        filename = payload.get("filename", "resume.txt")
+        extracted_text = payload.get("extracted_text") or content
 
-        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
-        row_id = ai_versioning_service.record_analysis_version(
-            analysis_id=analysis_id,
-            student_id=student_id,
-            model_name=payload.get("model_name"),
-            model_version=payload.get("model_version"),
-            prompt_version=payload.get("prompt_version"),
-            raw_prompt_template=payload.get("raw_prompt_template"),
-            execution_mode=payload.get("execution_mode", "production")
-        )
+    if not file_bytes:
+        return jsonify({"success": False, "error": "No resume file or content provided"}), 400
 
-        metadata = ai_versioning_service.get_analysis_version_info(analysis_id)
-        return jsonify({
-            "success": True,
-            "record_id": row_id,
-            "metadata": metadata
-        }), 201
+    dup_status = duplicate_resume_service.check_for_duplicate(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=extracted_text
+    )
+
+    return jsonify({
+        "success": True,
+        "duplicate_check": dup_status
+    }), 200
+
+
+@app.route("/api/resume/record-fingerprint", methods=["POST"])
+def api_record_resume_fingerprint():
+    """
+    Records a resume fingerprint after successful processing or user confirmation.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    content = payload.get("content", "")
+    filename = payload.get("filename", "resume.pdf")
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    file_bytes = content.encode("utf-8")
+    record_id = duplicate_resume_service.record_upload_fingerprint(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=content
+    )
+
+    return jsonify({
+        "success": True,
+        "record_id": record_id,
+        "message": "Resume fingerprint registered successfully."
+    }), 201
 
 
 if __name__ == "__main__":
