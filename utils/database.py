@@ -6127,3 +6127,86 @@ from utils.ai_metrics import (
     export_ai_metrics_csv,
     calculate_p95,
 )
+
+
+def get_student_top_skill_gaps_for_company(
+    student_id: str,
+    company_name: str,
+    limit: int = 3
+) -> List[str]:
+    """
+    Retrieves the top identified skill gaps for a student targeted at a company (#433).
+    First checks analyses targeting this specific company, falling back to the student's
+    latest general analysis if company-specific analysis is not available.
+    Returns an empty list gracefully if the student has no analysis record.
+    """
+    if not student_id:
+        return []
+
+    effective_student_id = str(student_id).strip()
+    norm_comp = (company_name or "").strip()
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        target_analysis = None
+
+        # 1. Look for company-specific analysis first
+        if norm_comp:
+            cursor.execute("""
+                SELECT id, results_json FROM analyses
+                WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
+                ORDER BY created_at DESC, version_number DESC
+                LIMIT 1
+            """, (effective_student_id, norm_comp))
+            row = cursor.fetchone()
+            if row:
+                target_analysis = row
+
+        # 2. Fall back to the student's most recent analysis if no company-specific record
+        if not target_analysis:
+            cursor.execute("""
+                SELECT id, results_json FROM analyses
+                WHERE student_id = ?
+                ORDER BY created_at DESC, version_number DESC
+                LIMIT 1
+            """, (effective_student_id,))
+            row = cursor.fetchone()
+            if row:
+                target_analysis = row
+
+        if not target_analysis:
+            return []
+
+        raw_json = target_analysis["results_json"]
+        if not raw_json:
+            return []
+
+        parsed = json.loads(raw_json) if isinstance(raw_json, str) else (raw_json or {})
+        results = parsed.get("results") or parsed
+
+        # Extract skill gaps from skill_gap list or job_match.missing_skills
+        gaps: List[str] = []
+        raw_skill_gaps = results.get("skill_gap") or []
+        for g in raw_skill_gaps:
+            if isinstance(g, dict):
+                skill_name = g.get("skill") or g.get("missing_skill") or g.get("name")
+            else:
+                skill_name = str(g)
+            if skill_name and str(skill_name).strip() and str(skill_name).strip() not in gaps:
+                gaps.append(str(skill_name).strip())
+
+        if not gaps:
+            job_match = results.get("job_match") or {}
+            missing_skills = job_match.get("missing_skills") or []
+            for ms in missing_skills:
+                ms_clean = str(ms).strip()
+                if ms_clean and ms_clean not in gaps:
+                    gaps.append(ms_clean)
+
+        return gaps[:limit]
+    except Exception as e:
+        logger.warning(f"Error fetching top skill gaps for student {student_id} and company {company_name}: {e}")
+        return []
+    finally:
+        conn.close()

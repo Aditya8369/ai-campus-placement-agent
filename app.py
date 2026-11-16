@@ -32,6 +32,7 @@ from utils.migrations import run_database_migrations, get_migration_status
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import (
+    get_student_top_skill_gaps_for_company,
     get_student_preparation_summary_data,
     record_preparation_activity,
     get_student_streak,
@@ -252,6 +253,7 @@ from utils.gemini import (
 )
 try:
     from utils.report_generator import (
+        generate_company_cheat_sheet_pdf,
         generate_student_preparation_summary_pdf,
         generate_pdf_report,
         generate_certificate_pdf,
@@ -270,6 +272,7 @@ except ImportError:
         generate_interview_transcript_pdf,
         generate_interview_transcript_markdown,
     )
+    generate_company_cheat_sheet_pdf = None
     generate_student_preparation_summary_pdf = None
     safe_generate_report_with_recovery = None
     generate_fallback_pdf_report = None
@@ -445,6 +448,7 @@ def require_login():
         "demo_mode_exit",
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
+        "download_company_cheat_sheet",
     }
 
     user_id = flask_session.get("user_id")
@@ -1874,6 +1878,71 @@ def get_company_profile(company_name: str):
     except Exception as e:
         logger.error(f"Error fetching company details for {company_name}: {e}")
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
+
+
+@app.route("/company/<company_name>/cheat-sheet", methods=["GET"])
+def download_company_cheat_sheet(company_name: str):
+    """
+    Produces and downloads a concise, single-page printable interview revision cheat sheet PDF (#433).
+    Includes company overview, typical rounds, key topics, top skills to revise,
+    and the student's top 3 identified skill gaps for that company (skipped gracefully if no analysis).
+    """
+    try:
+        clean_company = (company_name or "").strip()
+        companies_file = config.BASE_DIR / "data" / "companies.json"
+        company_data = None
+
+        if companies_file.exists():
+            with open(companies_file, "r", encoding="utf-8") as f:
+                all_companies = json.load(f)
+                # Exact match first, then case-insensitive lookup
+                if clean_company in all_companies:
+                    company_data = all_companies[clean_company]
+                else:
+                    for c_key, c_val in all_companies.items():
+                        if c_key.lower() == clean_company.lower():
+                            company_data = c_val
+                            clean_company = c_key
+                            break
+
+        if not company_data:
+            flash(f"Company profile for '{company_name}' was not found.", "error")
+            return redirect(url_for("companies_search_view"))
+
+        # Identify student and fetch top skill gaps for this company (if any)
+        student_id = request.args.get("student_id") or flask_session.get("user_id")
+        skill_gaps = []
+        if student_id:
+            try:
+                skill_gaps = get_student_top_skill_gaps_for_company(student_id, clean_company, limit=3)
+            except Exception as gap_err:
+                logger.warning("Could not fetch skill gaps for student %s: %s", student_id, gap_err)
+                skill_gaps = []
+
+        # Create output file in reports directory
+        safe_company_slug = "".join(c if c.isalnum() else "_" for c in clean_company)
+        student_slug = "".join(c if c.isalnum() else "_" for c in (student_id or "general"))
+        pdf_filename = f"Cheat_Sheet_{safe_company_slug}_{student_slug}.pdf"
+        os.makedirs(config.REPORT_FOLDER, exist_ok=True)
+        pdf_path = os.path.join(config.REPORT_FOLDER, pdf_filename)
+
+        generate_company_cheat_sheet_pdf(
+            company_name=clean_company,
+            company_data=company_data,
+            output_path=pdf_path,
+            skill_gaps=skill_gaps,
+        )
+
+        return send_file(
+            pdf_path,
+            as_attachment=True,
+            download_name=f"{safe_company_slug}_Interview_Cheat_Sheet.pdf",
+            mimetype="application/pdf"
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate company cheat sheet for {company_name}: {e}")
+        flash(f"Error compiling cheat sheet PDF: {e}", "error")
+        return redirect(url_for("companies_search_view"))
 
 def _extract_and_validate_resume(req):
     """
