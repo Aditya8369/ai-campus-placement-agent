@@ -14857,54 +14857,75 @@ def api_admin_backup_retention():
 
 
 
-@app.route("/api/reports/share", methods=["POST"])
-def api_reports_share_create():
+@app.route("/api/internships/saved", methods=["GET", "POST"])
+def api_internships_saved():
     """
-    Creates an expiring, secure read-only report sharing link (#408).
+    List and create saved internships for the logged-in student (#357).
     """
-    from utils.shared_reports_service import create_shared_report_link
+    from utils.saved_internships_service import get_saved_internships, save_internship
     student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        items = get_saved_internships(student_id)
+        return jsonify({"success": True, "saved_internships": items}), 200
+
     payload = request.get_json(silent=True) or request.form or {}
-
-    analysis_id = payload.get("analysis_id")
-    expiration = payload.get("expiration", "24h")
-
-    if not analysis_id:
-        return jsonify({"success": False, "error": "analysis_id is required."}), 400
-
     try:
-        res = create_shared_report_link(analysis_id, student_id, expiration)
+        res = save_internship(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            title=payload.get("title", ""),
+            internship_id=payload.get("internship_id"),
+            location=payload.get("location", "Remote"),
+            stipend=payload.get("stipend"),
+            deadline=payload.get("deadline"),
+            url=payload.get("url"),
+            notes=payload.get("notes")
+        )
         return jsonify(res), 201
+    except (ValueError, PermissionError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving internship: {e}")
+        return jsonify({"success": False, "error": "Internal error saving internship."}), 500
+
+
+@app.route("/api/internships/saved/<saved_id>", methods=["DELETE", "PUT"])
+def api_internships_saved_item(saved_id):
+    """
+    Delete or update personal note on a saved internship (#357).
+    """
+    from utils.saved_internships_service import remove_saved_internship, update_saved_internship_note
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = remove_saved_internship(student_id, saved_id)
+        if deleted:
+            return jsonify({"success": True, "message": "Saved internship removed."}), 200
+        return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    updated = update_saved_internship_note(student_id, saved_id, payload.get("notes", ""))
+    if updated:
+        return jsonify({"success": True, "message": "Note updated."}), 200
+    return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+
+@app.route("/api/internships/saved/<saved_id>/convert", methods=["POST"])
+def api_internships_saved_convert(saved_id):
+    """
+    Converts a saved internship to an active tracked job application (#357).
+    """
+    from utils.saved_internships_service import convert_saved_internship_to_application
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        res = convert_saved_internship_to_application(student_id, saved_id)
+        return jsonify(res), 200
     except KeyError as e:
         return jsonify({"success": False, "error": str(e)}), 404
     except Exception as e:
-        logger.error(f"Error creating share link: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route("/api/reports/share/<share_id>/revoke", methods=["POST"])
-def api_reports_share_revoke(share_id):
-    """
-    Revokes an active report share link immediately (#408).
-    """
-    from utils.shared_reports_service import revoke_shared_link
-    student_id = flask_session.get("user_id") or "default_student"
-    success = revoke_shared_link(student_id, share_id)
-    if success:
-        return jsonify({"success": True, "message": "Share link revoked successfully."}), 200
-    return jsonify({"success": False, "error": "Share link not found or already revoked."}), 404
-
-
-@app.route("/shared/report/<token>", methods=["GET"])
-def view_shared_report(token):
-    """
-    Renders read-only placement report for a shared token (#408).
-    """
-    from utils.shared_reports_service import get_shared_report_by_token
-    valid, report, err = get_shared_report_by_token(token)
-    if not valid:
-        return render_template("shared_report_error.html", error_message=err), 404
-    return render_template("shared_report_view.html", report=report)
+        logger.error(f"Error converting internship to application: {e}")
+        return jsonify({"success": False, "error": "Internal error converting internship."}), 500
 
 
 if __name__ == "__main__":
