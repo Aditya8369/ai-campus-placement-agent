@@ -14589,6 +14589,30 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# AI Content Disclaimer Endpoints (#415)
+# ---------------------------------------------------------
+@app.route("/api/ai/disclaimer", methods=["GET"])
+def api_get_ai_disclaimer():
+    """
+    Returns standardized AI disclaimer text and HTML banners for
+    front-end modules (resume reviews, interview feedback, etc.).
+    """
+    from utils.ai_disclaimer_service import ai_disclaimer_service
+
+    category = request.args.get("category", "general_ai")
+    data = ai_disclaimer_service.get_disclaimer_data(category)
+    banner_html = ai_disclaimer_service.render_banner_html(category)
+    footnote_html = ai_disclaimer_service.render_footnote_html(category)
+
+    return jsonify({
+        "success": True,
+        "disclaimer": data,
+        "banner_html": banner_html,
+        "footnote_html": footnote_html
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
