@@ -14589,6 +14589,105 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# In-App Notification Center Endpoints (#418)
+# ---------------------------------------------------------
+@app.route("/api/notifications/unread-count", methods=["GET"])
+def api_get_unread_notification_count():
+    """
+    Returns unread in-app notification count for the active student.
+    """
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    count = in_app_notification_service.get_unread_count(student_id)
+    return jsonify({"success": True, "unread_count": count}), 200
+
+
+@app.route("/api/notifications", methods=["GET", "POST"])
+def api_in_app_notifications():
+    """
+    Retrieves or creates in-app notifications.
+    """
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        is_read_param = request.args.get("is_read")
+        is_read = None
+        if is_read_param is not None:
+            is_read = is_read_param.lower() in ("true", "1")
+        category = request.args.get("category")
+        limit = int(request.args.get("limit", 50))
+
+        items = in_app_notification_service.list_notifications(
+            student_id=student_id,
+            is_read=is_read,
+            category=category,
+            limit=limit
+        )
+        unread = in_app_notification_service.get_unread_count(student_id)
+        return jsonify({
+            "success": True,
+            "unread_count": unread,
+            "count": len(items),
+            "notifications": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("title", "New Alert")
+        message = payload.get("message", "")
+        category = payload.get("category", "system_alert")
+        priority = payload.get("priority", "normal")
+        action_url = payload.get("action_url")
+        target_student = payload.get("student_id") or student_id
+
+        if not message:
+            return jsonify({"success": False, "error": "message is required"}), 400
+
+        nid = in_app_notification_service.create_notification(
+            student_id=target_student,
+            title=title,
+            message=message,
+            category=category,
+            priority=priority,
+            action_url=action_url
+        )
+        return jsonify({"success": True, "notification_id": nid}), 201
+
+
+@app.route("/api/notifications/<int:nid>/read", methods=["POST"])
+def api_mark_notification_read(nid):
+    """Marks a single notification as read."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    success = in_app_notification_service.mark_as_read(student_id, nid)
+    return jsonify({"success": success}), 200 if success else 404
+
+
+@app.route("/api/notifications/mark-all-read", methods=["POST"])
+def api_mark_all_notifications_read():
+    """Marks all notifications as read for current student."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    count = in_app_notification_service.mark_all_as_read(student_id)
+    return jsonify({"success": True, "updated_count": count}), 200
+
+
+@app.route("/api/notifications/<int:nid>", methods=["DELETE"])
+def api_delete_in_app_notification(nid):
+    """Deletes an in-app notification."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    deleted = in_app_notification_service.delete_notification(student_id, nid)
+    return jsonify({"success": deleted}), 200 if deleted else 404
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
