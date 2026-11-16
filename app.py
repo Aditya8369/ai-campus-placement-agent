@@ -14589,6 +14589,25 @@ def api_admin_backup_retention():
         }), 200
 
 
+
+@app.route("/api/admin/cleanup-orphaned-files", methods=["POST"])
+def api_admin_cleanup_orphaned_files():
+    """
+    Safely scans and purges orphaned uploaded files and generated reports (#352).
+    """
+    from utils.orphan_cleanup_service import cleanup_orphaned_files
+    payload = request.get_json(silent=True) or request.form or {}
+    dry_run = bool(payload.get("dry_run", False))
+    min_age_minutes = int(payload.get("min_age_minutes", 30))
+
+    try:
+        result = cleanup_orphaned_files(min_age_minutes=min_age_minutes, dry_run=dry_run)
+        return jsonify(result), 200
+    except Exception as e:
+        logger.error(f"Error during orphaned files cleanup: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
