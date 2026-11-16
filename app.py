@@ -14589,6 +14589,69 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Accidental Deletion Undo & Restore Endpoints (#417)
+# ---------------------------------------------------------
+@app.route("/api/trash/items", methods=["GET"])
+def api_list_trash_items():
+    """
+    Lists soft-deleted items available for restore in the student's trash.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    items = restore_service.list_trash_items(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(items),
+        "items": items
+    }), 200
+
+
+@app.route("/api/trash/soft-delete", methods=["POST"])
+def api_soft_delete_item():
+    """
+    Soft-deletes an entity into the recycle bin with undo grace period.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    entity_type = payload.get("entity_type", "generic")
+    entity_id = payload.get("entity_id")
+    entity_title = payload.get("entity_title", "Untitled Item")
+    original_data = payload.get("original_data") or {}
+
+    if not entity_id:
+        return jsonify({"success": False, "error": "entity_id is required"}), 400
+
+    result = restore_service.soft_delete_item(
+        student_id=student_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        entity_title=entity_title,
+        original_data=original_data
+    )
+    return jsonify(result), 200
+
+
+@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
+def api_undo_soft_deletion(undo_token):
+    """
+    Restores a soft-deleted item using its undo token.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = restore_service.restore_item(student_id, undo_token)
+
+    if not restored.get("success"):
+        return jsonify(restored), 400
+
+    return jsonify(restored), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
