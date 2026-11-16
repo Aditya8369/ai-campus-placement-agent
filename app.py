@@ -14589,6 +14589,18 @@ def api_admin_backup_retention():
         }), 200
 
 
+
+@app.route("/api/user/storage-quota", methods=["GET"])
+def api_user_storage_quota():
+    """
+    Returns the authenticated student's storage quota and usage summary (#353).
+    """
+    from utils.storage_quota_service import get_user_storage_summary
+    student_id = flask_session.get("user_id") or "default_student"
+    summary = get_user_storage_summary(student_id)
+    return jsonify(summary), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
