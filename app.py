@@ -14857,87 +14857,81 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# Preparation Goal & Target-Date Planner Endpoints (#422)
+# Downloadable Coding Practice Solutions Endpoints (#421)
 # ---------------------------------------------------------
-@app.route("/api/goals", methods=["GET", "POST"])
-def api_preparation_goals():
+@app.route("/api/coding/solutions", methods=["GET", "POST"])
+def api_coding_solutions():
     """
-    Creates or lists student target-date preparation plans and milestone metrics.
+    Submits or lists student coding practice solutions.
     """
-    from utils.goal_planner_service import goal_planner_service
+    from utils.coding_export_service import coding_export_service
 
     student_id = flask_session.get("user_id") or "default_student"
 
     if request.method == "GET":
-        goals = goal_planner_service.list_student_goals(student_id)
+        solutions = coding_export_service.list_student_solutions(student_id)
         return jsonify({
             "success": True,
-            "count": len(goals),
-            "goals": goals
+            "count": len(solutions),
+            "solutions": solutions
         }), 200
 
     if request.method == "POST":
         payload = request.get_json(silent=True) or request.form
-        title = payload.get("goal_title", "My Placement Goal")
-        role = payload.get("target_role", "Software Engineer")
-        target_date = payload.get("target_date")
-        target_coding = int(payload.get("target_coding_problems", 50))
-        target_mock = int(payload.get("target_mock_interviews", 5))
-        resume_ready = bool(payload.get("resume_completed", False))
+        prob_id = payload.get("problem_id")
+        title = payload.get("problem_title", "Untitled Problem")
+        lang = payload.get("programming_language", "python")
+        code = payload.get("solution_code", "")
+        diff = payload.get("difficulty", "Medium")
+        tc = payload.get("time_complexity")
+        sc = payload.get("space_complexity")
         notes = payload.get("notes")
+        is_passed = payload.get("is_passed", True)
 
-        if not target_date:
-            return jsonify({"success": False, "error": "target_date (YYYY-MM-DD) is required"}), 400
+        if not prob_id or not code:
+            return jsonify({"success": False, "error": "problem_id and solution_code are required"}), 400
 
-        try:
-            goal_id = goal_planner_service.create_goal(
-                student_id=student_id,
-                goal_title=title,
-                target_role=role,
-                target_date_str=target_date,
-                target_coding_problems=target_coding,
-                target_mock_interviews=target_mock,
-                resume_completed=resume_ready,
-                notes=notes
-            )
-        except ValueError as ve:
-            return jsonify({"success": False, "error": f"Invalid date format: {str(ve)}"}), 400
-
+        sub_id = coding_export_service.record_solution(
+            student_id=student_id,
+            problem_id=prob_id,
+            problem_title=title,
+            programming_language=lang,
+            solution_code=code,
+            difficulty=diff,
+            time_complexity=tc,
+            space_complexity=sc,
+            notes=notes,
+            is_passed=bool(is_passed)
+        )
         return jsonify({
             "success": True,
-            "goal_id": goal_id,
-            "message": "Preparation goal created successfully."
+            "submission_id": sub_id,
+            "message": "Solution recorded successfully."
         }), 201
 
 
-@app.route("/api/goals/<int:gid>/progress", methods=["PUT", "POST"])
-def api_update_goal_progress(gid):
+@app.route("/api/coding/export-solutions", methods=["GET"])
+def api_export_coding_solutions():
     """
-    Updates completion numbers for coding problems, mock interviews, or resume status.
+    Exports student coding solutions in Markdown or JSON format.
     """
-    from utils.goal_planner_service import goal_planner_service
+    from utils.coding_export_service import coding_export_service
 
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form
+    export_format = request.args.get("format", "markdown").lower()
+    problem_id = request.args.get("problem_id")
 
-    completed_coding = payload.get("completed_coding_problems")
-    completed_interviews = payload.get("completed_mock_interviews")
-    resume_completed = payload.get("resume_completed")
-    status = payload.get("status")
+    if export_format == "json":
+        data = coding_export_service.export_solutions_as_json(student_id, problem_id)
+        return jsonify({"success": True, "export": data}), 200
 
-    updated = goal_planner_service.update_goal_progress(
-        student_id=student_id,
-        goal_id=gid,
-        completed_coding=int(completed_coding) if completed_coding is not None else None,
-        completed_interviews=int(completed_interviews) if completed_interviews is not None else None,
-        resume_completed=bool(resume_completed) if resume_completed is not None else None,
-        status=status
-    )
-
-    if not updated:
-        return jsonify({"success": False, "error": "Goal not found or no updates provided"}), 404
-
-    return jsonify({"success": True, "message": "Goal progress updated successfully."}), 200
+    # Default: Markdown
+    md_text = coding_export_service.export_solutions_as_markdown(student_id, problem_id)
+    return jsonify({
+        "success": True,
+        "format": "markdown",
+        "content": md_text
+    }), 200
 
 
 if __name__ == "__main__":
