@@ -14856,31 +14856,55 @@ def api_admin_backup_retention():
         }), 200
 
 
-# ---------------------------------------------------------
-# Resume Section Completeness Validation Endpoint (#411)
-# ---------------------------------------------------------
-@app.route("/api/resume/validate-sections", methods=["POST"])
-def api_validate_resume_sections():
+
+@app.route("/api/reports/share", methods=["POST"])
+def api_reports_share_create():
     """
-    Analyzes resume text to ensure core sections (Education, Skills,
-    Projects, Experience, Contact) are present, providing soft warnings.
+    Creates an expiring, secure read-only report sharing link (#408).
     """
-    from utils.resume_section_validator import resume_section_validator
+    from utils.shared_reports_service import create_shared_report_link
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form or {}
 
-    payload = request.get_json(silent=True) or request.form
-    resume_text = payload.get("resume_text", "")
+    analysis_id = payload.get("analysis_id")
+    expiration = payload.get("expiration", "24h")
 
-    if not resume_text:
-        return jsonify({
-            "success": False,
-            "error": "resume_text is required for section completeness validation"
-        }), 400
+    if not analysis_id:
+        return jsonify({"success": False, "error": "analysis_id is required."}), 400
 
-    validation_result = resume_section_validator.validate_sections(resume_text)
-    return jsonify({
-        "success": True,
-        "completeness": validation_result
-    }), 200
+    try:
+        res = create_shared_report_link(analysis_id, student_id, expiration)
+        return jsonify(res), 201
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error creating share link: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/reports/share/<share_id>/revoke", methods=["POST"])
+def api_reports_share_revoke(share_id):
+    """
+    Revokes an active report share link immediately (#408).
+    """
+    from utils.shared_reports_service import revoke_shared_link
+    student_id = flask_session.get("user_id") or "default_student"
+    success = revoke_shared_link(student_id, share_id)
+    if success:
+        return jsonify({"success": True, "message": "Share link revoked successfully."}), 200
+    return jsonify({"success": False, "error": "Share link not found or already revoked."}), 404
+
+
+@app.route("/shared/report/<token>", methods=["GET"])
+def view_shared_report(token):
+    """
+    Renders read-only placement report for a shared token (#408).
+    """
+    from utils.shared_reports_service import get_shared_report_by_token
+    valid, report, err = get_shared_report_by_token(token)
+    if not valid:
+        return render_template("shared_report_error.html", error_message=err), 404
+    return render_template("shared_report_view.html", report=report)
 
 
 if __name__ == "__main__":
