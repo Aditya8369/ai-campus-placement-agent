@@ -14589,6 +14589,51 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# AI Model and Prompt Versioning Endpoints (#413)
+# ---------------------------------------------------------
+@app.route("/api/analysis/version-metadata", methods=["GET", "POST"])
+def api_analysis_version_metadata():
+    """
+    Records or retrieves AI model name, version, and prompt version hash
+    for a placement evaluation run.
+    """
+    from utils.ai_versioning_service import ai_versioning_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        info = ai_versioning_service.get_analysis_version_info(analysis_id)
+        if not info:
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        return jsonify({"success": True, "metadata": info}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        row_id = ai_versioning_service.record_analysis_version(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            model_name=payload.get("model_name"),
+            model_version=payload.get("model_version"),
+            prompt_version=payload.get("prompt_version"),
+            raw_prompt_template=payload.get("raw_prompt_template"),
+            execution_mode=payload.get("execution_mode", "production")
+        )
+
+        metadata = ai_versioning_service.get_analysis_version_info(analysis_id)
+        return jsonify({
+            "success": True,
+            "record_id": row_id,
+            "metadata": metadata
+        }), 201
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
