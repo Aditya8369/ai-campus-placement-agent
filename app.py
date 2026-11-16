@@ -14589,6 +14589,33 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Resume Language Detection Endpoint (#410)
+# ---------------------------------------------------------
+@app.route("/api/resume/detect-language", methods=["POST"])
+def api_detect_resume_language():
+    """
+    Analyzes resume text to determine primary language.
+    Provides non-blocking warnings if non-English content is detected.
+    """
+    from utils.resume_language_detector import resume_language_detector
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for language detection"
+        }), 400
+
+    result = resume_language_detector.detect_language(resume_text)
+    return jsonify({
+        "success": True,
+        "detection": result
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
