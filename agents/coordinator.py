@@ -254,6 +254,7 @@ class CoordinatorAgent:
             "conflicts": conflicts,
             "section_status": section_status,
             "skill_evidence_mapping": evidence_mapping,
+            "extracted_resume_text": resume_text,
             "security_audit": {
                 "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
                 "resume_threat": resume_threat,

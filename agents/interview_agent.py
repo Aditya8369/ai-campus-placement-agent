@@ -431,6 +431,51 @@ class InterviewAgent:
             logger.warning(f"Could not calculate competency breakdown: {e_comp}")
             competency_analysis = {}
 
+        # Timed Answer Mode Performance Metrics (#431)
+        timed_answers = [
+            a for a in answers_list
+            if isinstance(a, dict) and (
+                a.get("is_timed")
+                or a.get("time_taken_seconds") is not None
+                or (isinstance(a.get("evaluation"), dict) and a["evaluation"].get("time_taken_seconds") is not None)
+            )
+        ]
+        timing_summary = None
+        if timed_answers:
+            durations = []
+            within_limit = 0
+            for a in timed_answers:
+                t_taken = a.get("time_taken_seconds")
+                if t_taken is None and isinstance(a.get("evaluation"), dict):
+                    t_taken = a["evaluation"].get("time_taken_seconds")
+                t_limit = a.get("time_limit_seconds")
+                if t_limit is None and isinstance(a.get("evaluation"), dict):
+                    t_limit = a["evaluation"].get("time_limit_seconds")
+                if t_taken is not None:
+                    try:
+                        t_val = int(round(float(t_taken)))
+                        durations.append(t_val)
+                        if t_limit is None or t_val <= int(round(float(t_limit))):
+                            within_limit += 1
+                    except (ValueError, TypeError):
+                        pass
+
+            if durations:
+                avg_sec = int(round(sum(durations) / len(durations)))
+                m_avg = avg_sec // 60
+                s_avg = avg_sec % 60
+                timing_summary = {
+                    "total_timed_questions": len(durations),
+                    "total_time_seconds": sum(durations),
+                    "average_time_seconds": avg_sec,
+                    "average_time_per_answer_seconds": avg_sec,
+                    "average_time_formatted": f"{m_avg}:{s_avg:02d}",
+                    "formatted_avg_time": f"{m_avg}:{s_avg:02d}",
+                    "within_limit_count": within_limit,
+                    "answers_within_limit": within_limit,
+                    "within_limit_percentage": int(round((within_limit / len(durations)) * 100)),
+                }
+
         return {
             "total_answered": total_ans,
             "overall_score": overall_avg,
@@ -442,5 +487,6 @@ class InterviewAgent:
                 "average_verbal_clarity": avg_verbal,
                 "total_filler_words": total_filler_words,
                 "star_adherence_rate": f"{int(round((star_used_count / total_ans) * 100))}%" if total_ans else "0%"
-            }
+            },
+            "timing_summary": timing_summary,
         }
