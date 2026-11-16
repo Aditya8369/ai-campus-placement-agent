@@ -14589,6 +14589,76 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Analysis Reproducibility Summary Endpoints (#414)
+# ---------------------------------------------------------
+@app.route("/api/analysis/reproducibility-summary", methods=["GET", "POST"])
+def api_analysis_reproducibility_summary():
+    """
+    Generates or retrieves reproducibility summaries, verifying inputs,
+    seeds, parameters, and model versions.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        summary = analysis_reproducibility_service.get_reproducibility_summary(analysis_id)
+        if not summary:
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        return jsonify({"success": True, "reproducibility": summary}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        resume_text = payload.get("resume_text", "")
+
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        if not resume_text:
+            return jsonify({"success": False, "error": "resume_text is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        summary = analysis_reproducibility_service.record_reproducibility_summary(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            resume_text=resume_text,
+            job_description=payload.get("job_description"),
+            target_role=payload.get("target_role"),
+            model_name=payload.get("model_name", "gemini-1.5-flash"),
+            prompt_version=payload.get("prompt_version", "v2.1"),
+            temperature=float(payload.get("temperature", 0.2)),
+            seed=int(payload.get("seed", 42)),
+            scores=payload.get("scores")
+        )
+        return jsonify({
+            "success": True,
+            "reproducibility": summary
+        }), 201
+
+
+@app.route("/api/analysis/compare-reproducibility", methods=["POST"])
+def api_compare_analysis_reproducibility():
+    """
+    Compares two evaluation runs to check whether identical inputs and configs were used.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    payload = request.get_json(silent=True) or request.form
+    id_a = payload.get("analysis_id_a")
+    id_b = payload.get("analysis_id_b")
+
+    if not id_a or not id_b:
+        return jsonify({"success": False, "error": "analysis_id_a and analysis_id_b are required"}), 400
+
+    comparison = analysis_reproducibility_service.compare_runs_reproducibility(id_a, id_b)
+    return jsonify({
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
