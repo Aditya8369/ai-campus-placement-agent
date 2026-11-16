@@ -2126,6 +2126,8 @@ def analyze():
             job_description=job_description,
             company_name=selected_company
         )
+        if isinstance(analysis_payload, dict):
+            analysis_payload["extracted_resume_text"] = extracted_resume_text
 
         save_analysis(
             analysis_id=file_uuid,
@@ -3113,6 +3115,25 @@ def dashboard(analysis_id: str) -> str:
         bool(analysis_record.get("is_cached"))
     )
 
+    # Prepare Resume Keyword Highlights (#430)
+    try:
+        from utils.resume_keyword_highlighter import prepare_keyword_highlight_data
+        keyword_highlighter = prepare_keyword_highlight_data(analysis_record)
+    except Exception as kh_err:
+        logger.warning(f"Error preparing keyword highlight data for dashboard: {kh_err}")
+        keyword_highlighter = {
+            "has_resume_text": False,
+            "raw_resume_text": "",
+            "highlighted_resume_html": "",
+            "plain_escaped_resume_html": "",
+            "matched_keywords": [],
+            "missing_keywords": [],
+            "missing_keywords_with_sections": [],
+            "matched_count": 0,
+            "missing_count": 0,
+            "total_keywords": 0,
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3812,6 +3833,51 @@ def submit_interview_answer(analysis_id: str):
         if "star_score" in star_eval:
             evaluation_results["star_score"] = star_eval["star_score"]
 
+        # Timed Answer Mode metadata & telemetry (#431)
+        is_timed = bool(post_data.get("is_timed", False))
+        raw_taken = post_data.get("time_taken_seconds")
+        raw_limit = post_data.get("time_limit_seconds")
+
+        time_taken_seconds = None
+        if raw_taken is not None:
+            try:
+                time_taken_seconds = max(0, int(round(float(raw_taken))))
+            except (ValueError, TypeError):
+                time_taken_seconds = None
+
+        time_limit_seconds = None
+        if raw_limit is not None:
+            try:
+                time_limit_seconds = max(1, int(round(float(raw_limit))))
+            except (ValueError, TypeError):
+                time_limit_seconds = None
+
+        time_display = None
+        if is_timed or time_taken_seconds is not None:
+            def _format_time_sec(s_val: int) -> str:
+                m = s_val // 60
+                s = s_val % 60
+                return f"{m}:{s:02d}"
+
+            if time_taken_seconds is not None and time_limit_seconds is not None:
+                time_display = f"answered in {_format_time_sec(time_taken_seconds)} of {_format_time_sec(time_limit_seconds)}"
+            elif time_taken_seconds is not None:
+                time_display = f"answered in {_format_time_sec(time_taken_seconds)}"
+
+            evaluation_results["is_timed"] = True
+            evaluation_results["time_taken_seconds"] = time_taken_seconds
+            evaluation_results["time_limit_seconds"] = time_limit_seconds
+            evaluation_results["time_display"] = time_display
+
+            if time_limit_seconds is not None and time_taken_seconds is not None and time_taken_seconds >= time_limit_seconds:
+                evaluation_results["time_expired"] = True
+
+            # Include timing information in the feedback string if not already present
+            if time_display and "answered in" not in evaluation_results.get("feedback", "").lower():
+                time_prefix = f"({time_display.capitalize()})"
+                current_feedback = evaluation_results.get("feedback", "")
+                evaluation_results["feedback"] = f"{time_prefix} {current_feedback}".strip()
+
         # Structure response details
         response_record = {
             "question_index": question_index,
@@ -3819,7 +3885,11 @@ def submit_interview_answer(analysis_id: str):
             "question": target_question["question"],
             "is_behavioral": is_behav,
             "answer": candidate_response,
-            "evaluation": evaluation_results
+            "evaluation": evaluation_results,
+            "is_timed": is_timed or (time_taken_seconds is not None),
+            "time_taken_seconds": time_taken_seconds,
+            "time_limit_seconds": time_limit_seconds,
+            "time_display": time_display,
         }
 
         # Protection against duplicate submission attempts
@@ -3865,7 +3935,11 @@ def submit_interview_answer(analysis_id: str):
         result_payload = {
             "evaluation": evaluation_results,
             "next_index": next_question_index,
-            "completed": is_completed
+            "completed": is_completed,
+            "is_timed": is_timed or (time_taken_seconds is not None),
+            "time_taken_seconds": time_taken_seconds,
+            "time_limit_seconds": time_limit_seconds,
+            "time_display": time_display,
         }
 
         if is_completed:

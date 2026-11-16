@@ -477,6 +477,9 @@
           <a href="#matchImprovementsSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-code-merge me-1 text-primary"></i> Match Improvements
           </a>
+          <a href="#resumeKeywordHighlightSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-highlighter me-1 text-primary"></i> Keyword Match
+          </a>
           <a href="#skillGapSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-triangle-exclamation me-1 text-warning"></i> Skill Gaps ({{ r_sum.skill_gaps_count }})
           </a>
@@ -1704,6 +1707,132 @@
           <p class="mb-0 small">Skill evidence mapping will appear once technical skills are extracted from your resume.</p>
         </div>
       {% endif %}
+    </div>
+
+    <!-- Resume Keyword Match & Optimization Preview Section (#430) -->
+    {% set kh = keyword_highlighter if keyword_highlighter is defined and keyword_highlighter else none %}
+    <div class="card glass-card p-4 border-0 mb-4" id="resumeKeywordHighlightSection">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Keyword Optimization</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-highlighter text-primary me-2"></i> Resume Keyword Match &amp; Optimization Preview
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          {% if kh %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fw-semibold" id="badgeMatchedKeywordsCount">
+              <i class="fa-solid fa-circle-check me-1"></i> {{ kh.matched_count }} Matched Keywords
+            </span>
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fw-semibold" id="badgeMissingKeywordsCount">
+              <i class="fa-solid fa-circle-xmark me-1"></i> {{ kh.missing_count }} Missing Keywords
+            </span>
+          {% endif %}
+          <div class="form-check form-switch mb-0 bg-light border rounded-pill px-3 py-2 d-flex align-items-center gap-2" title="Toggle matched keyword highlights in resume text">
+            <input class="form-check-input ms-0 mt-0" type="checkbox" id="toggleKeywordHighlights" checked role="switch" aria-label="Toggle keyword highlights">
+            <label class="form-check-label small fw-semibold text-secondary" for="toggleKeywordHighlights">
+              <i class="fa-solid fa-eye text-primary me-1"></i> Highlight Keywords
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-secondary small mb-4">
+        Inspect where your resume currently incorporates critical keywords required by <b>{{ analysis.company_name }}</b>. Review the separate list of missing keywords with recommended placement sections (Skills, Projects, Experience) to optimize your ATS visibility.
+      </p>
+
+      <div class="row g-4">
+        <!-- Left Column: Extracted Resume Text with In-Context Highlights -->
+        <div class="col-lg-8">
+          <div class="card bg-light border-0 rounded-4 p-3 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom flex-wrap gap-2">
+              <div class="small fw-bold text-dark d-flex align-items-center gap-1">
+                <i class="fa-solid fa-file-lines text-primary me-1"></i>
+                <span>Extracted Resume Text</span>
+                <span class="badge bg-white text-secondary border rounded-pill ms-1">{{ analysis.resume_filename }}</span>
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <span class="small text-muted"><span class="legend-matched-indicator"></span> Matched in Resume</span>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 btn-copy-suggestion" id="btnCopyResumeText" data-copy-text="{{ kh.raw_resume_text|e if kh else '' }}" title="Copy raw resume text" aria-label="Copy raw resume text">
+                  <i class="fa-regular fa-copy me-1"></i> Copy
+                </button>
+              </div>
+            </div>
+
+            <!-- Scrollable Resume Preview Box -->
+            <div class="resume-preview-box flex-grow-1 p-3 bg-white rounded-3 border" id="resumeHighlightedContent" tabindex="0" role="region" aria-label="Extracted resume text with keyword highlights">
+              {%- if kh and kh.has_resume_text -%}
+                {{ kh.highlighted_resume_html|safe }}
+              {%- else -%}
+                <span class="text-muted fst-italic">Extracted resume text is not available for this analysis.</span>
+              {%- endif -%}
+            </div>
+
+            <!-- Matched Keywords Chips Bar -->
+            {% if kh and kh.matched_keywords %}
+              <div class="mt-3 pt-2 border-top">
+                <span class="small fw-semibold text-muted d-block mb-1">
+                  <i class="fa-solid fa-check-double text-success me-1"></i> Matched Keywords in Resume ({{ kh.matched_count }}):
+                </span>
+                <div class="d-flex flex-wrap gap-1" id="matchedKeywordsChipList">
+                  {% for kw in kh.matched_keywords %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
+                      <i class="fa-solid fa-check me-1"></i>{{ kw }}
+                    </span>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Right Column: Missing Keywords & Recommended Placement Sections -->
+        <div class="col-lg-4">
+          <div class="card bg-light border-0 rounded-4 p-3 h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <span class="small fw-bold text-dark">
+                <i class="fa-solid fa-list-check text-danger me-1"></i> Missing Keywords ({{ kh.missing_count if kh else 0 }})
+              </span>
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill small">Action Required</span>
+            </div>
+
+            <p class="small text-muted mb-3">
+              These important job description keywords were not detected in your resume. Incorporate them into the suggested section:
+            </p>
+
+            <div class="missing-keywords-scroll-box flex-grow-1 overflow-auto pe-1" style="max-height: 480px;" id="missingKeywordsList">
+              {% if kh and kh.missing_keywords_with_sections %}
+                {% for item in kh.missing_keywords_with_sections %}
+                  <div class="missing-keyword-item p-2 mb-2 bg-white rounded-3 border shadow-xs d-flex flex-column gap-1">
+                    <div class="d-flex justify-content-between align-items-center gap-1">
+                      <span class="fw-semibold text-dark small text-truncate" title="{{ item.keyword }}">
+                        {{ item.keyword }}
+                      </span>
+                      <span class="badge {{ item.badge_class }} rounded-pill px-2 py-1 small flex-shrink-0">
+                        <i class="fa-solid {{ item.icon }} me-1"></i>{{ item.section_label }}
+                      </span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center gap-1 mt-1">
+                      <small class="text-muted" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-lightbulb text-warning me-1"></i>{{ item.tip }}
+                      </small>
+                      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ item.keyword|e }}" title="Copy keyword" aria-label="Copy keyword">
+                        <i class="fa-regular fa-copy"></i>
+                      </button>
+                    </div>
+                  </div>
+                {% endfor %}
+              {% else %}
+                <div class="p-3 bg-white rounded-3 text-center text-muted border">
+                  <i class="fa-solid fa-circle-check text-success fa-2x mb-2 d-block"></i>
+                  <span class="small fw-semibold text-success d-block">All Keywords Matched!</span>
+                  <span class="small text-muted">Your resume includes all key job description competencies evaluated.</span>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Skill Gap Analysis Table -->
