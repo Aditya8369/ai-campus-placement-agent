@@ -732,6 +732,8 @@ def get_analysis(analysis_id: str) -> dict:
         if row:
             record = dict(row)
             record["results"] = json.loads(record["results_json"])
+            if not record.get("resume_text") and isinstance(record.get("results"), dict):
+                record["resume_text"] = record["results"].get("extracted_resume_text") or record["results"].get("resume_text")
             return record
         return None
     except Exception as e:
