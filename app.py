@@ -14856,24 +14856,31 @@ def api_admin_backup_retention():
         }), 200
 
 
-
-@app.route("/api/admin/cleanup-orphaned-files", methods=["POST"])
-def api_admin_cleanup_orphaned_files():
+# ---------------------------------------------------------
+# Resume Language Detection Endpoint (#410)
+# ---------------------------------------------------------
+@app.route("/api/resume/detect-language", methods=["POST"])
+def api_detect_resume_language():
     """
-    Safely scans and purges orphaned uploaded files and generated reports (#352).
+    Analyzes resume text to determine primary language.
+    Provides non-blocking warnings if non-English content is detected.
     """
-    from utils.orphan_cleanup_service import cleanup_orphaned_files
-    payload = request.get_json(silent=True) or request.form or {}
-    dry_run = bool(payload.get("dry_run", False))
-    min_age_minutes = int(payload.get("min_age_minutes", 30))
+    from utils.resume_language_detector import resume_language_detector
 
-    payload = request.get_json(silent=True) or request.form or {}
-    try:
-        result = cleanup_orphaned_files(min_age_minutes=min_age_minutes, dry_run=dry_run)
-        return jsonify(result), 200
-    except Exception as e:
-        logger.error(f"Error during orphaned files cleanup: {e}")
-        return jsonify({"success": False, "error": str(e)}), 500
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for language detection"
+        }), 400
+
+    result = resume_language_detector.detect_language(resume_text)
+    return jsonify({
+        "success": True,
+        "detection": result
+    }), 200
 
 
 if __name__ == "__main__":
