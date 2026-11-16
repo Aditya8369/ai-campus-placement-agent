@@ -14589,6 +14589,78 @@ def api_admin_backup_retention():
         }), 200
 
 
+
+@app.route("/api/internships/saved", methods=["GET", "POST"])
+def api_internships_saved():
+    """
+    List and create saved internships for the logged-in student (#357).
+    """
+    from utils.saved_internships_service import get_saved_internships, save_internship
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        items = get_saved_internships(student_id)
+        return jsonify({"success": True, "saved_internships": items}), 200
+
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        res = save_internship(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            title=payload.get("title", ""),
+            internship_id=payload.get("internship_id"),
+            location=payload.get("location", "Remote"),
+            stipend=payload.get("stipend"),
+            deadline=payload.get("deadline"),
+            url=payload.get("url"),
+            notes=payload.get("notes")
+        )
+        return jsonify(res), 201
+    except (ValueError, PermissionError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving internship: {e}")
+        return jsonify({"success": False, "error": "Internal error saving internship."}), 500
+
+
+@app.route("/api/internships/saved/<saved_id>", methods=["DELETE", "PUT"])
+def api_internships_saved_item(saved_id):
+    """
+    Delete or update personal note on a saved internship (#357).
+    """
+    from utils.saved_internships_service import remove_saved_internship, update_saved_internship_note
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = remove_saved_internship(student_id, saved_id)
+        if deleted:
+            return jsonify({"success": True, "message": "Saved internship removed."}), 200
+        return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    updated = update_saved_internship_note(student_id, saved_id, payload.get("notes", ""))
+    if updated:
+        return jsonify({"success": True, "message": "Note updated."}), 200
+    return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+
+@app.route("/api/internships/saved/<saved_id>/convert", methods=["POST"])
+def api_internships_saved_convert(saved_id):
+    """
+    Converts a saved internship to an active tracked job application (#357).
+    """
+    from utils.saved_internships_service import convert_saved_internship_to_application
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        res = convert_saved_internship_to_application(student_id, saved_id)
+        return jsonify(res), 200
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error converting internship to application: {e}")
+        return jsonify({"success": False, "error": "Internal error converting internship."}), 500
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
