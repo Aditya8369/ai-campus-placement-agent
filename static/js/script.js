@@ -562,6 +562,17 @@ function initCompanyExplorer() {
             ${requiredSkillsHtml}
             ${prepTipsHtml}
           </div>
+
+          <!-- Download 1-Page Cheat Sheet Action Strip (#433) -->
+          <div class="d-flex justify-content-between align-items-center p-3 bg-light rounded-3 border mt-3">
+            <div>
+              <span class="small fw-bold text-dark d-block"><i class="fa-solid fa-file-pdf text-success me-1"></i>Printable 1-Page Cheat Sheet</span>
+              <span class="small text-muted" style="font-size: 0.75rem;">Company overview, interview rounds, frequent topics, and skill gaps formatted for revision on the go.</span>
+            </div>
+            <a href="/company/${encodeURIComponent(data.company)}/cheat-sheet" class="btn btn-sm btn-success rounded-pill px-3 py-1.5 text-decoration-none">
+              <i class="fa-solid fa-download me-1"></i>Download Cheat Sheet
+            </a>
+          </div>
         `;
       } else {
         modalBody.innerHTML = `<div class="alert alert-warning">No details found for ${company}.</div>`;

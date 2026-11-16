@@ -340,6 +340,17 @@ The following features are being considered:
 
 ---
 
+## Company Interview Cheat Sheet (One-Page Revision PDF)
+
+To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:
+- **One-Page Layout Guarantee**: Compact ReportLab formatting with defensive text truncation ensuring all company details fit strictly onto a single printed page.
+- **Drive-Focused Content**: Includes company overview, recruitment workflow, technical and HR interview rounds, key interview topics, top required skills, and drive-day revision tips.
+- **Personalized Skill Gap Targeting**: Seamlessly integrates the student's top 3 identified skill gaps for that company when previous analyses exist; skips the section cleanly and gracefully when the candidate has no analysis.
+- **XML/HTML Entity Escaping**: Robust escaping prevents rendering errors and parser crashes on special symbols such as `&`, `<`, `>`, quotes, and `C++`.
+- **Direct Downloads**: Accessible from the Company Explorer modal, the Companies Directory (`/companies`), and the Preparation Checklist (`/company-checklist`).
+
+---
+
 ## Privacy & Data Protection
 
 The AI Campus Placement Agent is committed to transparent, student-friendly data practices:
