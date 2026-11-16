@@ -14589,6 +14589,33 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Resume Section Completeness Validation Endpoint (#411)
+# ---------------------------------------------------------
+@app.route("/api/resume/validate-sections", methods=["POST"])
+def api_validate_resume_sections():
+    """
+    Analyzes resume text to ensure core sections (Education, Skills,
+    Projects, Experience, Contact) are present, providing soft warnings.
+    """
+    from utils.resume_section_validator import resume_section_validator
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for section completeness validation"
+        }), 400
+
+    validation_result = resume_section_validator.validate_sections(resume_text)
+    return jsonify({
+        "success": True,
+        "completeness": validation_result
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
