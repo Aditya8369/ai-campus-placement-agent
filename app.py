@@ -14857,74 +14857,30 @@ def api_admin_backup_retention():
 
 
 # ---------------------------------------------------------
-# Duplicate Resume Upload Detection Endpoints (#412)
+# Resume Section Completeness Validation Endpoint (#411)
 # ---------------------------------------------------------
-@app.route("/api/resume/check-duplicate", methods=["POST"])
-def api_check_duplicate_resume():
+@app.route("/api/resume/validate-sections", methods=["POST"])
+def api_validate_resume_sections():
     """
-    Checks if an uploaded resume file or text matches previous uploads.
-    Returns status without blocking the user.
+    Analyzes resume text to ensure core sections (Education, Skills,
+    Projects, Experience, Contact) are present, providing soft warnings.
     """
-    from utils.duplicate_resume_service import duplicate_resume_service
+    from utils.resume_section_validator import resume_section_validator
 
-    student_id = flask_session.get("user_id") or "default_student"
-
-    if "resume" in request.files:
-        file = request.files["resume"]
-        file_bytes = file.read()
-        filename = file.filename or "resume.pdf"
-        extracted_text = request.form.get("extracted_text", "")
-    else:
-        payload = request.get_json(silent=True) or request.form
-        content = payload.get("content", "")
-        file_bytes = content.encode("utf-8")
-        filename = payload.get("filename", "resume.txt")
-        extracted_text = payload.get("extracted_text") or content
-
-    if not file_bytes:
-        return jsonify({"success": False, "error": "No resume file or content provided"}), 400
-
-    dup_status = duplicate_resume_service.check_for_duplicate(
-        student_id=student_id,
-        file_bytes=file_bytes,
-        filename=filename,
-        extracted_text=extracted_text
-    )
-
-    return jsonify({
-        "success": True,
-        "duplicate_check": dup_status
-    }), 200
-
-
-@app.route("/api/resume/record-fingerprint", methods=["POST"])
-def api_record_resume_fingerprint():
-    """
-    Records a resume fingerprint after successful processing or user confirmation.
-    """
-    from utils.duplicate_resume_service import duplicate_resume_service
-
-    student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form
-    content = payload.get("content", "")
-    filename = payload.get("filename", "resume.pdf")
+    resume_text = payload.get("resume_text", "")
 
-    if not content:
-        return jsonify({"success": False, "error": "content is required"}), 400
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for section completeness validation"
+        }), 400
 
-    file_bytes = content.encode("utf-8")
-    record_id = duplicate_resume_service.record_upload_fingerprint(
-        student_id=student_id,
-        file_bytes=file_bytes,
-        filename=filename,
-        extracted_text=content
-    )
-
+    validation_result = resume_section_validator.validate_sections(resume_text)
     return jsonify({
         "success": True,
-        "record_id": record_id,
-        "message": "Resume fingerprint registered successfully."
-    }), 201
+        "completeness": validation_result
+    }), 200
 
 
 if __name__ == "__main__":
