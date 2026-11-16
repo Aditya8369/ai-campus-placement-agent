@@ -281,6 +281,13 @@
               <i class="fa-solid fa-circle-info me-1"></i> View Profile
             </button>
             <a
+              href="/company/{{ company.company_name }}/cheat-sheet"
+              class="btn btn-outline-success btn-sm rounded-3"
+              title="Download 1-Page Cheat Sheet PDF"
+            >
+              <i class="fa-solid fa-file-pdf me-1"></i> Cheat Sheet
+            </a>
+            <a
               href="/company-checklist?company={{ company.company_name }}"
               class="btn btn-primary btn-sm rounded-3"
               title="View Placement Checklist"
@@ -401,6 +408,9 @@
               </div>
 
               <div class="modal-footer border-top p-3 bg-light">
+                <a href="/company/{{ company.company_name }}/cheat-sheet" class="btn btn-success rounded-3">
+                  <i class="fa-solid fa-file-pdf me-1"></i> Download Cheat Sheet
+                </a>
                 <a href="/company-checklist?company={{ company.company_name }}" class="btn btn-primary rounded-3">
                   <i class="fa-solid fa-list-check me-1"></i> Go to Preparation Checklist
                 </a>
