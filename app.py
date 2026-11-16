@@ -14589,6 +14589,39 @@ def api_admin_backup_retention():
         }), 200
 
 
+# ---------------------------------------------------------
+# Secure Coding Sandbox Endpoints (#420)
+# ---------------------------------------------------------
+@app.route("/api/coding/execute-sandboxed", methods=["POST"])
+def api_execute_coding_sandbox():
+    """
+    Executes student programming solutions with strict safety and resource limits.
+    """
+    from utils.secure_coding_sandbox import secure_coding_sandbox
+
+    payload = request.get_json(silent=True) or request.form
+    code_str = payload.get("code", "")
+    timeout = payload.get("timeout_seconds")
+    max_chars = payload.get("max_output_chars")
+
+    if not code_str:
+        return jsonify({"success": False, "error": "code is required"}), 400
+
+    timeout_val = float(timeout) if timeout else None
+    max_chars_val = int(max_chars) if max_chars else None
+
+    result = secure_coding_sandbox.execute_code(
+        code_str=code_str,
+        timeout_seconds=timeout_val,
+        max_output_chars=max_chars_val
+    )
+
+    return jsonify({
+        "success": result["status"] == "SUCCESS",
+        "result": result
+    }), 200
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
