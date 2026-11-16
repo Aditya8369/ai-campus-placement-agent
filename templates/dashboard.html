@@ -486,6 +486,9 @@
           <a href="#outreachSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-paper-plane me-1 text-info"></i> Outreach Pitch
           </a>
+          <a href="#selfIntroSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-id-card-clip me-1 text-primary"></i> Self Introduction
+          </a>
           <a href="/interview/{{ analysis_id }}" class="btn btn-sm btn-custom-primary rounded-pill px-3">
             <i class="fa-solid fa-comments me-1"></i> Practice Interview
           </a>
@@ -1034,6 +1037,179 @@
                 </li>
               {% endfor %}
             </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Self Introduction ('Tell Me About Yourself') Studio & Practice Coach (#432) -->
+    <div class="card glass-card p-4 border-0 mb-4" id="selfIntroSectionCard" data-self-intro='{{ initial_self_intro_json|safe }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">Interview Elevator Pitch Studio</span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-solid fa-id-card-clip text-primary me-2"></i> "Tell Me About Yourself" Pitch Builder &amp; Practice
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+            <i class="fa-solid fa-microphone-lines me-1"></i> 140 words/min Speaking Rate
+          </span>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">
+        Master your HR round opening with a tailored <strong>Present &rarr; Past &rarr; Future</strong> elevator pitch. Built strictly from your verified resume projects and achievements — no generic filler or fabricated qualifications.
+      </p>
+
+      <!-- Target Context & Regenerate Controls -->
+      <div class="p-3 bg-light rounded-4 border mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-lg-5 col-md-6 col-12">
+            <label for="selfIntroRoleInput" class="form-label small fw-bold text-secondary mb-1">Target Role / Designation:</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-briefcase text-primary"></i></span>
+              <input type="text" class="form-control" id="selfIntroRoleInput" value="{{ initial_self_intro.target_role|default(analysis.target_role|default('Software Engineer')) }}" placeholder="e.g. Software Engineer, Data Analyst">
+            </div>
+          </div>
+          <div class="col-lg-5 col-md-6 col-12">
+            <label for="selfIntroCompanyInput" class="form-label small fw-bold text-secondary mb-1">Target Company:</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-building text-primary"></i></span>
+              <input type="text" class="form-control" id="selfIntroCompanyInput" value="{{ initial_self_intro.target_company|default(analysis.company_name|default('General')) }}" placeholder="e.g. Google, Amazon, Microsoft">
+            </div>
+          </div>
+          <div class="col-lg-2 col-12 text-lg-end mt-lg-4">
+            <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnRegenerateSelfIntro" data-analysis-id="{{ analysis_id }}">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="selfIntroSpinner" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-wand-magic-sparkles me-1" id="selfIntroIcon"></i> Regenerate
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Studio Layout: Left Side (Script Generator & Editor), Right Side (Practice Coach) -->
+      <div class="row g-4">
+        <!-- Script Builder Column -->
+        <div class="col-lg-7 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <!-- Length Selector Pills -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+              <div class="btn-group" role="group" id="selfIntroLengthGroup" aria-label="Speech Duration Selector">
+                <button type="button" class="btn btn-sm btn-primary active rounded-start-pill px-3 self-intro-len-btn" data-duration="30">
+                  <i class="fa-solid fa-stopwatch me-1"></i> 30 Seconds
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary px-3 self-intro-len-btn" data-duration="60">
+                  <i class="fa-solid fa-clock me-1"></i> 60 Seconds
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-end-pill px-3 self-intro-len-btn" data-duration="90">
+                  <i class="fa-solid fa-hourglass-half me-1"></i> 90 Seconds
+                </button>
+              </div>
+
+              <!-- Live Counter & Timer Badge -->
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-dark border rounded-pill px-3 py-2 small" id="selfIntroLiveStats">
+                  <i class="fa-regular fa-clock text-primary me-1"></i>
+                  <span id="selfIntroSpeakingTime">{{ initial_self_intro.scripts['30s'].estimated_speaking_time|default('32s') }}</span>
+                  <span class="text-muted ms-1">(<span id="selfIntroWordCount">{{ initial_self_intro.scripts['30s'].word_count|default(75) }}</span> words)</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Focus / Structure breakdown alert -->
+            <div class="alert alert-light border rounded-3 p-2 mb-3 small d-flex align-items-center gap-2" id="selfIntroStructureHint">
+              <i class="fa-solid fa-circle-info text-primary"></i>
+              <span id="selfIntroFocusText"><strong>Structure Focus:</strong> {{ initial_self_intro.scripts['30s'].structure_breakdown.present|default('Present background & core value proposition') }}</span>
+            </div>
+
+            <!-- Editable Script Area -->
+            <div class="mb-3 flex-grow-1">
+              <label for="selfIntroScriptEditor" class="form-label small fw-bold text-secondary mb-1">Your Pitch Script (Live Editable):</label>
+              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroScriptEditor" rows="7" style="line-height: 1.6;" placeholder="Type or customize your introduction pitch here...">{{ initial_self_intro.scripts['30s'].script }}</textarea>
+            </div>
+
+            <!-- Action buttons: Copy to Clipboard & Send to Practice -->
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCopySelfIntroScript">
+                <i class="fa-regular fa-copy me-1"></i> Copy Pitch
+              </button>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnLoadIntoPractice">
+                <i class="fa-solid fa-arrow-right-to-bracket me-1"></i> Load into Practice Coach
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Practice Coach Column -->
+        <div class="col-lg-5 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold text-dark mb-0">
+                <i class="fa-solid fa-dumbbell text-success me-2"></i> Practice &amp; Pitch Feedback
+              </h6>
+              <span class="badge bg-success-subtle text-success border rounded-pill small">AI Reviewer</span>
+            </div>
+
+            <p class="text-muted small mb-2">
+              Type or rehearse your spoken version. We'll check your Present-Past-Future flow, clarity, and pacing.
+            </p>
+
+            <div class="mb-3">
+              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroPracticeInput" rows="5" placeholder="Paste or type your delivered introduction here..."></textarea>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <div class="small text-muted" id="practiceInputStats">
+                0 words &bull; ~0s speaking time
+              </div>
+              <button type="button" class="btn btn-sm btn-custom-success rounded-pill px-3" id="btnAnalyzePracticePitch" data-analysis-id="{{ analysis_id }}">
+                <span class="spinner-border spinner-border-sm me-1 d-none" id="practiceSpinner" role="status" aria-hidden="true"></span>
+                <i class="fa-solid fa-bullseye me-1" id="practiceIcon"></i> Analyze Pitch
+              </button>
+            </div>
+
+            <!-- Feedback Results Card (Initially placeholder or hidden) -->
+            <div id="practiceFeedbackResults" class="p-3 bg-white rounded-3 border flex-grow-1" style="display: none;">
+              <!-- Score and Verdict -->
+              <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+                <span class="small fw-bold text-secondary">Clarity &amp; Impact:</span>
+                <span class="badge bg-primary rounded-pill px-2 py-1" id="practiceClarityScore">85 / 100</span>
+              </div>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="small fw-bold text-secondary">Pacing Verdict:</span>
+                <span class="badge bg-info text-dark rounded-pill" id="practiceLengthVerdict">Ideal Length</span>
+              </div>
+
+              <!-- Structure Pillars Checklist -->
+              <h6 class="small fw-bold text-dark mb-2">Structure Evaluation:</h6>
+              <div class="d-flex flex-column gap-1 mb-3">
+                <div class="d-flex align-items-center justify-content-between p-1 px-2 rounded bg-light small" id="structurePresentRow">
+                  <span><strong>1. Present:</strong> Current role/status &amp; core skills</span>
+                  <span id="badgePresentCheck"><i class="fa-solid fa-circle-check text-success"></i></span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between p-1 px-2 rounded bg-light small" id="structurePastRow">
+                  <span><strong>2. Past:</strong> Relevant projects/experience</span>
+                  <span id="badgePastCheck"><i class="fa-solid fa-circle-check text-success"></i></span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between p-1 px-2 rounded bg-light small" id="structureFutureRow">
+                  <span><strong>3. Future:</strong> Alignment with company/role</span>
+                  <span id="badgeFutureCheck"><i class="fa-solid fa-circle-check text-success"></i></span>
+                </div>
+              </div>
+
+              <!-- Feedback Commentary -->
+              <div class="small text-secondary mb-2" id="practiceFeedbackOverview"></div>
+              
+              <!-- Strengths & Suggestions -->
+              <div id="practiceStrengthsList" class="mb-2"></div>
+              <div id="practiceImprovementsList"></div>
+            </div>
+
+            <div id="practiceFeedbackPlaceholder" class="p-4 bg-white rounded-3 border text-center text-muted small flex-grow-1 d-flex flex-column justify-content-center align-items-center">
+              <i class="fa-solid fa-chalkboard-user fa-2x text-secondary mb-2 opacity-50"></i>
+              <span>Enter your practice pitch and click "Analyze Pitch" to get instant coaching on structure, clarity, and pacing.</span>
+            </div>
           </div>
         </div>
       </div>

@@ -289,6 +289,7 @@ from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
+from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
 from utils.i18n import (
     get_translation,
@@ -885,6 +886,7 @@ internship_agent = InternshipRecommendationAgent()
 linkedin_agent = LinkedInAgent()
 coding_practice_agent = CodingPracticeAgent()
 outreach_agent = OutreachGeneratorAgent()
+self_introduction_agent = SelfIntroductionAgent()
 
 def get_available_companies() -> list:
     """
@@ -2862,6 +2864,13 @@ def dashboard(analysis_id: str) -> str:
     else:
         initial_outreach = outreach_agent.generate_outreach(analysis_record, tone="formal")
 
+    # Generate initial Self-Introduction scripts ('Tell Me About Yourself') (#432)
+    initial_self_intro = self_introduction_agent.generate_scripts(
+        analysis_record=analysis_record,
+        target_role=analysis_record.get("target_role") or "Software Engineer",
+        target_company=analysis_record.get("company_name", "General"),
+    )
+
     # Target-scoped longitudinal comparison (#297)
     target_company = analysis_record.get("company_name", "General")
     target_role = analysis_record.get("target_role")
@@ -3129,6 +3138,8 @@ def dashboard(analysis_id: str) -> str:
         streak=streak_data,
         comparison=comparison,
         comparison_json=json.dumps(comparison),
+        initial_self_intro=initial_self_intro,
+        initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo
     )
 
@@ -10770,6 +10781,119 @@ def api_download_outreach(analysis_id: str = None):
     except Exception as e:
         logger.error(f"Error serving outreach download: {str(e)}")
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Self-Introduction ('Tell Me About Yourself') Endpoints (#432)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/self-introduction/<analysis_id>/generate", methods=["POST"])
+def api_generate_self_intro(analysis_id: str):
+    """
+    Generates 30s, 60s, and 90s self-introduction scripts from verified resume details
+    and target role/company context without fabricating achievements (#432).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            return jsonify({
+                "success": False,
+                "error": "Analysis record not found or access denied."
+            }), 404
+
+        payload = request.get_json(silent=True) or request.form or {}
+        role_title = payload.get("role_title") or analysis_record.get("target_role") or "Software Engineer"
+        company_name = payload.get("company_name") or analysis_record.get("company_name") or "General"
+
+        intro_data = self_introduction_agent.generate_scripts(
+            analysis_record=analysis_record,
+            target_role=role_title,
+            target_company=company_name
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "data": intro_data
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error generating self-introduction scripts for {analysis_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to generate self-introduction: {str(e)}"
+        }), 500
+
+
+@app.route("/api/self-introduction/calculate-time", methods=["POST"])
+def api_calculate_self_intro_time():
+    """
+    Computes word count, character count, estimated speaking duration, and formatted display
+    for arbitrary speech script text in real-time (#432).
+    """
+    try:
+        payload = request.get_json(silent=True) or request.form or {}
+        text = payload.get("text", "")
+        time_metrics = calculate_speaking_time(text)
+        return jsonify({
+            "success": True,
+            "metrics": time_metrics
+        }), 200
+    except Exception as e:
+        logger.error(f"Error calculating speaking time: {e}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route("/api/self-introduction/<analysis_id>/practice", methods=["POST"])
+def api_practice_self_intro(analysis_id: str):
+    """
+    Evaluates student practice delivery text against the Present-Past-Future framework,
+    clarity, pacing, and target duration (#432).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            return jsonify({
+                "success": False,
+                "error": "Analysis record not found or access denied."
+            }), 404
+
+        payload = request.get_json(silent=True) or request.form or {}
+        practice_text = (payload.get("practice_text") or payload.get("text") or "").strip()
+        target_duration = int(payload.get("target_duration") or 60)
+        target_role = payload.get("role_title") or analysis_record.get("target_role") or "Software Engineer"
+        target_company = payload.get("company_name") or analysis_record.get("company_name") or "General"
+
+        if not practice_text:
+            return jsonify({
+                "success": False,
+                "error": "Practice script text cannot be empty."
+            }), 400
+
+        evaluation = self_introduction_agent.evaluate_practice_delivery(
+            practice_text=practice_text,
+            target_duration=target_duration,
+            target_role=target_role,
+            target_company=target_company,
+            analysis_record=analysis_record
+        )
+
+        return jsonify({
+            "success": True,
+            "analysis_id": analysis_id,
+            "evaluation": evaluation
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error evaluating self-introduction practice for {analysis_id}: {e}")
+        return jsonify({
+            "success": False,
+            "error": f"Failed to evaluate practice delivery: {str(e)}"
+        }), 500
+
 
 @app.route("/api/analyses/recent", methods=["GET"])
 def api_recent_analyses():
