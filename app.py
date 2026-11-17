@@ -151,6 +151,23 @@ from utils.database import (
     calculate_gemini_call_cost,
     get_user_leaderboard_opt_in,
     set_user_leaderboard_opt_in,
+    save_gd_attempt,
+    get_student_gd_attempts,
+    get_gd_attempt_by_id,
+)
+from utils.group_discussion_service import (
+    load_gd_topics,
+    get_topic_by_id,
+    get_random_topic,
+    get_topics_by_category,
+    validate_contribution,
+    evaluate_gd_contribution,
+    record_and_evaluate_gd_attempt,
+    VALID_CATEGORIES,
+    VALID_CONTRIBUTION_TYPES,
+    MIN_WORD_COUNT,
+    RECOMMENDED_MIN_WORDS,
+    RECOMMENDED_MAX_WORDS,
 )
 from utils.topic_practice_service import (
     get_supported_topics,
@@ -450,6 +467,11 @@ def require_login():
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
+        "group_discussion_view",
+        "api_get_gd_topics",
+        "api_random_gd_topic",
+        "api_evaluate_gd_contribution",
+        "api_get_gd_history",
     }
 
     user_id = flask_session.get("user_id")
@@ -14866,6 +14888,148 @@ def api_user_storage_quota():
     student_id = flask_session.get("user_id") or "default_student"
     summary = get_user_storage_summary(student_id)
     return jsonify(summary), 200
+
+
+# ---------------------------------------------------------------------------
+# Group Discussion Practice & AI Evaluation Endpoints (#427)
+# ---------------------------------------------------------------------------
+
+@app.route("/group-discussion", methods=["GET"])
+def group_discussion_view():
+    """
+    Renders the interactive Group Discussion Practice page (#427).
+    Allows students to browse curated campus GD topics across Current Affairs,
+    Technology, and Abstract categories, spin for random topics, write structured
+    contributions (opening, rebuttal, conclusion), and receive multi-criteria AI feedback.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    all_topics = load_gd_topics()
+    grouped_topics = get_topics_by_category()
+
+    # Pre-select topic if topic_id is provided in query params, else choose random
+    selected_topic_id = request.args.get("topic_id")
+    initial_topic = None
+    if selected_topic_id:
+        initial_topic = get_topic_by_id(selected_topic_id)
+    if not initial_topic and all_topics:
+        initial_topic = get_random_topic()
+
+    past_attempts = get_student_gd_attempts(student_id, limit=10)
+
+    return render_template(
+        "group_discussion.html",
+        topics=all_topics,
+        grouped_topics=grouped_topics,
+        initial_topic=initial_topic,
+        categories=VALID_CATEGORIES,
+        contribution_types=VALID_CONTRIBUTION_TYPES,
+        past_attempts=past_attempts,
+        student_id=student_id,
+        min_words=MIN_WORD_COUNT,
+        recommended_min_words=RECOMMENDED_MIN_WORDS,
+        recommended_max_words=RECOMMENDED_MAX_WORDS,
+    )
+
+
+@app.route("/api/group-discussion/topics", methods=["GET"])
+def api_get_gd_topics():
+    """Returns the full collection of group discussion topics (#427)."""
+    category = request.args.get("category")
+    if category:
+        all_topics = load_gd_topics()
+        filtered = [t for t in all_topics if t.get("category", "").lower() == category.lower()]
+        return jsonify({"status": "success", "count": len(filtered), "topics": filtered}), 200
+
+    grouped = get_topics_by_category()
+    all_topics = load_gd_topics()
+    return jsonify({
+        "status": "success",
+        "count": len(all_topics),
+        "topics": all_topics,
+        "grouped": grouped
+    }), 200
+
+
+@app.route("/api/group-discussion/random-topic", methods=["GET"])
+def api_random_gd_topic():
+    """Selects and returns a random group discussion topic, optionally filtered by category (#427)."""
+    category = request.args.get("category")
+    try:
+        topic = get_random_topic(category=category)
+        return jsonify({
+            "status": "success",
+            "topic": topic
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error picking random GD topic: {e}")
+        return jsonify({"status": "error", "message": "Failed to pick random GD topic."}), 500
+
+
+@app.route("/api/group-discussion/evaluate", methods=["POST"])
+def api_evaluate_gd_contribution():
+    """
+    Evaluates a student's group discussion submission and records the attempt (#427).
+    Rejects empty or short answers (<30 words) with clear error message.
+    Scores across Content, Structure, Balance, and Clarity, and suggests stronger opening and missed counterpoint.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    topic_title = payload.get("topic_title", "").strip()
+    topic_id = payload.get("topic_id", "").strip() or None
+    category = payload.get("category", "technology").strip().lower()
+    contribution_type = payload.get("contribution_type", "opening").strip().lower()
+    contribution_text = payload.get("contribution_text", "").strip()
+    topic_description = payload.get("topic_description", "").strip() or None
+
+    if not topic_title:
+        return jsonify({"status": "error", "message": "Topic title is required."}), 400
+
+    # Retrieve topic details if available for context
+    topic_angles = None
+    if topic_id:
+        topic_meta = get_topic_by_id(topic_id)
+        if topic_meta:
+            topic_description = topic_description or topic_meta.get("description")
+            topic_angles = topic_meta.get("key_angles")
+
+    try:
+        result = record_and_evaluate_gd_attempt(
+            student_id=student_id,
+            topic_title=topic_title,
+            category=category,
+            contribution_type=contribution_type,
+            contribution_text=contribution_text,
+            topic_id=topic_id,
+            topic_description=topic_description,
+            topic_angles=topic_angles
+        )
+        return jsonify({
+            "status": "success",
+            "data": result
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error evaluating group discussion contribution: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate contribution. Please try again."}), 500
+
+
+@app.route("/api/group-discussion/history", methods=["GET"])
+def api_get_gd_history():
+    """Retrieves previous group discussion attempts for the authenticated student (#427)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    limit = int(request.args.get("limit", 10))
+    attempts = get_student_gd_attempts(student_id, limit=limit)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(attempts),
+        "attempts": attempts
+    }), 200
+
 
 
 if __name__ == "__main__":
