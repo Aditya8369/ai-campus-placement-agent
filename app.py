@@ -450,6 +450,9 @@ def require_login():
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
+        "openapi_json",
+        "api_docs_ui",
+        "api_redoc_ui",
     }
 
     user_id = flask_session.get("user_id")
@@ -1801,6 +1804,30 @@ def api_walkthrough_reset():
         "dismissed": False,
         "message": "Walkthrough reset successfully."
     }), 200
+
+
+# ============================================================================
+# OPENAPI 3.0.3 DOCUMENTATION & INTERACTIVE EXPLORER (#410)
+# ============================================================================
+
+@app.route("/api/openapi.json", methods=["GET"])
+def openapi_json():
+    """Returns the complete OpenAPI 3.0.3 specification JSON for API endpoints (#410)."""
+    from utils.openapi_spec import get_openapi_spec
+    return jsonify(get_openapi_spec()), 200
+
+
+@app.route("/docs", methods=["GET"])
+@app.route("/api/docs", methods=["GET"])
+def api_docs_ui():
+    """Renders interactive Swagger UI for API exploration and testing (#410)."""
+    return render_template("swagger_ui.html")
+
+
+@app.route("/redoc", methods=["GET"])
+def api_redoc_ui():
+    """Renders Redoc three-column API documentation reference viewer (#410)."""
+    return render_template("redoc.html")
 
 
 @app.route("/")
