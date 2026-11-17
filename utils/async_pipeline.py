@@ -334,3 +334,10 @@ def _run_analysis_pipeline(
             status="error",
             extra={"error_details": str(exc)}
         )
+    finally:
+        if analysis_id:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=analysis_id)
+            except Exception as clean_err:
+                logger.warning(f"Failed to clean up temporary upload for {analysis_id}: {clean_err}")

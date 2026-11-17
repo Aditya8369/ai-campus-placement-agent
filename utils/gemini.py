@@ -468,6 +468,15 @@ def generate_json_response(
         temperature=0.2,
     )
 
+    # Defense-in-depth: Ensure outgoing model prompt contains no emails or phone numbers (#500)
+    effective_prompt = prompt
+    if getattr(config, "ENABLE_PII_REDACTION", True):
+        try:
+            from utils.pii_redactor import redact_pii
+            effective_prompt = redact_pii(prompt)
+        except Exception as pii_err:
+            logger.warning(f"PII redaction skipped due to error: {pii_err}")
+
     for attempt in range(1, total_attempts + 1):
         raw_text = ""
         start_time = time.time()
@@ -475,7 +484,7 @@ def generate_json_response(
             logger.info(f"Invoking Gemini model: {config.GEMINI_MODEL} (attempt {attempt}/{total_attempts})")
             response = client.models.generate_content(
                 model=config.GEMINI_MODEL,
-                contents=prompt,
+                contents=effective_prompt,
                 config=cfg,
             )
 
