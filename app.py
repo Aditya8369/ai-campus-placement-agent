@@ -3615,7 +3615,6 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        keyword_highlighter=keyword_highlighter,
         bullet_rewrites=bullet_rewrites
     )
 
