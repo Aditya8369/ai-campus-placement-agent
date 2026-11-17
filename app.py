@@ -12081,7 +12081,8 @@ def api_application_detail_operations(app_id: str):
                 resume_snapshot["version"] if resume_snapshot
                 else (None if resume_link_supplied else existing.get("resume_version"))
             ),
-            job_description_snapshot=job_description or None
+            job_description_snapshot=job_description or None,
+            deadline_date=deadline_date
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)

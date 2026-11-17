@@ -1403,8 +1403,9 @@ def save_job_application(
             INSERT OR REPLACE INTO job_applications (
                 id, student_id, company_name, role_title, status, application_date,
                 job_url, job_description, notes, location, job_type, experience_level,
-                resume_analysis_id, resume_filename, resume_version, job_description_snapshot
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                resume_analysis_id, resume_filename, resume_version, job_description_snapshot,
+                deadline_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             app_id,
             student_id.strip() if student_id else "default_student",
@@ -1421,7 +1422,8 @@ def save_job_application(
             (resume_analysis_id or "").strip() or None,
             (resume_filename or "").strip() or None,
             resume_version,
-            (job_description_snapshot or "").strip() or None
+            (job_description_snapshot or "").strip() or None,
+            clean_deadline
         ))
         conn.commit()
         logger.info(f"Saved job application {app_id} for student {student_id}")
@@ -1591,7 +1593,8 @@ def update_job_application(
                 resume_analysis_id = ?,
                 resume_filename = ?,
                 resume_version = ?,
-                job_description_snapshot = ?
+                job_description_snapshot = ?,
+                deadline_date = ?
             WHERE id = ? AND student_id = ?
         """, (
             company_name.strip(),
@@ -1608,6 +1611,7 @@ def update_job_application(
             (resume_filename or "").strip() or None,
             resume_version,
             (job_description_snapshot or "").strip() or None,
+            clean_deadline,
             app_id.strip(),
             student_id.strip() if student_id else "default_student"
         ))
@@ -4490,6 +4494,7 @@ def record_viewed_job(
     Records or bumps a job into the student's recently viewed list (#201).
     Enforces per-student data isolation and updates viewed_at on revisit.
     """
+    import datetime
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -4501,19 +4506,22 @@ def record_viewed_job(
         loc = (location or "Remote").strip()
         sal = salary_range.strip() if salary_range else None
         url = apply_url.strip() if apply_url else None
+        # Built in Python instead of datetime('now', 'subsec'): that modifier needs
+        # SQLite 3.42+ and gives NULL on older versions, which breaks the ordering.
+        viewed_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
         cursor.execute("""
             INSERT INTO recently_viewed_jobs (
                 id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'subsec'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(student_id, job_id) DO UPDATE SET
                 company_name = excluded.company_name,
                 role_title = excluded.role_title,
                 location = excluded.location,
                 salary_range = excluded.salary_range,
                 apply_url = excluded.apply_url,
-                viewed_at = datetime('now', 'subsec')
-        """, (rec_id, s_id, j_id, comp, role, loc, sal, url))
+                viewed_at = excluded.viewed_at
+        """, (rec_id, s_id, j_id, comp, role, loc, sal, url, viewed_at))
         conn.commit()
 
         cursor.execute("SELECT * FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, j_id))
