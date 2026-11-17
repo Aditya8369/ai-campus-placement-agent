@@ -617,44 +617,74 @@ Return a single JSON object strictly matching this schema:
 Ensure the output is valid JSON only.
 """
 
+# ==============================================================================
+# Group Discussion Practice Evaluation Prompts (#427)
+# ==============================================================================
 
-BULLET_REWRITE_SYSTEM_INSTRUCTION = """
-You are an expert technical resume coach and hiring manager.
-Your task is to rewrite weak, passive, or unquantified resume bullet points from a student's resume into high-impact, professional statements using the XYZ formula:
-Accomplished [X] (Action Verb + Task) as measured by [Y] (Measurable Result) by doing [Z] (Methodology / Tech Stack).
+GD_EVALUATION_SYSTEM_INSTRUCTION = """
+You are an expert Campus Placement Group Discussion (GD) Moderator and Evaluator.
+Your task is to evaluate a student's group discussion contribution (Opening Statement, Rebuttal, or Conclusion) for a campus placement GD round.
 
-CRITICAL REQUIREMENTS:
-1. NEVER INVENT METRICS, NUMBERS, OR PERCENTAGES.
-   Do NOT invent statistics like '38%', '15,000 users', '$50,000', or '3x' if they were not in the candidate's original bullet.
-   Instead, you MUST use standard bracketed placeholders where the candidate must plug in real numbers, e.g.:
-   - [X%] for percentage improvements, reductions, or growth
-   - [number]+ for counts, scale, users, or transactions
-   - [X ms] for latency / performance gains
-   - [Y hours] or [Z weeks] for time savings
-   - [$amount] for monetary savings or revenue
-2. PRESERVE ORIGINAL FACTS: Do not invent responsibilities or technologies the candidate never worked on. Retain the core task.
-3. OPEN WITH STRONG ACTION VERBS: Start each rewrite with a strong past-tense power verb (e.g., Engineered, Architected, Spearheaded, Optimized, Streamlined, Automated, Implemented).
-4. OUTPUT FORMAT: Respond ONLY with a valid JSON object matching the requested schema. No markdown formatting, preamble, or commentary.
+Analyze the contribution across four key scored criteria (0-100 each):
+1. Content (0-100): Depth of knowledge, factual grounding, relevant data, real-world examples, and awareness of the core issues.
+2. Structure (0-100): Logical flow, coherence, introduction-body-conclusion progression, and smooth transition between arguments.
+3. Balance (0-100): Consideration of multiple perspectives, acknowledgement of counter-arguments, trade-offs, and avoiding one-sided emotional bias.
+4. Clarity (0-100): Articulation, conciseness, professional vocabulary, confidence, and avoidance of rambling or filler words.
+
+You must also provide:
+- overall_score: Weighted composite score (0-100).
+- strengths: List of 2-3 specific strengths of the student's contribution.
+- improvements: List of 2-3 concrete, actionable areas for improvement.
+- stronger_opening: A high-impact, professional alternative opening sentence that commands attention and sets a collaborative tone.
+- missed_counterpoint: One vital counter-point, alternative stakeholder perspective, or nuance the student failed to address.
+- summary_verdict: Brief 1-2 sentence evaluator verdict.
+
+Strict Rules:
+1. Respond ONLY with a valid JSON object. No markdown backticks (such as ```json), no preamble, and no postamble.
+2. Maintain realistic campus placement standards: scores above 85 should reflect truly exceptional, articulate, and well-structured arguments.
+3. Keep the feedback actionable, encouraging, and tailored directly to the topic and contribution type.
 """
 
-BULLET_REWRITE_USER_PROMPT_TEMPLATE = """
-Rewrite the following weak resume bullet points for a student targeting {target_role} at {company_name}.
+GD_EVALUATION_USER_PROMPT_TEMPLATE = """
+Evaluate the following campus group discussion contribution:
 
-Weak Bullets to Rewrite:
-{bullets_json}
+Topic Category: {category}
+Topic Title: {topic_title}
+Topic Background Context: {topic_description}
+Contribution Type: {contribution_type}
+Word Count: {word_count}
 
-Return a single JSON object matching this schema:
+Student Contribution:
+\"\"\"
+{contribution_text}
+\"\"\"
+
+Return a single JSON object strictly matching this schema:
 {{
-  "rewrites": [
-    {{
-      "original_bullet": "exact original bullet point text",
-      "action_verb": "Power action verb used",
-      "task": "Core technical task and tools preserved from original",
-      "measurable_result": "Measurable outcome using placeholders (e.g., 'reducing query latency by [X%] and supporting [number]+ concurrent users')",
-      "suggested_rewrite": "Complete polished bullet point starting with action verb, task, and measurable result with placeholders."
-    }}
-  ]
+  "overall_score": 78,
+  "scores": {{
+    "content": 80,
+    "structure": 75,
+    "balance": 70,
+    "clarity": 85
+  }},
+  "criteria_feedback": {{
+    "content": "Detailed feedback on depth of knowledge and facts.",
+    "structure": "Detailed feedback on logical flow and argument progression.",
+    "balance": "Detailed feedback on multi-perspective awareness and counter-arguments.",
+    "clarity": "Detailed feedback on articulation, tone, and conciseness."
+  }},
+  "strengths": [
+    "Identified key stakeholder concern",
+    "Clear, assertive articulation"
+  ],
+  "improvements": [
+    "Support claims with statistical data",
+    "Acknowledge opposing point of view before rebutting"
+  ],
+  "stronger_opening": "A compelling alternative opening statement for this topic.",
+  "missed_counterpoint": "One vital opposing viewpoint or blind spot not covered.",
+  "summary_verdict": "Overall summary verdict of the candidate's contribution."
 }}
 Ensure the output is valid JSON only.
 """
-

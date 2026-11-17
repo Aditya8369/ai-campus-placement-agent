@@ -1,0 +1,197 @@
+[
+  {
+    "id": "gd_tech_01",
+    "title": "Generative AI in the Workplace: Replacement or Augmentation of Human Jobs?",
+    "category": "technology",
+    "category_label": "Technology",
+    "description": "With rapid adoption of LLMs and generative AI tools across engineering, content, and finance, evaluate whether generative AI will cause mass white-collar job displacement or primarily augment productivity and create higher-value roles.",
+    "key_angles": [
+      "Automation of repetitive cognitive tasks vs. emergence of new specialized AI operations roles",
+      "Widening wage disparity between AI-fluent and non-fluent professionals",
+      "Historical precedents of technological disruption (industrial revolution, cloud transition)",
+      "Need for rapid curriculum overhaul in universities and corporate reskilling"
+    ]
+  },
+  {
+    "id": "gd_tech_02",
+    "title": "Remote vs. Office-First: What is the Optimal Future of Work for Tech Teams?",
+    "category": "technology",
+    "category_label": "Technology",
+    "description": "Major tech firms have diverged between strict return-to-office mandates and remote-first policies. Debate which model best fosters long-term innovation, mentorship for junior engineers, work-life balance, and operational efficiency.",
+    "key_angles": [
+      "Serendipitous collaboration and junior onboarding in physical spaces",
+      "Access to global talent pools and elimination of grueling metropolitan commutes",
+      "Mental health, employee retention, and boundary erosion in work-from-home settings",
+      "Asynchronous productivity metrics vs. hours-at-desk surveillance cultures"
+    ]
+  },
+  {
+    "id": "gd_tech_03",
+    "title": "Data Privacy vs. National Security: Should End-to-End Encryption Have Backdoors?",
+    "category": "technology",
+    "category_label": "Technology",
+    "description": "Governments frequently call for lawful interception capabilities or backdoors into encrypted communication platforms, while privacy advocates argue backdoors inherently undermine cybersecurity for all citizens.",
+    "key_angles": [
+      "Law enforcement requirements to combat cybercrime, terrorism, and financial fraud",
+      "Mathematical and architectural vulnerabilities created by any cryptographic escrow backdoor",
+      "Civil liberties, freedom of speech, and protection against authoritarian overreach",
+      "Alternative investigative techniques that do not compromise fundamental protocol security"
+    ]
+  },
+  {
+    "id": "gd_tech_04",
+    "title": "Quantum Computing: Are We Prepared for the Post-RSA Cryptographic Era?",
+    "category": "technology",
+    "category_label": "Technology",
+    "description": "As quantum computing approaches operational readiness, traditional public-key cryptography (RSA, ECC) faces obsolescence. Evaluate the readiness of modern banking and global infrastructure to adopt post-quantum cryptography.",
+    "key_angles": [
+      "Harvest now, decrypt later attacks against stored sensitive enterprise data",
+      "Implementation complexity and computational overhead of NIST lattice-based algorithms",
+      "Vulnerability of blockchain, digital currencies, and legacy financial settlement networks",
+      "Disparity between nation-states in quantum hardware research"
+    ]
+  },
+  {
+    "id": "gd_tech_05",
+    "title": "Open Source vs. Proprietary AI Models: Balancing Innovation and Safety",
+    "category": "technology",
+    "category_label": "Technology",
+    "description": "Debate whether releasing open-weights AI foundation models democratizes research and innovation or presents uncontrollable safety, biosecurity, and misinformation hazards compared to closed API models.",
+    "key_angles": [
+      "Democratization of developer tooling and reduction of Big Tech monopolies",
+      "Irreversibility of releasing open weights capable of generating malicious exploits",
+      "Community-driven security audits vs. corporate red-teaming standards",
+      "Global regulatory compliance frameworks (EU AI Act, US Executive Orders)"
+    ]
+  },
+  {
+    "id": "gd_ca_01",
+    "title": "Gig Economy & Platform Workers: Flexible Freedom or Unregulated Exploitation?",
+    "category": "current_affairs",
+    "category_label": "Current Affairs",
+    "description": "The rapid expansion of app-based delivery and ride-hailing services has transformed urban employment. Discuss whether platform work represents entrepreneurial autonomy or an absence of social safety nets requiring statutory labor rights.",
+    "key_angles": [
+      "Autonomy of choosing work hours and low entry barriers for rural-to-urban youth",
+      "Lack of minimum wage guarantees, health insurance, provident fund, and accident coverage",
+      "Algorithmic management, ratings surveillance, and arbitrary account deactivations",
+      "Impact of statutory welfare board bills (e.g. Rajasthan Gig Workers Act) on platform viability"
+    ]
+  },
+  {
+    "id": "gd_ca_02",
+    "title": "Central Bank Digital Currencies (CBDC): The End of Cash and Rise of State Surveillance?",
+    "category": "current_affairs",
+    "category_label": "Current Affairs",
+    "description": "Central banks worldwide, including the RBI with the Digital Rupee, are rolling out sovereign digital currencies. Debate whether CBDCs streamline monetary settlements or threaten financial anonymity and civil liberties.",
+    "key_angles": [
+      "Reduction in physical currency printing, handling, and counterfeit expenses",
+      "Direct benefit transfer (DBT) efficiency and programmable targeted subsidies",
+      "Programmability and transactional tracking eroding constitutional privacy",
+      "Systemic bank run risks during liquidity panics if retail depositors bypass commercial banks"
+    ]
+  },
+  {
+    "id": "gd_ca_03",
+    "title": "Rapid Industrial Growth vs. Environmental Sustainability: A Developing Nation Dilemma",
+    "category": "current_affairs",
+    "category_label": "Current Affairs",
+    "description": "Developing economies face pressure from developed nations to rapidly achieve net-zero carbon goals while simultaneously striving to lift hundreds of millions out of poverty through energy-intensive manufacturing.",
+    "key_angles": [
+      "Historical cumulative carbon emissions of developed nations vs. per-capita emissions in Global South",
+      "Economic necessity of thermal power and heavy manufacturing for job creation",
+      "Severe local public health and climate vulnerability consequences of unchecked industrialization",
+      "Green financing, technology transfer obligations, and renewable energy capital investment"
+    ]
+  },
+  {
+    "id": "gd_ca_04",
+    "title": "Free Higher Education vs. Market-Driven University Tuition: Who Should Pay?",
+    "category": "current_affairs",
+    "category_label": "Current Affairs",
+    "description": "With student debt crises rising globally, debate whether higher education should be treated as a fundamental public good funded through taxation or as a private investment borne by individual graduates.",
+    "key_angles": [
+      "Higher education as an engine of social mobility and national productivity",
+      "Fiscal strain on state budgets and potential quality dilution in underfunded public universities",
+      "Income-share agreements (ISAs) and targeted means-tested scholarships vs. universal subsidies",
+      "Accountability of educational institutions when students bear direct tuition costs"
+    ]
+  },
+  {
+    "id": "gd_ca_05",
+    "title": "Universal Basic Income (UBI): Effective Poverty Eradication or Economic Disincentive?",
+    "category": "current_affairs",
+    "category_label": "Current Affairs",
+    "description": "Evaluate the viability of a universal, unconditional cash transfer to all citizens as a buffer against technological unemployment and deep structural poverty.",
+    "key_angles": [
+      "Administrative simplicity and elimination of bureaucratic leakages in conditional welfare schemes",
+      "Enormous fiscal burden requiring radical tax restructuring or deficit expansion",
+      "Empirical evidence on labor supply elasticity: does unconditional cash reduce work incentives?",
+      "Targeted basic services (health, education, nutrition) vs. direct unconditional cash payouts"
+    ]
+  },
+  {
+    "id": "gd_abs_01",
+    "title": "Red is Better than Blue",
+    "category": "abstract",
+    "category_label": "Abstract",
+    "description": "A classic corporate campus placement abstract topic. Tests candidate creativity, symbolic reasoning, multi-dimensional thinking, and the ability to articulate structured arguments from metaphor.",
+    "key_angles": [
+      "Symbolism of Red: passion, urgency, dynamism, revolution, energy, and action",
+      "Symbolism of Blue: tranquility, stability, logic, depth, trust, and institutional authority",
+      "Business strategy perspective: Red Ocean (head-to-head competition) vs. Blue Ocean (uncontested market spaces)",
+      "Synthesis: Sustainable leadership requires balancing the proactive drive of red with the analytical composure of blue"
+    ]
+  },
+  {
+    "id": "gd_abs_02",
+    "title": "Silence Speaks Louder than Words",
+    "category": "abstract",
+    "category_label": "Abstract",
+    "description": "Debate the power of restraint, active listening, non-verbal presence, and deliberate pauses against explicit verbal assertiveness in leadership and high-stakes negotiations.",
+    "key_angles": [
+      "Active listening as the core differentiator of persuasive consensus builders",
+      "Silence as complicity when standing against injustice or organizational malpractice",
+      "Non-verbal authority and emotional regulation in high-pressure leadership scenarios",
+      "The necessity of articulate, timely, and courageous verbal intervention"
+    ]
+  },
+  {
+    "id": "gd_abs_03",
+    "title": "The Best Way to Predict the Future is to Create It",
+    "category": "abstract",
+    "category_label": "Abstract",
+    "description": "Evaluate Abraham Lincoln and Peter Drucker's famous aphorism in the context of technological disruption, entrepreneurial agency, deterministic planning, and unforeseen systemic shocks.",
+    "key_angles": [
+      "Proactive innovation and visionary entrepreneurship bending market trajectories",
+      "Unintended second-order consequences and systemic unpredictability (black swan events)",
+      "Iterative resilience and agile adaptation vs. rigid prescriptive five-year blueprints",
+      "Individual accountability vs. external macro-economic and geopolitical constraints"
+    ]
+  },
+  {
+    "id": "gd_abs_04",
+    "title": "Innovation vs. Imitation: Which Drives Market Success?",
+    "category": "abstract",
+    "category_label": "Abstract",
+    "description": "Analyze whether first-mover breakthrough innovation or smart fast-follower imitation and execution is the true determinant of enduring commercial triumph.",
+    "key_angles": [
+      "High capital burn and market education burdens borne by pioneer innovators",
+      "Fast-follower advantage: refining user experience, optimizing unit economics, and avoiding pioneer mistakes",
+      "True technological leaps that establish unassailable intellectual property moats",
+      "Creative recombination: how imitation often evolves into transformative innovation"
+    ]
+  },
+  {
+    "id": "gd_abs_05",
+    "title": "Rules are Made to be Broken",
+    "category": "abstract",
+    "category_label": "Abstract",
+    "description": "Examine the tension between institutional discipline, ethical boundaries, and disruptive breakthrough thinking in organizations and society.",
+    "key_angles": [
+      "Disruptive entrepreneurship questioning legacy dogmas to unlock non-linear breakthroughs",
+      "Organizational safety, aviation, and financial regulations forged from catastrophic past failures",
+      "First understanding the purpose of a rule before attempting to reform or discard it",
+      "The boundary between constructive paradigm disruption and reckless ethical breach"
+    ]
+  }
+]
