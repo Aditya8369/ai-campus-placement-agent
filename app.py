@@ -70,6 +70,10 @@ from utils.database import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    enable_user_two_factor,
+    disable_user_two_factor,
+    update_user_backup_codes,
+    get_user_two_factor_status,
     create_auth_session,
     get_active_auth_session,
     touch_auth_session,
@@ -328,6 +332,18 @@ from utils.output_localization import (
 # CSRF Protection & Token Security (#300)
 from utils.csrf import csrf, CSRFError, generate_csrf
 
+# Two-Factor Authentication & Recovery Codes (#380)
+from utils.totp import (
+    generate_totp_secret,
+    format_totp_secret,
+    generate_totp_uri,
+    generate_totp_code,
+    verify_totp_code,
+    generate_backup_codes,
+    hash_backup_code,
+    verify_and_consume_backup_code,
+)
+
 # Configure structured application logging (#301)
 from utils.logger_config import (
     configure_logging,
@@ -467,9 +483,7 @@ def require_login():
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
-        "openapi_json",
-        "api_docs_ui",
-        "api_redoc_ui",
+        "verify_two_factor",
     }
 
     user_id = flask_session.get("user_id")
@@ -1242,6 +1256,17 @@ def login():
             flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
             return render_template("login.html", unverified_email=email)
 
+        # Two-Factor Authentication Second Step (#380)
+        if bool(user.get("two_factor_enabled", 0)):
+            flask_session.clear()
+            flask_session["2fa_pending_user_id"] = user["id"]
+            flask_session["2fa_pending_email"] = user["email"]
+            flask_session["2fa_pending_time"] = time.time()
+            next_page = request.args.get("next") or request.form.get("next")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                flask_session["2fa_pending_next"] = next_page
+            return redirect(url_for("verify_two_factor"))
+
         flask_session.clear()
         now = time.time()
         flask_session["user_id"] = user["id"]
@@ -1260,6 +1285,269 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def verify_two_factor():
+    """
+    Second sign-in step: Verifies 6-digit TOTP code or emergency backup recovery code (#380).
+    """
+    pending_user_id = flask_session.get("2fa_pending_user_id")
+    pending_time = flask_session.get("2fa_pending_time", 0)
+
+    # 10-minute timeout for completing the second sign-in step
+    if not pending_user_id or (time.time() - float(pending_time)) > 600:
+        flask_session.pop("2fa_pending_user_id", None)
+        flask_session.pop("2fa_pending_email", None)
+        flask_session.pop("2fa_pending_time", None)
+        flask_session.pop("2fa_pending_next", None)
+        flash("Two-factor verification session expired or invalid. Please sign in again.", "warning")
+        return redirect(url_for("login"))
+
+    user = get_user_by_id(pending_user_id)
+    if not user or not bool(user.get("two_factor_enabled", 0)):
+        flask_session.clear()
+        flash("Two-factor authentication is not active on this account.", "error")
+        return redirect(url_for("login"))
+
+    email = user.get("email", "")
+    parts = email.split("@")
+    if len(parts) == 2 and len(parts[0]) > 2:
+        masked_email = f"{parts[0][0]}***{parts[0][-1]}@{parts[1]}"
+    elif len(parts) == 2:
+        masked_email = f"***@{parts[1]}"
+    else:
+        masked_email = email
+
+    if request.method == "POST":
+        totp_code = (request.form.get("code") or "").strip()
+        backup_code = (request.form.get("backup_code") or "").strip()
+
+        # 1. Verify emergency backup recovery code if provided
+        if backup_code:
+            stored_hashes = user.get("two_factor_backup_codes")
+            is_valid, remaining_hashes = verify_and_consume_backup_code(stored_hashes, backup_code)
+            if is_valid:
+                update_user_backup_codes(user["id"], remaining_hashes)
+                logger.info("User %s signed in using a backup recovery code.", user["id"])
+
+                next_page = flask_session.get("2fa_pending_next")
+                flask_session.clear()
+                now = time.time()
+                flask_session["user_id"] = user["id"]
+                flask_session["user_name"] = user["name"]
+                flask_session["last_activity"] = now
+                flask_session["login_time"] = now
+                auth_session = create_auth_session(user["id"], _session_client_label())
+                flask_session["auth_session_id"] = auth_session["id"]
+                flask_session["auth_session_token"] = auth_session["token"]
+                flask_session.permanent = True
+
+                remaining_count = len(remaining_hashes)
+                flash(
+                    f"Signed in using an emergency backup recovery code. This code has been consumed. "
+                    f"You have {remaining_count} backup code{'s' if remaining_count != 1 else ''} remaining.",
+                    "warning"
+                )
+                if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                    return redirect(next_page)
+                return redirect(url_for("index"))
+            else:
+                flash("Invalid or already used backup recovery code. Please check your saved codes.", "error")
+                return render_template("login_two_factor.html", masked_email=masked_email)
+
+        # 2. Verify 6-digit TOTP authenticator app code
+        if not totp_code:
+            flash("Please enter the 6-digit verification code from your authenticator app.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+        secret = user.get("two_factor_secret", "")
+        if verify_totp_code(secret, totp_code):
+            next_page = flask_session.get("2fa_pending_next")
+            flask_session.clear()
+            now = time.time()
+            flask_session["user_id"] = user["id"]
+            flask_session["user_name"] = user["name"]
+            flask_session["last_activity"] = now
+            flask_session["login_time"] = now
+            auth_session = create_auth_session(user["id"], _session_client_label())
+            flask_session["auth_session_id"] = auth_session["id"]
+            flask_session["auth_session_token"] = auth_session["token"]
+            flask_session.permanent = True
+
+            flash("Two-factor authentication verified successfully. Welcome back!", "success")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                return redirect(next_page)
+            return redirect(url_for("index"))
+        else:
+            flash("Invalid verification code. Please check your authenticator app and try again.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+    return render_template("login_two_factor.html", masked_email=masked_email)
+
+
+@app.route("/account/two-factor", methods=["GET"])
+def two_factor_settings():
+    """
+    Displays current two-factor authentication security status and recovery guidance (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    two_factor_status = get_user_two_factor_status(user_id)
+    return render_template(
+        "two_factor_settings.html",
+        user=user,
+        two_factor=two_factor_status
+    )
+
+
+@app.route("/account/two-factor/setup", methods=["GET", "POST"])
+def setup_two_factor():
+    """
+    Two-factor authentication setup flow (#380).
+    Generates TOTP secret and backup recovery codes, and verifies confirmation code before enabling.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is already enabled for your account.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    if request.method == "POST":
+        verification_code = (request.form.get("code") or "").strip()
+        current_password = request.form.get("password") or ""
+
+        # Verify password to authorize security change
+        if not check_password_hash(user["password_hash"], current_password):
+            flash("Incorrect account password. Please enter your current password to confirm setup.", "error")
+            secret = flask_session.get("pending_2fa_secret", "")
+            raw_codes = flask_session.get("pending_2fa_raw_codes", [])
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        secret = flask_session.get("pending_2fa_secret")
+        raw_codes = flask_session.get("pending_2fa_raw_codes")
+        if not secret or not raw_codes:
+            flash("Setup session expired. Please restart the two-factor setup process.", "warning")
+            return redirect(url_for("setup_two_factor"))
+
+        # Verify confirmation code against pending secret
+        if not verify_totp_code(secret, verification_code):
+            flash("Invalid verification code. Please ensure your authenticator app time is synced and enter the 6-digit code currently shown.", "error")
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        # Hash emergency recovery codes and persist to database
+        hashed_codes = [hash_backup_code(c) for c in raw_codes]
+        enable_user_two_factor(user_id, secret, hashed_codes)
+
+        flask_session.pop("pending_2fa_secret", None)
+        flask_session.pop("pending_2fa_raw_codes", None)
+
+        flash("Two-factor authentication has been successfully enabled! Be sure you have saved your recovery codes.", "success")
+        return redirect(url_for("two_factor_settings"))
+
+    # GET: Generate fresh secret and 8 backup recovery codes
+    secret = generate_totp_secret()
+    raw_codes = generate_backup_codes(8)
+    flask_session["pending_2fa_secret"] = secret
+    flask_session["pending_2fa_raw_codes"] = raw_codes
+
+    formatted_secret = format_totp_secret(secret)
+    otpauth_uri = generate_totp_uri(secret, user["email"])
+
+    return render_template(
+        "setup_two_factor.html",
+        secret=secret,
+        formatted_secret=formatted_secret,
+        otpauth_uri=otpauth_uri,
+        backup_codes=raw_codes
+    )
+
+
+@app.route("/account/two-factor/disable", methods=["POST"])
+def disable_two_factor():
+    """
+    Disables two-factor authentication after verifying user password or current 2FA code (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is not currently enabled.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    verification_code = (request.form.get("code") or "").strip()
+
+    is_verified = False
+    if password and check_password_hash(user["password_hash"], password):
+        is_verified = True
+    elif verification_code and verify_totp_code(user.get("two_factor_secret", ""), verification_code):
+        is_verified = True
+
+    if not is_verified:
+        flash("Verification failed. Please enter your correct account password or a valid 6-digit code to disable two-factor authentication.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    disable_user_two_factor(user_id)
+    flash("Two-factor authentication has been disabled. Your account is now protected by password only.", "warning")
+    return redirect(url_for("two_factor_settings"))
+
+
+@app.route("/account/two-factor/regenerate-backup-codes", methods=["POST"])
+def regenerate_backup_codes():
+    """
+    Regenerates a new set of 8 emergency backup recovery codes after verifying password (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication must be enabled before generating recovery codes.", "warning")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    if not check_password_hash(user["password_hash"], password):
+        flash("Incorrect password. Recovery codes could not be regenerated.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    new_raw_codes = generate_backup_codes(8)
+    new_hashed_codes = [hash_backup_code(c) for c in new_raw_codes]
+    update_user_backup_codes(user_id, new_hashed_codes)
+
+    return render_template(
+        "two_factor_recovery_codes.html",
+        backup_codes=new_raw_codes
+    )
 
 
 @app.route("/account/sessions", methods=["GET"])

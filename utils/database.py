@@ -428,7 +428,7 @@ def init_db() -> None:
         if "job_description_snapshot" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_description_snapshot TEXT")
 
-        # Schema migration for users table (#206, #360)
+        # Schema migration for users table (#206, #360, #380)
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [col[1] for col in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -439,6 +439,12 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
         if "leaderboard_opt_in" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN leaderboard_opt_in INTEGER NOT NULL DEFAULT 1")
+        if "two_factor_enabled" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0")
+        if "two_factor_secret" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT")
+        if "two_factor_backup_codes" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_backup_codes TEXT")
 
         # Schema migration for generated-output language preferences
         cursor.execute("PRAGMA table_info(email_notification_preferences)")
@@ -2580,6 +2586,87 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def enable_user_two_factor(user_id: str, secret: str, hashed_backup_codes: List[str]) -> bool:
+    """Enable two-factor authentication and store TOTP secret and recovery codes (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_enabled = 1,
+                two_factor_secret = ?,
+                two_factor_backup_codes = ?
+            WHERE id = ?
+            """,
+            (secret.strip(), json.dumps(hashed_backup_codes), user_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def disable_user_two_factor(user_id: str) -> bool:
+    """Disable two-factor authentication and clear TOTP secret and recovery codes (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_enabled = 0,
+                two_factor_secret = NULL,
+                two_factor_backup_codes = NULL
+            WHERE id = ?
+            """,
+            (user_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def update_user_backup_codes(user_id: str, hashed_backup_codes: List[str]) -> bool:
+    """Update active backup recovery code hashes after one is consumed or regenerated (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_backup_codes = ?
+            WHERE id = ?
+            """,
+            (json.dumps(hashed_backup_codes), user_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_user_two_factor_status(user_id: str) -> Dict[str, Any]:
+    """Retrieve two-factor status and remaining backup codes count (#380)."""
+    user = get_user_by_id(user_id)
+    if not user:
+        return {"enabled": False, "backup_codes_count": 0}
+    enabled = bool(user.get("two_factor_enabled", 0))
+    raw_codes = user.get("two_factor_backup_codes")
+    count = 0
+    if raw_codes:
+        try:
+            parsed = json.loads(raw_codes)
+            count = len(parsed) if isinstance(parsed, list) else 0
+        except Exception:
+            count = 0
+    return {
+        "enabled": enabled,
+        "backup_codes_count": count
+    }
 
 
 def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
