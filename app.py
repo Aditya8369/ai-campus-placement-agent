@@ -4584,6 +4584,196 @@ def api_get_interview_breakdown(session_id: str):
         return jsonify({"status": "error", "message": "Failed to compute performance breakdown."}), 500
 
 
+# ============================================================================
+# INTERVIEW SESSION PAUSE & RESUME ENDPOINTS (#265)
+# ============================================================================
+
+@app.route("/api/interview/<session_id>/pause", methods=["POST"])
+def api_pause_interview_session(session_id: str):
+    """
+    Pauses an ongoing mock interview session, saving the current question,
+    unsubmitted draft answer, and progress status.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    draft_answer = payload.get("draft_answer", "").strip()
+    q_index = payload.get("question_index")
+
+    try:
+        from utils.interview_session_service import pause_interview_session
+        result = pause_interview_session(
+            session_id=session_id,
+            student_id=str(student_id),
+            draft_answer=draft_answer,
+            question_index=int(q_index) if q_index is not None else None
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session paused successfully.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error pausing interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to pause interview session."}), 500
+
+
+@app.route("/api/interview/<session_id>/resume", methods=["POST", "GET"])
+def api_resume_interview_session(session_id: str):
+    """
+    Resumes a paused mock interview session and returns stored progress.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    try:
+        from utils.interview_session_service import resume_interview_session
+        result = resume_interview_session(
+            session_id=session_id,
+            student_id=str(student_id)
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session resumed.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error resuming interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to resume interview session."}), 500
+
+
+@app.route("/api/interview/sessions", methods=["GET"])
+def api_list_interview_sessions():
+    """
+    Lists interview sessions for the logged-in student along with their status
+    ('In Progress', 'Paused', or 'Completed').
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    try:
+        from utils.interview_session_service import get_student_interview_sessions_with_status
+        sessions = get_student_interview_sessions_with_status(str(student_id))
+        return jsonify({
+            "status": "success",
+            "count": len(sessions),
+            "sessions": sessions
+        }), 200
+    except Exception as e:
+        logger.error(f"Error listing interview sessions: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch interview sessions."}), 500
+
+
+# ============================================================================
+# SUBJECT-BASED INTERVIEWS ENDPOINTS (#272)
+# ============================================================================
+
+@app.route("/api/interview/subjects", methods=["GET"])
+def api_get_interview_subjects():
+    """
+    Returns the catalog of technical subjects available for targeted interview practice
+    (Python, Java, SQL, DBMS, Operating Systems, Computer Networks).
+    """
+    from utils.subject_interview_service import get_subject_catalog
+    return jsonify({
+        "status": "success",
+        "subjects": get_subject_catalog()
+    }), 200
+
+
+@app.route("/api/interview/subject/generate", methods=["POST"])
+def api_generate_subject_interview_question():
+    """Generates a targeted mock interview question for a specific technical subject."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+
+    from utils.subject_interview_service import generate_subject_question
+    q_data = generate_subject_question(subject)
+    return jsonify({
+        "status": "success",
+        "data": q_data
+    }), 200
+
+
+@app.route("/api/interview/subject/evaluate", methods=["POST"])
+def api_evaluate_subject_interview_answer():
+    """Evaluates a student's answer against the technical subject rubric."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+
+    from utils.subject_interview_service import evaluate_subject_answer
+    eval_res = evaluate_subject_answer(subject, question, answer)
+    return jsonify({
+        "status": "success",
+        "evaluation": eval_res
+    }), 200
+
+
+@app.route("/api/interview/question/flag", methods=["POST"])
+def api_interview_question_flag():
+    """
+    Flag an unsuitable mock interview question (#327).
+    """
+    from utils.question_flag_service import flag_interview_question
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    session_id = payload.get("session_id") or payload.get("interview_id") or "mock-session"
+    question_index = payload.get("question_index", 0)
+    question_text = payload.get("question_text") or payload.get("question", "")
+    reason = payload.get("reason") or "Irrelevant to Target Role"
+    comment = payload.get("comment", "")
+
+    try:
+        result = flag_interview_question(
+            student_id=student_id,
+            session_id=str(session_id),
+            question_index=int(question_index),
+            question_text=str(question_text),
+            reason=str(reason),
+            comment=str(comment)
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except PermissionError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error recording question flag: {e}")
+        return jsonify({"success": False, "error": "Internal error flagging question."}), 500
+
+
+@app.route("/api/interview/question/flag-reasons", methods=["GET"])
+def api_interview_question_flag_reasons():
+    """
+    Return available question flag categories (#327).
+    """
+    from utils.question_flag_service import VALID_FLAG_REASONS
+    return jsonify({"success": True, "reasons": VALID_FLAG_REASONS}), 200
+
+
+
 @app.route("/interview/<analysis_id>/reset", methods=["POST"])
 def reset_interview_session(analysis_id: str):
     """
