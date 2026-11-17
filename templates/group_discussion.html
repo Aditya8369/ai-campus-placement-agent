@@ -1,0 +1,765 @@
+{% extends "base.html" %}
+
+{% block title %}Group Discussion Practice & AI Coach - AI Campus Placement{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <!-- Header Banner -->
+  <div class="d-flex flex-wrap justify-content-between align-items-center pb-3 mb-4 border-bottom">
+    <div>
+      <h2 class="fw-bold text-primary mb-1">
+        <i class="fa-solid fa-users-rectangle me-2"></i>Campus Group Discussion (GD) Coach
+      </h2>
+      <p class="text-muted mb-0">
+        Master campus placement GD elimination rounds with curated topics, structured speech frameworks, and 4-pillar AI evaluations.
+      </p>
+    </div>
+    <div class="d-flex gap-2 mt-2 mt-sm-0">
+      <button class="btn btn-outline-primary" id="btnRandomTopicTop">
+        <i class="fa-solid fa-shuffle me-1"></i> Random Topic
+      </button>
+      <a href="#historySection" class="btn btn-outline-secondary">
+        <i class="fa-solid fa-clock-rotate-left me-1"></i> Practice History
+      </a>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Left Column: Topic Selector & Contribution Input -->
+    <div class="col-lg-7">
+      <!-- 1. Topic Selection Card -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+          <h5 class="fw-bold mb-0 text-dark">
+            <i class="fa-solid fa-lightbulb text-warning me-2"></i>1. Select Discussion Topic
+          </h5>
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1" id="topicCategoryBadge">
+            {{ initial_topic.category_label if initial_topic else 'Technology' }}
+          </span>
+        </div>
+        <div class="card-body">
+          <!-- Category Filter Tabs -->
+          <ul class="nav nav-pills mb-3" id="categoryTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active py-1 px-3" data-category="all" type="button">All Categories</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link py-1 px-3" data-category="current_affairs" type="button">Current Affairs</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link py-1 px-3" data-category="technology" type="button">Technology</button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link py-1 px-3" data-category="abstract" type="button">Abstract</button>
+            </li>
+          </ul>
+
+          <!-- Topic Dropdown -->
+          <div class="mb-3">
+            <label for="topicSelect" class="form-label fw-semibold small text-muted">Choose from curated campus placement topics:</label>
+            <div class="input-group">
+              <select class="form-select" id="topicSelect" aria-label="Select Group Discussion Topic">
+                {% for t in topics %}
+                  <option value="{{ t.id }}" data-category="{{ t.category }}" data-category-label="{{ t.category_label }}" {% if initial_topic and initial_topic.id == t.id %}selected{% endif %}>
+                    [{{ t.category_label }}] {{ t.title }}
+                  </option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-outline-primary" type="button" id="btnRandomTopic" title="Pick a random topic">
+                <i class="fa-solid fa-dice me-1"></i> Random
+              </button>
+            </div>
+          </div>
+
+          <!-- Active Topic Context & Brainstorming Angles -->
+          <div class="p-3 bg-light rounded-3 border" id="activeTopicBox">
+            <h6 class="fw-bold text-dark mb-1" id="activeTopicTitle">
+              {{ initial_topic.title if initial_topic else 'Select a Topic' }}
+            </h6>
+            <p class="text-muted small mb-2" id="activeTopicDescription">
+              {{ initial_topic.description if initial_topic else '' }}
+            </p>
+            <div id="activeTopicAnglesWrapper" {% if not initial_topic or not initial_topic.key_angles %}style="display:none;"{% endif %}>
+              <span class="badge bg-secondary-subtle text-secondary small mb-1">Key Angles to Consider:</span>
+              <ul class="small text-muted mb-0 ps-3" id="activeTopicAngles">
+                {% if initial_topic and initial_topic.key_angles %}
+                  {% for a in initial_topic.key_angles %}
+                    <li>{{ a }}</li>
+                  {% endfor %}
+                {% endif %}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Contribution Form Card -->
+      <div class="card border-0 shadow-sm mb-4">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+          <h5 class="fw-bold mb-0 text-dark">
+            <i class="fa-solid fa-pen-fancy text-primary me-2"></i>2. Your Contribution (150-250 Words)
+          </h5>
+          <span class="badge bg-light text-dark border px-2 py-1" id="wordCountBadge">
+            <span id="liveWordCount">0</span> words
+          </span>
+        </div>
+        <div class="card-body">
+          <!-- Contribution Type Selector -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small text-muted">Role / Contribution Type:</label>
+            <div class="row g-2" id="contributionTypeRadios">
+              <div class="col-sm-4">
+                <input type="radio" class="btn-check" name="contributionType" id="typeOpening" value="opening" checked>
+                <label class="btn btn-outline-secondary w-100 text-start py-2 px-3 h-100" for="typeOpening">
+                  <div class="fw-bold small"><i class="fa-solid fa-play me-1 text-success"></i> Opening</div>
+                  <div class="text-muted" style="font-size: 0.75rem;">Define scope, framework & hook</div>
+                </label>
+              </div>
+              <div class="col-sm-4">
+                <input type="radio" class="btn-check" name="contributionType" id="typeRebuttal" value="rebuttal">
+                <label class="btn btn-outline-secondary w-100 text-start py-2 px-3 h-100" for="typeRebuttal">
+                  <div class="fw-bold small"><i class="fa-solid fa-arrows-split-up-and-left me-1 text-warning"></i> Rebuttal</div>
+                  <div class="text-muted" style="font-size: 0.75rem;">Counter-point, trade-offs & data</div>
+                </label>
+              </div>
+              <div class="col-sm-4">
+                <input type="radio" class="btn-check" name="contributionType" id="typeConclusion" value="conclusion">
+                <label class="btn btn-outline-secondary w-100 text-start py-2 px-3 h-100" for="typeConclusion">
+                  <div class="fw-bold small"><i class="fa-solid fa-flag-checkered me-1 text-primary"></i> Conclusion</div>
+                  <div class="text-muted" style="font-size: 0.75rem;">Synthesize consensus & way forward</div>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contribution Textarea -->
+          <div class="mb-3">
+            <label for="contributionText" class="form-label fw-semibold small text-muted">
+              Write or paste your spoken contribution:
+            </label>
+            <textarea
+              class="form-control"
+              id="contributionText"
+              rows="7"
+              placeholder="Good morning everyone. Today we are gathered to discuss whether generative AI in the workplace will primarily replace or augment human jobs. In my perspective, while repetitive operational tasks face immediate automation, generative AI serves predominantly as a cognitive multiplier rather than an outright replacement... (write 150-250 words)"
+              aria-describedby="contributionHelp"
+            ></textarea>
+            <div class="d-flex justify-content-between align-items-center mt-2">
+              <div id="wordValidationMessage" class="small text-muted">
+                Minimum 30 words required. Aim for 150–250 words for optimal placement scoring.
+              </div>
+              <div class="d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-link text-decoration-none text-muted p-0" id="btnClearText" type="button">
+                  <i class="fa-regular fa-trash-can me-1"></i>Clear
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error Alert Banner -->
+          <div class="alert alert-danger d-none py-2 px-3 small" id="validationAlert" role="alert">
+            <i class="fa-solid fa-circle-exclamation me-1"></i> <span id="validationAlertText"></span>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="d-grid gap-2">
+            <button class="btn btn-primary py-2 fw-semibold" id="btnSubmitContribution">
+              <span id="btnSubmitSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-brain me-1" id="btnSubmitIcon"></i> Evaluate Contribution with AI
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Evaluation Results & Live Scorecards -->
+    <div class="col-lg-5">
+      <!-- Evaluation Feedback Container -->
+      <div id="evaluationPlaceholder" class="card border-0 shadow-sm text-center py-5 px-4 mb-4">
+        <div class="py-4">
+          <i class="fa-solid fa-comments fa-3x text-muted opacity-50 mb-3"></i>
+          <h5 class="fw-bold text-dark">No Evaluation Yet</h5>
+          <p class="text-muted small mb-3">
+            Select a group discussion topic on the left, type an opening statement or rebuttal, and click <strong>Evaluate Contribution</strong> to receive detailed 4-criteria AI feedback.
+          </p>
+          <div class="d-flex justify-content-center gap-3 text-muted small">
+            <div><i class="fa-solid fa-check text-success me-1"></i>Content</div>
+            <div><i class="fa-solid fa-check text-success me-1"></i>Structure</div>
+            <div><i class="fa-solid fa-check text-success me-1"></i>Balance</div>
+            <div><i class="fa-solid fa-check text-success me-1"></i>Clarity</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Evaluation Result Card (Hidden until submitted) -->
+      <div id="evaluationResultCard" class="d-none">
+        <!-- Main Score Overview Card -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+            <h5 class="fw-bold mb-0 text-dark">
+              <i class="fa-solid fa-chart-pie text-success me-2"></i>GD Performance Scorecard
+            </h5>
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-2 py-1" id="evalFallbackBadge">
+              AI Evaluated
+            </span>
+          </div>
+          <div class="card-body">
+            <!-- Overall Score Banner -->
+            <div class="p-3 rounded-3 bg-light text-center mb-4 border">
+              <div class="text-muted small fw-semibold text-uppercase tracking-wide">Overall Placement Score</div>
+              <div class="display-5 fw-bold text-primary my-1" id="evalOverallScore">--</div>
+              <p class="small text-muted mb-0" id="evalSummaryVerdict">
+                Evaluator verdict will appear here.
+              </p>
+            </div>
+
+            <!-- Four Scored Criteria Cards -->
+            <h6 class="fw-bold text-dark mb-3 small text-uppercase">Four Core Placement Criteria</h6>
+            <div class="row g-2 mb-4">
+              <!-- Content -->
+              <div class="col-6">
+                <div class="border rounded p-2 bg-white h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted"><i class="fa-solid fa-book-open text-primary me-1"></i>Content</span>
+                    <span class="fw-bold small text-primary" id="scoreContent">--%</span>
+                  </div>
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-primary" id="progressContent" role="progressbar" style="width: 0%"></div>
+                  </div>
+                  <p class="text-muted mt-2 mb-0" style="font-size: 0.73rem;" id="feedbackContent"></p>
+                </div>
+              </div>
+
+              <!-- Structure -->
+              <div class="col-6">
+                <div class="border rounded p-2 bg-white h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted"><i class="fa-solid fa-layer-group text-info me-1"></i>Structure</span>
+                    <span class="fw-bold small text-info" id="scoreStructure">--%</span>
+                  </div>
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-info" id="progressStructure" role="progressbar" style="width: 0%"></div>
+                  </div>
+                  <p class="text-muted mt-2 mb-0" style="font-size: 0.73rem;" id="feedbackStructure"></p>
+                </div>
+              </div>
+
+              <!-- Balance -->
+              <div class="col-6">
+                <div class="border rounded p-2 bg-white h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted"><i class="fa-solid fa-scale-balanced text-warning me-1"></i>Balance</span>
+                    <span class="fw-bold small text-warning" id="scoreBalance">--%</span>
+                  </div>
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-warning" id="progressBalance" role="progressbar" style="width: 0%"></div>
+                  </div>
+                  <p class="text-muted mt-2 mb-0" style="font-size: 0.73rem;" id="feedbackBalance"></p>
+                </div>
+              </div>
+
+              <!-- Clarity -->
+              <div class="col-6">
+                <div class="border rounded p-2 bg-white h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-semibold text-muted"><i class="fa-solid fa-bullhorn text-success me-1"></i>Clarity</span>
+                    <span class="fw-bold small text-success" id="scoreClarity">--%</span>
+                  </div>
+                  <div class="progress" style="height: 6px;">
+                    <div class="progress-bar bg-success" id="progressClarity" role="progressbar" style="width: 0%"></div>
+                  </div>
+                  <p class="text-muted mt-2 mb-0" style="font-size: 0.73rem;" id="feedbackClarity"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Actionable Recommendations: Stronger Opening Line -->
+            <div class="border-start border-4 border-primary bg-primary-subtle p-3 rounded-end mb-3">
+              <div class="d-flex justify-content-between align-items-start mb-1">
+                <span class="fw-bold text-primary small">
+                  <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Stronger Alternative Opening Line
+                </span>
+                <button class="btn btn-sm btn-outline-primary py-0 px-2 btn-copy-opening" id="btnCopyOpening" type="button" title="Copy to clipboard">
+                  <i class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+              <p class="text-dark small mb-0 fst-italic" id="evalStrongerOpening"></p>
+            </div>
+
+            <!-- Actionable Recommendations: Crucial Missed Counter-Point -->
+            <div class="border-start border-4 border-warning bg-warning-subtle p-3 rounded-end mb-3">
+              <span class="fw-bold text-dark small">
+                <i class="fa-solid fa-shield-halved text-warning me-1"></i>Key Counter-Point / Blind Spot Missed
+              </span>
+              <p class="text-dark small mb-0 mt-1" id="evalMissedCounterpoint"></p>
+            </div>
+
+            <!-- Strengths & Improvements Lists -->
+            <div class="row g-2">
+              <div class="col-12">
+                <div class="border rounded p-2 bg-light">
+                  <div class="fw-bold small text-success mb-1">
+                    <i class="fa-solid fa-circle-check me-1"></i>Demonstrated Strengths:
+                  </div>
+                  <ul class="small text-muted mb-0 ps-3" id="evalStrengthsList"></ul>
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="border rounded p-2 bg-light">
+                  <div class="fw-bold small text-danger mb-1">
+                    <i class="fa-solid fa-arrow-trend-up me-1"></i>Actionable Improvement Areas:
+                  </div>
+                  <ul class="small text-muted mb-0 ps-3" id="evalImprovementsList"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Progress & Practice History Section -->
+  <div class="mt-5 pt-3" id="historySection">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <div>
+        <h4 class="fw-bold text-dark mb-0">
+          <i class="fa-solid fa-clock-rotate-left text-primary me-2"></i>Your GD Practice History
+        </h4>
+        <p class="text-muted small mb-0">Track your longitudinal progress across campus discussion topics.</p>
+      </div>
+      <span class="badge bg-secondary-subtle text-secondary px-3 py-2" id="historyCountBadge">
+        {{ past_attempts|length }} Attempt{{ 's' if past_attempts|length != 1 else '' }}
+      </span>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-body p-0">
+        {% if past_attempts %}
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light small text-muted text-uppercase">
+                <tr>
+                  <th class="ps-3 py-3">Topic Title</th>
+                  <th>Category</th>
+                  <th>Type</th>
+                  <th>Words</th>
+                  <th>Content</th>
+                  <th>Structure</th>
+                  <th>Balance</th>
+                  <th>Clarity</th>
+                  <th>Overall</th>
+                  <th class="pe-3 text-end">Date</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                {% for att in past_attempts %}
+                  <tr>
+                    <td class="ps-3 fw-semibold text-dark">
+                      {{ att.topic_title }}
+                    </td>
+                    <td>
+                      <span class="badge bg-light text-dark border">
+                        {{ att.category|replace('_', ' ')|capitalize }}
+                      </span>
+                    </td>
+                    <td>
+                      <span class="badge bg-secondary-subtle text-secondary">
+                        {{ att.contribution_type|capitalize }}
+                      </span>
+                    </td>
+                    <td class="small text-muted">{{ att.word_count }}</td>
+                    <td class="small fw-semibold text-primary">{{ att.content_score }}</td>
+                    <td class="small fw-semibold text-info">{{ att.structure_score }}</td>
+                    <td class="small fw-semibold text-warning">{{ att.balance_score }}</td>
+                    <td class="small fw-semibold text-success">{{ att.clarity_score }}</td>
+                    <td>
+                      <span class="badge {% if att.overall_score >= 80 %}bg-success{% elif att.overall_score >= 65 %}bg-primary{% else %}bg-warning text-dark{% endif %}">
+                        {{ att.overall_score }}/100
+                      </span>
+                    </td>
+                    <td class="pe-3 text-end text-muted small">
+                      {{ att.created_at[:16] if att.created_at else '' }}
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="text-center py-5 text-muted" id="noHistoryPlaceholder">
+            <i class="fa-solid fa-clock-rotate-left fa-2x mb-2 opacity-50"></i>
+            <p class="mb-0">No past attempts found. Submit your first contribution above to start your practice record!</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Embedded JSON Topics Database for quick client-side switching -->
+<script id="gdTopicsData" type="application/json">
+  {{ topics|tojson|safe }}
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  // Topics Database
+  let allTopics = [];
+  try {
+    const raw = document.getElementById("gdTopicsData").textContent;
+    allTopics = JSON.parse(raw);
+  } catch (e) {
+    console.error("Failed to parse gdTopicsData", e);
+  }
+
+  // DOM Elements
+  const topicSelect = document.getElementById("topicSelect");
+  const topicCategoryBadge = document.getElementById("topicCategoryBadge");
+  const activeTopicTitle = document.getElementById("activeTopicTitle");
+  const activeTopicDescription = document.getElementById("activeTopicDescription");
+  const activeTopicAnglesWrapper = document.getElementById("activeTopicAnglesWrapper");
+  const activeTopicAngles = document.getElementById("activeTopicAngles");
+  const btnRandomTopic = document.getElementById("btnRandomTopic");
+  const btnRandomTopicTop = document.getElementById("btnRandomTopicTop");
+  const categoryTabs = document.querySelectorAll("#categoryTabs button");
+
+  const contributionText = document.getElementById("contributionText");
+  const liveWordCount = document.getElementById("liveWordCount");
+  const wordCountBadge = document.getElementById("wordCountBadge");
+  const wordValidationMessage = document.getElementById("wordValidationMessage");
+  const btnClearText = document.getElementById("btnClearText");
+  const validationAlert = document.getElementById("validationAlert");
+  const validationAlertText = document.getElementById("validationAlertText");
+  const btnSubmitContribution = document.getElementById("btnSubmitContribution");
+  const btnSubmitSpinner = document.getElementById("btnSubmitSpinner");
+  const btnSubmitIcon = document.getElementById("btnSubmitIcon");
+
+  const evaluationPlaceholder = document.getElementById("evaluationPlaceholder");
+  const evaluationResultCard = document.getElementById("evaluationResultCard");
+  const evalOverallScore = document.getElementById("evalOverallScore");
+  const evalSummaryVerdict = document.getElementById("evalSummaryVerdict");
+  const evalFallbackBadge = document.getElementById("evalFallbackBadge");
+  const scoreContent = document.getElementById("scoreContent");
+  const progressContent = document.getElementById("progressContent");
+  const feedbackContent = document.getElementById("feedbackContent");
+  const scoreStructure = document.getElementById("scoreStructure");
+  const progressStructure = document.getElementById("progressStructure");
+  const feedbackStructure = document.getElementById("feedbackStructure");
+  const scoreBalance = document.getElementById("scoreBalance");
+  const progressBalance = document.getElementById("progressBalance");
+  const feedbackBalance = document.getElementById("feedbackBalance");
+  const scoreClarity = document.getElementById("scoreClarity");
+  const progressClarity = document.getElementById("progressClarity");
+  const feedbackClarity = document.getElementById("feedbackClarity");
+  const evalStrongerOpening = document.getElementById("evalStrongerOpening");
+  const btnCopyOpening = document.getElementById("btnCopyOpening");
+  const evalMissedCounterpoint = document.getElementById("evalMissedCounterpoint");
+  const evalStrengthsList = document.getElementById("evalStrengthsList");
+  const evalImprovementsList = document.getElementById("evalImprovementsList");
+
+  // Filter topics by category
+  function filterTopics(cat) {
+    topicSelect.innerHTML = "";
+    const filtered = (cat === "all") ? allTopics : allTopics.filter(t => t.category === cat);
+    filtered.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.setAttribute("data-category", t.category);
+      opt.setAttribute("data-category-label", t.category_label || t.category);
+      opt.textContent = `[${t.category_label || t.category}] ${t.title}`;
+      topicSelect.appendChild(opt);
+    });
+    if (filtered.length > 0) {
+      updateActiveTopic(filtered[0]);
+    }
+  }
+
+  // Update active topic display
+  function updateActiveTopic(topic) {
+    if (!topic) return;
+    activeTopicTitle.textContent = topic.title;
+    activeTopicDescription.textContent = topic.description || "";
+    topicCategoryBadge.textContent = topic.category_label || topic.category;
+
+    if (topic.key_angles && topic.key_angles.length > 0) {
+      activeTopicAngles.innerHTML = "";
+      topic.key_angles.forEach(a => {
+        const li = document.createElement("li");
+        li.textContent = a;
+        activeTopicAngles.appendChild(li);
+      });
+      activeTopicAnglesWrapper.style.display = "block";
+    } else {
+      activeTopicAnglesWrapper.style.display = "none";
+    }
+
+    // sync dropdown value
+    topicSelect.value = topic.id;
+  }
+
+  // Pick random topic
+  function pickRandomTopic() {
+    if (!allTopics || allTopics.length === 0) return;
+    const activeTab = document.querySelector("#categoryTabs button.active");
+    const activeCat = activeTab ? activeTab.getAttribute("data-category") : "all";
+    const pool = (activeCat === "all") ? allTopics : allTopics.filter(t => t.category === activeCat);
+    const chosen = (pool.length > 0) ? pool[Math.floor(Math.random() * pool.length)] : allTopics[Math.floor(Math.random() * allTopics.length)];
+    updateActiveTopic(chosen);
+  }
+
+  // Event Listeners for category tabs
+  categoryTabs.forEach(btn => {
+    btn.addEventListener("click", function () {
+      categoryTabs.forEach(b => b.classList.remove("active"));
+      this.classList.add("active");
+      filterTopics(this.getAttribute("data-category"));
+    });
+  });
+
+  topicSelect.addEventListener("change", function () {
+    const selId = this.value;
+    const found = allTopics.find(t => t.id === selId);
+    if (found) updateActiveTopic(found);
+  });
+
+  btnRandomTopic.addEventListener("click", pickRandomTopic);
+  btnRandomTopicTop.addEventListener("click", pickRandomTopic);
+
+  // Live Word Counter
+  function countWords(str) {
+    const trimmed = str.trim();
+    if (!trimmed) return 0;
+    return trimmed.split(/\s+/).length;
+  }
+
+  function updateWordCounter() {
+    const text = contributionText.value;
+    const count = countWords(text);
+    liveWordCount.textContent = count;
+
+    if (count === 0) {
+      wordCountBadge.className = "badge bg-light text-dark border px-2 py-1";
+      wordValidationMessage.className = "small text-muted";
+      wordValidationMessage.textContent = "Minimum 30 words required. Aim for 150–250 words for optimal placement scoring.";
+    } else if (count < 30) {
+      wordCountBadge.className = "badge bg-danger-subtle text-danger border border-danger-subtle px-2 py-1";
+      wordValidationMessage.className = "small text-danger fw-semibold";
+      wordValidationMessage.textContent = `Too brief (${count} words). Write at least 30 words to evaluate.`;
+    } else if (count >= 140 && count <= 260) {
+      wordCountBadge.className = "badge bg-success-subtle text-success border border-success-subtle px-2 py-1";
+      wordValidationMessage.className = "small text-success fw-semibold";
+      wordValidationMessage.textContent = `Optimal length (${count} words). Excellent pacing for a GD turn.`;
+    } else if (count > 260) {
+      wordCountBadge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-2 py-1";
+      wordValidationMessage.className = "small text-warning-emphasis";
+      wordValidationMessage.textContent = `Slightly long (${count} words). Campus moderators favor concise 150-250 word turns.`;
+    } else {
+      wordCountBadge.className = "badge bg-primary-subtle text-primary border border-primary-subtle px-2 py-1";
+      wordValidationMessage.className = "small text-primary";
+      wordValidationMessage.textContent = `Good start (${count} words). Aim for 150–250 words for depth.`;
+    }
+  }
+
+  contributionText.addEventListener("input", updateWordCounter);
+
+  btnClearText.addEventListener("click", function () {
+    contributionText.value = "";
+    updateWordCounter();
+    validationAlert.classList.add("d-none");
+    contributionText.focus();
+  });
+
+  // Copy opening line to clipboard
+  btnCopyOpening.addEventListener("click", function () {
+    const textToCopy = evalStrongerOpening.textContent;
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy).then(() => {
+        btnCopyOpening.innerHTML = '<i class="fa-solid fa-check text-success"></i>';
+        setTimeout(() => {
+          btnCopyOpening.innerHTML = '<i class="fa-regular fa-copy"></i>';
+        }, 2000);
+      });
+    }
+  });
+
+  // Submit Evaluation
+  btnSubmitContribution.addEventListener("click", async function () {
+    validationAlert.classList.add("d-none");
+    const text = contributionText.value.trim();
+    const count = countWords(text);
+
+    // Client-side acceptance criteria validation
+    if (!text) {
+      validationAlertText.textContent = "Please write your group discussion contribution before submitting.";
+      validationAlert.classList.remove("d-none");
+      contributionText.focus();
+      return;
+    }
+
+    if (count < 30) {
+      validationAlertText.textContent = `Contribution is too brief (${count} words). Please write at least 30 words (ideal: 150-250 words) to receive meaningful feedback.`;
+      validationAlert.classList.remove("d-none");
+      contributionText.focus();
+      return;
+    }
+
+    // Get selected topic & contribution type
+    const selTopicId = topicSelect.value;
+    const topicObj = allTopics.find(t => t.id === selTopicId) || {
+      id: selTopicId,
+      title: activeTopicTitle.textContent,
+      category: "technology",
+      description: activeTopicDescription.textContent
+    };
+
+    const typeRadio = document.querySelector('input[name="contributionType"]:checked');
+    const contributionType = typeRadio ? typeRadio.value : "opening";
+
+    // Set UI loading state
+    btnSubmitSpinner.classList.remove("d-none");
+    btnSubmitIcon.classList.add("d-none");
+    btnSubmitContribution.disabled = true;
+
+    try {
+      const response = await fetch("/api/group-discussion/evaluate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          topic_id: topicObj.id,
+          topic_title: topicObj.title,
+          category: topicObj.category,
+          contribution_type: contributionType,
+          contribution_text: text,
+          topic_description: topicObj.description
+        })
+      });
+
+      const resData = await response.json();
+
+      if (!response.ok || resData.status !== "success") {
+        throw new Error(resData.message || "Failed to evaluate contribution.");
+      }
+
+      const evaluation = resData.data.evaluation;
+      displayEvaluationResults(evaluation);
+      prependHistoryRow(resData.data.attempt);
+
+    } catch (err) {
+      validationAlertText.textContent = err.message || "An unexpected error occurred. Please try again.";
+      validationAlert.classList.remove("d-none");
+    } finally {
+      btnSubmitSpinner.classList.add("d-none");
+      btnSubmitIcon.classList.remove("d-none");
+      btnSubmitContribution.disabled = false;
+    }
+  });
+
+  // Render evaluation card
+  function displayEvaluationResults(evalData) {
+    if (!evalData) return;
+
+    evalOverallScore.textContent = `${evalData.overall_score}/100`;
+    evalSummaryVerdict.textContent = evalData.summary_verdict || "Evaluator analysis complete.";
+
+    if (evalData.is_fallback) {
+      evalFallbackBadge.className = "badge bg-secondary-subtle text-secondary border border-secondary-subtle px-2 py-1";
+      evalFallbackBadge.textContent = "Deterministic Rubric";
+    } else {
+      evalFallbackBadge.className = "badge bg-success-subtle text-success border border-success-subtle px-2 py-1";
+      evalFallbackBadge.textContent = "AI Evaluated";
+    }
+
+    const scores = evalData.scores || {};
+    const feedback = evalData.criteria_feedback || {};
+
+    // 1. Content
+    const cScore = scores.content || 0;
+    scoreContent.textContent = `${cScore}%`;
+    progressContent.style.width = `${cScore}%`;
+    feedbackContent.textContent = feedback.content || "";
+
+    // 2. Structure
+    const sScore = scores.structure || 0;
+    scoreStructure.textContent = `${sScore}%`;
+    progressStructure.style.width = `${sScore}%`;
+    feedbackStructure.textContent = feedback.structure || "";
+
+    // 3. Balance
+    const bScore = scores.balance || 0;
+    scoreBalance.textContent = `${bScore}%`;
+    progressBalance.style.width = `${bScore}%`;
+    feedbackBalance.textContent = feedback.balance || "";
+
+    // 4. Clarity
+    const clScore = scores.clarity || 0;
+    scoreClarity.textContent = `${clScore}%`;
+    progressClarity.style.width = `${clScore}%`;
+    feedbackClarity.textContent = feedback.clarity || "";
+
+    // Recommendations
+    evalStrongerOpening.textContent = evalData.stronger_opening || "N/A";
+    evalMissedCounterpoint.textContent = evalData.missed_counterpoint || "N/A";
+
+    // Strengths
+    evalStrengthsList.innerHTML = "";
+    (evalData.strengths || []).forEach(s => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      evalStrengthsList.appendChild(li);
+    });
+
+    // Improvements
+    evalImprovementsList.innerHTML = "";
+    (evalData.improvements || []).forEach(imp => {
+      const li = document.createElement("li");
+      li.textContent = imp;
+      evalImprovementsList.appendChild(li);
+    });
+
+    evaluationPlaceholder.classList.add("d-none");
+    evaluationResultCard.classList.remove("d-none");
+    evaluationResultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // Prepend new row to practice history table
+  function prependHistoryRow(att) {
+    if (!att) return;
+    const tbody = document.getElementById("historyTableBody");
+    const noHistoryPlaceholder = document.getElementById("noHistoryPlaceholder");
+    if (noHistoryPlaceholder) noHistoryPlaceholder.style.display = "none";
+
+    if (!tbody) return;
+
+    const tr = document.createElement("tr");
+    tr.className = "table-success-subtle";
+    tr.innerHTML = `
+      <td class="ps-3 fw-semibold text-dark">${att.topic_title}</td>
+      <td><span class="badge bg-light text-dark border">${(att.category || '').replace('_', ' ')}</span></td>
+      <td><span class="badge bg-secondary-subtle text-secondary">${(att.contribution_type || '').toUpperCase()}</span></td>
+      <td class="small text-muted">${att.word_count || 0}</td>
+      <td class="small fw-semibold text-primary">${att.content_score || 0}</td>
+      <td class="small fw-semibold text-info">${att.structure_score || 0}</td>
+      <td class="small fw-semibold text-warning">${att.balance_score || 0}</td>
+      <td class="small fw-semibold text-success">${att.clarity_score || 0}</td>
+      <td><span class="badge ${att.overall_score >= 80 ? 'bg-success' : (att.overall_score >= 65 ? 'bg-primary' : 'bg-warning text-dark')}">${att.overall_score}/100</span></td>
+      <td class="pe-3 text-end text-muted small">Just now</td>
+    `;
+    tbody.insertBefore(tr, tbody.firstChild);
+
+    // Update count badge
+    const badge = document.getElementById("historyCountBadge");
+    if (badge) {
+      const currentRows = tbody.querySelectorAll("tr").length;
+      badge.textContent = `${currentRows} Attempt${currentRows !== 1 ? 's' : ''}`;
+    }
+  }
+
+  // Initialize word count on load
+  updateWordCounter();
+});
+</script>
+{% endblock %}

@@ -581,6 +581,30 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_hash ON analysis_cache(input_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_expires ON analysis_cache(expires_at)")
 
+        # Table 18: Store group discussion practice attempts & AI evaluations (#427)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gd_practice_attempts (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                topic_id TEXT,
+                topic_title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                contribution_type TEXT NOT NULL,
+                contribution_text TEXT NOT NULL,
+                word_count INTEGER DEFAULT 0,
+                overall_score INTEGER DEFAULT 0,
+                content_score INTEGER DEFAULT 0,
+                structure_score INTEGER DEFAULT 0,
+                balance_score INTEGER DEFAULT 0,
+                clarity_score INTEGER DEFAULT 0,
+                stronger_opening TEXT,
+                missed_counterpoint TEXT,
+                feedback_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gd_attempts_student ON gd_practice_attempts (student_id, created_at DESC)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -6212,3 +6236,156 @@ def get_student_top_skill_gaps_for_company(
         return []
     finally:
         conn.close()
+
+
+# ==============================================================================
+# Group Discussion Practice Storage & Progress Tracking (#427)
+# ==============================================================================
+
+def save_gd_attempt(
+    student_id: str,
+    topic_title: str,
+    category: str,
+    contribution_type: str,
+    contribution_text: str,
+    word_count: int,
+    overall_score: int,
+    content_score: int,
+    structure_score: int,
+    balance_score: int,
+    clarity_score: int,
+    stronger_opening: str,
+    missed_counterpoint: str,
+    feedback_json: str,
+    topic_id: Optional[str] = None,
+    attempt_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Persists a group discussion practice submission and evaluation into SQLite.
+    Returns the saved record as a dictionary.
+    """
+    attempt_uuid = attempt_id or str(uuid.uuid4())
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO gd_practice_attempts (
+                id, student_id, topic_id, topic_title, category,
+                contribution_type, contribution_text, word_count,
+                overall_score, content_score, structure_score, balance_score, clarity_score,
+                stronger_opening, missed_counterpoint, feedback_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                attempt_uuid,
+                student_id,
+                topic_id,
+                topic_title,
+                category,
+                contribution_type,
+                contribution_text,
+                word_count,
+                overall_score,
+                content_score,
+                structure_score,
+                balance_score,
+                clarity_score,
+                stronger_opening,
+                missed_counterpoint,
+                feedback_json
+            )
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_uuid,))
+        row = cursor.fetchone()
+        return dict(row) if row else {"id": attempt_uuid, "student_id": student_id}
+    except Exception as e:
+        logger.error(f"Failed to persist GD practice attempt for student {student_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_student_gd_attempts(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Retrieves the most recent group discussion attempts for a specific student,
+    ordered chronologically descending (newest first).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM gd_practice_attempts
+            WHERE student_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (student_id, max(1, limit))
+        )
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            item = dict(r)
+            if item.get("feedback_json"):
+                try:
+                    item["feedback"] = json.loads(item["feedback_json"])
+                except Exception:
+                    item["feedback"] = {}
+            result.append(item)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching GD practice attempts for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_gd_attempt_by_id(attempt_id: str, student_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single GD attempt record by its ID, optionally enforcing student ownership.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if student_id:
+            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ? AND student_id = ?", (attempt_id, student_id))
+        else:
+            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        if item.get("feedback_json"):
+            try:
+                item["feedback"] = json.loads(item["feedback_json"])
+            except Exception:
+                item["feedback"] = {}
+        return item
+    except Exception as e:
+        logger.error(f"Error retrieving GD attempt {attempt_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def delete_student_gd_attempts(student_id: str) -> int:
+    """
+    Deletes all GD practice attempts for a student (primarily used in tests and privacy erasure).
+    Returns count of deleted rows.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM gd_practice_attempts WHERE student_id = ?", (student_id,))
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted
+    except Exception as e:
+        logger.error(f"Error clearing GD practice attempts for student {student_id}: {e}")
+        return 0
+    finally:
+        conn.close()
+
