@@ -1359,8 +1359,35 @@ def verify_two_factor():
         totp_code = (request.form.get("code") or "").strip()
         backup_code = (request.form.get("backup_code") or "").strip()
 
-        # 1. Verify emergency backup recovery code if provided
+        # 1. Verify emergency backup recovery code if provided (#380, #406)
         if backup_code:
+            # Check dedicated account recovery codes table first (#406)
+            from utils.recovery_code_service import recovery_code_service
+            is_valid_rec, rec_msg = recovery_code_service.verify_and_consume_code(user["id"], backup_code)
+
+            if is_valid_rec:
+                logger.info("User %s signed in using an account recovery code (#406).", user["id"])
+                next_page = flask_session.get("2fa_pending_next")
+                flask_session.clear()
+                now = time.time()
+                flask_session["user_id"] = user["id"]
+                flask_session["user_name"] = user["name"]
+                flask_session["last_activity"] = now
+                flask_session["login_time"] = now
+                auth_session = create_auth_session(user["id"], _session_client_label())
+                flask_session["auth_session_id"] = auth_session["id"]
+                flask_session["auth_session_token"] = auth_session["token"]
+                flask_session.permanent = True
+
+                flash(
+                    f"Signed in using an emergency recovery code. This code has been consumed. {rec_msg}",
+                    "warning"
+                )
+                if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                    return redirect(next_page)
+                return redirect(url_for("index"))
+
+            # Fallback to legacy 2FA backup codes (#380)
             stored_hashes = user.get("two_factor_backup_codes")
             is_valid, remaining_hashes = verify_and_consume_backup_code(stored_hashes, backup_code)
             if is_valid:
@@ -1584,6 +1611,156 @@ def regenerate_backup_codes():
         "two_factor_recovery_codes.html",
         backup_codes=new_raw_codes
     )
+
+
+# ==============================================================================
+# Secure Account Recovery Code System (#406)
+# ==============================================================================
+
+@app.route("/account/recovery-codes", methods=["GET"])
+def account_recovery_codes_dashboard():
+    """
+    Displays the user's account recovery codes dashboard with status and generation history (#406).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required to access recovery codes.", "error")
+        return redirect(url_for("login"))
+
+    from utils.recovery_code_service import recovery_code_service
+    status = recovery_code_service.get_recovery_codes_status(user_id)
+
+    return render_template(
+        "account_recovery_codes_dashboard.html",
+        user=user,
+        status=status
+    )
+
+
+@app.route("/account/recovery-codes/generate", methods=["POST"])
+def generate_account_recovery_codes():
+    """
+    Generates a fresh set of one-time account recovery codes after verifying password (#406).
+    Invalidates any existing recovery codes and displays plaintext codes strictly once.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required to generate recovery codes.", "error")
+        return redirect(url_for("login"))
+
+    password = request.form.get("password") or ""
+    if not check_password_hash(user["password_hash"], password):
+        flash("Incorrect password. Recovery codes were not generated.", "error")
+        return redirect(url_for("account_recovery_codes_dashboard"))
+
+    from utils.recovery_code_service import recovery_code_service
+    code_set = recovery_code_service.generate_new_code_set(user_id, count=10)
+
+    # Store ephemeral plaintext codes in session strictly for the download route or immediate view
+    flask_session["ephemeral_recovery_codes"] = code_set["recovery_codes"]
+    flask_session["ephemeral_recovery_user_email"] = user["email"]
+
+    return render_template(
+        "account_recovery_codes_generated.html",
+        recovery_codes=code_set["recovery_codes"]
+    )
+
+
+@app.route("/account/recovery-codes/download", methods=["GET"])
+def download_account_recovery_codes():
+    """
+    Streams a downloadable .txt file of newly generated recovery codes (#406).
+    Codes are only available immediately following generation.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    codes = flask_session.get("ephemeral_recovery_codes")
+    email = flask_session.get("ephemeral_recovery_user_email") or user.get("email", "user")
+
+    if not codes:
+        flash("No recovery codes available for download. Codes are only downloadable immediately upon generation.", "warning")
+        return redirect(url_for("account_recovery_codes_dashboard"))
+
+    from utils.recovery_code_service import recovery_code_service
+    download_text = recovery_code_service.generate_download_text(email, codes)
+
+    response = Response(download_text, mimetype="text/plain; charset=utf-8")
+    response.headers["Content-Disposition"] = "attachment; filename=placement-account-recovery-codes.txt"
+    return response
+
+
+# API Endpoints for Secure Account Recovery Code System (#406)
+@app.route("/api/account/recovery-codes/status", methods=["GET"])
+def api_recovery_codes_status():
+    """
+    API endpoint returning recovery codes metadata (remaining count, status) (#406).
+    """
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.recovery_code_service import recovery_code_service
+    status = recovery_code_service.get_recovery_codes_status(user_id)
+    return jsonify({"success": True, "status": status}), 200
+
+
+@app.route("/api/account/recovery-codes/generate", methods=["POST"])
+def api_generate_recovery_codes():
+    """
+    API endpoint to generate a new set of recovery codes after password authentication (#406).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or request.form
+    password = payload.get("password") or ""
+
+    if not check_password_hash(user["password_hash"], password):
+        return jsonify({"success": False, "error": "Incorrect account password"}), 403
+
+    from utils.recovery_code_service import recovery_code_service
+    code_set = recovery_code_service.generate_new_code_set(user_id, count=10)
+
+    # Ephemeral session storage for download
+    flask_session["ephemeral_recovery_codes"] = code_set["recovery_codes"]
+    flask_session["ephemeral_recovery_user_email"] = user["email"]
+
+    return jsonify({
+        "success": True,
+        "message": "New recovery codes generated. Existing codes have been invalidated.",
+        "batch_id": code_set["batch_id"],
+        "total_count": code_set["total_count"],
+        "recovery_codes": code_set["recovery_codes"]
+    }), 201
+
+
+@app.route("/api/account/recovery-codes/verify", methods=["POST"])
+def api_verify_recovery_code():
+    """
+    API endpoint to verify and consume a recovery code (#406).
+    """
+    payload = request.get_json(silent=True) or request.form
+    user_id = flask_session.get("2fa_pending_user_id") or flask_session.get("user_id") or payload.get("user_id")
+    code = payload.get("code") or ""
+
+    if not user_id or not code:
+        return jsonify({"success": False, "error": "user_id and code are required"}), 400
+
+    from utils.recovery_code_service import recovery_code_service
+    is_valid, msg = recovery_code_service.verify_and_consume_code(user_id, code)
+
+    if not is_valid:
+        return jsonify({"success": False, "error": msg}), 400
+
+    return jsonify({"success": True, "message": msg}), 200
 
 
 @app.route("/account/sessions", methods=["GET"])
@@ -3615,7 +3792,6 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        keyword_highlighter=keyword_highlighter,
         bullet_rewrites=bullet_rewrites
     )
 
