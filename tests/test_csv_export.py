@@ -180,3 +180,10 @@ def test_export_invalid_type_endpoint(client):
     res = client.get("/api/export/csv/unknown_type")
     assert res.status_code == 400
     assert "Unsupported export type" in res.get_json()["error"]
+
+
+def test_export_dashboard_page(client):
+    """GET /export renders the CSV download page."""
+    resp = client.get("/export")
+    assert resp.status_code == 200
+    assert b"/api/export/csv/" in resp.data
