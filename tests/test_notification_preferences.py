@@ -177,3 +177,16 @@ def test_api_notification_preferences_routes(client):
     )
     assert toggle_resp.status_code == 200
     assert toggle_resp.get_json()["master_toggle_all"] is False
+
+
+def test_notification_preferences_page_route(client):
+    """GET /notification-preferences redirects anonymous users and renders for a logged-in student."""
+    anon = client.get("/notification-preferences")
+    assert anon.status_code == 302
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = 1
+
+    resp = client.get("/notification-preferences")
+    assert resp.status_code == 200
+    assert b"Notification" in resp.data
