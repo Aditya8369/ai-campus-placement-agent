@@ -302,7 +302,7 @@ class TestCoordinatorAgentPromptInjectionProtection:
         coordinator = CoordinatorAgent()
         captured_prompts = []
 
-        def mock_generate(system_instruction, prompt):
+        def mock_generate(system_instruction, prompt, **kwargs):
             captured_prompts.append((system_instruction, prompt))
             return sample_coordinator_json
 
@@ -335,7 +335,7 @@ class TestCoordinatorAgentPromptInjectionProtection:
         coordinator = CoordinatorAgent()
         captured_prompts = []
 
-        def mock_generate(system_instruction, prompt):
+        def mock_generate(system_instruction, prompt, **kwargs):
             captured_prompts.append((system_instruction, prompt))
             return sample_coordinator_json
 
@@ -356,7 +356,7 @@ class TestCoordinatorAgentPromptInjectionProtection:
         coordinator = CoordinatorAgent()
         captured_prompts = []
 
-        def mock_generate(system_instruction, prompt):
+        def mock_generate(system_instruction, prompt, **kwargs):
             captured_prompts.append((system_instruction, prompt))
             return sample_coordinator_json
 

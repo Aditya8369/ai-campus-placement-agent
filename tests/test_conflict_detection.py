@@ -334,6 +334,9 @@ def test_coordinator_integration_preserves_keys_and_adds_conflicts(coordinator):
                 "overall_recommendation_summary",
                 "conflicts",
                 "section_status",
+                "skill_evidence_mapping",
+                "extracted_resume_text",
+                "security_audit",
             }
             assert set(result.keys()) == expected_keys
 
