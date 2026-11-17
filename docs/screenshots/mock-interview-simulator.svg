@@ -1,0 +1,97 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="100%" height="100%" style="background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <linearGradient id="aiBubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#334155"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <linearGradient id="userBubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <filter id="winShadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Browser Chrome Window -->
+  <rect x="20" y="20" width="960" height="600" rx="12" fill="#1e293b" filter="url(#winShadow)"/>
+  
+  <!-- Header -->
+  <rect x="20" y="20" width="960" height="42" rx="12" fill="#0f172a"/>
+  <rect x="20" y="50" width="960" height="12" fill="#0f172a"/>
+  <circle cx="45" cy="41" r="6" fill="#ef4444"/>
+  <circle cx="65" cy="41" r="6" fill="#f59e0b"/>
+  <circle cx="85" cy="41" r="6" fill="#10b981"/>
+  <rect x="120" y="31" width="760" height="22" rx="6" fill="#1e293b"/>
+  <text x="375" y="46" fill="#94a3b8" font-size="11">https://campus-placement-agent.ai/interview/live-session</text>
+
+  <!-- Top Bar -->
+  <rect x="20" y="62" width="960" height="50" fill="#1e293b"/>
+  <text x="50" y="93" fill="#f8fafc" font-size="16" font-weight="700">Mock Interview Simulator</text>
+  <rect x="250" y="74" width="85" height="24" rx="12" fill="#065f46"/>
+  <text x="264" y="90" fill="#34d399" font-size="11" font-weight="600">● LIVE Q4/15</text>
+  
+  <!-- Timed Answer Widget -->
+  <rect x="760" y="74" width="195" height="26" rx="13" fill="#334155"/>
+  <circle cx="778" cy="87" r="6" fill="#f59e0b"/>
+  <text x="792" y="91" fill="#f8fafc" font-size="12" font-weight="600">Timed Mode: 01:42 left</text>
+
+  <!-- Chat Container -->
+  <!-- Left Column: Chat Conversation -->
+  <rect x="45" y="130" width="630" height="465" rx="10" fill="#0f172a"/>
+
+  <!-- AI Message -->
+  <rect x="65" y="150" width="45" height="45" rx="22" fill="#4f46e5"/>
+  <text x="79" y="178" fill="#ffffff" font-size="16" font-weight="700">AI</text>
+  <rect x="120" y="150" width="530" height="100" rx="10" fill="url(#aiBubbleGrad)" stroke="#334155" stroke-width="1"/>
+  <text x="135" y="175" fill="#38bdf8" font-size="12" font-weight="600">InterviewAgent (Google SDE Round - Technical Question):</text>
+  <text x="135" y="200" fill="#f1f5f9" font-size="13">"How would you design a distributed caching layer that handles thundering</text>
+  <text x="135" y="222" fill="#f1f5f9" font-size="13">herd issues when hundreds of clients request an expired key simultaneously?"</text>
+
+  <!-- User Answer -->
+  <rect x="140" y="270" width="510" height="95" rx="10" fill="url(#userBubbleGrad)"/>
+  <text x="155" y="295" fill="#e0e7ff" font-size="12" font-weight="600">You (Candidate Answer):</text>
+  <text x="155" y="320" fill="#ffffff" font-size="13">"I would employ a mutex lock with probabilistic early recomputation (XFetch algorithm)</text>
+  <text x="155" y="342" fill="#ffffff" font-size="13">or distributed locking in Redis with a short TTL to ensure a single worker regenerates it."</text>
+
+  <!-- Input Field Area -->
+  <rect x="65" y="495" width="515" height="45" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="80" y="523" fill="#64748b" font-size="13">Type your detailed technical explanation or STAR behavioral answer...</text>
+  <rect x="590" y="495" width="65" height="45" rx="8" fill="#4f46e5"/>
+  <text x="607" y="523" fill="#ffffff" font-size="13" font-weight="600">Send</text>
+
+  <!-- Right Column: Real-Time Dynamic Feedback & Scoring -->
+  <rect x="695" y="130" width="260" height="465" rx="10" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="715" y="165" fill="#f8fafc" font-size="14" font-weight="700">Dynamic Answer Feedback</text>
+
+  <!-- Score 1 -->
+  <text x="715" y="205" fill="#94a3b8" font-size="12">Technical Accuracy</text>
+  <text x="915" y="205" fill="#10b981" font-size="12" font-weight="700">92/100</text>
+  <rect x="715" y="215" width="220" height="6" rx="3" fill="#334155"/>
+  <rect x="715" y="215" width="202" height="6" rx="3" fill="#10b981"/>
+
+  <!-- Score 2 -->
+  <text x="715" y="245" fill="#94a3b8" font-size="12">STAR Structure &amp; Clarity</text>
+  <text x="915" y="245" fill="#3b82f6" font-size="12" font-weight="700">85/100</text>
+  <rect x="715" y="255" width="220" height="6" rx="3" fill="#334155"/>
+  <rect x="715" y="255" width="187" height="6" rx="3" fill="#3b82f6"/>
+
+  <!-- Score 3 -->
+  <text x="715" y="285" fill="#94a3b8" font-size="12">Pacing &amp; Communication</text>
+  <text x="915" y="285" fill="#8b5cf6" font-size="12" font-weight="700">88/100</text>
+  <rect x="715" y="295" width="220" height="6" rx="3" fill="#334155"/>
+  <rect x="715" y="295" width="193" height="6" rx="3" fill="#8b5cf6"/>
+
+  <!-- AI Feedback Text -->
+  <rect x="715" y="325" width="220" height="150" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+  <text x="727" y="350" fill="#38bdf8" font-size="12" font-weight="700">Strengths Highlighted:</text>
+  <text x="727" y="372" fill="#cbd5e1" font-size="11">Excellent mention of XFetch algorithm</text>
+  <text x="727" y="390" fill="#cbd5e1" font-size="11">and distributed Redis mutex locking.</text>
+  <text x="727" y="415" fill="#f59e0b" font-size="12" font-weight="700">Improvement Suggestion:</text>
+  <text x="727" y="437" fill="#cbd5e1" font-size="11">Explain fallback handling if the lock</text>
+  <text x="727" y="455" fill="#cbd5e1" font-size="11">holder crashes mid-recomputation.</text>
+
+  <!-- Complete Interview Button -->
+  <rect x="715" y="535" width="220" height="38" rx="8" fill="#10b981"/>
+  <text x="765" y="559" fill="#ffffff" font-size="12" font-weight="700">Finish &amp; Get Report</text>
+</svg>
