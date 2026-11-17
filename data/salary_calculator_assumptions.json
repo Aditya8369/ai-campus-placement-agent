@@ -1,0 +1,62 @@
+{
+  "financial_year": "FY 2024-25 / FY 2025-26",
+  "tax_regime": "New Tax Regime (Section 115BAC)",
+  "standard_deduction": 75000,
+  "basic_pay_percentage_of_fixed": 50.0,
+  "employee_pf_rate": 12.0,
+  "employer_pf_rate": 12.0,
+  "professional_tax_annual": 2400,
+  "professional_tax_monthly": 200,
+  "health_and_education_cess_rate": 4.0,
+  "tax_rebate_limit_87a": 700000,
+  "tax_slabs": [
+    {
+      "from": 0,
+      "to": 300000,
+      "rate": 0.0,
+      "label": "Up to ₹3,00,000"
+    },
+    {
+      "from": 300000,
+      "to": 700000,
+      "rate": 5.0,
+      "label": "₹3,00,001 - ₹7,00,000"
+    },
+    {
+      "from": 700000,
+      "to": 1000000,
+      "rate": 10.0,
+      "label": "₹7,00,001 - ₹10,00,000"
+    },
+    {
+      "from": 1000000,
+      "to": 1200000,
+      "rate": 15.0,
+      "label": "₹10,00,001 - ₹12,00,000"
+    },
+    {
+      "from": 1200000,
+      "to": 1500000,
+      "rate": 20.0,
+      "label": "₹12,00,001 - ₹15,00,000"
+    },
+    {
+      "from": 1500000,
+      "to": null,
+      "rate": 30.0,
+      "label": "Above ₹15,00,000"
+    }
+  ],
+  "explanatory_notes": [
+    "Fixed Pay represents the guaranteed gross annual compensation excluding variable incentives and one-time joining bonuses.",
+    "Basic Salary is assumed at 50% of the annual fixed pay (industry standard for campus engineering offers).",
+    "Employee Provident Fund (EPF) deduction is calculated at 12% of the basic salary.",
+    "Employer PF is often included in the headline CTC figure by recruiters, but it is not part of the monthly gross payout.",
+    "Professional Tax is assumed at ₹200/month (₹2,400/year), standard across most Indian industrial states.",
+    "Standard Deduction of ₹75,000 is applied under the default New Tax Regime.",
+    "Section 87A Tax Rebate gives zero tax liability if net taxable income is up to ₹7,00,000.",
+    "Health & Education Cess of 4% is applied on computed income tax liability.",
+    "Variable pay (annual bonus) and one-time joining bonuses are highlighted separately as non-guaranteed or one-time components and are not included in regular monthly in-hand."
+  ],
+  "disclaimer": "These calculations are estimates provided for placement comparison purposes only and do not constitute certified tax, legal, or financial advice. Actual payroll deductions may vary based on specific employer salary structures, state professional tax rules, opt-in benefits, and individual tax declarations."
+}

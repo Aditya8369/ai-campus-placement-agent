@@ -3773,9 +3773,9 @@ function initCopySuggestions() {
     }, 2000);
   }
 
-  // Event delegation to catch clicks on any .btn-copy-suggestion or .btn-copy-text
+  // Event delegation to catch clicks on any .btn-copy-suggestion, .btn-copy-text, or .btn-copy-bullet-rewrite
   document.addEventListener("click", async (e) => {
-    const btn = e.target.closest(".btn-copy-suggestion, .btn-copy-text");
+    const btn = e.target.closest(".btn-copy-suggestion, .btn-copy-text, .btn-copy-bullet-rewrite");
     if (!btn) return;
 
     e.preventDefault();
