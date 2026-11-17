@@ -111,6 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSectionFeedback();
   initUserWalkthrough();
   initPasswordToggle();
+  initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
 });
 
@@ -5238,8 +5239,9 @@ function initPasswordStrengthIndicator() {
   const suggestionsBox = document.getElementById("passwordSuggestions");
   const suggestionsList = document.getElementById("suggestionsList");
 
-  // Show / Hide Password toggle
-  if (toggleBtn && passwordInput) {
+  // Show / Hide Password toggle (buttons marked .toggle-password-visibility are
+  // already handled by initPasswordToggle, skip them here so they do not flip twice)
+  if (toggleBtn && passwordInput && !toggleBtn.classList.contains("toggle-password-visibility")) {
     toggleBtn.addEventListener("click", () => {
       const isPassword = passwordInput.getAttribute("type") === "password";
       const newType = isPassword ? "text" : "password";
