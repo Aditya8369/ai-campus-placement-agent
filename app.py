@@ -70,6 +70,10 @@ from utils.database import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    enable_user_two_factor,
+    disable_user_two_factor,
+    update_user_backup_codes,
+    get_user_two_factor_status,
     create_auth_session,
     get_active_auth_session,
     touch_auth_session,
@@ -151,6 +155,23 @@ from utils.database import (
     calculate_gemini_call_cost,
     get_user_leaderboard_opt_in,
     set_user_leaderboard_opt_in,
+    save_gd_attempt,
+    get_student_gd_attempts,
+    get_gd_attempt_by_id,
+)
+from utils.group_discussion_service import (
+    load_gd_topics,
+    get_topic_by_id,
+    get_random_topic,
+    get_topics_by_category,
+    validate_contribution,
+    evaluate_gd_contribution,
+    record_and_evaluate_gd_attempt,
+    VALID_CATEGORIES,
+    VALID_CONTRIBUTION_TYPES,
+    MIN_WORD_COUNT,
+    RECOMMENDED_MIN_WORDS,
+    RECOMMENDED_MAX_WORDS,
 )
 from utils.topic_practice_service import (
     get_supported_topics,
@@ -311,6 +332,18 @@ from utils.output_localization import (
 # CSRF Protection & Token Security (#300)
 from utils.csrf import csrf, CSRFError, generate_csrf
 
+# Two-Factor Authentication & Recovery Codes (#380)
+from utils.totp import (
+    generate_totp_secret,
+    format_totp_secret,
+    generate_totp_uri,
+    generate_totp_code,
+    verify_totp_code,
+    generate_backup_codes,
+    hash_backup_code,
+    verify_and_consume_backup_code,
+)
+
 # Configure structured application logging (#301)
 from utils.logger_config import (
     configure_logging,
@@ -429,6 +462,9 @@ def require_login():
         "register",
         "verify_email",
         "resend_verification",
+        "forgot_password",
+        "reset_password",
+        "privacy_policy",
         "healthz",
         "health",
         "api_health",
@@ -450,6 +486,7 @@ def require_login():
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
+        "verify_two_factor",
     }
 
     user_id = flask_session.get("user_id")
@@ -1222,6 +1259,17 @@ def login():
             flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
             return render_template("login.html", unverified_email=email)
 
+        # Two-Factor Authentication Second Step (#380)
+        if bool(user.get("two_factor_enabled", 0)):
+            flask_session.clear()
+            flask_session["2fa_pending_user_id"] = user["id"]
+            flask_session["2fa_pending_email"] = user["email"]
+            flask_session["2fa_pending_time"] = time.time()
+            next_page = request.args.get("next") or request.form.get("next")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                flask_session["2fa_pending_next"] = next_page
+            return redirect(url_for("verify_two_factor"))
+
         flask_session.clear()
         now = time.time()
         flask_session["user_id"] = user["id"]
@@ -1240,6 +1288,269 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def verify_two_factor():
+    """
+    Second sign-in step: Verifies 6-digit TOTP code or emergency backup recovery code (#380).
+    """
+    pending_user_id = flask_session.get("2fa_pending_user_id")
+    pending_time = flask_session.get("2fa_pending_time", 0)
+
+    # 10-minute timeout for completing the second sign-in step
+    if not pending_user_id or (time.time() - float(pending_time)) > 600:
+        flask_session.pop("2fa_pending_user_id", None)
+        flask_session.pop("2fa_pending_email", None)
+        flask_session.pop("2fa_pending_time", None)
+        flask_session.pop("2fa_pending_next", None)
+        flash("Two-factor verification session expired or invalid. Please sign in again.", "warning")
+        return redirect(url_for("login"))
+
+    user = get_user_by_id(pending_user_id)
+    if not user or not bool(user.get("two_factor_enabled", 0)):
+        flask_session.clear()
+        flash("Two-factor authentication is not active on this account.", "error")
+        return redirect(url_for("login"))
+
+    email = user.get("email", "")
+    parts = email.split("@")
+    if len(parts) == 2 and len(parts[0]) > 2:
+        masked_email = f"{parts[0][0]}***{parts[0][-1]}@{parts[1]}"
+    elif len(parts) == 2:
+        masked_email = f"***@{parts[1]}"
+    else:
+        masked_email = email
+
+    if request.method == "POST":
+        totp_code = (request.form.get("code") or "").strip()
+        backup_code = (request.form.get("backup_code") or "").strip()
+
+        # 1. Verify emergency backup recovery code if provided
+        if backup_code:
+            stored_hashes = user.get("two_factor_backup_codes")
+            is_valid, remaining_hashes = verify_and_consume_backup_code(stored_hashes, backup_code)
+            if is_valid:
+                update_user_backup_codes(user["id"], remaining_hashes)
+                logger.info("User %s signed in using a backup recovery code.", user["id"])
+
+                next_page = flask_session.get("2fa_pending_next")
+                flask_session.clear()
+                now = time.time()
+                flask_session["user_id"] = user["id"]
+                flask_session["user_name"] = user["name"]
+                flask_session["last_activity"] = now
+                flask_session["login_time"] = now
+                auth_session = create_auth_session(user["id"], _session_client_label())
+                flask_session["auth_session_id"] = auth_session["id"]
+                flask_session["auth_session_token"] = auth_session["token"]
+                flask_session.permanent = True
+
+                remaining_count = len(remaining_hashes)
+                flash(
+                    f"Signed in using an emergency backup recovery code. This code has been consumed. "
+                    f"You have {remaining_count} backup code{'s' if remaining_count != 1 else ''} remaining.",
+                    "warning"
+                )
+                if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                    return redirect(next_page)
+                return redirect(url_for("index"))
+            else:
+                flash("Invalid or already used backup recovery code. Please check your saved codes.", "error")
+                return render_template("login_two_factor.html", masked_email=masked_email)
+
+        # 2. Verify 6-digit TOTP authenticator app code
+        if not totp_code:
+            flash("Please enter the 6-digit verification code from your authenticator app.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+        secret = user.get("two_factor_secret", "")
+        if verify_totp_code(secret, totp_code):
+            next_page = flask_session.get("2fa_pending_next")
+            flask_session.clear()
+            now = time.time()
+            flask_session["user_id"] = user["id"]
+            flask_session["user_name"] = user["name"]
+            flask_session["last_activity"] = now
+            flask_session["login_time"] = now
+            auth_session = create_auth_session(user["id"], _session_client_label())
+            flask_session["auth_session_id"] = auth_session["id"]
+            flask_session["auth_session_token"] = auth_session["token"]
+            flask_session.permanent = True
+
+            flash("Two-factor authentication verified successfully. Welcome back!", "success")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                return redirect(next_page)
+            return redirect(url_for("index"))
+        else:
+            flash("Invalid verification code. Please check your authenticator app and try again.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+    return render_template("login_two_factor.html", masked_email=masked_email)
+
+
+@app.route("/account/two-factor", methods=["GET"])
+def two_factor_settings():
+    """
+    Displays current two-factor authentication security status and recovery guidance (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    two_factor_status = get_user_two_factor_status(user_id)
+    return render_template(
+        "two_factor_settings.html",
+        user=user,
+        two_factor=two_factor_status
+    )
+
+
+@app.route("/account/two-factor/setup", methods=["GET", "POST"])
+def setup_two_factor():
+    """
+    Two-factor authentication setup flow (#380).
+    Generates TOTP secret and backup recovery codes, and verifies confirmation code before enabling.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is already enabled for your account.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    if request.method == "POST":
+        verification_code = (request.form.get("code") or "").strip()
+        current_password = request.form.get("password") or ""
+
+        # Verify password to authorize security change
+        if not check_password_hash(user["password_hash"], current_password):
+            flash("Incorrect account password. Please enter your current password to confirm setup.", "error")
+            secret = flask_session.get("pending_2fa_secret", "")
+            raw_codes = flask_session.get("pending_2fa_raw_codes", [])
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        secret = flask_session.get("pending_2fa_secret")
+        raw_codes = flask_session.get("pending_2fa_raw_codes")
+        if not secret or not raw_codes:
+            flash("Setup session expired. Please restart the two-factor setup process.", "warning")
+            return redirect(url_for("setup_two_factor"))
+
+        # Verify confirmation code against pending secret
+        if not verify_totp_code(secret, verification_code):
+            flash("Invalid verification code. Please ensure your authenticator app time is synced and enter the 6-digit code currently shown.", "error")
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        # Hash emergency recovery codes and persist to database
+        hashed_codes = [hash_backup_code(c) for c in raw_codes]
+        enable_user_two_factor(user_id, secret, hashed_codes)
+
+        flask_session.pop("pending_2fa_secret", None)
+        flask_session.pop("pending_2fa_raw_codes", None)
+
+        flash("Two-factor authentication has been successfully enabled! Be sure you have saved your recovery codes.", "success")
+        return redirect(url_for("two_factor_settings"))
+
+    # GET: Generate fresh secret and 8 backup recovery codes
+    secret = generate_totp_secret()
+    raw_codes = generate_backup_codes(8)
+    flask_session["pending_2fa_secret"] = secret
+    flask_session["pending_2fa_raw_codes"] = raw_codes
+
+    formatted_secret = format_totp_secret(secret)
+    otpauth_uri = generate_totp_uri(secret, user["email"])
+
+    return render_template(
+        "setup_two_factor.html",
+        secret=secret,
+        formatted_secret=formatted_secret,
+        otpauth_uri=otpauth_uri,
+        backup_codes=raw_codes
+    )
+
+
+@app.route("/account/two-factor/disable", methods=["POST"])
+def disable_two_factor():
+    """
+    Disables two-factor authentication after verifying user password or current 2FA code (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is not currently enabled.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    verification_code = (request.form.get("code") or "").strip()
+
+    is_verified = False
+    if password and check_password_hash(user["password_hash"], password):
+        is_verified = True
+    elif verification_code and verify_totp_code(user.get("two_factor_secret", ""), verification_code):
+        is_verified = True
+
+    if not is_verified:
+        flash("Verification failed. Please enter your correct account password or a valid 6-digit code to disable two-factor authentication.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    disable_user_two_factor(user_id)
+    flash("Two-factor authentication has been disabled. Your account is now protected by password only.", "warning")
+    return redirect(url_for("two_factor_settings"))
+
+
+@app.route("/account/two-factor/regenerate-backup-codes", methods=["POST"])
+def regenerate_backup_codes():
+    """
+    Regenerates a new set of 8 emergency backup recovery codes after verifying password (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication must be enabled before generating recovery codes.", "warning")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    if not check_password_hash(user["password_hash"], password):
+        flash("Incorrect password. Recovery codes could not be regenerated.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    new_raw_codes = generate_backup_codes(8)
+    new_hashed_codes = [hash_backup_code(c) for c in new_raw_codes]
+    update_user_backup_codes(user_id, new_hashed_codes)
+
+    return render_template(
+        "two_factor_recovery_codes.html",
+        backup_codes=new_raw_codes
+    )
 
 
 @app.route("/account/sessions", methods=["GET"])
@@ -1801,6 +2112,30 @@ def api_walkthrough_reset():
         "dismissed": False,
         "message": "Walkthrough reset successfully."
     }), 200
+
+
+# ============================================================================
+# OPENAPI 3.0.3 DOCUMENTATION & INTERACTIVE EXPLORER (#410)
+# ============================================================================
+
+@app.route("/api/openapi.json", methods=["GET"])
+def openapi_json():
+    """Returns the complete OpenAPI 3.0.3 specification JSON for API endpoints (#410)."""
+    from utils.openapi_spec import get_openapi_spec
+    return jsonify(get_openapi_spec()), 200
+
+
+@app.route("/docs", methods=["GET"])
+@app.route("/api/docs", methods=["GET"])
+def api_docs_ui():
+    """Renders interactive Swagger UI for API exploration and testing (#410)."""
+    return render_template("swagger_ui.html")
+
+
+@app.route("/redoc", methods=["GET"])
+def api_redoc_ui():
+    """Renders Redoc three-column API documentation reference viewer (#410)."""
+    return render_template("redoc.html")
 
 
 @app.route("/")
@@ -3203,6 +3538,19 @@ def dashboard(analysis_id: str) -> str:
             "total_keywords": 0,
         }
 
+    # Prepare Weak Bullet Point Rewrites (#429)
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        bullet_rewrites = get_bullet_rewrites_for_analysis(analysis_record)
+    except Exception as br_err:
+        logger.warning(f"Error preparing bullet rewrites for dashboard: {br_err}")
+        bullet_rewrites = {
+            "has_bullets": False,
+            "bullets": [],
+            "total_detected": 0,
+            "empty_message": "Resume bullet rewrites could not be generated."
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3224,14 +3572,36 @@ def dashboard(analysis_id: str) -> str:
         skills_comparison_json=json.dumps(skills_comparison),
         skill_evidence=skill_evidence,
         skill_evidence_json=json.dumps(skill_evidence),
+        skill_gap_resources=skill_gap_resources,
+        analysis_annotations=analysis_annotations,
+        keyword_highlighter=keyword_highlighter,
         score_explanations=score_explanations,
         streak=streak_data,
         comparison=comparison,
         comparison_json=json.dumps(comparison),
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
-        is_demo=is_demo
+        is_demo=is_demo,
+        keyword_highlighter=keyword_highlighter,
+        bullet_rewrites=bullet_rewrites
     )
+
+
+@app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
+def get_bullet_rewrites_api(analysis_id: str):
+    """Return detected weak bullets and suggested rewrites for an analysis (#429)."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"error": "Analysis not found"}), 404
+
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        data = get_bullet_rewrites_for_analysis(analysis_record)
+        return jsonify(data), 200
+    except Exception as e:
+        logger.error(f"Error in bullet-rewrites API: {e}")
+        return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
+
 
 
 @app.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
@@ -12081,7 +12451,8 @@ def api_application_detail_operations(app_id: str):
                 resume_snapshot["version"] if resume_snapshot
                 else (None if resume_link_supplied else existing.get("resume_version"))
             ),
-            job_description_snapshot=job_description or None
+            job_description_snapshot=job_description or None,
+            deadline_date=deadline_date
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)
@@ -13581,6 +13952,258 @@ def company_profile_detail_endpoint(profile_id: str):
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
+@app.route("/api/resume/detect-language", methods=["POST"])
+def api_detect_resume_language():
+    """
+    Analyzes resume text to determine primary language.
+    Provides non-blocking warnings if non-English content is detected.
+    """
+    from utils.resume_language_detector import resume_language_detector
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for language detection"
+        }), 400
+
+    result = resume_language_detector.detect_language(resume_text)
+    return jsonify({
+        "success": True,
+        "detection": result
+    }), 200
+
+
+@app.route("/api/resume/validate-sections", methods=["POST"])
+def api_validate_resume_sections():
+    """
+    Analyzes resume text to ensure core sections (Education, Skills,
+    Projects, Experience, Contact) are present, providing soft warnings.
+    """
+    from utils.resume_section_validator import resume_section_validator
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for section completeness validation"
+        }), 400
+
+    validation_result = resume_section_validator.validate_sections(resume_text)
+    return jsonify({
+        "success": True,
+        "completeness": validation_result
+    }), 200
+
+
+@app.route("/api/resume/check-duplicate", methods=["POST"])
+def api_check_duplicate_resume():
+    """
+    Checks if an uploaded resume file or text matches previous uploads.
+    Returns status without blocking the user.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if "resume" in request.files:
+        file = request.files["resume"]
+        file_bytes = file.read()
+        filename = file.filename or "resume.pdf"
+        extracted_text = request.form.get("extracted_text", "")
+    else:
+        payload = request.get_json(silent=True) or request.form
+        content = payload.get("content", "")
+        file_bytes = content.encode("utf-8")
+        filename = payload.get("filename", "resume.txt")
+        extracted_text = payload.get("extracted_text") or content
+
+    if not file_bytes:
+        return jsonify({"success": False, "error": "No resume file or content provided"}), 400
+
+    dup_status = duplicate_resume_service.check_for_duplicate(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=extracted_text
+    )
+
+    return jsonify({
+        "success": True,
+        "duplicate_check": dup_status
+    }), 200
+
+
+@app.route("/api/resume/record-fingerprint", methods=["POST"])
+def api_record_resume_fingerprint():
+    """
+    Records a resume fingerprint after successful processing or user confirmation.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    content = payload.get("content", "")
+    filename = payload.get("filename", "resume.pdf")
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    file_bytes = content.encode("utf-8")
+    record_id = duplicate_resume_service.record_upload_fingerprint(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=content
+    )
+
+    return jsonify({
+        "success": True,
+        "record_id": record_id,
+        "message": "Resume fingerprint registered successfully."
+    }), 201
+
+
+@app.route("/api/analysis/version-metadata", methods=["GET", "POST"])
+def api_analysis_version_metadata():
+    """
+    Records or retrieves AI model name, version, and prompt version hash
+    for a placement evaluation run.
+    """
+    from utils.ai_versioning_service import ai_versioning_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        info = ai_versioning_service.get_analysis_version_info(analysis_id)
+        if not info:
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        return jsonify({"success": True, "metadata": info}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        row_id = ai_versioning_service.record_analysis_version(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            model_name=payload.get("model_name"),
+            model_version=payload.get("model_version"),
+            prompt_version=payload.get("prompt_version"),
+            raw_prompt_template=payload.get("raw_prompt_template"),
+            execution_mode=payload.get("execution_mode", "production")
+        )
+
+        metadata = ai_versioning_service.get_analysis_version_info(analysis_id)
+        return jsonify({
+            "success": True,
+            "record_id": row_id,
+            "metadata": metadata
+        }), 201
+
+
+@app.route("/api/analysis/reproducibility-summary", methods=["GET", "POST"])
+def api_analysis_reproducibility_summary():
+    """
+    Generates or retrieves reproducibility summaries, verifying inputs,
+    seeds, parameters, and model versions.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        summary = analysis_reproducibility_service.get_reproducibility_summary(analysis_id)
+        if not summary:
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        return jsonify({"success": True, "reproducibility": summary}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        resume_text = payload.get("resume_text", "")
+
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        if not resume_text:
+            return jsonify({"success": False, "error": "resume_text is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        summary = analysis_reproducibility_service.record_reproducibility_summary(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            resume_text=resume_text,
+            job_description=payload.get("job_description"),
+            target_role=payload.get("target_role"),
+            model_name=payload.get("model_name", "gemini-1.5-flash"),
+            prompt_version=payload.get("prompt_version", "v2.1"),
+            temperature=float(payload.get("temperature", 0.2)),
+            seed=int(payload.get("seed", 42)),
+            scores=payload.get("scores")
+        )
+        return jsonify({
+            "success": True,
+            "reproducibility": summary
+        }), 201
+
+
+@app.route("/api/analysis/compare-reproducibility", methods=["POST"])
+def api_compare_analysis_reproducibility():
+    """
+    Compares two evaluation runs to check whether identical inputs and configs were used.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    payload = request.get_json(silent=True) or request.form
+    id_a = payload.get("analysis_id_a")
+    id_b = payload.get("analysis_id_b")
+
+    if not id_a or not id_b:
+        return jsonify({"success": False, "error": "analysis_id_a and analysis_id_b are required"}), 400
+
+    comparison = analysis_reproducibility_service.compare_runs_reproducibility(id_a, id_b)
+    return jsonify({
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
+@app.route("/api/ai/disclaimer", methods=["GET"])
+def api_get_ai_disclaimer():
+    """
+    Returns standardized AI disclaimer text and HTML banners for
+    front-end modules (resume reviews, interview feedback, etc.).
+    """
+    from utils.ai_disclaimer_service import ai_disclaimer_service
+
+    category = request.args.get("category", "general_ai")
+    data = ai_disclaimer_service.get_disclaimer_data(category)
+    banner_html = ai_disclaimer_service.render_banner_html(category)
+    footnote_html = ai_disclaimer_service.render_footnote_html(category)
+
+    return jsonify({
+        "success": True,
+        "disclaimer": data,
+        "banner_html": banner_html,
+        "footnote_html": footnote_html
+    }), 200
+
+
 @app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
@@ -14570,6 +15193,352 @@ def api_saved_job_description_item(saved_id):
 
 
 
+@app.route("/api/offers", methods=["GET", "POST"])
+def api_offers_list_create():
+    """
+    List and create private student job offers (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers, create_job_offer
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        offers = get_student_offers(student_id)
+        return jsonify({"success": True, "offers": offers}), 200
+
+    payload = request.get_json(silent=True) or request.form
+    try:
+        res = create_job_offer(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            role_title=payload.get("role_title", ""),
+            base_salary=float(payload.get("base_salary", 0)),
+            bonus=float(payload.get("bonus", 0)),
+            equity_annual=float(payload.get("equity_annual", 0)),
+            location=payload.get("location", "Remote"),
+            work_mode=payload.get("work_mode", "Hybrid"),
+            benefits_summary=payload.get("benefits_summary", ""),
+            deadline_date=payload.get("deadline_date"),
+            notes=payload.get("notes", "")
+        )
+        return jsonify(res), 201
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error creating job offer: {e}")
+        return jsonify({"success": False, "error": "Internal error creating offer."}), 500
+
+
+@app.route("/api/offers/compare", methods=["POST"])
+def api_offers_compare():
+    """
+    Compare selected private student job offers side-by-side (#330).
+    """
+    from utils.offer_comparison_service import compare_job_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    offer_ids = payload.get("offer_ids") or []
+    if isinstance(offer_ids, str):
+        offer_ids = [o.strip() for o in offer_ids.split(",") if o.strip()]
+
+    try:
+        comparison = compare_job_offers(student_id, offer_ids)
+        return jsonify(comparison), 200
+    except (KeyError, ValueError) as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error comparing job offers: {e}")
+        return jsonify({"success": False, "error": "Internal error comparing offers."}), 500
+
+
+@app.route("/offers/compare", methods=["GET"])
+def offers_compare_page():
+    """
+    Render private job offers comparison view (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    offers = get_student_offers(student_id)
+    return render_template("offer_comparison.html", student_id=student_id, offers=offers)
+
+
+@app.route("/api/goals", methods=["GET", "POST"])
+def api_preparation_goals():
+    """
+    Creates or lists student target-date preparation plans and milestone metrics.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        goals = goal_planner_service.list_student_goals(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(goals),
+            "goals": goals
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("goal_title", "My Placement Goal")
+        role = payload.get("target_role", "Software Engineer")
+        target_date = payload.get("target_date")
+        target_coding = int(payload.get("target_coding_problems", 50))
+        target_mock = int(payload.get("target_mock_interviews", 5))
+        resume_ready = bool(payload.get("resume_completed", False))
+        notes = payload.get("notes")
+
+        if not target_date:
+            return jsonify({"success": False, "error": "target_date (YYYY-MM-DD) is required"}), 400
+
+        try:
+            goal_id = goal_planner_service.create_goal(
+                student_id=student_id,
+                goal_title=title,
+                target_role=role,
+                target_date_str=target_date,
+                target_coding_problems=target_coding,
+                target_mock_interviews=target_mock,
+                resume_completed=resume_ready,
+                notes=notes
+            )
+        except ValueError as ve:
+            return jsonify({"success": False, "error": f"Invalid date format: {str(ve)}"}), 400
+
+        return jsonify({
+            "success": True,
+            "goal_id": goal_id,
+            "message": "Preparation goal created successfully."
+        }), 201
+
+
+@app.route("/api/goals/<int:gid>/progress", methods=["PUT", "POST"])
+def api_update_goal_progress(gid):
+    """
+    Updates completion numbers for coding problems, mock interviews, or resume status.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    completed_coding = payload.get("completed_coding_problems")
+    completed_interviews = payload.get("completed_mock_interviews")
+    resume_completed = payload.get("resume_completed")
+    status = payload.get("status")
+
+    updated = goal_planner_service.update_goal_progress(
+        student_id=student_id,
+        goal_id=gid,
+        completed_coding=int(completed_coding) if completed_coding is not None else None,
+        completed_interviews=int(completed_interviews) if completed_interviews is not None else None,
+        resume_completed=bool(resume_completed) if resume_completed is not None else None,
+        status=status
+    )
+
+    if not updated:
+        return jsonify({"success": False, "error": "Goal not found or no updates provided"}), 404
+
+    return jsonify({"success": True, "message": "Goal progress updated successfully."}), 200
+
+
+@app.route("/api/trash/items", methods=["GET"])
+def api_list_trash_items():
+    """
+    Lists soft-deleted items available for restore in the student's trash.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    items = restore_service.list_trash_items(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(items),
+        "items": items
+    }), 200
+
+
+@app.route("/api/trash/soft-delete", methods=["POST"])
+def api_soft_delete_item():
+    """
+    Soft-deletes an entity into the recycle bin with undo grace period.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    entity_type = payload.get("entity_type", "generic")
+    entity_id = payload.get("entity_id")
+    entity_title = payload.get("entity_title", "Untitled Item")
+    original_data = payload.get("original_data") or {}
+
+    if not entity_id:
+        return jsonify({"success": False, "error": "entity_id is required"}), 400
+
+    result = restore_service.soft_delete_item(
+        student_id=student_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        entity_title=entity_title,
+        original_data=original_data
+    )
+    return jsonify(result), 200
+
+
+@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
+def api_undo_soft_deletion(undo_token):
+    """
+    Restores a soft-deleted item using its undo token.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = restore_service.restore_item(student_id, undo_token)
+
+    if not restored.get("success"):
+        return jsonify(restored), 400
+
+    return jsonify(restored), 200
+
+
+@app.route("/api/recommendations/dismiss", methods=["POST"])
+def api_dismiss_recommendation():
+    """
+    Marks an AI recommendation as not relevant with a student-chosen reason.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    rec_id = payload.get("recommendation_id")
+    rec_title = payload.get("recommendation_title", "Untitled Recommendation")
+    rec_type = payload.get("recommendation_type", "skill_recommendation")
+    reason = payload.get("reason", "Not interested in this technology / domain")
+    custom_notes = payload.get("custom_notes")
+
+    if not rec_id:
+        return jsonify({"success": False, "error": "recommendation_id is required"}), 400
+
+    result = recommendation_dismissal_service.dismiss_recommendation(
+        student_id=student_id,
+        recommendation_id=rec_id,
+        recommendation_title=rec_title,
+        recommendation_type=rec_type,
+        reason=reason,
+        custom_notes=custom_notes
+    )
+
+    return jsonify(result), 200
+
+
+@app.route("/api/recommendations/dismissed", methods=["GET"])
+def api_get_dismissed_recommendations():
+    """
+    Retrieves all recommendations dismissed by the current student.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    dismissed = recommendation_dismissal_service.list_dismissed_recommendations(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(dismissed),
+        "dismissed": dismissed
+    }), 200
+
+
+@app.route("/api/recommendations/undismiss/<rec_id>", methods=["POST", "DELETE"])
+def api_undismiss_recommendation(rec_id):
+    """
+    Restores a previously dismissed recommendation.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = recommendation_dismissal_service.undismiss_recommendation(student_id, rec_id)
+
+    if not restored:
+        return jsonify({"success": False, "error": "Dismissed recommendation not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": f"Recommendation '{rec_id}' restored to active feed."
+    }), 200
+
+
+@app.route("/api/internships/saved", methods=["GET", "POST"])
+def api_internships_saved():
+    """
+    List and create saved internships for the logged-in student (#357).
+    """
+    from utils.saved_internships_service import get_saved_internships, save_internship
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        items = get_saved_internships(student_id)
+        return jsonify({"success": True, "saved_internships": items}), 200
+
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        res = save_internship(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            title=payload.get("title", ""),
+            internship_id=payload.get("internship_id"),
+            location=payload.get("location", "Remote"),
+            stipend=payload.get("stipend"),
+            deadline=payload.get("deadline"),
+            url=payload.get("url"),
+            notes=payload.get("notes")
+        )
+        return jsonify(res), 201
+    except (ValueError, PermissionError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving internship: {e}")
+        return jsonify({"success": False, "error": "Internal error saving internship."}), 500
+
+
+@app.route("/api/internships/saved/<saved_id>", methods=["DELETE", "PUT"])
+def api_internships_saved_item(saved_id):
+    """
+    Delete or update personal note on a saved internship (#357).
+    """
+    from utils.saved_internships_service import remove_saved_internship, update_saved_internship_note
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = remove_saved_internship(student_id, saved_id)
+        if deleted:
+            return jsonify({"success": True, "message": "Saved internship removed."}), 200
+        return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    updated = update_saved_internship_note(student_id, saved_id, payload.get("notes", ""))
+    if updated:
+        return jsonify({"success": True, "message": "Note updated."}), 200
+    return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+
+@app.route("/api/internships/saved/<saved_id>/convert", methods=["POST"])
+def api_internships_saved_convert(saved_id):
+    """
+    Converts a saved internship to an active tracked job application (#357).
+    """
+    from utils.saved_internships_service import convert_saved_internship_to_application
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        res = convert_saved_internship_to_application(student_id, saved_id)
+        return jsonify(res), 200
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error converting internship to application: {e}")
+        return jsonify({"success": False, "error": "Internal error converting internship."}), 500
+
+
 @app.route("/api/interview/compare", methods=["POST"])
 def api_interview_compare():
     """
@@ -14611,6 +15580,127 @@ def interview_compare_page():
 # ---------------------------------------------------------------------------
 # Calendar Timezone Handling Endpoints (#261)
 # ---------------------------------------------------------------------------
+
+@app.route("/api/user/security-activity", methods=["GET"])
+def api_user_security_activity():
+    """
+    Returns the user's security event history (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return jsonify({"success": True, "events": events}), 200
+
+
+@app.route("/security-activity", methods=["GET"])
+def security_activity_page():
+    """
+    Renders the account security activity log page (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return render_template("security_activity.html", user_id=user_id, events=events)
+
+
+@app.route("/api/reports/share", methods=["POST"])
+def api_reports_share_create():
+    """
+    Creates an expiring, secure read-only report sharing link (#408).
+    """
+    from utils.shared_reports_service import create_shared_report_link
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form or {}
+
+    analysis_id = payload.get("analysis_id")
+    expiration = payload.get("expiration", "24h")
+
+    if not analysis_id:
+        return jsonify({"success": False, "error": "analysis_id is required."}), 400
+
+    try:
+        res = create_shared_report_link(analysis_id, student_id, expiration)
+        return jsonify(res), 201
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error creating share link: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/reports/share/<share_id>/revoke", methods=["POST"])
+def api_reports_share_revoke(share_id):
+    """
+    Revokes an active report share link immediately (#408).
+    """
+    from utils.shared_reports_service import revoke_shared_link
+    student_id = flask_session.get("user_id") or "default_student"
+    success = revoke_shared_link(student_id, share_id)
+    if success:
+        return jsonify({"success": True, "message": "Share link revoked successfully."}), 200
+    return jsonify({"success": False, "error": "Share link not found or already revoked."}), 404
+
+
+@app.route("/shared/report/<token>", methods=["GET"])
+def view_shared_report(token):
+    """
+    Renders read-only placement report for a shared token (#408).
+    """
+    from utils.shared_reports_service import get_shared_report_by_token
+    valid, report, err = get_shared_report_by_token(token)
+    if not valid:
+        return render_template("shared_report_error.html", error_message=err), 404
+    return render_template("shared_report_view.html", report=report)
+
+
+@app.route("/api/reports/watermark", methods=["POST"])
+def api_apply_report_watermark():
+    """
+    Applies or previews a security watermark on reports and documents.
+    Supports both HTML and plain-text report formats.
+    """
+    from utils.report_watermark_service import report_watermark_service
+
+    data = request.get_json(silent=True) or request.form
+    content = data.get("content", "")
+    content_format = data.get("format", "html").lower()
+    doc_type = data.get("document_type", "Placement Preparation Report")
+    custom_notice = data.get("custom_notice")
+    student_id = data.get("student_id") or flask_session.get("user_id") or "STUDENT"
+    include_banner = data.get("include_banner", True)
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    if content_format == "html":
+        watermarked = report_watermark_service.apply_watermark_to_html(
+            html_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice,
+            include_banner=bool(include_banner)
+        )
+    else:
+        watermarked = report_watermark_service.apply_watermark_to_plain_text(
+            text_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice
+        )
+
+    metadata = report_watermark_service.generate_watermark_metadata(
+        student_id=student_id,
+        document_type=doc_type,
+        custom_text=custom_notice
+    )
+
+    return jsonify({
+        "success": True,
+        "format": content_format,
+        "watermarked_content": watermarked,
+        "metadata": metadata
+    }), 200
+
 
 @app.route("/api/calendar/timezone", methods=["GET", "PUT"])
 def api_calendar_timezone():
@@ -14866,6 +15956,148 @@ def api_user_storage_quota():
     student_id = flask_session.get("user_id") or "default_student"
     summary = get_user_storage_summary(student_id)
     return jsonify(summary), 200
+
+
+# ---------------------------------------------------------------------------
+# Group Discussion Practice & AI Evaluation Endpoints (#427)
+# ---------------------------------------------------------------------------
+
+@app.route("/group-discussion", methods=["GET"])
+def group_discussion_view():
+    """
+    Renders the interactive Group Discussion Practice page (#427).
+    Allows students to browse curated campus GD topics across Current Affairs,
+    Technology, and Abstract categories, spin for random topics, write structured
+    contributions (opening, rebuttal, conclusion), and receive multi-criteria AI feedback.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    all_topics = load_gd_topics()
+    grouped_topics = get_topics_by_category()
+
+    # Pre-select topic if topic_id is provided in query params, else choose random
+    selected_topic_id = request.args.get("topic_id")
+    initial_topic = None
+    if selected_topic_id:
+        initial_topic = get_topic_by_id(selected_topic_id)
+    if not initial_topic and all_topics:
+        initial_topic = get_random_topic()
+
+    past_attempts = get_student_gd_attempts(student_id, limit=10)
+
+    return render_template(
+        "group_discussion.html",
+        topics=all_topics,
+        grouped_topics=grouped_topics,
+        initial_topic=initial_topic,
+        categories=VALID_CATEGORIES,
+        contribution_types=VALID_CONTRIBUTION_TYPES,
+        past_attempts=past_attempts,
+        student_id=student_id,
+        min_words=MIN_WORD_COUNT,
+        recommended_min_words=RECOMMENDED_MIN_WORDS,
+        recommended_max_words=RECOMMENDED_MAX_WORDS,
+    )
+
+
+@app.route("/api/group-discussion/topics", methods=["GET"])
+def api_get_gd_topics():
+    """Returns the full collection of group discussion topics (#427)."""
+    category = request.args.get("category")
+    if category:
+        all_topics = load_gd_topics()
+        filtered = [t for t in all_topics if t.get("category", "").lower() == category.lower()]
+        return jsonify({"status": "success", "count": len(filtered), "topics": filtered}), 200
+
+    grouped = get_topics_by_category()
+    all_topics = load_gd_topics()
+    return jsonify({
+        "status": "success",
+        "count": len(all_topics),
+        "topics": all_topics,
+        "grouped": grouped
+    }), 200
+
+
+@app.route("/api/group-discussion/random-topic", methods=["GET"])
+def api_random_gd_topic():
+    """Selects and returns a random group discussion topic, optionally filtered by category (#427)."""
+    category = request.args.get("category")
+    try:
+        topic = get_random_topic(category=category)
+        return jsonify({
+            "status": "success",
+            "topic": topic
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error picking random GD topic: {e}")
+        return jsonify({"status": "error", "message": "Failed to pick random GD topic."}), 500
+
+
+@app.route("/api/group-discussion/evaluate", methods=["POST"])
+def api_evaluate_gd_contribution():
+    """
+    Evaluates a student's group discussion submission and records the attempt (#427).
+    Rejects empty or short answers (<30 words) with clear error message.
+    Scores across Content, Structure, Balance, and Clarity, and suggests stronger opening and missed counterpoint.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    topic_title = payload.get("topic_title", "").strip()
+    topic_id = payload.get("topic_id", "").strip() or None
+    category = payload.get("category", "technology").strip().lower()
+    contribution_type = payload.get("contribution_type", "opening").strip().lower()
+    contribution_text = payload.get("contribution_text", "").strip()
+    topic_description = payload.get("topic_description", "").strip() or None
+
+    if not topic_title:
+        return jsonify({"status": "error", "message": "Topic title is required."}), 400
+
+    # Retrieve topic details if available for context
+    topic_angles = None
+    if topic_id:
+        topic_meta = get_topic_by_id(topic_id)
+        if topic_meta:
+            topic_description = topic_description or topic_meta.get("description")
+            topic_angles = topic_meta.get("key_angles")
+
+    try:
+        result = record_and_evaluate_gd_attempt(
+            student_id=student_id,
+            topic_title=topic_title,
+            category=category,
+            contribution_type=contribution_type,
+            contribution_text=contribution_text,
+            topic_id=topic_id,
+            topic_description=topic_description,
+            topic_angles=topic_angles
+        )
+        return jsonify({
+            "status": "success",
+            "data": result
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error evaluating group discussion contribution: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate contribution. Please try again."}), 500
+
+
+@app.route("/api/group-discussion/history", methods=["GET"])
+def api_get_gd_history():
+    """Retrieves previous group discussion attempts for the authenticated student (#427)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    limit = int(request.args.get("limit", 10))
+    attempts = get_student_gd_attempts(student_id, limit=limit)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(attempts),
+        "attempts": attempts
+    }), 200
+
 
 
 if __name__ == "__main__":

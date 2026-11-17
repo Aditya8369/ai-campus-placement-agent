@@ -282,6 +282,8 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_updated ON interview_preparation_notes (student_id, updated_at DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_cat_updated ON interview_preparation_notes (student_id, category, updated_at DESC)")
 
         # Table 13a: Store private annotations attached to an individual analysis
         cursor.execute("""
@@ -428,7 +430,7 @@ def init_db() -> None:
         if "job_description_snapshot" not in app_cols:
             cursor.execute("ALTER TABLE job_applications ADD COLUMN job_description_snapshot TEXT")
 
-        # Schema migration for users table (#206, #360)
+        # Schema migration for users table (#206, #360, #380)
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [col[1] for col in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -439,6 +441,12 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN token_created_at TIMESTAMP")
         if "leaderboard_opt_in" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN leaderboard_opt_in INTEGER NOT NULL DEFAULT 1")
+        if "two_factor_enabled" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_enabled INTEGER NOT NULL DEFAULT 0")
+        if "two_factor_secret" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT")
+        if "two_factor_backup_codes" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN two_factor_backup_codes TEXT")
 
         # Schema migration for generated-output language preferences
         cursor.execute("PRAGMA table_info(email_notification_preferences)")
@@ -451,18 +459,34 @@ def init_db() -> None:
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_created ON analyses (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_company ON analyses (student_id, company_name, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_completed ON interviews (analysis_id, completed)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_student_status ON job_applications (student_id, status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_student_appdate ON job_applications (student_id, application_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_company ON job_applications (student_id, company_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_resume_analysis ON job_applications (resume_analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_score ON cohort_benchmarks (department, overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_company ON interview_experiences (company_name, interview_date DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_reported_date ON interview_experiences (reported_flag, interview_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_student ON interview_experiences (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_date ON preparation_calendar_events (student_id, event_date ASC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_completed ON preparation_calendar_events (student_id, completed, event_date ASC)")
         cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_student_comp ON company_preparation_checklists (student_id, company_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_analysis ON coding_submissions (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_jd_student_company ON saved_job_descriptions (student_id, company_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions (user_id, revoked_at, last_seen_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         
@@ -536,6 +560,9 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_date ON preparation_activity_log (student_id, activity_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_date_desc ON preparation_activity_log (student_id, activity_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_created ON preparation_activity_log (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_activity_type ON preparation_activity_log (student_id, activity_type)")
 
         # Student daily preparation streaks table (#236)
         cursor.execute("""
@@ -580,6 +607,30 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_hash ON analysis_cache(input_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_expires ON analysis_cache(expires_at)")
+
+        # Table 18: Store group discussion practice attempts & AI evaluations (#427)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS gd_practice_attempts (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                topic_id TEXT,
+                topic_title TEXT NOT NULL,
+                category TEXT NOT NULL,
+                contribution_type TEXT NOT NULL,
+                contribution_text TEXT NOT NULL,
+                word_count INTEGER DEFAULT 0,
+                overall_score INTEGER DEFAULT 0,
+                content_score INTEGER DEFAULT 0,
+                structure_score INTEGER DEFAULT 0,
+                balance_score INTEGER DEFAULT 0,
+                clarity_score INTEGER DEFAULT 0,
+                stronger_opening TEXT,
+                missed_counterpoint TEXT,
+                feedback_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_gd_attempts_student ON gd_practice_attempts (student_id, created_at DESC)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
@@ -1403,8 +1454,9 @@ def save_job_application(
             INSERT OR REPLACE INTO job_applications (
                 id, student_id, company_name, role_title, status, application_date,
                 job_url, job_description, notes, location, job_type, experience_level,
-                resume_analysis_id, resume_filename, resume_version, job_description_snapshot
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                resume_analysis_id, resume_filename, resume_version, job_description_snapshot,
+                deadline_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             app_id,
             student_id.strip() if student_id else "default_student",
@@ -1421,7 +1473,8 @@ def save_job_application(
             (resume_analysis_id or "").strip() or None,
             (resume_filename or "").strip() or None,
             resume_version,
-            (job_description_snapshot or "").strip() or None
+            (job_description_snapshot or "").strip() or None,
+            clean_deadline
         ))
         conn.commit()
         logger.info(f"Saved job application {app_id} for student {student_id}")
@@ -1591,7 +1644,8 @@ def update_job_application(
                 resume_analysis_id = ?,
                 resume_filename = ?,
                 resume_version = ?,
-                job_description_snapshot = ?
+                job_description_snapshot = ?,
+                deadline_date = ?
             WHERE id = ? AND student_id = ?
         """, (
             company_name.strip(),
@@ -1608,6 +1662,7 @@ def update_job_application(
             (resume_filename or "").strip() or None,
             resume_version,
             (job_description_snapshot or "").strip() or None,
+            clean_deadline,
             app_id.strip(),
             student_id.strip() if student_id else "default_student"
         ))
@@ -2556,6 +2611,87 @@ def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
         return dict(row) if row else None
     finally:
         conn.close()
+
+
+def enable_user_two_factor(user_id: str, secret: str, hashed_backup_codes: List[str]) -> bool:
+    """Enable two-factor authentication and store TOTP secret and recovery codes (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_enabled = 1,
+                two_factor_secret = ?,
+                two_factor_backup_codes = ?
+            WHERE id = ?
+            """,
+            (secret.strip(), json.dumps(hashed_backup_codes), user_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def disable_user_two_factor(user_id: str) -> bool:
+    """Disable two-factor authentication and clear TOTP secret and recovery codes (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_enabled = 0,
+                two_factor_secret = NULL,
+                two_factor_backup_codes = NULL
+            WHERE id = ?
+            """,
+            (user_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def update_user_backup_codes(user_id: str, hashed_backup_codes: List[str]) -> bool:
+    """Update active backup recovery code hashes after one is consumed or regenerated (#380)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET two_factor_backup_codes = ?
+            WHERE id = ?
+            """,
+            (json.dumps(hashed_backup_codes), user_id)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_user_two_factor_status(user_id: str) -> Dict[str, Any]:
+    """Retrieve two-factor status and remaining backup codes count (#380)."""
+    user = get_user_by_id(user_id)
+    if not user:
+        return {"enabled": False, "backup_codes_count": 0}
+    enabled = bool(user.get("two_factor_enabled", 0))
+    raw_codes = user.get("two_factor_backup_codes")
+    count = 0
+    if raw_codes:
+        try:
+            parsed = json.loads(raw_codes)
+            count = len(parsed) if isinstance(parsed, list) else 0
+        except Exception:
+            count = 0
+    return {
+        "enabled": enabled,
+        "backup_codes_count": count
+    }
 
 
 def get_email_notification_preferences(student_id: str) -> Dict[str, Any]:
@@ -4490,6 +4626,7 @@ def record_viewed_job(
     Records or bumps a job into the student's recently viewed list (#201).
     Enforces per-student data isolation and updates viewed_at on revisit.
     """
+    import datetime
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -4501,19 +4638,22 @@ def record_viewed_job(
         loc = (location or "Remote").strip()
         sal = salary_range.strip() if salary_range else None
         url = apply_url.strip() if apply_url else None
+        # Built in Python instead of datetime('now', 'subsec'): that modifier needs
+        # SQLite 3.42+ and gives NULL on older versions, which breaks the ordering.
+        viewed_at = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
         cursor.execute("""
             INSERT INTO recently_viewed_jobs (
                 id, student_id, job_id, company_name, role_title, location, salary_range, apply_url, viewed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', 'subsec'))
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(student_id, job_id) DO UPDATE SET
                 company_name = excluded.company_name,
                 role_title = excluded.role_title,
                 location = excluded.location,
                 salary_range = excluded.salary_range,
                 apply_url = excluded.apply_url,
-                viewed_at = datetime('now', 'subsec')
-        """, (rec_id, s_id, j_id, comp, role, loc, sal, url))
+                viewed_at = excluded.viewed_at
+        """, (rec_id, s_id, j_id, comp, role, loc, sal, url, viewed_at))
         conn.commit()
 
         cursor.execute("SELECT * FROM recently_viewed_jobs WHERE student_id = ? AND job_id = ?", (s_id, j_id))
@@ -6212,3 +6352,156 @@ def get_student_top_skill_gaps_for_company(
         return []
     finally:
         conn.close()
+
+
+# ==============================================================================
+# Group Discussion Practice Storage & Progress Tracking (#427)
+# ==============================================================================
+
+def save_gd_attempt(
+    student_id: str,
+    topic_title: str,
+    category: str,
+    contribution_type: str,
+    contribution_text: str,
+    word_count: int,
+    overall_score: int,
+    content_score: int,
+    structure_score: int,
+    balance_score: int,
+    clarity_score: int,
+    stronger_opening: str,
+    missed_counterpoint: str,
+    feedback_json: str,
+    topic_id: Optional[str] = None,
+    attempt_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Persists a group discussion practice submission and evaluation into SQLite.
+    Returns the saved record as a dictionary.
+    """
+    attempt_uuid = attempt_id or str(uuid.uuid4())
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO gd_practice_attempts (
+                id, student_id, topic_id, topic_title, category,
+                contribution_type, contribution_text, word_count,
+                overall_score, content_score, structure_score, balance_score, clarity_score,
+                stronger_opening, missed_counterpoint, feedback_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                attempt_uuid,
+                student_id,
+                topic_id,
+                topic_title,
+                category,
+                contribution_type,
+                contribution_text,
+                word_count,
+                overall_score,
+                content_score,
+                structure_score,
+                balance_score,
+                clarity_score,
+                stronger_opening,
+                missed_counterpoint,
+                feedback_json
+            )
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_uuid,))
+        row = cursor.fetchone()
+        return dict(row) if row else {"id": attempt_uuid, "student_id": student_id}
+    except Exception as e:
+        logger.error(f"Failed to persist GD practice attempt for student {student_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+def get_student_gd_attempts(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Retrieves the most recent group discussion attempts for a specific student,
+    ordered chronologically descending (newest first).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM gd_practice_attempts
+            WHERE student_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (student_id, max(1, limit))
+        )
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            item = dict(r)
+            if item.get("feedback_json"):
+                try:
+                    item["feedback"] = json.loads(item["feedback_json"])
+                except Exception:
+                    item["feedback"] = {}
+            result.append(item)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching GD practice attempts for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_gd_attempt_by_id(attempt_id: str, student_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single GD attempt record by its ID, optionally enforcing student ownership.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if student_id:
+            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ? AND student_id = ?", (attempt_id, student_id))
+        else:
+            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        if item.get("feedback_json"):
+            try:
+                item["feedback"] = json.loads(item["feedback_json"])
+            except Exception:
+                item["feedback"] = {}
+        return item
+    except Exception as e:
+        logger.error(f"Error retrieving GD attempt {attempt_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
+def delete_student_gd_attempts(student_id: str) -> int:
+    """
+    Deletes all GD practice attempts for a student (primarily used in tests and privacy erasure).
+    Returns count of deleted rows.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM gd_practice_attempts WHERE student_id = ?", (student_id,))
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted
+    except Exception as e:
+        logger.error(f"Error clearing GD practice attempts for student {student_id}: {e}")
+        return 0
+    finally:
+        conn.close()
+
