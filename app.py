@@ -13581,6 +13581,258 @@ def company_profile_detail_endpoint(profile_id: str):
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
 
+@app.route("/api/resume/detect-language", methods=["POST"])
+def api_detect_resume_language():
+    """
+    Analyzes resume text to determine primary language.
+    Provides non-blocking warnings if non-English content is detected.
+    """
+    from utils.resume_language_detector import resume_language_detector
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for language detection"
+        }), 400
+
+    result = resume_language_detector.detect_language(resume_text)
+    return jsonify({
+        "success": True,
+        "detection": result
+    }), 200
+
+
+@app.route("/api/resume/validate-sections", methods=["POST"])
+def api_validate_resume_sections():
+    """
+    Analyzes resume text to ensure core sections (Education, Skills,
+    Projects, Experience, Contact) are present, providing soft warnings.
+    """
+    from utils.resume_section_validator import resume_section_validator
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for section completeness validation"
+        }), 400
+
+    validation_result = resume_section_validator.validate_sections(resume_text)
+    return jsonify({
+        "success": True,
+        "completeness": validation_result
+    }), 200
+
+
+@app.route("/api/resume/check-duplicate", methods=["POST"])
+def api_check_duplicate_resume():
+    """
+    Checks if an uploaded resume file or text matches previous uploads.
+    Returns status without blocking the user.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if "resume" in request.files:
+        file = request.files["resume"]
+        file_bytes = file.read()
+        filename = file.filename or "resume.pdf"
+        extracted_text = request.form.get("extracted_text", "")
+    else:
+        payload = request.get_json(silent=True) or request.form
+        content = payload.get("content", "")
+        file_bytes = content.encode("utf-8")
+        filename = payload.get("filename", "resume.txt")
+        extracted_text = payload.get("extracted_text") or content
+
+    if not file_bytes:
+        return jsonify({"success": False, "error": "No resume file or content provided"}), 400
+
+    dup_status = duplicate_resume_service.check_for_duplicate(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=extracted_text
+    )
+
+    return jsonify({
+        "success": True,
+        "duplicate_check": dup_status
+    }), 200
+
+
+@app.route("/api/resume/record-fingerprint", methods=["POST"])
+def api_record_resume_fingerprint():
+    """
+    Records a resume fingerprint after successful processing or user confirmation.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    content = payload.get("content", "")
+    filename = payload.get("filename", "resume.pdf")
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    file_bytes = content.encode("utf-8")
+    record_id = duplicate_resume_service.record_upload_fingerprint(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=content
+    )
+
+    return jsonify({
+        "success": True,
+        "record_id": record_id,
+        "message": "Resume fingerprint registered successfully."
+    }), 201
+
+
+@app.route("/api/analysis/version-metadata", methods=["GET", "POST"])
+def api_analysis_version_metadata():
+    """
+    Records or retrieves AI model name, version, and prompt version hash
+    for a placement evaluation run.
+    """
+    from utils.ai_versioning_service import ai_versioning_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        info = ai_versioning_service.get_analysis_version_info(analysis_id)
+        if not info:
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        return jsonify({"success": True, "metadata": info}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        row_id = ai_versioning_service.record_analysis_version(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            model_name=payload.get("model_name"),
+            model_version=payload.get("model_version"),
+            prompt_version=payload.get("prompt_version"),
+            raw_prompt_template=payload.get("raw_prompt_template"),
+            execution_mode=payload.get("execution_mode", "production")
+        )
+
+        metadata = ai_versioning_service.get_analysis_version_info(analysis_id)
+        return jsonify({
+            "success": True,
+            "record_id": row_id,
+            "metadata": metadata
+        }), 201
+
+
+@app.route("/api/analysis/reproducibility-summary", methods=["GET", "POST"])
+def api_analysis_reproducibility_summary():
+    """
+    Generates or retrieves reproducibility summaries, verifying inputs,
+    seeds, parameters, and model versions.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        summary = analysis_reproducibility_service.get_reproducibility_summary(analysis_id)
+        if not summary:
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        return jsonify({"success": True, "reproducibility": summary}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        resume_text = payload.get("resume_text", "")
+
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        if not resume_text:
+            return jsonify({"success": False, "error": "resume_text is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        summary = analysis_reproducibility_service.record_reproducibility_summary(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            resume_text=resume_text,
+            job_description=payload.get("job_description"),
+            target_role=payload.get("target_role"),
+            model_name=payload.get("model_name", "gemini-1.5-flash"),
+            prompt_version=payload.get("prompt_version", "v2.1"),
+            temperature=float(payload.get("temperature", 0.2)),
+            seed=int(payload.get("seed", 42)),
+            scores=payload.get("scores")
+        )
+        return jsonify({
+            "success": True,
+            "reproducibility": summary
+        }), 201
+
+
+@app.route("/api/analysis/compare-reproducibility", methods=["POST"])
+def api_compare_analysis_reproducibility():
+    """
+    Compares two evaluation runs to check whether identical inputs and configs were used.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    payload = request.get_json(silent=True) or request.form
+    id_a = payload.get("analysis_id_a")
+    id_b = payload.get("analysis_id_b")
+
+    if not id_a or not id_b:
+        return jsonify({"success": False, "error": "analysis_id_a and analysis_id_b are required"}), 400
+
+    comparison = analysis_reproducibility_service.compare_runs_reproducibility(id_a, id_b)
+    return jsonify({
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
+@app.route("/api/ai/disclaimer", methods=["GET"])
+def api_get_ai_disclaimer():
+    """
+    Returns standardized AI disclaimer text and HTML banners for
+    front-end modules (resume reviews, interview feedback, etc.).
+    """
+    from utils.ai_disclaimer_service import ai_disclaimer_service
+
+    category = request.args.get("category", "general_ai")
+    data = ai_disclaimer_service.get_disclaimer_data(category)
+    banner_html = ai_disclaimer_service.render_banner_html(category)
+    footnote_html = ai_disclaimer_service.render_footnote_html(category)
+
+    return jsonify({
+        "success": True,
+        "disclaimer": data,
+        "banner_html": banner_html,
+        "footnote_html": footnote_html
+    }), 200
+
+
 @app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
     """
