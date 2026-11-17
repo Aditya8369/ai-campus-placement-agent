@@ -2930,33 +2930,28 @@ textarea:focus-visible {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Resume Bullet Point Rewriter & Optimization (#429)                        */
+/* CTC to In-Hand Salary & Offer Comparison Calculator (#428)                */
 /* -------------------------------------------------------------------------- */
-.bullet-rewrite-card-wrapper {
+.offer-card-input {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.bullet-rewrite-card-wrapper:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+.offer-card-input:focus-within {
+  border-color: var(--bs-primary, #0d6efd) !important;
+  box-shadow: 0 4px 12px rgba(13, 110, 253, 0.1);
 }
 
-.original-bullet-text {
-  line-height: 1.6;
+.offer-input-col {
+  transition: opacity 0.2s ease;
 }
 
-.suggested-bullet-text {
-  line-height: 1.65;
+#comparisonTable tbody tr.table-success td {
+  background-color: rgba(25, 135, 84, 0.12) !important;
 }
 
-.btn-copy-bullet-rewrite {
-  transition: all 0.2s ease-in-out;
-}
-
-@media (min-width: 768px) {
-  .border-end-md {
-    border-right: 1px solid var(--bs-border-color, #dee2e6) !important;
-  }
+[data-bs-theme="dark"] #comparisonTable tbody tr.table-success td {
+  background-color: rgba(25, 135, 84, 0.25) !important;
+  color: #75b798 !important;
 }
 
 

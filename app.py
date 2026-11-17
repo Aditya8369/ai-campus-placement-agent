@@ -14900,6 +14900,54 @@ def api_user_storage_quota():
     return jsonify(summary), 200
 
 
+# ==============================================================================
+# CTC to In-Hand Salary & Offer Comparison Calculator (#428)
+# ==============================================================================
+
+@app.route("/ctc-calculator", methods=["GET"])
+def ctc_calculator_view():
+    """
+    Renders the CTC to In-Hand Salary and Multi-Offer Comparison Calculator (#428).
+    Loads configurable tax slabs, deductions, and assumptions from data/salary_calculator_assumptions.json.
+    """
+    from utils.ctc_calculator_service import load_calculator_assumptions
+    assumptions = load_calculator_assumptions()
+    return render_template("ctc_calculator.html", assumptions=assumptions)
+
+
+@app.route("/api/ctc-calculator/compare", methods=["POST"])
+def api_ctc_calculator_compare():
+    """
+    Validates salary components and returns comparative in-hand take-home metrics (#428).
+    Rejects negative amounts, invalid data types, and computes side-by-side breakdowns.
+    """
+    payload = request.get_json(silent=True) or {}
+    offers_data = payload.get("offers")
+
+    if not offers_data or not isinstance(offers_data, list):
+        return jsonify({
+            "success": False,
+            "error": "Offers list is required. Please provide up to three offer payloads."
+        }), 400
+
+    from utils.ctc_calculator_service import compare_offers
+    try:
+        comparison_result = compare_offers(offers_data)
+        return jsonify(comparison_result), 200
+    except ValueError as val_err:
+        return jsonify({
+            "success": False,
+            "error": str(val_err)
+        }), 400
+    except Exception as exc:
+        logger.error(f"Unexpected error in /api/ctc-calculator/compare: {exc}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to calculate salary offer comparison. Please review your inputs."
+        }), 500
+
+
+
 if __name__ == "__main__":
     # Boot Flask server locally on default port 5000
     app.run(debug=True, port=5000)
