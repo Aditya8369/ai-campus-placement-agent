@@ -2928,7 +2928,37 @@ textarea:focus-visible {
   transform: translateY(-1px);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
 }
+
+/* -------------------------------------------------------------------------- */
+/* Resume Bullet Point Rewriter & Optimization (#429)                        */
+/* -------------------------------------------------------------------------- */
+.bullet-rewrite-card-wrapper {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
+
+.bullet-rewrite-card-wrapper:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+.original-bullet-text {
+  line-height: 1.6;
+}
+
+.suggested-bullet-text {
+  line-height: 1.65;
+}
+
+.btn-copy-bullet-rewrite {
+  transition: all 0.2s ease-in-out;
+}
+
+@media (min-width: 768px) {
+  .border-end-md {
+    border-right: 1px solid var(--bs-border-color, #dee2e6) !important;
+  }
+}
+
 
 
 
