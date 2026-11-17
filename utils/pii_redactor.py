@@ -294,6 +294,12 @@ def redact_pii(
                 redacted_lines.append(f"{leading_ws}{PLACEHOLDER_ADDRESS}")
                 continue
 
+            # Case D: Line with street number and street indicator
+            if re.search(r"(?i)\b\d+[\w\s,.-]+(?:Street|St\b|Road|Rd\b|Avenue|Ave\b|Boulevard|Blvd\b|Lane|Ln\b|Drive|Dr\b|Nagar|Colony|Apartment|Apartments|Apt\b|Flat)\b", line):
+                leading_ws = line[:len(line) - len(line.lstrip())]
+                redacted_lines.append(f"{leading_ws}{PLACEHOLDER_ADDRESS}")
+                continue
+
             redacted_lines.append(line)
         result = "\n".join(redacted_lines)
 

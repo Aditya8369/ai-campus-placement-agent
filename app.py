@@ -2582,15 +2582,35 @@ def _extract_and_validate_resume(req):
             return extracted_resume_text, resume_filename, file_uuid, None
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(spe)
         except PasswordProtectedPDFError as ppe:
             logger.warning("Password-protected PDF rejected without logging credentials.")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(ppe)
         except ValueError as ve:
             logger.warning(f"Validation error reading resume file: {ve}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(ve)
         except Exception as err:
             logger.error(f"Unexpected error reading resume file: {err}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, f"Could not process uploaded file: {str(err)}"
     else:
         return None, None, None, "Please upload a PDF resume or paste your resume text."
@@ -2604,6 +2624,7 @@ def analyze():
     persists result states, and redirects to candidate dashboards.
     Supports optional ?async=true query parameter or AJAX calls for background execution.
     """
+    file_uuid = None
     try:
         # Validate privacy & third-party AI processing consent (#304)
         if not _has_privacy_consent(request):
@@ -2779,6 +2800,14 @@ def analyze():
             return jsonify({"success": False, "error": friendly_message}), 500
         flash(friendly_message, "error")
         return redirect(url_for("index"))
+    finally:
+        # Delete temporary uploaded files after analysis finishes or fails (#500)
+        if file_uuid:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=file_uuid)
+            except Exception as clean_err:
+                logger.warning(f"Error during temporary upload cleanup for {file_uuid}: {clean_err}")
 
 
 @app.route("/api/analysis/start", methods=["POST"])
@@ -3393,6 +3422,13 @@ def api_confirm_resume_analysis():
         logger.error(f"Error analyzing verified resume: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
+    finally:
+        if file_uuid:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=file_uuid)
+            except Exception:
+                pass
 
 
 @app.route("/dashboard/<analysis_id>")
