@@ -15192,6 +15192,352 @@ def api_saved_job_description_item(saved_id):
 
 
 
+@app.route("/api/offers", methods=["GET", "POST"])
+def api_offers_list_create():
+    """
+    List and create private student job offers (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers, create_job_offer
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        offers = get_student_offers(student_id)
+        return jsonify({"success": True, "offers": offers}), 200
+
+    payload = request.get_json(silent=True) or request.form
+    try:
+        res = create_job_offer(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            role_title=payload.get("role_title", ""),
+            base_salary=float(payload.get("base_salary", 0)),
+            bonus=float(payload.get("bonus", 0)),
+            equity_annual=float(payload.get("equity_annual", 0)),
+            location=payload.get("location", "Remote"),
+            work_mode=payload.get("work_mode", "Hybrid"),
+            benefits_summary=payload.get("benefits_summary", ""),
+            deadline_date=payload.get("deadline_date"),
+            notes=payload.get("notes", "")
+        )
+        return jsonify(res), 201
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error creating job offer: {e}")
+        return jsonify({"success": False, "error": "Internal error creating offer."}), 500
+
+
+@app.route("/api/offers/compare", methods=["POST"])
+def api_offers_compare():
+    """
+    Compare selected private student job offers side-by-side (#330).
+    """
+    from utils.offer_comparison_service import compare_job_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    offer_ids = payload.get("offer_ids") or []
+    if isinstance(offer_ids, str):
+        offer_ids = [o.strip() for o in offer_ids.split(",") if o.strip()]
+
+    try:
+        comparison = compare_job_offers(student_id, offer_ids)
+        return jsonify(comparison), 200
+    except (KeyError, ValueError) as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error comparing job offers: {e}")
+        return jsonify({"success": False, "error": "Internal error comparing offers."}), 500
+
+
+@app.route("/offers/compare", methods=["GET"])
+def offers_compare_page():
+    """
+    Render private job offers comparison view (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    offers = get_student_offers(student_id)
+    return render_template("offer_comparison.html", student_id=student_id, offers=offers)
+
+
+@app.route("/api/goals", methods=["GET", "POST"])
+def api_preparation_goals():
+    """
+    Creates or lists student target-date preparation plans and milestone metrics.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        goals = goal_planner_service.list_student_goals(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(goals),
+            "goals": goals
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("goal_title", "My Placement Goal")
+        role = payload.get("target_role", "Software Engineer")
+        target_date = payload.get("target_date")
+        target_coding = int(payload.get("target_coding_problems", 50))
+        target_mock = int(payload.get("target_mock_interviews", 5))
+        resume_ready = bool(payload.get("resume_completed", False))
+        notes = payload.get("notes")
+
+        if not target_date:
+            return jsonify({"success": False, "error": "target_date (YYYY-MM-DD) is required"}), 400
+
+        try:
+            goal_id = goal_planner_service.create_goal(
+                student_id=student_id,
+                goal_title=title,
+                target_role=role,
+                target_date_str=target_date,
+                target_coding_problems=target_coding,
+                target_mock_interviews=target_mock,
+                resume_completed=resume_ready,
+                notes=notes
+            )
+        except ValueError as ve:
+            return jsonify({"success": False, "error": f"Invalid date format: {str(ve)}"}), 400
+
+        return jsonify({
+            "success": True,
+            "goal_id": goal_id,
+            "message": "Preparation goal created successfully."
+        }), 201
+
+
+@app.route("/api/goals/<int:gid>/progress", methods=["PUT", "POST"])
+def api_update_goal_progress(gid):
+    """
+    Updates completion numbers for coding problems, mock interviews, or resume status.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    completed_coding = payload.get("completed_coding_problems")
+    completed_interviews = payload.get("completed_mock_interviews")
+    resume_completed = payload.get("resume_completed")
+    status = payload.get("status")
+
+    updated = goal_planner_service.update_goal_progress(
+        student_id=student_id,
+        goal_id=gid,
+        completed_coding=int(completed_coding) if completed_coding is not None else None,
+        completed_interviews=int(completed_interviews) if completed_interviews is not None else None,
+        resume_completed=bool(resume_completed) if resume_completed is not None else None,
+        status=status
+    )
+
+    if not updated:
+        return jsonify({"success": False, "error": "Goal not found or no updates provided"}), 404
+
+    return jsonify({"success": True, "message": "Goal progress updated successfully."}), 200
+
+
+@app.route("/api/trash/items", methods=["GET"])
+def api_list_trash_items():
+    """
+    Lists soft-deleted items available for restore in the student's trash.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    items = restore_service.list_trash_items(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(items),
+        "items": items
+    }), 200
+
+
+@app.route("/api/trash/soft-delete", methods=["POST"])
+def api_soft_delete_item():
+    """
+    Soft-deletes an entity into the recycle bin with undo grace period.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    entity_type = payload.get("entity_type", "generic")
+    entity_id = payload.get("entity_id")
+    entity_title = payload.get("entity_title", "Untitled Item")
+    original_data = payload.get("original_data") or {}
+
+    if not entity_id:
+        return jsonify({"success": False, "error": "entity_id is required"}), 400
+
+    result = restore_service.soft_delete_item(
+        student_id=student_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        entity_title=entity_title,
+        original_data=original_data
+    )
+    return jsonify(result), 200
+
+
+@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
+def api_undo_soft_deletion(undo_token):
+    """
+    Restores a soft-deleted item using its undo token.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = restore_service.restore_item(student_id, undo_token)
+
+    if not restored.get("success"):
+        return jsonify(restored), 400
+
+    return jsonify(restored), 200
+
+
+@app.route("/api/recommendations/dismiss", methods=["POST"])
+def api_dismiss_recommendation():
+    """
+    Marks an AI recommendation as not relevant with a student-chosen reason.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    rec_id = payload.get("recommendation_id")
+    rec_title = payload.get("recommendation_title", "Untitled Recommendation")
+    rec_type = payload.get("recommendation_type", "skill_recommendation")
+    reason = payload.get("reason", "Not interested in this technology / domain")
+    custom_notes = payload.get("custom_notes")
+
+    if not rec_id:
+        return jsonify({"success": False, "error": "recommendation_id is required"}), 400
+
+    result = recommendation_dismissal_service.dismiss_recommendation(
+        student_id=student_id,
+        recommendation_id=rec_id,
+        recommendation_title=rec_title,
+        recommendation_type=rec_type,
+        reason=reason,
+        custom_notes=custom_notes
+    )
+
+    return jsonify(result), 200
+
+
+@app.route("/api/recommendations/dismissed", methods=["GET"])
+def api_get_dismissed_recommendations():
+    """
+    Retrieves all recommendations dismissed by the current student.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    dismissed = recommendation_dismissal_service.list_dismissed_recommendations(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(dismissed),
+        "dismissed": dismissed
+    }), 200
+
+
+@app.route("/api/recommendations/undismiss/<rec_id>", methods=["POST", "DELETE"])
+def api_undismiss_recommendation(rec_id):
+    """
+    Restores a previously dismissed recommendation.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = recommendation_dismissal_service.undismiss_recommendation(student_id, rec_id)
+
+    if not restored:
+        return jsonify({"success": False, "error": "Dismissed recommendation not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": f"Recommendation '{rec_id}' restored to active feed."
+    }), 200
+
+
+@app.route("/api/internships/saved", methods=["GET", "POST"])
+def api_internships_saved():
+    """
+    List and create saved internships for the logged-in student (#357).
+    """
+    from utils.saved_internships_service import get_saved_internships, save_internship
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        items = get_saved_internships(student_id)
+        return jsonify({"success": True, "saved_internships": items}), 200
+
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        res = save_internship(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            title=payload.get("title", ""),
+            internship_id=payload.get("internship_id"),
+            location=payload.get("location", "Remote"),
+            stipend=payload.get("stipend"),
+            deadline=payload.get("deadline"),
+            url=payload.get("url"),
+            notes=payload.get("notes")
+        )
+        return jsonify(res), 201
+    except (ValueError, PermissionError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving internship: {e}")
+        return jsonify({"success": False, "error": "Internal error saving internship."}), 500
+
+
+@app.route("/api/internships/saved/<saved_id>", methods=["DELETE", "PUT"])
+def api_internships_saved_item(saved_id):
+    """
+    Delete or update personal note on a saved internship (#357).
+    """
+    from utils.saved_internships_service import remove_saved_internship, update_saved_internship_note
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = remove_saved_internship(student_id, saved_id)
+        if deleted:
+            return jsonify({"success": True, "message": "Saved internship removed."}), 200
+        return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    updated = update_saved_internship_note(student_id, saved_id, payload.get("notes", ""))
+    if updated:
+        return jsonify({"success": True, "message": "Note updated."}), 200
+    return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+
+@app.route("/api/internships/saved/<saved_id>/convert", methods=["POST"])
+def api_internships_saved_convert(saved_id):
+    """
+    Converts a saved internship to an active tracked job application (#357).
+    """
+    from utils.saved_internships_service import convert_saved_internship_to_application
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        res = convert_saved_internship_to_application(student_id, saved_id)
+        return jsonify(res), 200
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error converting internship to application: {e}")
+        return jsonify({"success": False, "error": "Internal error converting internship."}), 500
+
+
 @app.route("/api/interview/compare", methods=["POST"])
 def api_interview_compare():
     """
