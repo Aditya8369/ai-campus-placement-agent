@@ -3203,6 +3203,19 @@ def dashboard(analysis_id: str) -> str:
             "total_keywords": 0,
         }
 
+    # Prepare Weak Bullet Point Rewrites (#429)
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        bullet_rewrites = get_bullet_rewrites_for_analysis(analysis_record)
+    except Exception as br_err:
+        logger.warning(f"Error preparing bullet rewrites for dashboard: {br_err}")
+        bullet_rewrites = {
+            "has_bullets": False,
+            "bullets": [],
+            "total_detected": 0,
+            "empty_message": "Resume bullet rewrites could not be generated."
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3230,8 +3243,27 @@ def dashboard(analysis_id: str) -> str:
         comparison_json=json.dumps(comparison),
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
-        is_demo=is_demo
+        is_demo=is_demo,
+        keyword_highlighter=keyword_highlighter,
+        bullet_rewrites=bullet_rewrites
     )
+
+
+@app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
+def get_bullet_rewrites_api(analysis_id: str):
+    """Return detected weak bullets and suggested rewrites for an analysis (#429)."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"error": "Analysis not found"}), 404
+
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        data = get_bullet_rewrites_for_analysis(analysis_record)
+        return jsonify(data), 200
+    except Exception as e:
+        logger.error(f"Error in bullet-rewrites API: {e}")
+        return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
+
 
 
 @app.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
