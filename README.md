@@ -2,6 +2,7 @@
 
 # This project is a part of Nexus Spring of Code (NSoC) 2026 - Winter Edition
 > 
+[![CI](https://github.com/deepikagandla74/ai-campus-placement-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/deepikagandla74/ai-campus-placement-agent/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI Workflow](https://github.com/deepikagandla74/ai-campus-placement-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/deepikagandla74/ai-campus-placement-agent/actions/workflows/ci.yml)
 [![Open Source](https://img.shields.io/badge/Open%20Source-Yes-success.svg)](https://github.com/deepikagandla74/ai-campus-placement-agent)
@@ -332,6 +333,36 @@ black --check .
 The project is configured for deployment on Vercel using Python Serverless Functions (`api/index.py` and `vercel.json`):
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
 - **Pre-Flight Smoke Check**: Run `python utils/deployment_check.py` to verify deployment integrity, configuration files, and critical public routes before releasing.
+
+### 6. Contributor Setup, Linting & Testing
+Contributors should verify changes locally before opening a pull request to ensure the automated CI workflow passes:
+
+1. **Install Runtime and Development Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   pip install flake8 black isort pytest pytest-cov
+   ```
+
+2. **Run Code Linters**:
+   ```bash
+   # Flake8 critical syntax & error check
+   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+   # Code formatting verification
+   black --check .
+   isort --check-only .
+   ```
+
+3. **Execute Automated Tests**:
+   ```bash
+   pytest
+   ```
+
+4. **Run Pre-Flight Pipeline & Deployment Diagnostics**:
+   ```bash
+   python utils/ci_pipeline_validator.py
+   python utils/deployment_check.py
+   ```
 
 ---
 
