@@ -282,6 +282,8 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_created ON interview_preparation_notes (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_category ON interview_preparation_notes (student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_updated ON interview_preparation_notes (student_id, updated_at DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_notes_student_cat_updated ON interview_preparation_notes (student_id, category, updated_at DESC)")
 
         # Table 13a: Store private annotations attached to an individual analysis
         cursor.execute("""
@@ -451,18 +453,34 @@ def init_db() -> None:
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_created ON analyses (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_company ON analyses (student_id, company_name, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_id ON interviews (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_interviews_analysis_completed ON interviews (analysis_id, completed)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_batch_comparisons_created ON batch_comparisons (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_applications_student ON job_applications (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_student_status ON job_applications (student_id, status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_student_appdate ON job_applications (student_id, application_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_company ON job_applications (student_id, company_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_job_apps_resume_analysis ON job_applications (resume_analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_overall ON cohort_benchmarks (overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_year ON cohort_benchmarks (department, grad_year)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_analysis_id ON cohort_benchmarks (analysis_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_cohort_dept_score ON cohort_benchmarks (department, overall_score DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_company ON interview_experiences (company_name, interview_date DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_reported_date ON interview_experiences (reported_flag, interview_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_student ON interview_experiences (student_id, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_date ON preparation_calendar_events (student_id, event_date ASC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_calendar_student_completed ON preparation_calendar_events (student_id, completed, event_date ASC)")
         cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_checklist_student_comp ON company_preparation_checklists (student_id, company_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_student ON coding_submissions (student_id, submitted_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_coding_subs_analysis ON coding_submissions (analysis_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_tech_assessments_student ON technical_self_assessments (student_id, category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_feedback_student ON user_feedback (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_jd_student_company ON saved_job_descriptions (student_id, company_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_created_at ON users (created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users (email)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_auth_sessions_active ON auth_sessions (user_id, revoked_at, last_seen_at DESC)")
 
         # Seed initial cohort peers if table is currently empty
         
@@ -536,6 +554,9 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_date ON preparation_activity_log (student_id, activity_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_date_desc ON preparation_activity_log (student_id, activity_date DESC, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_student_created ON preparation_activity_log (student_id, created_at DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_prep_act_activity_type ON preparation_activity_log (student_id, activity_type)")
 
         # Student daily preparation streaks table (#236)
         cursor.execute("""
