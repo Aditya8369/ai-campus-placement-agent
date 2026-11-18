@@ -21,6 +21,7 @@ from flask import (
     flash,
     jsonify,
     send_file,
+    send_from_directory,
     Response,
     make_response,
     session as flask_session,
@@ -498,6 +499,9 @@ def require_login():
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
         "verify_two_factor",
+        "manifest",
+        "service_worker",
+        "offline",
     }
 
     user_id = flask_session.get("user_id")
@@ -1035,6 +1039,43 @@ def health_check():
         "latency_ms": latency_ms,
         "checks": checks,
     }), http_status
+
+
+@app.route("/manifest.json", methods=["GET"], endpoint="manifest")
+def manifest():
+    """Serve the Web App Manifest for PWA installability (#471)."""
+    manifest_path = os.path.join(app.root_path, "static", "manifest.json")
+    if not os.path.exists(manifest_path):
+        return jsonify({"error": "manifest_not_found"}), 404
+    response = send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "manifest.json",
+        mimetype="application/manifest+json"
+    )
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@app.route("/sw.js", methods=["GET"], endpoint="service_worker")
+def service_worker():
+    """Serve the Service Worker script with root scope permissions (#471)."""
+    sw_path = os.path.join(app.root_path, "static", "sw.js")
+    if not os.path.exists(sw_path):
+        return jsonify({"error": "service_worker_not_found"}), 404
+    response = send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "sw.js",
+        mimetype="application/javascript"
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+@app.route("/offline", methods=["GET"], endpoint="offline")
+def offline():
+    """Serve the friendly offline fallback page when disconnected (#471)."""
+    return render_template("offline.html")
 
 @app.route("/set-language/<lang_code>", methods=["GET"], endpoint="set_language")
 def set_language(lang_code):
