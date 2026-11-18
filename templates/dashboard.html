@@ -2073,7 +2073,7 @@
         <div class="d-flex align-items-center gap-2">
           <h4 class="fw-bold mb-0"><i class="fa-solid fa-triangle-exclamation text-primary me-2"></i> Skill Gap Analysis</h4>
           <span id="skillFilterCount" class="badge bg-primary-subtle text-primary border small rounded-pill px-3 py-1">
-            {{ analysis.results.skill_gap|length }} Skills
+            {{ (role_gap_analysis.missing_skills if role_gap_analysis and role_gap_analysis.missing_skills is defined else (analysis.results.skill_gap|default([])))|length }} Skills
           </span>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -2087,6 +2087,73 @@
             <option value="Medium">Medium Priority</option>
             <option value="Low">Low Priority</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Target Role Benchmark Selector (#495) -->
+      <div class="p-3 mb-4 rounded-4 bg-light-subtle border shadow-sm" id="roleSkillGapSelectorContainer">
+        <div class="row align-items-center g-3">
+          <div class="col-lg-5 col-md-6">
+            <label for="roleGapSelector" class="form-label fw-bold text-dark mb-1 small d-flex align-items-center">
+              <i class="fa-solid fa-crosshairs text-primary me-2"></i> Benchmark Against Target Role:
+            </label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white border-end-0 rounded-start-pill text-primary">
+                <i class="fa-solid fa-user-tag"></i>
+              </span>
+              <select id="roleGapSelector" class="form-select form-select-sm rounded-end-pill fw-semibold border-start-0 shadow-none" aria-label="Select target role for skill gap analysis">
+                {% for role in available_roles|default([]) %}
+                  <option value="{{ role.id }}" {% if role.id == selected_role_id %}selected{% endif %}>
+                    {{ role.name }} ({{ role.category }})
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-text small text-muted mt-1" id="roleBenchmarkDesc">
+              {{ role_gap_analysis.role_description|default('Predefined profile with required and nice-to-have competencies.') }}
+            </div>
+          </div>
+          <div class="col-lg-7 col-md-6">
+            <div class="d-flex flex-wrap align-items-center justify-content-md-end gap-2">
+              <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
+                <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Role Match</small>
+                <span class="fw-bold fs-6 text-primary" id="roleMatchScore">
+                  {{ role_gap_analysis.match_percentage|default(0) }}%
+                </span>
+              </div>
+              <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
+                <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Readiness</small>
+                <span class="badge {{ 'bg-success-subtle text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('bg-primary-subtle text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'bg-warning-subtle text-warning') }} border" id="roleReadinessBadge">
+                  {{ role_gap_analysis.readiness_verdict|default('Targeted Prep') }}
+                </span>
+              </div>
+              <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
+                <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Matched / Total</small>
+                <span class="fw-bold fs-6 text-dark" id="roleMatchedRatio">
+                  {{ (role_gap_analysis.matched_skills|default([]))|length }} / {{ (role_gap_analysis.total_required|default(0)) + (role_gap_analysis.total_nice_to_have|default(0)) }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Matched Skills Pills Accordion / Summary -->
+        <div class="mt-3 pt-3 border-top" id="roleMatchedSkillsContainer">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <small class="fw-bold text-success text-uppercase" style="font-size: 0.75rem;">
+              <i class="fa-solid fa-circle-check me-1"></i> Matched Competencies (<span id="roleMatchedSkillsCount">{{ (role_gap_analysis.matched_skills|default([]))|length }}</span>)
+            </small>
+          </div>
+          <div class="d-flex flex-wrap gap-1" id="roleMatchedSkillsList">
+            {% for m in role_gap_analysis.matched_skills|default([]) %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 small">
+                <i class="fa-solid fa-check small me-1"></i>{{ m.skill }}
+                <span class="opacity-75 ms-1 fw-normal" style="font-size: 0.75rem;">({{ m.type }})</span>
+              </span>
+            {% else %}
+              <span class="text-muted small fst-italic">No matched competencies detected for this role yet.</span>
+            {% endfor %}
+          </div>
         </div>
       </div>
       {% if analysis.results.section_status is mapping and analysis.results.section_status.skill_gap == 'unavailable' %}
@@ -2106,19 +2173,36 @@
               <th>Missing Skill</th>
               <th>Importance</th>
               <th>Learning Time</th>
-              <th>Learning Resource & Platform</th>
+              <th>Suggested Topics to Learn</th>
               <th>Suggested Mini Project</th>
               <th>Priority</th>
             </tr>
           </thead>
           <tbody>
-            {% for gap in skill_gap_resources|default(analysis.results.skill_gap) %}
-              <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority }}">
-                <td><b class="text-primary">{{ gap.skill }}</b></td>
-                <td><span class="badge bg-light text-dark border">{{ gap.importance }}</span></td>
-                <td>{{ gap.learning_time }}</td>
+            {% set active_gaps = role_gap_analysis.missing_skills if (role_gap_analysis and role_gap_analysis.missing_skills is defined) else (skill_gap_resources|default(analysis.results.skill_gap|default([]))) %}
+            {% for gap in active_gaps %}
+              <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority|default('Medium') }}">
                 <td>
-                  <span class="text-secondary small">{{ gap.learning_resource }}</span>
+                  <b class="text-primary">{{ gap.skill }}</b>
+                  {% if gap.is_required %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>
+                  {% elif gap.type %}
+                    <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">{{ gap.type }}</span>
+                  {% endif %}
+                </td>
+                <td><span class="badge bg-light text-dark border">{{ gap.importance|default('High') }}</span></td>
+                <td>{{ gap.learning_time|default('2-3 weeks') }}</td>
+                <td>
+                  {% if gap.suggested_topics %}
+                    <div class="small fw-semibold text-dark mb-1"><i class="fa-solid fa-graduation-cap text-primary me-1"></i> Suggested Topics to Learn:</div>
+                    <ul class="mb-0 ps-3 small text-secondary">
+                      {% for topic in gap.suggested_topics %}
+                        <li class="mb-1">{{ topic }}</li>
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <span class="text-secondary small">{{ gap.learning_resource|default('Core documentation & practice') }}</span>
+                  {% endif %}
                   {% for resource_link in gap.resource_links|default([]) %}
                     <div class="mt-1">
                       <a href="{{ resource_link.url }}" target="_blank" rel="noopener noreferrer" class="small text-decoration-none">
@@ -2149,8 +2233,8 @@
                   </div>
                 </td>
                 <td>
-                  <span class="badge badge-pill-priority priority-{{ gap.priority|lower }}">
-                    {{ gap.priority }}
+                  <span class="badge badge-pill-priority priority-{{ (gap.priority|default('medium'))|lower }}">
+                    {{ gap.priority|default('Medium') }}
                   </span>
                 </td>
               </tr>

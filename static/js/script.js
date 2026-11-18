@@ -89,6 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initMockInterview();
   initCompanyExplorer();
   initSkillGapFilter();
+  initRoleSkillGapSelector();
   initRoadmapExport();
   initRoadmapTracker();
   initProgressTracker();
@@ -193,10 +194,9 @@ function initSkillGapFilter() {
 
   if (!table || !searchInput || !priorityFilter) return;
 
-  const rows = table.querySelectorAll("tbody tr.skill-gap-row");
-  const totalRows = rows.length;
-
   function applyFilter() {
+    const rows = table.querySelectorAll("tbody tr.skill-gap-row");
+    const totalRows = rows.length;
     const q = searchInput.value.toLowerCase().trim();
     const p = priorityFilter.value;
     let visibleCount = 0;
@@ -234,13 +234,201 @@ function initSkillGapFilter() {
     }
   }
 
-  searchInput.addEventListener("input", applyFilter);
-  priorityFilter.addEventListener("change", applyFilter);
+  // Bind listener safely
+  searchInput.oninput = applyFilter;
+  priorityFilter.onchange = applyFilter;
 
-  searchInput.addEventListener("keydown", (e) => {
+  searchInput.onkeydown = (e) => {
     if (e.key === "Escape" && searchInput.value) {
       searchInput.value = "";
       applyFilter();
+    }
+  };
+}
+
+/**
+ * Role-targeted Skill Gap Selector (#495)
+ * Dynamically switches benchmark target role without full page reload,
+ * updating role match score, readiness verdict, matched competencies,
+ * and missing skills with their suggested topics to learn.
+ */
+function initRoleSkillGapSelector() {
+  const roleSelector = document.getElementById("roleGapSelector");
+  if (!roleSelector) return;
+
+  const container = document.getElementById("dashboardContainer");
+  const analysisId = (container && container.getAttribute("data-analysis-id")) ||
+    (window.location.pathname.split("/")[2] || "");
+
+  roleSelector.addEventListener("change", async function () {
+    const selectedRoleId = this.value;
+    if (!selectedRoleId) return;
+
+    // Elements to update
+    const scoreBadge = document.getElementById("roleMatchScore");
+    const readinessBadge = document.getElementById("roleReadinessBadge");
+    const matchedRatio = document.getElementById("roleMatchedRatio");
+    const descText = document.getElementById("roleBenchmarkDesc");
+    const matchedCount = document.getElementById("roleMatchedSkillsCount");
+    const matchedList = document.getElementById("roleMatchedSkillsList");
+    const tableBody = document.querySelector("#skillGapTable tbody");
+    const countBadge = document.getElementById("skillFilterCount");
+
+    if (scoreBadge) {
+      scoreBadge.innerHTML = '<span class="spinner-border spinner-border-sm text-primary" role="status"></span>';
+    }
+
+    try {
+      let data = null;
+      if (analysisId) {
+        const resp = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/role-skill-gap?role=${encodeURIComponent(selectedRoleId)}`);
+        if (resp.ok) {
+          data = await resp.json();
+        }
+      }
+      if (!data) {
+        // Fallback to general analyze endpoint
+        const resp = await fetch("/api/skill-gap/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ role_id: selectedRoleId, analysis_id: analysisId }),
+        });
+        if (resp.ok) {
+          data = await resp.json();
+        }
+      }
+
+      if (!data || (!data.success && data.status !== "success")) {
+        throw new Error((data && data.error) ? data.error : "Failed to load role skill gap data");
+      }
+
+      const roleData = data.data || data;
+
+      // 1. Update Match Score
+      if (scoreBadge) {
+        scoreBadge.textContent = `${roleData.match_percentage}%`;
+      }
+
+      // 2. Update Readiness Badge
+      if (readinessBadge) {
+        readinessBadge.textContent = roleData.readiness_verdict || "Targeted Prep";
+        readinessBadge.className = "badge border " + (
+          roleData.match_percentage >= 80 ? "bg-success-subtle text-success" :
+          (roleData.match_percentage >= 55 ? "bg-primary-subtle text-primary" : "bg-warning-subtle text-warning")
+        );
+      }
+
+      // 3. Update Ratio & Description
+      if (matchedRatio) {
+        matchedRatio.textContent = `${(roleData.matched_skills || []).length} / ${(roleData.total_required || 0) + (roleData.total_nice_to_have || 0)}`;
+      }
+      if (descText && roleData.role_description) {
+        descText.textContent = roleData.role_description;
+      }
+
+      // 4. Update Matched Skills List
+      if (matchedList && roleData.matched_skills) {
+        if (matchedCount) matchedCount.textContent = roleData.matched_skills.length;
+        if (roleData.matched_skills.length === 0) {
+          matchedList.innerHTML = '<span class="text-muted small fst-italic">No matched competencies detected for this role yet.</span>';
+        } else {
+          matchedList.innerHTML = roleData.matched_skills.map((m) => {
+            return `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 small">
+              <i class="fa-solid fa-check small me-1"></i>${escapeHtml(m.skill)}
+              <span class="opacity-75 ms-1 fw-normal" style="font-size: 0.75rem;">(${escapeHtml(m.type || "Required")})</span>
+            </span>`;
+          }).join(" ");
+        }
+      }
+
+      // 5. Update Missing Skills Table Rows with Suggested Topics
+      if (tableBody && roleData.missing_skills) {
+        const missing = roleData.missing_skills;
+        if (countBadge) {
+          countBadge.textContent = `${missing.length} Skills`;
+        }
+
+        if (missing.length === 0) {
+          tableBody.innerHTML = `
+            <tr id="skillGapNoItemsInitial">
+              <td colspan="6" class="text-center py-5">
+                <div class="empty-state-container p-4">
+                  <i class="fa-solid fa-circle-check fa-3x text-success mb-3 d-block"></i>
+                  <h5 class="fw-bold text-dark mb-1">No Skill Gaps Identified</h5>
+                  <p class="text-secondary small mb-3">Your resume matches all required competencies for this target role! Explore the interview prep or practice DSA coding problems below.</p>
+                </div>
+              </td>
+            </tr>
+          `;
+        } else {
+          const rowsHtml = missing.map((gap) => {
+            const reqBadge = gap.is_required
+              ? '<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>'
+              : '<span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">Nice-to-Have</span>';
+
+            const topicsHtml = Array.isArray(gap.suggested_topics) && gap.suggested_topics.length > 0
+              ? `<div class="small fw-semibold text-dark mb-1"><i class="fa-solid fa-graduation-cap text-primary me-1"></i> Suggested Topics to Learn:</div>
+                 <ul class="mb-0 ps-3 small text-secondary">
+                   ${gap.suggested_topics.map(t => `<li class="mb-1">${escapeHtml(t)}</li>`).join("")}
+                 </ul>`
+              : `<span class="text-secondary small">${escapeHtml(gap.learning_resource || "Core technical documentation & practice")}</span>`;
+
+            const projectSuggestion = gap.project_suggestion || "";
+            const copyBtn = projectSuggestion
+              ? `<button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="${escapeHtml(projectSuggestion)}" title="Copy mini project suggestion" aria-label="Copy mini project suggestion">
+                   <i class="fa-regular fa-copy small"></i>
+                 </button>`
+              : "";
+
+            return `
+              <tr class="skill-gap-row" data-skill="${escapeHtml((gap.skill || "").toLowerCase())}" data-priority="${escapeHtml(gap.priority || "Medium")}">
+                <td>
+                  <b class="text-primary">${escapeHtml(gap.skill)}</b>
+                  ${reqBadge}
+                </td>
+                <td><span class="badge bg-light text-dark border">${escapeHtml(gap.importance || "High")}</span></td>
+                <td>${escapeHtml(gap.learning_time || "2-3 weeks")}</td>
+                <td>${topicsHtml}</td>
+                <td>
+                  <div class="d-flex align-items-center justify-content-between gap-1">
+                    <span class="small text-muted">${escapeHtml(projectSuggestion)}</span>
+                    ${copyBtn}
+                  </div>
+                </td>
+                <td>
+                  <span class="badge badge-pill-priority priority-${escapeHtml((gap.priority || "medium").toLowerCase())}">
+                    ${escapeHtml(gap.priority || "Medium")}
+                  </span>
+                </td>
+              </tr>
+            `;
+          }).join("");
+
+          tableBody.innerHTML = rowsHtml + `
+            <tr id="skillGapEmptyState" class="d-none">
+              <td colspan="6" class="text-center py-5">
+                <div class="empty-state-container p-4">
+                  <i class="fa-solid fa-filter-circle-xmark fa-3x mb-3 text-secondary d-block"></i>
+                  <h5 class="fw-bold text-dark mb-1">No Matching Skills Found</h5>
+                  <p class="text-secondary small mb-3">No identified missing skills matched your current keyword search or priority filter.</p>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+
+        // Re-attach filter listeners
+        initSkillGapFilter();
+      }
+
+      // Update URL query param without full page reload
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.set("role", selectedRoleId);
+      window.history.replaceState({}, "", newUrl.toString());
+
+    } catch (err) {
+      console.error("Error switching target role benchmark:", err);
+      if (scoreBadge) scoreBadge.textContent = "Error";
     }
   });
 }
