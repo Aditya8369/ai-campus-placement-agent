@@ -443,6 +443,55 @@ SYNTHETIC_SAMPLE_ANALYSIS_RECORD: Dict[str, Any] = {
                     "example_bullet": "Authored Kubernetes manifests including Deployments, Services, and ConfigMaps for seamless microservice orchestration."
                 }
             ]
+        },
+        "format_compatibility": {
+            "overall_status": "pass",
+            "passed_count": 5,
+            "warn_count": 0,
+            "total_checks": 5,
+            "score_percentage": 100,
+            "checks": [
+                {
+                    "id": "page_count",
+                    "name": "Page Count",
+                    "status": "pass",
+                    "explanation": "1 page detected. Ideal length for campus placement and ATS parsing.",
+                    "fix": "Keep resume within 1-2 pages.",
+                    "value": 1
+                },
+                {
+                    "id": "multi_column",
+                    "name": "Single-Column Layout",
+                    "status": "pass",
+                    "explanation": "Clean single-column layout detected. Text flows linearly without multi-column parsing hazards.",
+                    "fix": "Maintain a linear single-column layout without sidebars or split columns.",
+                    "value": False
+                },
+                {
+                    "id": "tables",
+                    "name": "Tables & Grids",
+                    "status": "pass",
+                    "explanation": "No complex table grids detected. Information is structured cleanly as linear text.",
+                    "fix": "Avoid tables; use simple bullet points for education, experience, and skills.",
+                    "value": False
+                },
+                {
+                    "id": "images",
+                    "name": "Embedded Images",
+                    "status": "pass",
+                    "explanation": "No embedded raster images or graphic icons found. All resume content is directly indexable by ATS parsers.",
+                    "fix": "Avoid embedding images, logos, or icon graphics in ATS resumes.",
+                    "value": 0
+                },
+                {
+                    "id": "text_extraction",
+                    "name": "Text Extraction & Encoding",
+                    "status": "pass",
+                    "explanation": "Clean, extractable text stream detected (380 words across 1 page). Font encoding is standard and ATS-readable.",
+                    "fix": "Maintain standard system fonts and export directly from your word processor.",
+                    "value": {"char_count": 2450, "word_count": 380}
+                }
+            ]
         }
     }
 }

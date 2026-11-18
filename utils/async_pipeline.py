@@ -169,7 +169,8 @@ def start_async_analysis(
     company_name: str,
     resume_filename: str,
     analysis_id: str,
-    student_id: Optional[str] = None
+    student_id: Optional[str] = None,
+    format_compatibility: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Dispatches the multi-agent analysis to the background ThreadPoolExecutor.
@@ -185,7 +186,8 @@ def start_async_analysis(
         company_name,
         resume_filename,
         analysis_id,
-        student_id
+        student_id,
+        format_compatibility
     )
 
 
@@ -198,7 +200,8 @@ def _run_analysis_pipeline(
     company_name: str,
     resume_filename: str,
     analysis_id: str,
-    student_id: Optional[str] = None
+    student_id: Optional[str] = None,
+    format_compatibility: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Worker thread routine running the sequential multi-agent analysis pipeline.
@@ -239,6 +242,11 @@ def _run_analysis_pipeline(
                 job_description=job_description,
                 company_name=company_name
             )
+
+        if isinstance(analysis_payload, dict):
+            analysis_payload["extracted_resume_text"] = resume_text
+            if format_compatibility:
+                analysis_payload["format_compatibility"] = format_compatibility
 
         # Ensure intermediate milestones were emitted if coordinator didn't call callback
         existing_steps = {m["step"] for m in task.get_milestones()}
