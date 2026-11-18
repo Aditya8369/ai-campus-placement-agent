@@ -3928,9 +3928,7 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        bullet_rewrites=bullet_rewrites,
-        ats_breakdown=ats_breakdown,
-        ats_breakdown_json=json.dumps(ats_breakdown) if ats_breakdown else "{}",
+        bullet_rewrites=bullet_rewrites
     )
 
 

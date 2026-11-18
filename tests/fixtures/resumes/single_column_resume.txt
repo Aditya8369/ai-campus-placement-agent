@@ -1,0 +1,24 @@
+Maya Lin
+maya.lin@example.com | (555) 234-5678 | San Francisco, CA
+
+Professional Summary
+Experienced Software Engineer specializing in backend architectures, microservices, and distributed data pipelines.
+
+Education
+B.S. in Computer Science
+University of Washington
+2020 - 2024 | GPA: 3.85
+
+Technical Skills
+Python, Java, Go, PostgreSQL, Docker, Kubernetes, AWS, Git, Redis
+
+Work Experience
+Software Engineer Intern at ByteWave Labs
+Jun 2023 - Sep 2023
+- Designed RESTful API endpoints handling 2M requests daily
+- Improved cache hit rates by 35% with Redis
+
+Projects
+Distributed Task Queue | Python, Redis, Docker
+- Built a fault-tolerant message queue with exponential backoff retries
+- Implemented real-time telemetry dashboard using React

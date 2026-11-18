@@ -361,78 +361,11 @@ The project is configured for deployment on Vercel using Python Serverless Funct
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
 - **Pre-Flight Smoke Check**: Run `python utils/deployment_check.py` to verify deployment integrity, configuration files, and critical public routes before releasing.
 
-### 6. Contributor Setup, Linting & Testing
-Contributors should verify changes locally before opening a pull request to ensure the automated CI workflow passes:
-
-1. **Install Runtime and Development Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   pip install flake8 black isort pytest pytest-cov
-   ```
-
-2. **Run Code Linters**:
-   ```bash
-   # Flake8 critical syntax & error check
-   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-
-   # Code formatting verification
-   black --check .
-   isort --check-only .
-   ```
-
-3. **Execute Automated Tests**:
-   ```bash
-   pytest
-   ```
-
-4. **Run Pre-Flight Pipeline & Deployment Diagnostics**:
-   ```bash
-   python utils/ci_pipeline_validator.py
-   python utils/deployment_check.py
-   ```
-
----
-
-## Environment Variables Reference
-
-The application is configured using environment variables loaded via `python-dotenv`. An example configuration template is available at [`.env.example`](.env.example).
-
-> **Important**: All values in `.env.example` are safe placeholders. Never paste or commit actual API keys, production database credentials, or secret keys to public documentation or source repositories.
-
-| Variable Name | Required | Default Value | Description |
-|---------------|:--------:|:-------------:|-------------|
-| `GEMINI_API_KEY` | **Yes** *(for live AI)* | *None* | Google Gemini API key from [Google AI Studio](https://aistudio.google.com/). Optional if using `/demo`. |
-| `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model name used for resume analysis and mock interviews. |
-| `FLASK_SECRET_KEY` | Recommended | Auto-generated | Cryptographic secret key used to sign session cookies and CSRF tokens. |
-| `FLASK_ENV` | No | `development` | Environment mode (`development` or `production`). In production, secure cookie enforcement is enabled. |
-| `ADMIN_SECRET_KEY` | No | *None* | Secret key required to access administrative maintenance or backup endpoints. |
-| `ENABLE_PII_REDACTION` | No | `true` | When `true`, automatically redacts emails, phone numbers, and street addresses prior to external AI model calls. |
-| `RATE_LIMIT_ENABLED` | No | `true` | Enables or disables sliding-window request throttling. |
-| `RATE_LIMIT_ANALYZE` | No | `5/hour` | Maximum resume analysis requests permitted per IP address. |
-| `RATE_LIMIT_INTERVIEW` | No | `30/hour` | Maximum mock interview evaluations per IP address. |
-| `RATE_LIMIT_BATCH` | No | `10/hour` | Maximum multi-company batch comparisons per IP address. |
-| `RATE_LIMIT_OUTREACH` | No | `20/hour` | Maximum cover letter and outreach email generations per IP address. |
-| `RATE_LIMIT_STAR` | No | `30/hour` | Maximum STAR interview response evaluations per IP address. |
-| `RATE_LIMIT_DEFAULT` | No | `100/minute` | Default limit for standard page navigation and API calls. |
-| `MAX_UPLOAD_SIZE_MB` | No | `5` | Maximum allowable resume upload file size in megabytes. |
-| `MIN_PDF_TEXT_CHARS` | No | `100` | Minimum extractable character count required to distinguish valid text PDFs from scanned images. |
-| `ENABLE_OCR_FALLBACK` | No | `false` | When `true`, enables optional local Tesseract OCR fallback for scanned resumes. |
-| `GEMINI_RETRY_ATTEMPTS` | No | `3` | Maximum automatic retries for transient Gemini API errors (HTTP 429, 5xx). |
-| `GEMINI_RETRY_INITIAL_DELAY` | No | `1.0` | Initial delay in seconds before the first exponential backoff retry. |
-| `GEMINI_RETRY_BACKOFF_FACTOR` | No | `2.0` | Backoff multiplier for subsequent retry delays (e.g., 1s &rarr; 2s &rarr; 4s). |
-| `GEMINI_RETRY_MAX_DELAY` | No | `10.0` | Maximum cap in seconds for any single retry backoff sleep. |
-| `GEMINI_RETRY_JITTER` | No | `true` | When `true`, adds randomized timing jitter to retry intervals to prevent burst concurrency. |
-| `GEMINI_REQUEST_TIMEOUT` | No | `30.0` | Request timeout in seconds on every AI call to prevent hanging when provider is slow or down (#497). |
-| `WTF_CSRF_ENABLED` | No | `true` | Enables Cross-Site Request Forgery validation on all state-modifying requests. |
-| `WTF_CSRF_TIME_LIMIT` | No | `3600` | Expiration time of CSRF tokens in seconds (default: 1 hour). |
-| `SESSION_COOKIE_SAMESITE` | No | `Lax` | Session cookie SameSite attribute (`Lax`, `Strict`, or `None`). |
-| `SESSION_COOKIE_SECURE` | No | `false` | Forces session cookies to only be transmitted over HTTPS (auto-enabled in production). |
-| `SESSION_TIMEOUT_MINUTES` | No | `30` | Inactivity window in minutes before automatic user session expiration. |
-| `SESSION_WARNING_SECONDS` | No | `120` | Countdown seconds shown in browser before session timeout triggers. |
-| `ANALYSIS_CACHE_ENABLED` | No | `true` | Enables deterministic SHA-256 caching of resume analysis inputs to conserve API quota. |
-| `ANALYSIS_CACHE_TTL_HOURS` | No | `24` | Cache time-to-live for identical resume and target role analyses. |
-| `LOG_LEVEL` | No | `INFO` | Application logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
-| `LOG_FORMAT` | No | `key_value` | Structured logging output format (`key_value` or `json`). |
+### 6. Run Resume Parser & Layout Tests
+Verify resume text extraction and structured section parsing across all supported layouts (single column, two column, tables, and no section headings) with one command:
+```bash
+pytest tests/test_resume_parser.py
+```
 
 ---
 
