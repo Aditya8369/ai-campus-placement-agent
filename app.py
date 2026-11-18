@@ -27,6 +27,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 from utils.rate_limiter import rate_limit
 from utils.migrations import run_database_migrations, get_migration_status
 import config
@@ -261,6 +262,7 @@ from utils.role_skill_gap_service import (
     normalize_skill_name,
     skills_match,
 )
+from utils.ats_score_service import evaluate_resume_ats_score
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -2530,11 +2532,12 @@ def _extract_and_validate_resume(req):
         filename_lower = uploaded_file.filename.lower()
         ext = os.path.splitext(uploaded_file.filename)[1].lower()
         if ext not in ALLOWED_RESUME_EXTENSIONS:
+            ext_display = f"'{ext}'" if ext else "none"
             return (
                 None,
                 None,
                 None,
-                f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported.",
+                f"Unsupported file format (Invalid file format {ext_display}). Only PDF (.pdf) and Word (.docx) resumes are supported.",
             )
 
         # Enforce maximum upload file size before writing to disk (Issue #153)
@@ -2789,19 +2792,33 @@ def analyze():
 
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        logger.warning(f"Validation error in analysis workflow: {err_msg}")
+        if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+            return jsonify({"success": False, "error": err_msg}), status_code
+        flash(err_msg, "error")
+        return redirect(url_for("index"))
     except AIAnalysisError as aie:
         logger.warning(f"AIAnalysisError in analysis workflow: {str(aie)}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"success": False, "error": aie.user_friendly_message}), 500
         flash(aie.user_friendly_message, "error")
         return redirect(url_for("index"))
-    except ValueError as ve:
-        logger.warning(f"Validation error in analysis workflow: {str(ve)}")
-        if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": str(ve)}), 400
-        flash(str(ve), "error")
-        return redirect(url_for("index"))
     except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "error": msg}), 413
+            flash(msg, "error")
+            return redirect(url_for("index"))
         logger.error(f"Analysis workflow crashed: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -2922,7 +2939,20 @@ def start_analysis_async():
             "status_url": f"/api/analysis/status/{task.task_id}"
         }), 202
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+        return jsonify({"success": False, "error": err_msg}), status_code
     except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            return jsonify({"success": False, "error": msg}), 413
         logger.error(f"Failed to start async analysis: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
@@ -3598,7 +3628,32 @@ def dashboard(analysis_id: str) -> str:
     job_match = results.get("job_match") or results.get("job_compatibility") or {}
     skill_gap = results.get("skill_gap") or []
 
-    ats_score = int(resume_analysis.get("ats_score", 0))
+    # Prepare Deterministic ATS Resume Score & Section Breakdown (#494)
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    ats_breakdown = results.get("ats_breakdown")
+    try:
+        if not ats_breakdown and raw_resume:
+            ats_breakdown = evaluate_resume_ats_score(raw_resume)
+        elif not ats_breakdown:
+            candidate_skills = resume_analysis.get("skills", [])
+            candidate_summary = resume_analysis.get("summary", "")
+            synthetic_text = f"Summary: {candidate_summary}\nSkills: {', '.join(candidate_skills)}"
+            ats_breakdown = evaluate_resume_ats_score(synthetic_text)
+
+        if ats_breakdown and int(resume_analysis.get("ats_score", 0)) == 0:
+            ats_score = ats_breakdown["total_score"]
+        else:
+            ats_score = int(resume_analysis.get("ats_score", 0)) or (ats_breakdown["total_score"] if ats_breakdown else 0)
+    except Exception as ats_err:
+        logger.warning(f"Error computing ATS section breakdown for dashboard: {ats_err}")
+        ats_breakdown = None
+        ats_score = int(resume_analysis.get("ats_score", 0))
+
     match_percentage = int(job_match.get("match_percentage", 0))
     skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
     from utils.score_explanations import build_score_explanations
@@ -3669,6 +3724,7 @@ def dashboard(analysis_id: str) -> str:
         "target_match": target_match,
         "top_recommendations": top_recommendations,
         "score_explanations": score_explanations,
+        "ats_breakdown": ats_breakdown,
     }
     # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
     results = analysis_record.get("results") or {}
@@ -3863,8 +3919,80 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        bullet_rewrites=bullet_rewrites
+        bullet_rewrites=bullet_rewrites,
+        ats_breakdown=ats_breakdown,
+        ats_breakdown_json=json.dumps(ats_breakdown) if ats_breakdown else "{}",
     )
+
+
+# ==============================================================================
+# ATS RESUME SCORING & SECTION BREAKDOWN API (#494)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/ats-breakdown", methods=["GET"])
+def api_get_analysis_ats_breakdown(analysis_id: str):
+    """
+    Returns the deterministic ATS resume score and section-wise breakdown (#494).
+    Scores contact info, summary, skills, experience, projects, and education
+    out of 100, evaluates basics checks, and identifies the section hurting the score most.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    ats_breakdown = results.get("ats_breakdown")
+    if not ats_breakdown:
+        from utils.ats_score_service import evaluate_resume_ats_score
+        raw_resume = analysis_record.get("resume_text", "")
+        ats_breakdown = evaluate_resume_ats_score(raw_resume)
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "total_score": ats_breakdown.get("total_score", 0),
+        "rating": ats_breakdown.get("rating", "Needs Rework"),
+        "hurts_most": ats_breakdown.get("hurts_most"),
+        "sections": ats_breakdown.get("sections", {}),
+        "basics": ats_breakdown.get("basics", {}),
+        "data": ats_breakdown,
+    }), 200
+
+
+@app.route("/api/resume/ats-score", methods=["POST"])
+def api_evaluate_resume_ats_score():
+    """
+    Evaluates resume text deterministically and returns the ATS section breakdown (#494).
+    Accepts JSON body:
+      - resume_text: raw text of the resume to score
+      - analysis_id: (optional) ID of existing analysis to load text from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text")
+        analysis_id = data.get("analysis_id")
+
+        if not resume_text and analysis_id:
+            record = get_analysis(analysis_id)
+            if record and _is_student_authorized(record):
+                resume_text = record.get("resume_text", "")
+
+        from utils.ats_score_service import evaluate_resume_ats_score
+        ats_breakdown = evaluate_resume_ats_score(resume_text or "")
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "total_score": ats_breakdown["total_score"],
+            "rating": ats_breakdown["rating"],
+            "hurts_most": ats_breakdown["hurts_most"],
+            "sections": ats_breakdown["sections"],
+            "basics": ats_breakdown["basics"],
+            "data": ats_breakdown,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
@@ -6212,6 +6340,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -8212,6 +8347,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -9269,6 +9411,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -11322,6 +11471,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -12406,6 +12562,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
