@@ -246,9 +246,20 @@ class CoordinatorAgent:
                 "skills": []
             }
 
-        # 9. Combine validated data into a final coordinated results payload
+        # 9. Compute deterministic ATS score & section breakdown (#494)
+        try:
+            from utils.ats_score_service import evaluate_resume_ats_score
+            ats_breakdown = evaluate_resume_ats_score(resume_text or sanitized_resume)
+            processed_resume["ats_score"] = ats_breakdown["total_score"]
+            processed_resume["ats_breakdown"] = ats_breakdown
+        except Exception as ats_err:
+            logger.warning(f"CoordinatorAgent: Error computing deterministic ATS score: {ats_err}")
+            ats_breakdown = None
+
+        # 10. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
+            "ats_breakdown": ats_breakdown,
             "job_match": processed_job_match,
             "skill_gap": processed_skill_gap,
             "learning_roadmap": processed_roadmap,

@@ -27,6 +27,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 from utils.rate_limiter import rate_limit
 from utils.migrations import run_database_migrations, get_migration_status
 import config
@@ -253,6 +254,15 @@ from utils.demo_mode import (
     SYNTHETIC_SAMPLE_RESUME_TEXT,
     SYNTHETIC_SAMPLE_JOB_DESCRIPTION,
 )
+from utils.role_skill_gap_service import (
+    get_available_roles,
+    get_role_profile,
+    analyze_role_skill_gap,
+    extract_candidate_skills,
+    normalize_skill_name,
+    skills_match,
+)
+from utils.ats_score_service import evaluate_resume_ats_score
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -2523,11 +2533,12 @@ def _extract_and_validate_resume(req):
         filename_lower = uploaded_file.filename.lower()
         ext = os.path.splitext(uploaded_file.filename)[1].lower()
         if ext not in ALLOWED_RESUME_EXTENSIONS:
+            ext_display = f"'{ext}'" if ext else "none"
             return (
                 None,
                 None,
                 None,
-                f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported.",
+                f"Unsupported file format (Invalid file format {ext_display}). Only PDF (.pdf) and Word (.docx) resumes are supported.",
             )
 
         # Enforce maximum upload file size before writing to disk (Issue #153)
@@ -2782,6 +2793,19 @@ def analyze():
 
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        logger.warning(f"Validation error in analysis workflow: {err_msg}")
+        if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+            return jsonify({"success": False, "error": err_msg}), status_code
+        flash(err_msg, "error")
+        return redirect(url_for("index"))
     except AIAnalysisError as aie:
         logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
@@ -2796,6 +2820,15 @@ def analyze():
         return redirect(url_for("index"))
     except Exception as e:
         logger.error(f"Analysis workflow crashed: {scrub_api_key(str(e))}")
+    except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "error": msg}), 413
+            flash(msg, "error")
+            return redirect(url_for("index"))
+        logger.error(f"Analysis workflow crashed: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"success": False, "error": friendly_message}), 500
@@ -2915,7 +2948,20 @@ def start_analysis_async():
             "status_url": f"/api/analysis/status/{task.task_id}"
         }), 202
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+        return jsonify({"success": False, "error": err_msg}), status_code
     except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            return jsonify({"success": False, "error": msg}), 413
         logger.error(f"Failed to start async analysis: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
@@ -3591,7 +3637,32 @@ def dashboard(analysis_id: str) -> str:
     job_match = results.get("job_match") or results.get("job_compatibility") or {}
     skill_gap = results.get("skill_gap") or []
 
-    ats_score = int(resume_analysis.get("ats_score", 0))
+    # Prepare Deterministic ATS Resume Score & Section Breakdown (#494)
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    ats_breakdown = results.get("ats_breakdown")
+    try:
+        if not ats_breakdown and raw_resume:
+            ats_breakdown = evaluate_resume_ats_score(raw_resume)
+        elif not ats_breakdown:
+            candidate_skills = resume_analysis.get("skills", [])
+            candidate_summary = resume_analysis.get("summary", "")
+            synthetic_text = f"Summary: {candidate_summary}\nSkills: {', '.join(candidate_skills)}"
+            ats_breakdown = evaluate_resume_ats_score(synthetic_text)
+
+        if ats_breakdown and int(resume_analysis.get("ats_score", 0)) == 0:
+            ats_score = ats_breakdown["total_score"]
+        else:
+            ats_score = int(resume_analysis.get("ats_score", 0)) or (ats_breakdown["total_score"] if ats_breakdown else 0)
+    except Exception as ats_err:
+        logger.warning(f"Error computing ATS section breakdown for dashboard: {ats_err}")
+        ats_breakdown = None
+        ats_score = int(resume_analysis.get("ats_score", 0))
+
     match_percentage = int(job_match.get("match_percentage", 0))
     skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
     from utils.score_explanations import build_score_explanations
@@ -3662,6 +3733,7 @@ def dashboard(analysis_id: str) -> str:
         "target_match": target_match,
         "top_recommendations": top_recommendations,
         "score_explanations": score_explanations,
+        "ats_breakdown": ats_breakdown,
     }
     # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
     results = analysis_record.get("results") or {}
@@ -3798,6 +3870,29 @@ def dashboard(analysis_id: str) -> str:
             "empty_message": "Resume bullet rewrites could not be generated."
         }
 
+    # Prepare Role-Targeted Skill Gap Benchmark (#495)
+    try:
+        available_roles = get_available_roles()
+        selected_role_id = (
+            request.args.get("role")
+            or request.args.get("role_id")
+            or (available_roles[0]["id"] if available_roles else "software_developer")
+        )
+        role_gap_analysis = analyze_role_skill_gap(analysis_record, selected_role_id)
+    except Exception as rsg_err:
+        logger.warning(f"Error preparing role-targeted skill gap benchmark for dashboard: {rsg_err}")
+        available_roles = []
+        selected_role_id = "software_developer"
+        role_gap_analysis = {
+            "role_id": "software_developer",
+            "role_name": "Software Developer",
+            "match_percentage": 0,
+            "readiness_verdict": "Unknown",
+            "summary": "Skill gap benchmark unavailable.",
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3814,6 +3909,10 @@ def dashboard(analysis_id: str) -> str:
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
         supported_roles=SUPPORTED_ROLES,
+        available_roles=available_roles,
+        selected_role_id=selected_role_id,
+        role_gap_analysis=role_gap_analysis,
+        role_gap_analysis_json=json.dumps(role_gap_analysis),
         readiness_summary=readiness_summary,
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison),
@@ -3829,8 +3928,80 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        bullet_rewrites=bullet_rewrites
+        bullet_rewrites=bullet_rewrites,
+        ats_breakdown=ats_breakdown,
+        ats_breakdown_json=json.dumps(ats_breakdown) if ats_breakdown else "{}",
     )
+
+
+# ==============================================================================
+# ATS RESUME SCORING & SECTION BREAKDOWN API (#494)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/ats-breakdown", methods=["GET"])
+def api_get_analysis_ats_breakdown(analysis_id: str):
+    """
+    Returns the deterministic ATS resume score and section-wise breakdown (#494).
+    Scores contact info, summary, skills, experience, projects, and education
+    out of 100, evaluates basics checks, and identifies the section hurting the score most.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    ats_breakdown = results.get("ats_breakdown")
+    if not ats_breakdown:
+        from utils.ats_score_service import evaluate_resume_ats_score
+        raw_resume = analysis_record.get("resume_text", "")
+        ats_breakdown = evaluate_resume_ats_score(raw_resume)
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "total_score": ats_breakdown.get("total_score", 0),
+        "rating": ats_breakdown.get("rating", "Needs Rework"),
+        "hurts_most": ats_breakdown.get("hurts_most"),
+        "sections": ats_breakdown.get("sections", {}),
+        "basics": ats_breakdown.get("basics", {}),
+        "data": ats_breakdown,
+    }), 200
+
+
+@app.route("/api/resume/ats-score", methods=["POST"])
+def api_evaluate_resume_ats_score():
+    """
+    Evaluates resume text deterministically and returns the ATS section breakdown (#494).
+    Accepts JSON body:
+      - resume_text: raw text of the resume to score
+      - analysis_id: (optional) ID of existing analysis to load text from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text")
+        analysis_id = data.get("analysis_id")
+
+        if not resume_text and analysis_id:
+            record = get_analysis(analysis_id)
+            if record and _is_student_authorized(record):
+                resume_text = record.get("resume_text", "")
+
+        from utils.ats_score_service import evaluate_resume_ats_score
+        ats_breakdown = evaluate_resume_ats_score(resume_text or "")
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "total_score": ats_breakdown["total_score"],
+            "rating": ats_breakdown["rating"],
+            "hurts_most": ats_breakdown["hurts_most"],
+            "sections": ats_breakdown["sections"],
+            "basics": ats_breakdown["basics"],
+            "data": ats_breakdown,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
@@ -3998,6 +4169,115 @@ def api_skill_evidence_mapping(analysis_id: str):
         "company_name": analysis_record.get("company_name", "General"),
         "skill_evidence": skill_evidence
     }), 200
+
+
+# ==============================================================================
+# ROLE-TARGETED SKILL GAP BENCHMARKING API (#495)
+# ==============================================================================
+
+@app.route("/api/skill-gap/roles", methods=["GET"])
+def api_get_skill_gap_roles():
+    """
+    Returns the list of all available job role benchmark profiles (#495).
+    Dynamically discovers JSON files in data/roles/.
+    """
+    try:
+        roles = get_available_roles()
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "roles": roles,
+            "count": len(roles),
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching skill gap roles: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/roles/<role_id>", methods=["GET"])
+def api_get_skill_gap_role_profile(role_id: str):
+    """
+    Returns profile details, required skills, nice-to-have skills, and suggested
+    topics for a specific job role (#495).
+    """
+    try:
+        profile = get_role_profile(role_id)
+        if not profile:
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "error": f"Role '{role_id}' not found."
+            }), 404
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "role": profile
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching role profile '{role_id}': {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/analyze", methods=["POST"])
+def api_analyze_skill_gap():
+    """
+    Analyzes candidate skills against a target job role profile (#495).
+    Accepts JSON body:
+      - role_id (or role): identifier of the role (e.g. 'software_developer')
+      - skills (or candidate_skills): list or string of candidate skills
+      - analysis_id: (optional) ID of existing analysis to load skills from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        role_id = data.get("role_id") or data.get("role") or "software_developer"
+        candidate_skills = data.get("skills") or data.get("candidate_skills")
+
+        analysis_id = data.get("analysis_id")
+        if not candidate_skills and analysis_id:
+            analysis_record = get_analysis(analysis_id)
+            if analysis_record:
+                candidate_skills = analysis_record
+
+        result = analyze_role_skill_gap(candidate_skills, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_analyze_skill_gap: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/analysis/<analysis_id>/role-skill-gap", methods=["GET"])
+def api_analysis_role_skill_gap(analysis_id: str):
+    """
+    Evaluates candidate skills from an existing analysis record against a selected target role (#495).
+    Query parameter: ?role=<role_id> (defaults to first available role or 'software_developer').
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    try:
+        available_roles = get_available_roles()
+        default_role = available_roles[0]["id"] if available_roles else "software_developer"
+        role_id = request.args.get("role") or request.args.get("role_id") or default_role
+
+        result = analyze_role_skill_gap(analysis_record, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "analysis_id": analysis_id,
+            "selected_role_id": role_id,
+            "available_roles": available_roles,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error evaluating role skill gap for analysis {analysis_id}: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 # ==============================================================================
@@ -4433,6 +4713,15 @@ def interview(analysis_id: str) -> str:
                     })
                     q_idx += 1
 
+        # Ensure session contains at least 5 questions (#496)
+        flat_questions_list = live_interview_agent.ensure_minimum_session_questions(
+            flat_questions_list,
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+
         # Save new session into SQLite DB
         create_interview_session(
             interview_id=session_id,
@@ -4441,14 +4730,37 @@ def interview(analysis_id: str) -> str:
         )
         interview_session = get_interview_session(session_id)
 
+    # Ensure existing in-progress session has at least 5 questions
+    elif not interview_session.get("completed") and len(interview_session.get("questions", [])) < 5:
+        topped_up_questions = live_interview_agent.ensure_minimum_session_questions(
+            interview_session.get("questions", []),
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE interviews SET questions_json = ? WHERE id = ?", (json.dumps(topped_up_questions), session_id))
+            conn.commit()
+        finally:
+            conn.close()
+        interview_session = get_interview_session(session_id)
+
     # Check session state status (#265)
     from utils.interview_session_service import ensure_interview_session_pause_table
     ensure_interview_session_pause_table()
     session_status = interview_session.get("status") or ("Completed" if interview_session.get("completed") else "In Progress")
 
+    session_summary = None
+    if interview_session and interview_session.get("completed") and interview_session.get("answers"):
+        session_summary = live_interview_agent.calculate_session_summary(interview_session["answers"])
+
     return render_template(
         "interview.html",
         interview=interview_session,
+        session_summary=session_summary,
         analysis_id=analysis_id,
         session_id=session_id,
         active_round=active_round,
@@ -4991,13 +5303,25 @@ def api_interview_question_flag_reasons():
 def reset_interview_session(analysis_id: str):
     """
     Resets an active mock interview session back to question index 0 with empty answers,
-    enabling students to retake and practice rounds anew without losing the parent analysis.
+    enabling students to retake and practice rounds anew without losing the parent analysis (#496).
     """
     try:
         raw_round = request.args.get("round", "").lower()
-        session_id = f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else analysis_id
+        post_json = request.get_json(silent=True) or {}
+
+        session_id = (
+            request.args.get("session_id")
+            or post_json.get("session_id")
+            or (f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else None)
+            or analysis_id
+        )
 
         session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            # Fall back to base analysis_id if round-specific session not found
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
         if not session:
             return jsonify({"success": False, "error": "Interview session not found"}), 404
 
@@ -5007,6 +5331,17 @@ def reset_interview_session(analysis_id: str):
             answers_list=[],
             completed=False,
         )
+
+        # Reset session status in state registry if table exists
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("UPDATE interviews SET status = 'In Progress' WHERE id = ?", (session_id,))
+            c.execute("UPDATE interview_session_state SET status = 'In Progress', pause_timestamp = NULL WHERE session_id = ?", (session_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e_st:
+            logger.debug(f"Could not reset session state status: {e_st}")
 
         return jsonify({
             "success": True,
@@ -6069,6 +6404,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -8069,6 +8411,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -9126,6 +9475,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -11179,6 +11535,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -12263,6 +12626,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
