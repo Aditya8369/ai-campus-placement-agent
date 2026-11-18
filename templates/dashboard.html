@@ -47,6 +47,9 @@
         <button type="button" class="btn btn-outline-success btn-sm rounded-pill px-2 px-sm-3" id="btnShareProfileModal" data-bs-toggle="modal" data-bs-target="#shareProfileModal">
           <i class="fa-solid fa-share-nodes me-1"></i> Share
         </button>
+        <button type="button" class="btn btn-outline-info btn-sm rounded-pill px-2 px-sm-3" id="btnShareMentorModal" data-bs-toggle="modal" data-bs-target="#shareMentorModal" title="Share read-only analysis link with mentor">
+          <i class="fa-solid fa-user-tie me-1"></i> <span class="d-none d-sm-inline">Share with</span> Mentor
+        </button>
         {% if comparison is defined and comparison and comparison.has_previous %}
         <a href="{{ url_for('compare_with_previous_analysis_view', analysis_id=analysis_id) }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3" id="btnNavComparePrevious" title="Compare with my previous analysis">
           <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare with</span> Previous
@@ -3112,6 +3115,78 @@
       </div>
     </div>
 
+    <!-- Share with Mentor Modal (#468) -->
+    <div class="modal fade" id="shareMentorModal" tabindex="-1" aria-labelledby="shareMentorModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content rounded-4 border-0 shadow">
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="shareMentorModalLabel">
+              <i class="fa-solid fa-user-tie text-info me-2"></i> Share with Mentor (Read-Only)
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <p class="text-secondary small mb-3">
+              Generate a secure, unguessable link for a senior, mentor, or placement officer to review your readiness report.
+              <strong>Personal contact details (email, phone, address, links) are automatically redacted</strong>, and editing, deleting, or downloading is disabled.
+            </p>
+
+            <div class="card bg-light border-0 rounded-3 p-3 mb-4">
+              <label for="mentorShareExpiration" class="form-label small fw-bold text-dark mb-1">
+                <i class="fa-regular fa-clock me-1 text-primary"></i> Link Expiration Period:
+              </label>
+              <div class="d-flex flex-wrap gap-2 align-items-center">
+                <select class="form-select form-select-sm rounded-pill flex-grow-1" id="mentorShareExpiration" style="max-width: 200px;">
+                  <option value="24h" selected>24 hours</option>
+                  <option value="7d">7 days</option>
+                </select>
+                <button type="button" class="btn btn-primary btn-sm rounded-pill px-3" id="btnGenerateMentorLink">
+                  <i class="fa-solid fa-link me-1"></i> Generate Share Link
+                </button>
+              </div>
+            </div>
+
+            <!-- Newly Generated Link Display Box -->
+            <div id="mentorShareResultContainer" class="d-none mb-4">
+              <div class="alert alert-success border-0 shadow-sm rounded-3 p-3">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <span class="small fw-bold text-success"><i class="fa-solid fa-check-circle me-1"></i> Link Generated Successfully!</span>
+                  <span class="badge bg-white text-secondary border small" id="mentorShareExpiryBadge"></span>
+                </div>
+                <div class="input-group">
+                  <input type="text" class="form-control form-control-sm rounded-start-pill font-monospace" id="mentorShareUrlInput" readonly aria-label="Mentor share URL">
+                  <button class="btn btn-outline-success btn-sm rounded-end-pill px-3" type="button" id="btnCopyMentorShareUrl">
+                    <i class="fa-solid fa-copy me-1"></i> Copy Link
+                  </button>
+                </div>
+                <div class="small text-muted mt-2">
+                  <i class="fa-solid fa-shield-halved me-1 text-info"></i> Publicly viewable without login. Mentors cannot edit, download, or view your private contact details.
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing Links & View Tracking Section -->
+            <div class="border-top pt-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0 text-dark small text-uppercase">
+                  <i class="fa-solid fa-list-check me-1 text-primary"></i> Active Mentor Links &amp; Views
+                </h6>
+                <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" id="btnRefreshMentorLinks">
+                  <i class="fa-solid fa-rotate me-1"></i> Refresh
+                </button>
+              </div>
+              <div id="mentorActiveSharesList" class="small text-muted">
+                <em>Loading active links...</em>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-light border rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Interactive Outreach Preview & Customization Modal -->
     <div class="modal fade" id="outreachPreviewModal" tabindex="-1" aria-labelledby="outreachPreviewModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
       <div class="modal-dialog modal-dialog-centered modal-xl">
@@ -3239,6 +3314,133 @@
           });
         });
       });
+
+      // Mentor Share Modal Handler (#468)
+      const shareMentorModal = document.getElementById("shareMentorModal");
+      const btnGenerateMentorLink = document.getElementById("btnGenerateMentorLink");
+      const btnCopyMentorShareUrl = document.getElementById("btnCopyMentorShareUrl");
+      const btnRefreshMentorLinks = document.getElementById("btnRefreshMentorLinks");
+      const mentorShareExpiration = document.getElementById("mentorShareExpiration");
+      const mentorShareResultContainer = document.getElementById("mentorShareResultContainer");
+      const mentorShareUrlInput = document.getElementById("mentorShareUrlInput");
+      const mentorShareExpiryBadge = document.getElementById("mentorShareExpiryBadge");
+      const mentorActiveSharesList = document.getElementById("mentorActiveSharesList");
+      const currentAnalysisId = "{{ analysis_id }}";
+
+      async function loadMentorShares() {
+        if (!mentorActiveSharesList) return;
+        mentorActiveSharesList.innerHTML = '<span class="text-muted"><i class="fa-solid fa-spinner fa-spin me-1"></i> Loading active links...</span>';
+        try {
+          const res = await fetch(`/api/reports/${currentAnalysisId}/shares`);
+          const data = await res.json();
+          if (!data.success || !data.shares || data.shares.length === 0) {
+            mentorActiveSharesList.innerHTML = '<div class="text-secondary small py-2">No share links generated yet for this analysis.</div>';
+            return;
+          }
+          let html = '<div class="list-group list-group-flush">';
+          data.shares.forEach(s => {
+            const fullUrl = window.location.origin + s.share_url;
+            const statusBadge = s.is_active
+              ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Active</span>'
+              : '<span class="badge bg-secondary-subtle text-secondary border">Revoked</span>';
+            const revokeBtn = s.is_active
+              ? `<button class="btn btn-outline-danger btn-sm rounded-pill px-2 py-0 ms-2 btn-revoke-share" data-share-id="${s.id}">Revoke</button>`
+              : '';
+            const lastViewed = s.last_viewed_at ? s.last_viewed_at : 'Never';
+            html += `
+              <div class="list-group-item px-0 py-2 d-flex flex-wrap justify-content-between align-items-center">
+                <div class="me-2 text-truncate" style="max-width: 60%;">
+                  <div class="fw-semibold text-dark text-truncate">${fullUrl}</div>
+                  <div class="text-muted small">
+                    Expires: ${s.expires_at} &bull; Views: <strong>${s.view_count || 0}</strong> &bull; Last opened: <strong>${lastViewed}</strong>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                  ${statusBadge}
+                  ${revokeBtn}
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+          mentorActiveSharesList.innerHTML = html;
+
+          // Attach revoke listeners
+          document.querySelectorAll(".btn-revoke-share").forEach(btn => {
+            btn.addEventListener("click", async function() {
+              const sid = this.dataset.shareId;
+              if (!confirm("Are you sure you want to revoke this mentor share link immediately?")) return;
+              try {
+                const revRes = await fetch(`/api/reports/share/${sid}/revoke`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" }
+                });
+                const revData = await revRes.json();
+                if (revData.success) {
+                  loadMentorShares();
+                } else {
+                  alert(revData.error || "Failed to revoke link.");
+                }
+              } catch (e) {
+                alert("Error revoking link: " + e.message);
+              }
+            });
+          });
+        } catch (e) {
+          mentorActiveSharesList.innerHTML = '<span class="text-danger small">Failed to load active links.</span>';
+        }
+      }
+
+      if (shareMentorModal) {
+        shareMentorModal.addEventListener("show.bs.modal", loadMentorShares);
+      }
+      if (btnRefreshMentorLinks) {
+        btnRefreshMentorLinks.addEventListener("click", loadMentorShares);
+      }
+      if (btnGenerateMentorLink) {
+        btnGenerateMentorLink.addEventListener("click", async () => {
+          const exp = mentorShareExpiration.value;
+          btnGenerateMentorLink.disabled = true;
+          btnGenerateMentorLink.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Generating...';
+          try {
+            const res = await fetch("/api/reports/share", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ analysis_id: currentAnalysisId, expiration: exp })
+            });
+            const data = await res.json();
+            if (data.success) {
+              const fullUrl = window.location.origin + data.share_url;
+              mentorShareUrlInput.value = fullUrl;
+              mentorShareExpiryBadge.textContent = "Expires: " + data.expires_at;
+              mentorShareResultContainer.classList.remove("d-none");
+              loadMentorShares();
+            } else {
+              alert(data.error || "Failed to generate link.");
+            }
+          } catch (e) {
+            alert("Error: " + e.message);
+          } finally {
+            btnGenerateMentorLink.disabled = false;
+            btnGenerateMentorLink.innerHTML = '<i class="fa-solid fa-link me-1"></i> Generate Share Link';
+          }
+        });
+      }
+      if (btnCopyMentorShareUrl && mentorShareUrlInput) {
+        btnCopyMentorShareUrl.addEventListener("click", () => {
+          mentorShareUrlInput.select();
+          mentorShareUrlInput.setSelectionRange(0, 99999);
+          navigator.clipboard.writeText(mentorShareUrlInput.value).then(() => {
+            const orig = btnCopyMentorShareUrl.innerHTML;
+            btnCopyMentorShareUrl.innerHTML = '<i class="fa-solid fa-check me-1"></i> Copied!';
+            btnCopyMentorShareUrl.classList.replace("btn-outline-success", "btn-success");
+            setTimeout(() => {
+              btnCopyMentorShareUrl.innerHTML = orig;
+              btnCopyMentorShareUrl.classList.replace("btn-success", "btn-outline-success");
+            }, 2000);
+          });
+        });
+      }
     });
   </script>
 </body>
