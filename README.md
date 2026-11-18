@@ -175,6 +175,12 @@ The project is configured for deployment on Vercel using Python Serverless Funct
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
 - **Pre-Flight Smoke Check**: Run `python utils/deployment_check.py` to verify deployment integrity, configuration files, and critical public routes before releasing.
 
+### 6. Run Resume Parser & Layout Tests
+Verify resume text extraction and structured section parsing across all supported layouts (single column, two column, tables, and no section headings) with one command:
+```bash
+pytest tests/test_resume_parser.py
+```
+
 ---
 
 ## Rate Limiting & Security Quotas

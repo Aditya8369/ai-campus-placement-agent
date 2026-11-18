@@ -515,6 +515,59 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO, bytes, bytearray]
         raise RuntimeError(f"Failed to parse Word document: {str(e)}")
 
 
+def deinterleave_two_column_text(text: str) -> str:
+    """
+    Detects if text contains a side-by-side two-column layout separated by '|'
+    and un-interleaves it into sequential column text blocks.
+    """
+    if not text:
+        return ""
+    lines = text.splitlines()
+    pipe_indices = []
+    for line in lines:
+        if line.count("|") == 1:
+            idx = line.find("|")
+            if idx > 15:
+                pipe_indices.append(idx)
+
+    if len(pipe_indices) < 3:
+        return text
+
+    from collections import Counter
+    c = Counter(pipe_indices)
+    modal_idx, count = c.most_common(1)[0]
+
+    # Only treat as 2-column layout if at least 3 lines share a vertically aligned column divider
+    if count >= 3:
+        top_lines: List[str] = []
+        left_col: List[str] = []
+        right_col: List[str] = []
+        in_columns = False
+
+        for line in lines:
+            split_pos = None
+            for p in range(modal_idx - 4, modal_idx + 5):
+                if p < len(line) and line[p] == '|':
+                    split_pos = p
+                    break
+            if split_pos is not None:
+                in_columns = True
+                l_part = line[:split_pos].strip()
+                r_part = line[split_pos + 1:].strip()
+                if l_part:
+                    left_col.append(l_part)
+                if r_part:
+                    right_col.append(r_part)
+            elif not in_columns:
+                top_lines.append(line)
+            else:
+                left_col.append(line)
+
+        return "\n".join(top_lines) + "\n\n" + "\n".join(left_col) + "\n\n" + "\n".join(right_col)
+
+    return text
+
+
 def standardize_resume_sections(text: str) -> Dict[str, str]:
     """
     Parses unstructured or semi-structured resume text into standardized canonical sections:
@@ -530,7 +583,7 @@ def standardize_resume_sections(text: str) -> Dict[str, str]:
     if not text or not text.strip():
         return {}
 
-    raw_text = text.strip()
+    raw_text = deinterleave_two_column_text(text.strip())
 
     section_patterns = [
         ("summary", re.compile(r"(?:^|\n)\s*(?:[#*_\-~=]+\s*)?(?:professional summary|executive summary|career objective|about me|summary|objective|profile)(?:\s*[:\n]|\s*$)", re.IGNORECASE)),

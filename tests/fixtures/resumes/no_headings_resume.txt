@@ -1,0 +1,9 @@
+Marcus Brody
+marcus.brody@example.com
+(555) 789-0123
+Denver, Colorado
+
+Dedicated software engineer with a Bachelor of Science in Computer Science from Colorado State University, class of 2024 with a 3.8 GPA.
+Proficient in Python, C++, Java, Docker, Git, Linux, PostgreSQL, and SQL.
+Completed a Software Engineer Internship at Rocky Mountain Cloud from June 2023 to August 2023 where I built microservices and optimized PostgreSQL database queries.
+Developed a Real-Time Chat Application using Python, WebSockets, Redis, and React supporting 1,000 concurrent users.

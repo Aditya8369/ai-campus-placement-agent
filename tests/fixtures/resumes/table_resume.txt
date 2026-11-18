@@ -1,0 +1,23 @@
+Elena Rostova
+elena.rostova@example.com | +1 555-432-8765 | Chicago, IL
+
+Professional Summary:
+Full-stack software developer with strong database, distributed caching, and microservices experience.
+
+Education:
+Degree | Institution | Year | Score
+B.Tech in Computer Engineering | Midwest State University | 2020 - 2024 | 3.9 GPA
+
+Technical Skills:
+Category | Technologies
+Programming | Python, Java, C++, TypeScript
+Web & Cloud | React, Node.js, Docker, Kubernetes, AWS, SQL
+
+Work Experience:
+Role | Company | Duration | Highlights
+Backend Intern | DataFlow Tech | May 2023 - Aug 2023 | Developed ETL pipelines in Python and PostgreSQL
+Full Stack Trainee | Apex Software | Jan 2023 - Apr 2023 | Built React UI components and GraphQL endpoints
+
+Projects:
+AI Query Engine | Python, PostgreSQL, Docker
+Engineered automated natural language database query generator with 92% accuracy.
