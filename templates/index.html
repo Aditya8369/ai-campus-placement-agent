@@ -763,38 +763,46 @@
       </div>
 
       <!-- Live Stream Error Alert -->
-      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3">
-        <i class="fa-solid fa-triangle-exclamation me-2"></i>
-        <span id="progressErrorMessage"></span>
-        <div class="mt-2 text-end">
-          <button type="button" class="btn btn-sm btn-outline-danger" id="btnCloseProgressError">Close & Retry</button>
+      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3" role="alert">
+        <div class="d-flex align-items-center mb-1">
+          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
+          <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+        </div>
+        <div id="progressErrorMessage" class="small mb-3"></div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-sm btn-danger text-white rounded-pill px-3" id="btnRetryAnalysis">
+            <i class="fa-solid fa-rotate-right me-1"></i> Retry
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCloseProgressError">
+            Dismiss
+          </button>
         </div>
       </div>
 
-      <ul class="progress-steps-list text-start">
+      <ul class="progress-steps-list text-start" id="analysisProgressStepsList">
         <li class="progress-step text-muted" id="step1">
           <div class="step-indicator">1</div>
-          <span>Resume Text Extracted Successfully</span>
+          <span class="step-name">Reading resume</span>
         </li>
         <li class="progress-step text-muted" id="step2">
           <div class="step-indicator">2</div>
-          <span>Resume Agent Analyzing ATS compatibility</span>
+          <span class="step-name">Checking format</span>
         </li>
         <li class="progress-step text-muted" id="step3">
           <div class="step-indicator">3</div>
-          <span>Job Match Agent running description checks</span>
+          <span class="step-name">Matching job description</span>
         </li>
         <li class="progress-step text-muted" id="step4">
           <div class="step-indicator">4</div>
-          <span>Skill Gap Agent mapping course metrics</span>
+          <span class="step-name">Finding skill gaps</span>
         </li>
         <li class="progress-step text-muted" id="step5">
           <div class="step-indicator">5</div>
-          <span>Roadmap Agent planning 6-week syllabus</span>
+          <span class="step-name">Building roadmap</span>
         </li>
         <li class="progress-step text-muted" id="step6">
           <div class="step-indicator">6</div>
-          <span>Final Placement Analysis compiling</span>
+          <span class="step-name">Preparing interview questions</span>
         </li>
       </ul>
       <p class="text-muted small" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>

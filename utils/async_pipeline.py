@@ -23,6 +23,18 @@ _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="AgentWorker")
 _active_tasks: Dict[str, "AnalysisTask"] = {}
 _registry_lock = threading.Lock()
 
+# Named analysis pipeline steps (#470)
+STEP_NAMES: Dict[str, str] = {
+    "step1": "Reading resume",
+    "step2": "Checking format",
+    "step3": "Matching job description",
+    "step4": "Finding skill gaps",
+    "step5": "Building roadmap",
+    "step6": "Preparing interview questions",
+}
+
+ALL_STEPS: List[str] = ["step1", "step2", "step3", "step4", "step5", "step6"]
+
 
 class AnalysisTask:
     """
@@ -37,6 +49,9 @@ class AnalysisTask:
         self.status = "queued"  # queued, in_progress, completed, error
         self.progress = 0
         self.current_step = "step1"
+        self.current_step_name = STEP_NAMES["step1"]
+        self.completed_steps: List[str] = []
+        self.failed_step: Optional[str] = None
         self.analysis_id: Optional[str] = None
         self.redirect_url: Optional[str] = None
         self.error_message: Optional[str] = None
@@ -74,14 +89,29 @@ class AnalysisTask:
 
         with self._lock:
             self.current_step = step
+            if step in STEP_NAMES:
+                self.current_step_name = STEP_NAMES[step]
+                step_idx = ALL_STEPS.index(step)
+                self.completed_steps = [STEP_NAMES[s] for s in ALL_STEPS[:step_idx]]
+            elif step == "completed":
+                self.current_step_name = "Completed"
+                self.completed_steps = [STEP_NAMES[s] for s in ALL_STEPS]
+
             self.progress = progress
             self.status = status
 
             if status == "completed":
                 self.analysis_id = event_data.get("analysis_id")
                 self.redirect_url = event_data.get("redirect_url")
+                self.completed_steps = [STEP_NAMES[s] for s in ALL_STEPS]
             elif status == "error":
+                self.failed_step = (extra or {}).get("failed_step") or STEP_NAMES.get(step, self.current_step_name)
                 self.error_message = message
+
+            event_data["current_step_name"] = self.current_step_name
+            event_data["completed_steps"] = list(self.completed_steps)
+            if self.failed_step:
+                event_data["failed_step"] = self.failed_step
 
             self.milestones.append(event_data)
             self._condition.notify_all()
@@ -124,6 +154,9 @@ class AnalysisTask:
                 "status": self.status,
                 "progress": self.progress,
                 "current_step": self.current_step,
+                "current_step_name": self.current_step_name,
+                "completed_steps": list(self.completed_steps),
+                "failed_step": self.failed_step,
                 "analysis_id": self.analysis_id,
                 "redirect_url": self.redirect_url,
                 "error_message": self.error_message,
@@ -204,20 +237,20 @@ def _run_analysis_pipeline(
     Worker thread routine running the sequential multi-agent analysis pipeline.
     """
     try:
-        # Step 1: Document extraction and section standardization
+        # Step 1: Reading resume
         task.emit(
             step="step1",
             agent="Resume Parser",
-            message="Resume document parsed and standardized into canonical sections.",
+            message="Reading resume text and extracting canonical sections...",
             progress=15
         )
         time.sleep(0.1)
 
-        # Step 2: Resume Agent analysis
+        # Step 2: Checking format
         task.emit(
             step="step2",
             agent="ResumeAgent",
-            message="Evaluating resume formatting, bullet points, and ATS compatibility...",
+            message="Checking format, layout structure, and ATS score...",
             progress=30
         )
 
@@ -246,28 +279,28 @@ def _run_analysis_pipeline(
             task.emit(
                 step="step3",
                 agent="JobMatchAgent",
-                message=f"Benchmarking technical capabilities against {company_name} hiring criteria...",
+                message=f"Matching job description requirements for {company_name}...",
                 progress=50
             )
         if "step4" not in existing_steps:
             task.emit(
                 step="step4",
                 agent="SkillGapAgent",
-                message="Detecting critical skill deficiencies and recommending portfolio projects...",
+                message="Finding skill gaps and prioritizing missing proficiencies...",
                 progress=65
             )
         if "step5" not in existing_steps:
             task.emit(
                 step="step5",
                 agent="RoadmapAgent",
-                message="Constructing tailored 6-week progressive placement preparation roadmap...",
+                message="Building tailored 6-week progressive placement preparation roadmap...",
                 progress=80
             )
         if "step6" not in existing_steps:
             task.emit(
                 step="step6",
                 agent="InterviewAgent",
-                message=f"Synthesizing customized Technical, HR, and Behavioral questions for {company_name}...",
+                message=f"Preparing interview questions and evaluation rubrics for {company_name}...",
                 progress=90
             )
 
@@ -327,13 +360,18 @@ def _run_analysis_pipeline(
         clean_exc = scrub_api_key(str(exc))
         logger.error(f"Async pipeline worker failed for task {task.task_id}: {clean_exc}")
         friendly_error = format_ai_error_for_user(exc)
+        current_step_name = task.current_step_name
         task.emit(
-            step="error",
+            step=task.current_step,
             agent="CoordinatorAgent",
-            message=friendly_error,
-            progress=0,
+            message=f"Error during {current_step_name}: {friendly_error}",
+            progress=task.progress,
             status="error",
-            extra={"error_details": clean_exc}
+            extra={
+                "error_details": clean_exc,
+                "failed_step": current_step_name,
+                "step_name": current_step_name
+            }
         )
     finally:
         if analysis_id:

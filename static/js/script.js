@@ -1019,17 +1019,67 @@ function initFormUpload() {
   const progressSpinner = document.getElementById("progressSpinner");
   const progressErrorAlert = document.getElementById("progressErrorAlert");
   const progressErrorMessage = document.getElementById("progressErrorMessage");
+  const progressErrorStepName = document.getElementById("progressErrorStepName");
   const btnCloseProgressError = document.getElementById("btnCloseProgressError");
+  const btnRetryAnalysis = document.getElementById("btnRetryAnalysis");
+  const btnSubmitAnalysis = document.getElementById("btnSubmitAnalysis");
+  const submitBtnSpan = document.getElementById("submitBtnSpan");
+  const submitBtnIcon = document.getElementById("submitBtnIcon");
+
+  let isAnalysisRunning = false;
+
+  function enableSubmitButton() {
+    isAnalysisRunning = false;
+    if (btnSubmitAnalysis) {
+      btnSubmitAnalysis.disabled = false;
+      btnSubmitAnalysis.classList.remove("disabled");
+      btnSubmitAnalysis.removeAttribute("aria-disabled");
+    }
+    if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
+    if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+  }
+
+  function disableSubmitButton() {
+    isAnalysisRunning = true;
+    if (btnSubmitAnalysis) {
+      btnSubmitAnalysis.disabled = true;
+      btnSubmitAnalysis.classList.add("disabled");
+      btnSubmitAnalysis.setAttribute("aria-disabled", "true");
+    }
+    if (submitBtnSpan) submitBtnSpan.textContent = "Analyzing...";
+    if (submitBtnIcon) submitBtnIcon.className = "spinner-border spinner-border-sm me-2";
+  }
 
   if (btnCloseProgressError) {
     btnCloseProgressError.addEventListener("click", () => {
       if (progressOverlay) progressOverlay.classList.add("d-none");
       if (progressSpinner) progressSpinner.classList.remove("d-none");
       if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      enableSubmitButton();
+    });
+  }
+
+  if (btnRetryAnalysis) {
+    btnRetryAnalysis.addEventListener("click", () => {
+      if (progressOverlay) progressOverlay.classList.add("d-none");
+      if (progressSpinner) progressSpinner.classList.remove("d-none");
+      if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      enableSubmitButton();
+      if (uploadForm) {
+        uploadForm.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+      }
     });
   }
 
   const stepOrder = ["step1", "step2", "step3", "step4", "step5", "step6"];
+  const stepNamesMap = {
+    "step1": "Reading resume",
+    "step2": "Checking format",
+    "step3": "Matching job description",
+    "step4": "Finding skill gaps",
+    "step5": "Building roadmap",
+    "step6": "Preparing interview questions"
+  };
 
   function resetProgressPanel() {
     if (progressSpinner) progressSpinner.classList.remove("d-none");
@@ -1049,7 +1099,10 @@ function initFormUpload() {
       if (el) {
         el.className = "progress-step text-muted";
         const ind = el.querySelector(".step-indicator");
-        if (ind) ind.textContent = String(idx + 1);
+        if (ind) {
+          ind.textContent = String(idx + 1);
+          ind.setAttribute("aria-label", `Step ${idx + 1}: ${stepNamesMap[stepId]} (Pending)`);
+        }
       }
     });
   }
@@ -1075,13 +1128,16 @@ function initFormUpload() {
           onMilestone({
             status: "completed",
             step: "completed",
+            current_step_name: "Completed",
+            completed_steps: statusData.completed_steps || [],
             progress: 100,
             redirect_url: statusData.redirect_url,
             message: "Multi-agent placement analysis complete! Redirecting..."
           });
         } else if (statusData.status === "error") {
           clearInterval(pollInterval);
-          onError(statusData.error_message || "Analysis pipeline encountered an error.");
+          const failedStep = statusData.failed_step || statusData.current_step_name;
+          onError(statusData.error_message || "Analysis pipeline encountered an error.", failedStep);
         } else if (pollCount >= maxPolls) {
           clearInterval(pollInterval);
           onError("Analysis pipeline timed out. Please try again.");
@@ -1291,6 +1347,10 @@ function initFormUpload() {
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
 
+    if (isAnalysisRunning) {
+      return false;
+    }
+
     const textInput = document.getElementById("resumeTextInput");
     const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
     const hasText = textInput && textInput.value.trim().length > 0;
@@ -1316,10 +1376,13 @@ function initFormUpload() {
       return;
     }
 
+    disableSubmitButton();
+
     // Handle Multi-Company Matrix Mode Submission
     if (batchModeSwitch && batchModeSwitch.checked) {
       const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
       if (selectedChecks.length === 0) {
+        enableSubmitButton();
         alert("Please select at least one company to compare.");
         return;
       }
@@ -1352,7 +1415,8 @@ function initFormUpload() {
           }, 500);
         })
         .catch((err) => {
-          showPipelineError(err.message || "An unexpected error occurred during batch comparison.");
+          enableSubmitButton();
+          showPipelineError(err.message || "An unexpected error occurred during batch comparison.", "Batch Comparison");
         });
       return;
     }
@@ -1368,6 +1432,8 @@ function initFormUpload() {
       const progress = milestone.progress || 0;
       const message = milestone.message || "";
       const status = milestone.status;
+      const stepName = milestone.current_step_name || stepNamesMap[step] || step;
+      const completedSteps = milestone.completed_steps || [];
 
       if (analysisProgressBar) {
         analysisProgressBar.style.width = `${progress}%`;
@@ -1378,13 +1444,16 @@ function initFormUpload() {
         progressSubtitle.textContent = message;
       }
 
-      // Announce progress to screen readers via aria-live region
+      // Announce progress to screen readers via aria-live region (#470)
       const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
       if (progressAnnouncer) {
         if (status === "completed" || step === "completed") {
           progressAnnouncer.textContent = "Analysis complete! Redirecting to your dashboard...";
-        } else if (message) {
-          progressAnnouncer.textContent = `Analysis progress: ${progress}%. ${message}`;
+        } else if (status === "error" || step === "error") {
+          const failedStepName = milestone.failed_step || stepName;
+          progressAnnouncer.textContent = `Analysis error during ${failedStepName}: ${message}`;
+        } else if (stepName) {
+          progressAnnouncer.textContent = `Current step: ${stepName} (${progress}%). ${message}`;
         }
       }
 
@@ -1394,24 +1463,41 @@ function initFormUpload() {
           const el = document.getElementById(sId);
           if (!el) return;
           const ind = el.querySelector(".step-indicator");
-          if (idx < currentIdx) {
+          const sName = stepNamesMap[sId];
+          const isCompleted = completedSteps.includes(sName) || (currentIdx > -1 && idx < currentIdx);
+
+          if (isCompleted) {
             el.className = "progress-step completed";
-            if (ind) ind.innerHTML = "✓";
+            if (ind) {
+              ind.innerHTML = "✓";
+              ind.setAttribute("aria-label", `Step ${idx + 1}: ${sName} (Completed)`);
+            }
           } else if (idx === currentIdx) {
             el.className = "progress-step active";
+            if (ind) {
+              ind.textContent = String(idx + 1);
+              ind.setAttribute("aria-label", `Step ${idx + 1}: ${sName} (In progress)`);
+            }
           } else {
             el.className = "progress-step text-muted";
+            if (ind) {
+              ind.textContent = String(idx + 1);
+              ind.setAttribute("aria-label", `Step ${idx + 1}: ${sName} (Pending)`);
+            }
           }
         });
       }
 
       if (status === "completed" || step === "completed") {
-        stepOrder.forEach((sId) => {
+        stepOrder.forEach((sId, idx) => {
           const el = document.getElementById(sId);
           if (el) {
             el.className = "progress-step completed";
             const ind = el.querySelector(".step-indicator");
-            if (ind) ind.innerHTML = "✓";
+            if (ind) {
+              ind.innerHTML = "✓";
+              ind.setAttribute("aria-label", `Step ${idx + 1}: ${stepNamesMap[sId]} (Completed)`);
+            }
           }
         });
 
@@ -1438,19 +1524,56 @@ function initFormUpload() {
           eventSource.close();
           eventSource = null;
         }
-        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.");
+        const failedStepName = milestone.failed_step || milestone.current_step_name || stepNamesMap[step];
+        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.", failedStepName, step);
       }
     }
 
-    function showPipelineError(errMsg) {
+    function showPipelineError(errMsg, failedStepName, failedStepKey) {
+      enableSubmitButton();
       if (progressSpinner) progressSpinner.classList.add("d-none");
+      const stepLabel = failedStepName || "Resume Analysis";
+
       const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
-      if (progressAnnouncer) progressAnnouncer.textContent = `Analysis error: ${errMsg}`;
+      if (progressAnnouncer) {
+        progressAnnouncer.textContent = `Analysis error during ${stepLabel}: ${errMsg}`;
+      }
+
+      // Highlight the failed step in the progress list if identifiable
+      if (failedStepKey && stepOrder.includes(failedStepKey)) {
+        const el = document.getElementById(failedStepKey);
+        if (el) {
+          el.className = "progress-step failed text-danger";
+          const ind = el.querySelector(".step-indicator");
+          if (ind) {
+            ind.innerHTML = "✕";
+            ind.setAttribute("aria-label", `${stepLabel} (Failed)`);
+          }
+        }
+      } else if (failedStepName) {
+        stepOrder.forEach((sId) => {
+          if (stepNamesMap[sId] === failedStepName) {
+            const el = document.getElementById(sId);
+            if (el) {
+              el.className = "progress-step failed text-danger";
+              const ind = el.querySelector(".step-indicator");
+              if (ind) {
+                ind.innerHTML = "✕";
+                ind.setAttribute("aria-label", `${failedStepName} (Failed)`);
+              }
+            }
+          }
+        });
+      }
+
+      if (progressErrorStepName) {
+        progressErrorStepName.textContent = stepLabel;
+      }
       if (progressErrorAlert && progressErrorMessage) {
         progressErrorMessage.textContent = errMsg;
         progressErrorAlert.classList.remove("d-none");
       } else {
-        alert(errMsg);
+        alert(`Failed at ${stepLabel}: ${errMsg}`);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
     }
@@ -1496,7 +1619,8 @@ function initFormUpload() {
       })
       .catch((err) => {
         console.error("Async analysis dispatch failed:", err);
-        showPipelineError(err.message || "Could not start analysis. Please check your network and retry.");
+        enableSubmitButton();
+        showPipelineError(err.message || "Could not start analysis. Please check your network and retry.", "Dispatch");
       });
   });
 }

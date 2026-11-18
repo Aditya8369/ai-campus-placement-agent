@@ -278,9 +278,19 @@ body {
   font-weight: bold;
 }
 
+.progress-step.failed {
+  color: var(--danger-red, #dc3545);
+}
+
 .progress-step.completed .step-indicator {
   border-color: var(--success-green);
   background: var(--success-green);
+  color: white;
+}
+
+.progress-step.failed .step-indicator {
+  border-color: var(--danger-red, #dc3545);
+  background: var(--danger-red, #dc3545);
   color: white;
 }
 
