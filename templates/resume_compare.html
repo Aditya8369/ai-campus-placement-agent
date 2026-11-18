@@ -43,6 +43,18 @@
       </p>
     </div>
 
+    <!-- Flashed Error / Status Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show rounded-3 mb-4 shadow-sm" role="alert">
+      <i class="fa-solid fa-circle-exclamation me-2"></i> {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
     <!-- Upload Form -->
     <div class="card glass-card p-4 border-0 mb-4">
       <form method="POST" action="/compare-resumes" enctype="multipart/form-data">

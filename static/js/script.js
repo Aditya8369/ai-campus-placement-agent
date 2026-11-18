@@ -654,6 +654,37 @@ function initFormUpload() {
       return false;
     }
 
+    // Check for empty file (0 bytes)
+    if (file.size === 0) {
+      if (uploadTypeErrorAlert && uploadTypeErrorMessage) {
+        uploadTypeErrorMessage.textContent = "The uploaded file is empty. Please upload a valid resume.";
+        uploadTypeErrorAlert.classList.remove("d-none");
+      }
+      uploadArea.classList.add("border-danger");
+      uploadArea.style.backgroundColor = "#fff8f8";
+      if (fileInput) fileInput.value = "";
+      if (fileFeedbackBadge) fileFeedbackBadge.classList.add("d-none");
+      if (previewCard) previewCard.classList.add("d-none");
+      if (resumeEmptyNotice) resumeEmptyNotice.classList.remove("d-none");
+      return false;
+    }
+
+    // Check for oversized file (> 5 MB)
+    const maxUploadBytes = 5 * 1024 * 1024;
+    if (file.size > maxUploadBytes) {
+      if (uploadTypeErrorAlert && uploadTypeErrorMessage) {
+        uploadTypeErrorMessage.textContent = `The uploaded file exceeds the maximum allowed size of 5 MB (${formatFileSize(file.size)}). Please upload a smaller file.`;
+        uploadTypeErrorAlert.classList.remove("d-none");
+      }
+      uploadArea.classList.add("border-danger");
+      uploadArea.style.backgroundColor = "#fff8f8";
+      if (fileInput) fileInput.value = "";
+      if (fileFeedbackBadge) fileFeedbackBadge.classList.add("d-none");
+      if (previewCard) previewCard.classList.add("d-none");
+      if (resumeEmptyNotice) resumeEmptyNotice.classList.remove("d-none");
+      return false;
+    }
+
     // Success styling and visual feedback badge
     uploadArea.classList.remove("border-danger");
     uploadArea.style.borderColor = "var(--primary-blue)";
@@ -788,15 +819,8 @@ function initFormUpload() {
       const files = dt.files;
       if (files.length > 0) {
         const file = files[0];
-        const lowerName = file.name.toLowerCase();
-        if (lowerName.endsWith(".pdf") || lowerName.endsWith(".docx")) {
-          fileInput.files = files;
-          const isDocx = lowerName.endsWith(".docx");
-          const iconClass = isDocx ? "fa-file-word text-primary" : "fa-file-pdf text-danger";
-          uploadArea.querySelector("p").innerHTML = `<i class="fa-solid ${iconClass} me-2"></i>Selected File: <b>${file.name}</b>`;
-          uploadArea.style.borderColor = "var(--primary-blue)";
-          uploadArea.style.backgroundColor = "var(--secondary-light)";
-        }
+        fileInput.files = files;
+        handleSelectedFile(file);
       }
     });
   }
