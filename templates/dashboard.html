@@ -418,6 +418,120 @@
         </div>
       </div>
 
+      <!-- ATS-Style Resume Score & Section-Wise Breakdown (#494) -->
+      {% if ats_breakdown or r_sum.ats_breakdown %}
+        {% set breakdown = ats_breakdown|default(r_sum.ats_breakdown) %}
+        <div class="card glass-card p-4 border-0 mb-4" id="atsScoreBreakdownSection">
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+            <div>
+              <span class="text-primary fw-semibold text-uppercase small">Objective Evaluation</span>
+              <h4 class="fw-bold mb-1">
+                <i class="fa-solid fa-gauge-high text-primary me-2"></i> ATS Resume Score & Section Breakdown
+              </h4>
+              <p class="text-secondary small mb-0">
+                Measurable, deterministic scoring out of a fixed 100-point total. Identifies which section drags down your score and provides actionable fix suggestions.
+              </p>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+              <div class="text-end">
+                <span class="d-block small text-muted text-uppercase fw-semibold" style="font-size: 0.7rem;">ATS Score</span>
+                <span class="fw-bold fs-4 text-dark" id="atsBreakdownTotalScore">{{ breakdown.total_score }}</span>
+                <span class="text-muted small">/ 100</span>
+              </div>
+              <span class="badge {{ 'bg-success-subtle text-success' if breakdown.total_score >= 80 else ('bg-primary-subtle text-primary' if breakdown.total_score >= 65 else 'bg-warning-subtle text-warning') }} border fs-6 px-3 py-2 rounded-pill" id="atsBreakdownRatingBadge">
+                {{ breakdown.rating }}
+              </span>
+            </div>
+          </div>
+
+          <!-- "Hurts Most" Callout Banner -->
+          {% if breakdown.hurts_most %}
+            <div class="alert alert-danger border-0 rounded-4 shadow-sm mb-4" id="atsHurtsMostAlert">
+              <div class="d-flex align-items-start gap-3">
+                <div class="p-2 bg-danger text-white rounded-circle flex-shrink-0 mt-1" style="width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;">
+                  <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+                <div>
+                  <h6 class="fw-bold text-danger mb-1">
+                    <span class="badge bg-danger text-white rounded-pill me-2 px-2 py-1 small">Biggest Score Drag</span>
+                    {{ breakdown.hurts_most.title }} hurts your resume score most (-{{ breakdown.hurts_most.lost_points }} pts)
+                  </h6>
+                  <p class="mb-0 small text-dark">
+                    <strong>Recommended Fix:</strong> {{ breakdown.hurts_most.suggestion }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          {% else %}
+            <div class="alert alert-success border-0 rounded-4 shadow-sm mb-4">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-circle-check text-success fs-5"></i>
+                <span class="small fw-semibold text-dark">Full marks achieved across all resume sections! No critical section drag detected.</span>
+              </div>
+            </div>
+          {% endif %}
+
+          <!-- Section-Wise Breakdown Cards -->
+          <div class="row g-3 mb-4" id="atsSectionsGrid">
+            {% for sec_key, sec in breakdown.sections.items() %}
+              <div class="col-lg-4 col-md-6">
+                <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column justify-content-between {{ 'border-danger-subtle bg-danger-subtle bg-opacity-10' if sec.is_weak else '' }}">
+                  <div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <span class="fw-bold text-dark small">{{ sec.title }}</span>
+                      <span class="badge {{ 'bg-success-subtle text-success' if sec.status == 'Strong' else ('bg-warning-subtle text-warning' if sec.status == 'Fair' else 'bg-danger-subtle text-danger') }} border rounded-pill" style="font-size: 0.72rem;">
+                        {{ sec.status }}
+                      </span>
+                    </div>
+                    <div class="d-flex align-items-baseline justify-content-between mb-1">
+                      <span class="fw-bold fs-5 text-dark">{{ sec.score }}</span>
+                      <span class="text-muted small">/ {{ sec.max_score }} pts</span>
+                    </div>
+                    <div class="progress rounded-pill mb-2" style="height: 6px;">
+                      <div class="progress-bar {{ 'bg-success' if sec.status == 'Strong' else ('bg-warning' if sec.status == 'Fair' else 'bg-danger') }}" role="progressbar" style="width: {{ sec.earned_percentage }}%" aria-valuenow="{{ sec.score }}" aria-valuemin="0" aria-valuemax="{{ sec.max_score }}"></div>
+                    </div>
+                    <p class="small text-secondary mb-2" style="font-size: 0.8rem;">
+                      {{ sec.suggestion }}
+                    </p>
+                  </div>
+                  {% if sec.details %}
+                    <div class="pt-2 border-top">
+                      <small class="text-muted d-block" style="font-size: 0.7rem;">
+                        <i class="fa-solid fa-circle-check text-success me-1"></i> {{ sec.details[0] }}
+                      </small>
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+
+          <!-- Core Resume Basics Hygiene Checks -->
+          <div class="p-3 bg-white rounded-4 border shadow-xs" id="atsBasicsChecksContainer">
+            <h6 class="fw-bold text-dark mb-3 small text-uppercase">
+              <i class="fa-solid fa-list-check text-primary me-2"></i> Resume Basics Hygiene Checks
+            </h6>
+            <div class="row g-3">
+              {% for b_key, b_info in breakdown.basics.items() %}
+                <div class="col-md-3 col-6">
+                  <div class="p-2 px-3 rounded-3 border bg-light h-100">
+                    <div class="d-flex align-items-center justify-content-between mb-1">
+                      <span class="small fw-bold text-dark">{{ b_info.title }}</span>
+                      <span class="badge {{ 'bg-success-subtle text-success' if b_info.passed else 'bg-warning-subtle text-warning' }} border rounded-pill" style="font-size: 0.7rem;">
+                        <i class="fa-solid {{ 'fa-check' if b_info.passed else 'fa-exclamation' }} me-1"></i>{{ b_info.status }}
+                      </span>
+                    </div>
+                    <p class="small text-muted mb-0" style="font-size: 0.75rem;">
+                      {{ b_info.suggestion }}
+                    </p>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      {% endif %}
+
       <!-- Preparation Status Short Summary -->
       <div class="p-3 rounded-4 bg-light-subtle border mb-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
@@ -471,6 +585,9 @@
           <i class="fa-solid fa-signs-post text-primary me-1"></i> Jump to Detailed Report Sections:
         </span>
         <div class="d-flex flex-wrap gap-2">
+          <a href="#atsScoreBreakdownSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-gauge-high me-1 text-primary"></i> ATS Breakdown
+          </a>
           <a href="#resumeFeedbackSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-file-pen me-1 text-primary"></i> Resume Feedback
           </a>

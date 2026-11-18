@@ -253,6 +253,7 @@ from utils.demo_mode import (
     SYNTHETIC_SAMPLE_RESUME_TEXT,
     SYNTHETIC_SAMPLE_JOB_DESCRIPTION,
 )
+from utils.ats_score_service import evaluate_resume_ats_score
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -3590,7 +3591,32 @@ def dashboard(analysis_id: str) -> str:
     job_match = results.get("job_match") or results.get("job_compatibility") or {}
     skill_gap = results.get("skill_gap") or []
 
-    ats_score = int(resume_analysis.get("ats_score", 0))
+    # Prepare Deterministic ATS Resume Score & Section Breakdown (#494)
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    ats_breakdown = results.get("ats_breakdown")
+    try:
+        if not ats_breakdown and raw_resume:
+            ats_breakdown = evaluate_resume_ats_score(raw_resume)
+        elif not ats_breakdown:
+            candidate_skills = resume_analysis.get("skills", [])
+            candidate_summary = resume_analysis.get("summary", "")
+            synthetic_text = f"Summary: {candidate_summary}\nSkills: {', '.join(candidate_skills)}"
+            ats_breakdown = evaluate_resume_ats_score(synthetic_text)
+
+        if ats_breakdown and int(resume_analysis.get("ats_score", 0)) == 0:
+            ats_score = ats_breakdown["total_score"]
+        else:
+            ats_score = int(resume_analysis.get("ats_score", 0)) or (ats_breakdown["total_score"] if ats_breakdown else 0)
+    except Exception as ats_err:
+        logger.warning(f"Error computing ATS section breakdown for dashboard: {ats_err}")
+        ats_breakdown = None
+        ats_score = int(resume_analysis.get("ats_score", 0))
+
     match_percentage = int(job_match.get("match_percentage", 0))
     skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
     from utils.score_explanations import build_score_explanations
@@ -3661,6 +3687,7 @@ def dashboard(analysis_id: str) -> str:
         "target_match": target_match,
         "top_recommendations": top_recommendations,
         "score_explanations": score_explanations,
+        "ats_breakdown": ats_breakdown,
     }
     # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
     results = analysis_record.get("results") or {}
@@ -3828,8 +3855,80 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         is_demo=is_demo,
-        bullet_rewrites=bullet_rewrites
+        bullet_rewrites=bullet_rewrites,
+        ats_breakdown=ats_breakdown,
+        ats_breakdown_json=json.dumps(ats_breakdown) if ats_breakdown else "{}",
     )
+
+
+# ==============================================================================
+# ATS RESUME SCORING & SECTION BREAKDOWN API (#494)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/ats-breakdown", methods=["GET"])
+def api_get_analysis_ats_breakdown(analysis_id: str):
+    """
+    Returns the deterministic ATS resume score and section-wise breakdown (#494).
+    Scores contact info, summary, skills, experience, projects, and education
+    out of 100, evaluates basics checks, and identifies the section hurting the score most.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    ats_breakdown = results.get("ats_breakdown")
+    if not ats_breakdown:
+        from utils.ats_score_service import evaluate_resume_ats_score
+        raw_resume = analysis_record.get("resume_text", "")
+        ats_breakdown = evaluate_resume_ats_score(raw_resume)
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "total_score": ats_breakdown.get("total_score", 0),
+        "rating": ats_breakdown.get("rating", "Needs Rework"),
+        "hurts_most": ats_breakdown.get("hurts_most"),
+        "sections": ats_breakdown.get("sections", {}),
+        "basics": ats_breakdown.get("basics", {}),
+        "data": ats_breakdown,
+    }), 200
+
+
+@app.route("/api/resume/ats-score", methods=["POST"])
+def api_evaluate_resume_ats_score():
+    """
+    Evaluates resume text deterministically and returns the ATS section breakdown (#494).
+    Accepts JSON body:
+      - resume_text: raw text of the resume to score
+      - analysis_id: (optional) ID of existing analysis to load text from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text")
+        analysis_id = data.get("analysis_id")
+
+        if not resume_text and analysis_id:
+            record = get_analysis(analysis_id)
+            if record and _is_student_authorized(record):
+                resume_text = record.get("resume_text", "")
+
+        from utils.ats_score_service import evaluate_resume_ats_score
+        ats_breakdown = evaluate_resume_ats_score(resume_text or "")
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "total_score": ats_breakdown["total_score"],
+            "rating": ats_breakdown["rating"],
+            "hurts_most": ats_breakdown["hurts_most"],
+            "sections": ats_breakdown["sections"],
+            "basics": ats_breakdown["basics"],
+            "data": ats_breakdown,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])

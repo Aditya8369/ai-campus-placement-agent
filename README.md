@@ -121,6 +121,33 @@ Here is a visual walkthrough of the core placement preparation modules:
 Comprehensive placement readiness dashboard displaying overall ATS match score, keyword match percentage, detected strengths, and actionable resume formatting suggestions.
 ![AI Resume Dashboard & ATS Scoring](docs/screenshots/dashboard-ats-analysis.svg)
 
+#### ATS Resume Scoring Rules & Section-Wise Breakdown (#494)
+
+The platform evaluates resumes using a **100% deterministic recruitment scoring model** out of a fixed **100-point total**. By relying on objective parsing rules rather than variable LLM temperatures, **the same resume always receives the exact same score**, while AI is reserved strictly for targeted bullet rewrites and fix suggestions.
+
+##### Section Weights (100 Points Total)
+
+| Section | Max Points | Evaluation Criteria |
+| :--- | :---: | :--- |
+| **Contact Information** | 15 pts | Valid email (+4), phone number (+4), LinkedIn profile link (+4), and GitHub / portfolio link (+3). |
+| **Professional Summary** | 10 pts | Section presence (+3), ideal length of 20–120 words (+3), role intent & career focus (+2), and key technology highlights (+2). |
+| **Technical Skills** | 20 pts | Section presence (+4), technical breadth (&ge;10 skills: +8; &ge;6 skills: +6; &ge;3 skills: +4), structured categorization into Languages, Frameworks, and Tools (+4), and tech stack diversity (+4). |
+| **Work Experience & Internships** | 20 pts | Section presence (+4), explicit role titles (+4), dynamic action verbs in bullets (+5), quantified achievements & scale metrics (+4), and duration timelines (+3). |
+| **Projects & Portfolio** | 20 pts | Section presence (+4), multiple distinct projects (&ge;2 projects: +5), explicit tech stack per project (+4), implementation action verbs (+4), and live links or measurable outcomes (+3). |
+| **Education & Qualifications** | 15 pts | Section presence (+4), degree title specified (+4), recognized university or institution (+4), and graduation year / CGPA (+3). |
+
+##### Core Resume Basics Hygiene Checks
+
+In addition to section scores, the engine checks four fundamental resume hygiene basics:
+- **Action Verbs**: Verifies that experience and project bullet points lead with dynamic power verbs (e.g. *Architected*, *Engineered*, *Optimized*, *Spearheaded*) rather than passive phrasing (*Responsible for*, *Helped with*). Passing requires at least 4 unique action verbs.
+- **Quantified Achievements**: Scans for numbers, percentages, latency improvements, user scale (e.g. *improved throughput by 25%*, *5,000+ jobs/min*), and business outcomes. Passing requires at least 2 quantified metrics.
+- **Consistent Dates**: Evaluates timeline formatting consistency across education and experience (e.g., standardizing on *Month Year – Month Year* or *Year – Year*) without mixing conflicting notation styles.
+- **Resume Length**: Measures word count against optimal campus placement formats. The optimal single-page campus resume is **250 to 850 words**. Under 150 words is flagged as too brief; over 1,200 words is flagged as overly verbose.
+
+##### Identifying Which Section Hurts the Resume Most ("Hurts Most")
+
+The scoring engine calculates the point deficit (`max_score - earned_score`) across all sections. The section with the highest lost points is prominently highlighted as the **Biggest Score Drag** alongside a tailored, actionable fix suggestion so students immediately know where to invest effort to see the largest score improvement.
+
 ---
 
 ### 2. Interactive Mock Interview Simulator
