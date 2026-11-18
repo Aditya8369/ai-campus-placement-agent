@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>API Documentation - AI Campus Placement Agent</title>
+  <!-- Swagger UI CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      background: #fafafa;
+    }
+    .swagger-ui .topbar {
+      display: none;
+    }
+    .swagger-ui .info {
+      margin: 20px 0;
+    }
+    .swagger-ui .info .title {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #0d6efd;
+    }
+    .swagger-ui .scheme-container {
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+      padding: 15px 20px;
+      margin-bottom: 20px;
+    }
+    .docs-nav {
+      background: #ffffff;
+      border-bottom: 1px solid #e9ecef;
+      padding: 0.75rem 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header Navigation -->
+  <header class="docs-nav d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <a class="navbar-brand fw-bold text-dark text-decoration-none fs-5" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary me-2"></i>AI Campus <span class="text-primary">Placement Agent</span>
+      </a>
+      <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
+        OpenAPI 3.0.3
+      </span>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/api/openapi.json" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+        <i class="fa-solid fa-code me-1"></i> Raw JSON Spec
+      </a>
+      <a href="/redoc" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+        <i class="fa-solid fa-book me-1"></i> Redoc View
+      </a>
+      <a href="/" class="btn btn-sm btn-primary rounded-pill px-3">
+        <i class="fa-solid fa-arrow-left me-1"></i> Back to App
+      </a>
+    </div>
+  </header>
+
+  <!-- Swagger UI Mount Point -->
+  <div id="swagger-ui"></div>
+
+  <!-- Swagger UI Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.onload = function () {
+      SwaggerUIBundle({
+        url: "/api/openapi.json",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 1,
+        docExpansion: "list",
+        filter: true,
+        showExtensions: true,
+        showCommonExtensions: true,
+        displayRequestDuration: true
+      });
+    };
+  </script>
+</body>
+</html>

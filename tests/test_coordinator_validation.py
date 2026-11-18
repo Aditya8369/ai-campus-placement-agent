@@ -251,7 +251,7 @@ class TestCoordinatorAgentValidationAndRetry:
         coordinator = CoordinatorAgent()
         calls = []
 
-        def side_effect_fn(system_instruction, prompt):
+        def side_effect_fn(system_instruction, prompt, **kwargs):
             calls.append(prompt)
             if len(calls) == 1:
                 raise AIResponseFormatError("Malformed JSON output from model")
@@ -271,7 +271,7 @@ class TestCoordinatorAgentValidationAndRetry:
         coordinator = CoordinatorAgent()
         calls = []
 
-        def side_effect_fn(system_instruction, prompt):
+        def side_effect_fn(system_instruction, prompt, **kwargs):
             calls.append(prompt)
             raise AIResponseFormatError("Persistent malformed JSON")
 

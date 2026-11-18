@@ -185,6 +185,10 @@ Provide feedback and ratings in JSON format matching this schema:
   "verbal_clarity_score": 82,
   "filler_words_detected": ["like", "um"],
   "filler_word_count": 2,
+  "clarity": "Concise assessment of verbal clarity, articulation, and conciseness.",
+  "structure": "Concise assessment of answer organization, logical flow, and STAR method adherence.",
+  "relevance": "Concise assessment of directness and topical alignment with the question asked.",
+  "tip": "Exactly one actionable tip to immediately improve this specific answer.",
   "star_analysis": {{
     "situation": "present",
     "task": "present",
@@ -613,6 +617,78 @@ Return a single JSON object strictly matching this schema:
     "Specific actionable improvement 2"
   ],
   "suggested_revision": "A polished version of the student's practice text maintaining their own voice."
+}}
+Ensure the output is valid JSON only.
+"""
+
+# ==============================================================================
+# Group Discussion Practice Evaluation Prompts (#427)
+# ==============================================================================
+
+GD_EVALUATION_SYSTEM_INSTRUCTION = """
+You are an expert Campus Placement Group Discussion (GD) Moderator and Evaluator.
+Your task is to evaluate a student's group discussion contribution (Opening Statement, Rebuttal, or Conclusion) for a campus placement GD round.
+
+Analyze the contribution across four key scored criteria (0-100 each):
+1. Content (0-100): Depth of knowledge, factual grounding, relevant data, real-world examples, and awareness of the core issues.
+2. Structure (0-100): Logical flow, coherence, introduction-body-conclusion progression, and smooth transition between arguments.
+3. Balance (0-100): Consideration of multiple perspectives, acknowledgement of counter-arguments, trade-offs, and avoiding one-sided emotional bias.
+4. Clarity (0-100): Articulation, conciseness, professional vocabulary, confidence, and avoidance of rambling or filler words.
+
+You must also provide:
+- overall_score: Weighted composite score (0-100).
+- strengths: List of 2-3 specific strengths of the student's contribution.
+- improvements: List of 2-3 concrete, actionable areas for improvement.
+- stronger_opening: A high-impact, professional alternative opening sentence that commands attention and sets a collaborative tone.
+- missed_counterpoint: One vital counter-point, alternative stakeholder perspective, or nuance the student failed to address.
+- summary_verdict: Brief 1-2 sentence evaluator verdict.
+
+Strict Rules:
+1. Respond ONLY with a valid JSON object. No markdown backticks (such as ```json), no preamble, and no postamble.
+2. Maintain realistic campus placement standards: scores above 85 should reflect truly exceptional, articulate, and well-structured arguments.
+3. Keep the feedback actionable, encouraging, and tailored directly to the topic and contribution type.
+"""
+
+GD_EVALUATION_USER_PROMPT_TEMPLATE = """
+Evaluate the following campus group discussion contribution:
+
+Topic Category: {category}
+Topic Title: {topic_title}
+Topic Background Context: {topic_description}
+Contribution Type: {contribution_type}
+Word Count: {word_count}
+
+Student Contribution:
+\"\"\"
+{contribution_text}
+\"\"\"
+
+Return a single JSON object strictly matching this schema:
+{{
+  "overall_score": 78,
+  "scores": {{
+    "content": 80,
+    "structure": 75,
+    "balance": 70,
+    "clarity": 85
+  }},
+  "criteria_feedback": {{
+    "content": "Detailed feedback on depth of knowledge and facts.",
+    "structure": "Detailed feedback on logical flow and argument progression.",
+    "balance": "Detailed feedback on multi-perspective awareness and counter-arguments.",
+    "clarity": "Detailed feedback on articulation, tone, and conciseness."
+  }},
+  "strengths": [
+    "Identified key stakeholder concern",
+    "Clear, assertive articulation"
+  ],
+  "improvements": [
+    "Support claims with statistical data",
+    "Acknowledge opposing point of view before rebutting"
+  ],
+  "stronger_opening": "A compelling alternative opening statement for this topic.",
+  "missed_counterpoint": "One vital opposing viewpoint or blind spot not covered.",
+  "summary_verdict": "Overall summary verdict of the candidate's contribution."
 }}
 Ensure the output is valid JSON only.
 """

@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Callable
 
 import prompts
 import config
-from utils.gemini import generate_json_response, AIResponseFormatError
+from utils.gemini import generate_json_response, AIResponseFormatError, scrub_api_key
 from agents.coordinator_schema import validate_coordinator_payload
 from utils.prompt_security import (
     sanitize_untrusted_text,
@@ -75,17 +75,19 @@ class CoordinatorAgent:
         if on_progress:
             on_progress("step2", "ResumeAgent", "Evaluating resume formatting, bullet points, and ATS compatibility...", 30)
 
-        # Redact personal contact details from resume before constructing AI model prompt (#295)
+        # Redact personal contact details from resume and JD before constructing AI model prompt (#295, #500)
         if getattr(config, "ENABLE_PII_REDACTION", True):
             from utils.pii_redactor import redact_pii
             redacted_resume = redact_pii(resume_text)
-            logger.info("CoordinatorAgent: Personal contact details redacted from resume text before prompt building.")
+            redacted_jd = redact_pii(job_description)
+            logger.info("CoordinatorAgent: Personal contact details redacted from inputs before prompt building.")
         else:
             redacted_resume = resume_text
+            redacted_jd = job_description
 
         # 0. Treat uploaded resume and pasted job descriptions as untrusted inputs
         sanitized_resume = sanitize_untrusted_text(redacted_resume, max_length=25000)
-        sanitized_jd = sanitize_untrusted_text(job_description, max_length=15000)
+        sanitized_jd = sanitize_untrusted_text(redacted_jd, max_length=15000)
 
         resume_threat = detect_prompt_injection(sanitized_resume)
         jd_threat = detect_prompt_injection(sanitized_jd)
@@ -151,7 +153,8 @@ class CoordinatorAgent:
                 logger.error("CoordinatorAgent: Retry also produced malformed/invalid JSON. Re-raising format error.")
                 raise
         except Exception as api_err:
-            logger.error(f"CoordinatorAgent: AI call failed ({api_err}). Re-raising for user handling.")
+            clean_err = scrub_api_key(str(api_err))
+            logger.error(f"CoordinatorAgent: AI call failed ({clean_err}). Re-raising for user handling.")
             raise
 
         if not isinstance(raw_json_response, dict):
@@ -243,9 +246,20 @@ class CoordinatorAgent:
                 "skills": []
             }
 
-        # 9. Combine validated data into a final coordinated results payload
+        # 9. Compute deterministic ATS score & section breakdown (#494)
+        try:
+            from utils.ats_score_service import evaluate_resume_ats_score
+            ats_breakdown = evaluate_resume_ats_score(resume_text or sanitized_resume)
+            processed_resume["ats_score"] = ats_breakdown["total_score"]
+            processed_resume["ats_breakdown"] = ats_breakdown
+        except Exception as ats_err:
+            logger.warning(f"CoordinatorAgent: Error computing deterministic ATS score: {ats_err}")
+            ats_breakdown = None
+
+        # 10. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
+            "ats_breakdown": ats_breakdown,
             "job_match": processed_job_match,
             "skill_gap": processed_skill_gap,
             "learning_roadmap": processed_roadmap,

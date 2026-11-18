@@ -1,0 +1,96 @@
+{
+  "id": "software_developer",
+  "name": "Software Developer",
+  "category": "Core Engineering",
+  "description": "Designs, develops, and maintains software systems, backend services, and scalable algorithmic pipelines.",
+  "required_skills": [
+    "Data Structures",
+    "Algorithms",
+    "Python",
+    "Java",
+    "SQL",
+    "Git",
+    "System Design",
+    "REST APIs"
+  ],
+  "nice_to_have_skills": [
+    "Docker",
+    "Redis",
+    "Microservices",
+    "CI/CD",
+    "Linux",
+    "Kubernetes"
+  ],
+  "suggested_topics": {
+    "Data Structures": [
+      "Binary Trees, Heaps, and Priority Queues",
+      "Hash Tables and Collision Resolution Mechanisms",
+      "Graph Representations and Traversal Techniques"
+    ],
+    "Algorithms": [
+      "Dynamic Programming and Memoization Strategies",
+      "Graph Search Algorithms (BFS, DFS, Dijkstra)",
+      "Sorting, Binary Search, and Two-Pointer Patterns"
+    ],
+    "Python": [
+      "Object-Oriented Design and Dataclasses",
+      "Asynchronous I/O and Concurrency (asyncio)",
+      "Generators, Decorators, and Memory Profiling"
+    ],
+    "Java": [
+      "JVM Architecture, Memory Management, and GC",
+      "Java Collections Framework and Generics",
+      "Concurrency, ThreadPools, and Locks"
+    ],
+    "SQL": [
+      "B-Tree and Hash Indexing Query Optimization",
+      "Complex Multi-Table Joins, CTEs, and Window Functions",
+      "ACID Transactions, Locking, and Isolation Levels"
+    ],
+    "Git": [
+      "Branching Workflows and Pull Request Lifecycles",
+      "Interactive Rebase and Clean Commit History",
+      "Resolving Merge Conflicts and Git Hooks"
+    ],
+    "System Design": [
+      "Horizontal vs. Vertical Scalability and Load Balancing",
+      "Caching Tiers (Write-Through, Cache-Aside)",
+      "Database Sharding, Replication, and CAP Theorem"
+    ],
+    "REST APIs": [
+      "REST Architectural Principles and HTTP Semantics",
+      "JWT and OAuth2 Token-Based Authentication",
+      "Pagination, Rate Limiting, and Idempotency Keys"
+    ],
+    "Docker": [
+      "Multi-stage Dockerfile Optimization",
+      "Container Networking and Persistent Storage Volumes",
+      "Docker Compose for Multi-Container Services"
+    ],
+    "Redis": [
+      "In-Memory Data Structures (Strings, Hashes, Sorted Sets)",
+      "Cache Invalidation Strategies and TTL Expirations",
+      "Pub/Sub Messaging and Redis Streams"
+    ],
+    "Microservices": [
+      "Decoupled Service Architectures and API Gateways",
+      "Distributed Tracing and Correlation Identifiers",
+      "Circuit Breakers, Retries, and Fallback Handlers"
+    ],
+    "CI/CD": [
+      "Automated Test Execution in GitHub Actions",
+      "Build Pipelines and Artifact Deployment",
+      "Zero-Downtime Rolling Deployments and Rollbacks"
+    ],
+    "Linux": [
+      "Process Management, Signals, and Daemons",
+      "File Permissions, Ownership, and Shell Pipelines",
+      "System Diagnostics using top, htop, and netstat"
+    ],
+    "Kubernetes": [
+      "Pods, Deployments, and StatefulSets Architecture",
+      "Services, Ingress Controllers, and Network Policies",
+      "Horizontal Pod Autoscalers (HPA) and Resource Limits"
+    ]
+  }
+}

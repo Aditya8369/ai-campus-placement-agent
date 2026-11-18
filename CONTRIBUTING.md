@@ -34,9 +34,10 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
 
 ## Development Setup
 
-1. Install dependencies:
+1. Install dependencies (including testing and linting tools):
    ```bash
    pip install -r requirements.txt
+   pip install flake8 black isort pytest pytest-cov
    ```
 
 2. Set up environment variables:
@@ -53,6 +54,19 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
    ```
 
 4. Visit `http://127.0.0.1:5000/` in your browser
+
+5. Verify local tests and lint checks (matching CI workflow):
+   ```bash
+   # Run flake8 critical syntax and undefined name checks
+   flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+   # Run automated pytest test suite
+   pytest
+
+   # Run pre-flight diagnostic validators
+   python utils/ci_pipeline_validator.py
+   python utils/deployment_check.py
+   ```
 
 ## Contributing Guidelines
 
@@ -91,9 +105,11 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
    - Update relevant documentation
 
 3. Test your changes thoroughly:
-   - Run relevant automated checks and report exact commands and results in your PR
-   - Test the specific feature you modified
-   - Check for regressions in existing functionality
+   - Run linter: `flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics`
+   - Run tests: `pytest`
+   - Run diagnostics: `python utils/ci_pipeline_validator.py` and `python utils/deployment_check.py`
+   - Ensure the automated CI workflow will pass without lint errors or test failures
+   - Test the specific feature you modified and check for regressions
 
 4. Commit your changes:
    ```bash

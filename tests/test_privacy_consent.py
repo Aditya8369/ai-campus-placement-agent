@@ -31,7 +31,7 @@ def test_privacy_page_renders_successfully(client):
     - Third-party AI processing via Gemini API
     - Local storage in SQLite
     - Data retention policy
-    - Deletion procedures via /history and /delete-account
+    - Deletion procedures via /history and /account/delete
     """
     res = client.get("/privacy")
     assert res.status_code == 200
@@ -47,7 +47,7 @@ def test_privacy_page_renders_successfully(client):
     assert "Data Retention" in html
     assert "How to Delete Your Data" in html
     assert "/history" in html
-    assert "/delete-account" in html
+    assert "/account/delete" in html
 
 
 def test_privacy_page_reachable_from_footer_and_upload_form(client):

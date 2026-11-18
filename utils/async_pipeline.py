@@ -323,8 +323,9 @@ def _run_analysis_pipeline(
         )
 
     except Exception as exc:
-        logger.error(f"Async pipeline worker failed for task {task.task_id}: {str(exc)}")
-        from utils.gemini import format_ai_error_for_user
+        from utils.gemini import format_ai_error_for_user, scrub_api_key
+        clean_exc = scrub_api_key(str(exc))
+        logger.error(f"Async pipeline worker failed for task {task.task_id}: {clean_exc}")
         friendly_error = format_ai_error_for_user(exc)
         task.emit(
             step="error",
@@ -332,5 +333,12 @@ def _run_analysis_pipeline(
             message=friendly_error,
             progress=0,
             status="error",
-            extra={"error_details": str(exc)}
+            extra={"error_details": clean_exc}
         )
+    finally:
+        if analysis_id:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=analysis_id)
+            except Exception as clean_err:
+                logger.warning(f"Failed to clean up temporary upload for {analysis_id}: {clean_err}")

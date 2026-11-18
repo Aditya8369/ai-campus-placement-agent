@@ -407,6 +407,13 @@
               <!-- Resume Input Selector (Tabs) -->
               <div class="mb-4">
                 <label class="form-label fw-semibold text-secondary">1. Provide Resume</label>
+                <!-- Privacy Note Before Upload (#500) -->
+                <div class="alert alert-info py-2 px-3 mb-3 small d-flex align-items-center gap-2 rounded-3 border border-info-subtle" id="privacyNoteBeforeUpload" role="note">
+                  <i class="fa-solid fa-shield-halved text-primary fs-5 flex-shrink-0"></i>
+                  <div>
+                    <strong>Privacy Note:</strong> Phone numbers, emails, and street addresses are automatically redacted before sending text to AI models. Temporary uploaded files are deleted after analysis finishes or fails. Only your placement preparation results are saved to your account.
+                  </div>
+                </div>
                 <ul class="nav nav-pills nav-fill mb-2" id="resumeTab" role="tablist">
                   <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="pdf-tab" data-bs-toggle="pill" data-bs-target="#pdf-pane"
@@ -955,6 +962,7 @@
       </div>
       <div>
         <a href="{{ url_for('privacy_policy') }}" class="text-secondary text-decoration-underline me-3">Privacy Notice</a>
+        <a href="{{ url_for('api_docs_ui') }}" class="text-secondary text-decoration-underline me-3"><i class="fa-solid fa-book-open me-1"></i>API Documentation</a>
         <a href="https://github.com/deepikagandla74/ai-campus-placement-agent" target="_blank" rel="noopener noreferrer" class="text-secondary text-decoration-underline">GitHub</a>
       </div>
     </div>

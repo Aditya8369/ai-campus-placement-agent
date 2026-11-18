@@ -1,0 +1,69 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="100%" height="100%" style="background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <filter id="shadow3" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Browser Chrome Window -->
+  <rect x="20" y="20" width="960" height="600" rx="12" fill="#1e293b" filter="url(#shadow3)"/>
+  
+  <!-- Window Header -->
+  <rect x="20" y="20" width="960" height="42" rx="12" fill="#0f172a"/>
+  <rect x="20" y="50" width="960" height="12" fill="#0f172a"/>
+  <circle cx="45" cy="41" r="6" fill="#ef4444"/>
+  <circle cx="65" cy="41" r="6" fill="#f59e0b"/>
+  <circle cx="85" cy="41" r="6" fill="#10b981"/>
+  <rect x="120" y="31" width="760" height="22" rx="6" fill="#1e293b"/>
+  <text x="385" y="46" fill="#94a3b8" font-size="11">https://campus-placement-agent.ai/roadmap/6-week</text>
+
+  <!-- Title & Info -->
+  <rect x="45" y="80" width="910" height="65" rx="10" fill="#334155" opacity="0.6"/>
+  <text x="70" y="110" fill="#f8fafc" font-size="18" font-weight="700">6-Week Progressive Placement Preparation Roadmap</text>
+  <text x="70" y="132" fill="#94a3b8" font-size="12">Tailored for <tspan fill="#38bdf8" font-weight="600">Google SDE</tspan> | Target Hours: 15 hrs/week | Focus: Algorithms, Concurrency, Distributed Systems</text>
+
+  <!-- Week 1 (Active Accordion) -->
+  <rect x="45" y="165" width="910" height="130" rx="8" fill="#1e293b" stroke="#6366f1" stroke-width="2"/>
+  <rect x="45" y="165" width="910" height="40" rx="8" fill="#312e81"/>
+  <text x="70" y="190" fill="#c7d2fe" font-size="14" font-weight="700">Week 1: Advanced Data Structures, Heaps &amp; Graph Traversals</text>
+  <rect x="830" y="174" width="105" height="22" rx="11" fill="#4338ca"/>
+  <text x="845" y="189" fill="#e0e7ff" font-size="11" font-weight="600">14 hrs planned</text>
+
+  <!-- Week 1 Content items -->
+  <text x="70" y="230" fill="#38bdf8" font-size="12" font-weight="600">Theoretical Mastery:</text>
+  <text x="210" y="230" fill="#cbd5e1" font-size="12">Dijkstra's shortest path, Topological sorting, Union-Find disjoint sets</text>
+  <text x="70" y="255" fill="#10b981" font-size="12" font-weight="600">Coding Practice:</text>
+  <text x="210" y="255" fill="#cbd5e1" font-size="12">Course Schedule II (LeetCode 210), Network Delay Time (LeetCode 743)</text>
+  <text x="70" y="280" fill="#f59e0b" font-size="12" font-weight="600">Milestone Check:</text>
+  <text x="210" y="280" fill="#cbd5e1" font-size="12">Self-Introduction script recorded &amp; 3 mock technical coding problems solved</text>
+
+  <!-- Week 2 -->
+  <rect x="45" y="310" width="910" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="340" fill="#f1f5f9" font-size="14" font-weight="600">Week 2: Dynamic Programming, Memoization &amp; Bit Manipulation</text>
+  <rect x="830" y="323" width="105" height="22" rx="11" fill="#334155"/>
+  <text x="845" y="338" fill="#94a3b8" font-size="11" font-weight="600">15 hrs planned</text>
+
+  <!-- Week 3 -->
+  <rect x="45" y="370" width="910" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="400" fill="#f1f5f9" font-size="14" font-weight="600">Week 3: Low-Level Design (LLD), Object-Oriented Principles &amp; Design Patterns</text>
+  <rect x="830" y="383" width="105" height="22" rx="11" fill="#334155"/>
+  <text x="845" y="398" fill="#94a3b8" font-size="11" font-weight="600">16 hrs planned</text>
+
+  <!-- Week 4 -->
+  <rect x="45" y="430" width="910" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="460" fill="#f1f5f9" font-size="14" font-weight="600">Week 4: High-Level System Design (HLD) &amp; Scalable Cloud Architectures</text>
+  <rect x="830" y="443" width="105" height="22" rx="11" fill="#334155"/>
+  <text x="845" y="458" fill="#94a3b8" font-size="11" font-weight="600">15 hrs planned</text>
+
+  <!-- Week 5 -->
+  <rect x="45" y="490" width="910" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="520" fill="#f1f5f9" font-size="14" font-weight="600">Week 5: Behavioral Rounds, Google 'Googliness' &amp; STAR Leadership Stories</text>
+  <rect x="830" y="503" width="105" height="22" rx="11" fill="#334155"/>
+  <text x="845" y="518" fill="#94a3b8" font-size="11" font-weight="600">12 hrs planned</text>
+
+  <!-- Week 6 -->
+  <rect x="45" y="550" width="910" height="48" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="580" fill="#f1f5f9" font-size="14" font-weight="600">Week 6: Full Comprehensive Mock Interviews &amp; Company Cheat Sheet Drills</text>
+  <rect x="830" y="563" width="105" height="22" rx="11" fill="#334155"/>
+  <text x="845" y="578" fill="#94a3b8" font-size="11" font-weight="600">10 hrs planned</text>
+</svg>
