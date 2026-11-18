@@ -1,0 +1,90 @@
+{
+  "id": "data_analyst",
+  "name": "Data Analyst",
+  "category": "Data & Analytics",
+  "description": "Analyzes complex datasets to identify trends, create intuitive dashboards, and drive business decision-making.",
+  "required_skills": [
+    "SQL",
+    "Python",
+    "Excel",
+    "Data Visualization",
+    "Tableau",
+    "Power BI",
+    "Statistics"
+  ],
+  "nice_to_have_skills": [
+    "R",
+    "Pandas",
+    "Data Cleaning",
+    "A/B Testing",
+    "ETL",
+    "BigQuery"
+  ],
+  "suggested_topics": {
+    "SQL": [
+      "Window Functions (ROW_NUMBER, RANK, DENSE_RANK, NTILE)",
+      "Multi-Condition Aggregations and Rollups",
+      "Query Plan Optimization and Temporary Tables"
+    ],
+    "Python": [
+      "Data Ingestion and Manipulation with Pandas",
+      "Vectorized Operations with NumPy",
+      "Statistical Analysis and Exploratory Data Analysis (EDA)"
+    ],
+    "Excel": [
+      "Dynamic Pivot Tables, Slicers, and Timelines",
+      "Advanced Lookup Functions (XLOOKUP, INDEX/MATCH)",
+      "Power Query Automation and Data Cleansing"
+    ],
+    "Data Visualization": [
+      "Visual Hierarchy and Storytelling with Data",
+      "Selecting the Right Chart for Quantitative Insights",
+      "Color Palettes, Decluttering, and Accessible Design"
+    ],
+    "Tableau": [
+      "Calculated Fields and Parameterized Filters",
+      "Level of Detail (LOD) Calculations",
+      "Interactive Multi-Tab Executive Dashboards"
+    ],
+    "Power BI": [
+      "DAX Measures, Time Intelligence Functions, and Variables",
+      "Star Schema Modeling and Relationship Management",
+      "Row-Level Security (RLS) and Service Deployment"
+    ],
+    "Statistics": [
+      "Descriptive Statistics and Confidence Intervals",
+      "Hypothesis Testing (t-tests, ANOVA, Chi-Square)",
+      "Probability Distributions and Sampling Methodologies"
+    ],
+    "R": [
+      "Data Manipulation with dplyr and tidyverse",
+      "Statistical Plotting with ggplot2",
+      "Reproducible Analysis Reports with R Markdown"
+    ],
+    "Pandas": [
+      "Handling Missing Data and Complex Imputations",
+      "Time Series Resampling, Shifting, and Rolling Averages",
+      "Merging, Joining, and Pivoting DataFrames"
+    ],
+    "Data Cleaning": [
+      "Outlier Detection Techniques and IQR Filtering",
+      "Regular Expressions for Text Normalization",
+      "Standardizing Inconsistent Categorical Values"
+    ],
+    "A/B Testing": [
+      "Sample Size Estimation and Minimum Detectable Effect",
+      "Type I / Type II Errors and Significance Levels",
+      "Post-Experiment Segmentation and Analysis"
+    ],
+    "ETL": [
+      "Data Pipeline Orchestration Fundamentals",
+      "Data Extraction Connectors and Staging Tables",
+      "Automated Data Quality and Schema Checks"
+    ],
+    "BigQuery": [
+      "Partitioned and Clustered Table Schemas",
+      "Cost Optimization and Query Slots",
+      "Exporting BigQuery Aggregates to BI Platforms"
+    ]
+  }
+}

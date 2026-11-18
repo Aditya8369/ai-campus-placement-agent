@@ -253,6 +253,14 @@ from utils.demo_mode import (
     SYNTHETIC_SAMPLE_RESUME_TEXT,
     SYNTHETIC_SAMPLE_JOB_DESCRIPTION,
 )
+from utils.role_skill_gap_service import (
+    get_available_roles,
+    get_role_profile,
+    analyze_role_skill_gap,
+    extract_candidate_skills,
+    normalize_skill_name,
+    skills_match,
+)
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -3797,6 +3805,29 @@ def dashboard(analysis_id: str) -> str:
             "empty_message": "Resume bullet rewrites could not be generated."
         }
 
+    # Prepare Role-Targeted Skill Gap Benchmark (#495)
+    try:
+        available_roles = get_available_roles()
+        selected_role_id = (
+            request.args.get("role")
+            or request.args.get("role_id")
+            or (available_roles[0]["id"] if available_roles else "software_developer")
+        )
+        role_gap_analysis = analyze_role_skill_gap(analysis_record, selected_role_id)
+    except Exception as rsg_err:
+        logger.warning(f"Error preparing role-targeted skill gap benchmark for dashboard: {rsg_err}")
+        available_roles = []
+        selected_role_id = "software_developer"
+        role_gap_analysis = {
+            "role_id": "software_developer",
+            "role_name": "Software Developer",
+            "match_percentage": 0,
+            "readiness_verdict": "Unknown",
+            "summary": "Skill gap benchmark unavailable.",
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3813,6 +3844,10 @@ def dashboard(analysis_id: str) -> str:
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
         supported_roles=SUPPORTED_ROLES,
+        available_roles=available_roles,
+        selected_role_id=selected_role_id,
+        role_gap_analysis=role_gap_analysis,
+        role_gap_analysis_json=json.dumps(role_gap_analysis),
         readiness_summary=readiness_summary,
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison),
@@ -3997,6 +4032,115 @@ def api_skill_evidence_mapping(analysis_id: str):
         "company_name": analysis_record.get("company_name", "General"),
         "skill_evidence": skill_evidence
     }), 200
+
+
+# ==============================================================================
+# ROLE-TARGETED SKILL GAP BENCHMARKING API (#495)
+# ==============================================================================
+
+@app.route("/api/skill-gap/roles", methods=["GET"])
+def api_get_skill_gap_roles():
+    """
+    Returns the list of all available job role benchmark profiles (#495).
+    Dynamically discovers JSON files in data/roles/.
+    """
+    try:
+        roles = get_available_roles()
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "roles": roles,
+            "count": len(roles),
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching skill gap roles: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/roles/<role_id>", methods=["GET"])
+def api_get_skill_gap_role_profile(role_id: str):
+    """
+    Returns profile details, required skills, nice-to-have skills, and suggested
+    topics for a specific job role (#495).
+    """
+    try:
+        profile = get_role_profile(role_id)
+        if not profile:
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "error": f"Role '{role_id}' not found."
+            }), 404
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "role": profile
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching role profile '{role_id}': {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/analyze", methods=["POST"])
+def api_analyze_skill_gap():
+    """
+    Analyzes candidate skills against a target job role profile (#495).
+    Accepts JSON body:
+      - role_id (or role): identifier of the role (e.g. 'software_developer')
+      - skills (or candidate_skills): list or string of candidate skills
+      - analysis_id: (optional) ID of existing analysis to load skills from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        role_id = data.get("role_id") or data.get("role") or "software_developer"
+        candidate_skills = data.get("skills") or data.get("candidate_skills")
+
+        analysis_id = data.get("analysis_id")
+        if not candidate_skills and analysis_id:
+            analysis_record = get_analysis(analysis_id)
+            if analysis_record:
+                candidate_skills = analysis_record
+
+        result = analyze_role_skill_gap(candidate_skills, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_analyze_skill_gap: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/analysis/<analysis_id>/role-skill-gap", methods=["GET"])
+def api_analysis_role_skill_gap(analysis_id: str):
+    """
+    Evaluates candidate skills from an existing analysis record against a selected target role (#495).
+    Query parameter: ?role=<role_id> (defaults to first available role or 'software_developer').
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    try:
+        available_roles = get_available_roles()
+        default_role = available_roles[0]["id"] if available_roles else "software_developer"
+        role_id = request.args.get("role") or request.args.get("role_id") or default_role
+
+        result = analyze_role_skill_gap(analysis_record, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "analysis_id": analysis_id,
+            "selected_role_id": role_id,
+            "available_roles": available_roles,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error evaluating role skill gap for analysis {analysis_id}: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 # ==============================================================================
