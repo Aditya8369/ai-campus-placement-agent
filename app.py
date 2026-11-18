@@ -4704,6 +4704,15 @@ def interview(analysis_id: str) -> str:
                     })
                     q_idx += 1
 
+        # Ensure session contains at least 5 questions (#496)
+        flat_questions_list = live_interview_agent.ensure_minimum_session_questions(
+            flat_questions_list,
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+
         # Save new session into SQLite DB
         create_interview_session(
             interview_id=session_id,
@@ -4712,14 +4721,37 @@ def interview(analysis_id: str) -> str:
         )
         interview_session = get_interview_session(session_id)
 
+    # Ensure existing in-progress session has at least 5 questions
+    elif not interview_session.get("completed") and len(interview_session.get("questions", [])) < 5:
+        topped_up_questions = live_interview_agent.ensure_minimum_session_questions(
+            interview_session.get("questions", []),
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE interviews SET questions_json = ? WHERE id = ?", (json.dumps(topped_up_questions), session_id))
+            conn.commit()
+        finally:
+            conn.close()
+        interview_session = get_interview_session(session_id)
+
     # Check session state status (#265)
     from utils.interview_session_service import ensure_interview_session_pause_table
     ensure_interview_session_pause_table()
     session_status = interview_session.get("status") or ("Completed" if interview_session.get("completed") else "In Progress")
 
+    session_summary = None
+    if interview_session and interview_session.get("completed") and interview_session.get("answers"):
+        session_summary = live_interview_agent.calculate_session_summary(interview_session["answers"])
+
     return render_template(
         "interview.html",
         interview=interview_session,
+        session_summary=session_summary,
         analysis_id=analysis_id,
         session_id=session_id,
         active_round=active_round,
@@ -5262,13 +5294,25 @@ def api_interview_question_flag_reasons():
 def reset_interview_session(analysis_id: str):
     """
     Resets an active mock interview session back to question index 0 with empty answers,
-    enabling students to retake and practice rounds anew without losing the parent analysis.
+    enabling students to retake and practice rounds anew without losing the parent analysis (#496).
     """
     try:
         raw_round = request.args.get("round", "").lower()
-        session_id = f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else analysis_id
+        post_json = request.get_json(silent=True) or {}
+
+        session_id = (
+            request.args.get("session_id")
+            or post_json.get("session_id")
+            or (f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else None)
+            or analysis_id
+        )
 
         session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            # Fall back to base analysis_id if round-specific session not found
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
         if not session:
             return jsonify({"success": False, "error": "Interview session not found"}), 404
 
@@ -5278,6 +5322,17 @@ def reset_interview_session(analysis_id: str):
             answers_list=[],
             completed=False,
         )
+
+        # Reset session status in state registry if table exists
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("UPDATE interviews SET status = 'In Progress' WHERE id = ?", (session_id,))
+            c.execute("UPDATE interview_session_state SET status = 'In Progress', pause_timestamp = NULL WHERE session_id = ?", (session_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e_st:
+            logger.debug(f"Could not reset session state status: {e_st}")
 
         return jsonify({
             "success": True,

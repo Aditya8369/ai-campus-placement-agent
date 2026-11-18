@@ -328,6 +328,45 @@
                     </button>
                   </div>
                 {% endif %}
+                {% if ans.evaluation.clarity or ans.evaluation.structure or ans.evaluation.relevance or ans.evaluation.tip %}
+                  <div class="p-3 bg-light rounded-3 border mb-2 per-answer-feedback-card">
+                    <div class="fw-bold text-dark small mb-2"><i class="fa-solid fa-layer-group text-primary me-1"></i> Answer Analysis &amp; Polish:</div>
+                    <div class="row g-2 mb-2">
+                      {% if ans.evaluation.clarity %}
+                        <div class="col-12 col-md-4">
+                          <div class="bg-white p-2 rounded-2 border h-100">
+                            <span class="d-block small fw-bold text-info"><i class="fa-solid fa-volume-high me-1"></i> Clarity:</span>
+                            <span class="small text-secondary">{{ ans.evaluation.clarity }}</span>
+                          </div>
+                        </div>
+                      {% endif %}
+                      {% if ans.evaluation.structure %}
+                        <div class="col-12 col-md-4">
+                          <div class="bg-white p-2 rounded-2 border h-100">
+                            <span class="d-block small fw-bold text-primary"><i class="fa-solid fa-sitemap me-1"></i> Structure:</span>
+                            <span class="small text-secondary">{{ ans.evaluation.structure }}</span>
+                          </div>
+                        </div>
+                      {% endif %}
+                      {% if ans.evaluation.relevance %}
+                        <div class="col-12 col-md-4">
+                          <div class="bg-white p-2 rounded-2 border h-100">
+                            <span class="d-block small fw-bold text-success"><i class="fa-solid fa-bullseye me-1"></i> Relevance:</span>
+                            <span class="small text-secondary">{{ ans.evaluation.relevance }}</span>
+                          </div>
+                        </div>
+                      {% endif %}
+                    </div>
+                    {% if ans.evaluation.tip %}
+                      <div class="p-2 bg-warning-subtle rounded-2 border border-warning-subtle text-dark small d-flex align-items-start gap-2">
+                        <i class="fa-solid fa-lightbulb text-warning fs-6 mt-1 flex-shrink-0"></i>
+                        <div>
+                          <strong>Key Improvement Tip:</strong> {{ ans.evaluation.tip }}
+                        </div>
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
                 <b>Suggestions:</b>
                 <ul class="mb-0 mt-1 list-unstyled">
                   {% for sug in ans.evaluation.suggestions %}
@@ -399,6 +438,31 @@
                     </div>
                   </div>
                 </div>
+
+                <!-- Strengths & Weak Areas Summary (#496) -->
+                {% if session_summary and (session_summary.strengths or session_summary.weak_areas) %}
+                  <div class="card border rounded-3 p-3 mb-3 bg-white shadow-xs" id="inlineStrengthsWeaknessesCard">
+                    <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-award text-primary me-2"></i>Performance Summary: Strengths &amp; Targeted Focus Areas</h6>
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <span class="small fw-bold text-success d-block mb-1"><i class="fa-solid fa-circle-check me-1"></i>Key Strengths:</span>
+                        <ul class="small ps-3 text-secondary mb-0" id="inlineStrengthsList">
+                          {% for s in session_summary.strengths %}
+                            <li>{{ s }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                      <div class="col-md-6 border-start-md">
+                        <span class="small fw-bold text-danger d-block mb-1"><i class="fa-solid fa-triangle-exclamation me-1"></i>Areas for Improvement (Weak Areas):</span>
+                        <ul class="small ps-3 text-secondary mb-0" id="inlineWeakAreasList">
+                          {% for w in (session_summary.weak_areas or session_summary.improvements) %}
+                            <li>{{ w }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
 
                 <div class="alert alert-light border rounded-3 p-3 mb-2 small text-muted">
                   <i class="fa-solid fa-lightbulb text-warning me-1"></i>
@@ -1087,6 +1151,9 @@
             <a href="/certificate/{{ analysis_id }}" class="btn btn-outline-success rounded-pill px-4">
               <i class="fa-solid fa-award me-1"></i> View Certificate
             </a>
+            <button type="button" id="modalBtnRestartSession" class="btn btn-outline-danger rounded-pill px-4">
+              <i class="fa-solid fa-rotate-left me-1"></i> Restart Session
+            </button>
             <a href="/dashboard/{{ analysis_id }}" class="btn btn-primary rounded-pill px-4">
               <i class="fa-solid fa-gauge me-1"></i> Return to Dashboard
             </a>
