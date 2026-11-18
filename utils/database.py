@@ -695,6 +695,13 @@ def save_analysis(
             )
             version_number = cursor.fetchone()[0]
 
+        # Persist resume_text and ats_breakdown in results_dict if passed via kwargs (#494)
+        if isinstance(results_dict, dict):
+            if "resume_text" in kwargs and not results_dict.get("resume_text") and not results_dict.get("extracted_resume_text"):
+                results_dict["resume_text"] = kwargs["resume_text"]
+            if "ats_breakdown" in kwargs and not results_dict.get("ats_breakdown"):
+                results_dict["ats_breakdown"] = kwargs["ats_breakdown"]
+
         cursor.execute("PRAGMA table_info(analyses)")
         col_names = [c[1] for c in cursor.fetchall()]
         if "target_role" in col_names:
