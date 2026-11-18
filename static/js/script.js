@@ -114,6 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
+  initCompanyInterviewPrep();
 });
 
 /**
@@ -6726,5 +6727,76 @@ function initSelfIntroductionStudio() {
     return div.innerHTML;
   }
 }
+
+/**
+ * Company-Specific Interview Preparation Guide Selector & Dynamic Refresh (#541)
+ * Enables students to select target companies and view contributor-maintained
+ * typical hiring rounds, commonly tested topics, preparation tips, and freshness.
+ */
+function initCompanyInterviewPrep() {
+  const selector = document.getElementById("companyPrepSelector");
+  if (!selector) return;
+
+  selector.addEventListener("change", async function () {
+    const selectedCompany = this.value;
+    if (!selectedCompany) return;
+
+    try {
+      const resp = await fetch(`/api/interview/company-prep/${encodeURIComponent(selectedCompany)}`);
+      if (!resp.ok) return;
+
+      const payload = await resp.json();
+      const prep = payload.data || {};
+      const isFallback = Boolean(payload.is_fallback);
+
+      // 1. Update Last Updated Date
+      const lastUpdatedEl = document.getElementById("companyPrepLastUpdated");
+      if (lastUpdatedEl) {
+        lastUpdatedEl.textContent = prep.last_updated || "Unknown";
+      }
+
+      // 2. Update Fallback Indicators
+      const fallbackBadge = document.getElementById("companyPrepFallbackBadge");
+      const fallbackAlert = document.getElementById("companyPrepFallbackAlert");
+      const fallbackTarget = document.getElementById("companyPrepFallbackTarget");
+
+      if (isFallback) {
+        if (fallbackBadge) fallbackBadge.classList.remove("d-none");
+        if (fallbackAlert) fallbackAlert.classList.remove("d-none");
+        if (fallbackTarget) fallbackTarget.textContent = prep.requested_company || selectedCompany;
+      } else {
+        if (fallbackBadge) fallbackBadge.classList.add("d-none");
+        if (fallbackAlert) fallbackAlert.classList.add("d-none");
+      }
+
+      // 3. Render Typical Rounds
+      const roundsList = document.getElementById("companyPrepRoundsList");
+      if (roundsList && Array.isArray(prep.typical_rounds)) {
+        roundsList.innerHTML = prep.typical_rounds
+          .map(round => `<li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">${escapeHtml(round)}</li>`)
+          .join("");
+      }
+
+      // 4. Render Commonly Tested Topics
+      const topicsList = document.getElementById("companyPrepTopicsList");
+      if (topicsList && Array.isArray(prep.commonly_tested_topics)) {
+        topicsList.innerHTML = prep.commonly_tested_topics
+          .map(topic => `<span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 small fw-normal">${escapeHtml(topic)}</span>`)
+          .join("");
+      }
+
+      // 5. Render Preparation Tips
+      const tipsList = document.getElementById("companyPrepTipsList");
+      if (tipsList && Array.isArray(prep.preparation_tips)) {
+        tipsList.innerHTML = prep.preparation_tips
+          .map(tip => `<li class="small text-secondary mb-2 d-flex align-items-start"><i class="fa-solid fa-circle-check text-success me-2 mt-1 flex-shrink-0"></i><span>${escapeHtml(tip)}</span></li>`)
+          .join("");
+      }
+    } catch (err) {
+      console.error("Failed to fetch company prep guide:", err);
+    }
+  });
+}
+
 
 
