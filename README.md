@@ -457,18 +457,34 @@ RATE_LIMIT_DEFAULT=100/minute
 
 ---
 
-## Resume Upload Validation & File Size Limits
+## Resume Upload Validation & Friendly Error Handling (#493)
 
-To prevent application crashes, denial-of-service, slow requests, and confusing errors from malicious or malformed uploads, strict server-side validation is enforced in `app.py` and `utils/pdf_reader.py` before any parsing occurs:
+To prevent application crashes, denial-of-service, blank analyses, and confusing failures from malformed uploads, comprehensive validation is enforced across client and server layers (`static/js/script.js`, `app.py`, and `utils/pdf_reader.py`) before parsing occurs:
 
-- **True Content-Type & Signature Verification**: Uploaded files must match allowed extensions (`.pdf`, `.docx`) and pass byte-level magic signature checks (e.g. `%PDF-` signature for PDF documents and `PK\x03\x04` for Word documents). Renamed non-PDF files, fake documents, executables, or images are rejected immediately with user-friendly alerts.
-- **Configurable File Size Boundary**: Uploads exceeding the maximum allowed size (default: **5 MB**) are stopped before saving to disk or calling parsers.
-- **Graceful Error Recovery**: Rejection triggers readable UI notifications and HTTP 400 Bad Request responses instead of unhandled 500 internal server errors or raw stack traces.
+- **Supported Formats Only**: Accepts strictly genuine PDF (`.pdf`) and Microsoft Word (`.docx`) files. Files with invalid extensions or non-matching magic byte signatures are rejected immediately.
+- **Configurable File Size Boundary**: Uploads exceeding the maximum allowed size (default: **5 MB**, configurable via `MAX_UPLOAD_SIZE_MB`) are intercepted before parsing or storing to disk.
+- **Scanned Image & Empty Content Detection**: Detects documents containing no extractable text (image scans, screenshots, empty pages) across both PDF and DOCX formats, explicitly explaining that scanned images are not supported and directing students to upload text-based files with selectable text or paste resume text directly.
+- **Robustness Against Crashes**: Bad files, corrupt documents, or password locks never trigger uncaught 500 errors, crashes, or blank dashboards. All failure paths return clean HTTP 400 responses or helpful flash notices, and all temporary upload files are guaranteed to be cleaned up on failure.
+
+### Upload Failure Cases & Error Messages
+
+| Failure Case | HTTP Status | User Message |
+| :--- | :---: | :--- |
+| **Unsupported File Type** (e.g. `.png`, `.jpg`, `.txt`, `.exe`, no ext) | 400 / Flash | `"Unsupported file format (Invalid file format '<ext>'). Only PDF (.pdf) and Word (.docx) resumes are supported."` |
+| **Oversized Upload** (> 5 MB) | 400 / 413 / Flash | `"The uploaded file exceeds the maximum allowed size of 5 MB. Please upload a smaller file."` |
+| **Empty File** (0 Bytes) | 400 / Flash | `"The uploaded file is empty. Please upload a valid resume."` |
+| **Scanned / Image-Only PDF** (0 text or < 100 chars) | 400 / Flash | `"The uploaded PDF appears to be scanned or image-based with no readable text. Scanned images are not supported. PyPDF2 could not extract text from this document. Please upload a text-based PDF resume or paste your resume text directly."` |
+| **Blank / Image-Only Word Document** (.docx) | 400 / Flash | `"Could not extract sufficient text from DOCX document: No extractable text found. Scanned images and image-only documents are not supported. Please upload a text-based resume (PDF or DOCX) with selectable text, or paste your resume text directly."` |
+| **Corrupted Document** | 400 / Flash | `"The uploaded file is not a valid PDF document. Please upload a genuine PDF resume (.pdf)."` / `"The uploaded PDF is corrupted or unreadable. Please check the file and try again."` |
+| **Password-Protected PDF** | 400 / Flash | `"This PDF is password-protected. Please upload an unlocked copy of your resume or save/export the PDF without password protection, then try again."` |
+| **Missing Upload & Pasted Text** | 400 / Flash | `"Please upload a supported resume file (.pdf or .docx) or paste your resume text."` |
 
 ### Configuration
 ```env
 # Maximum allowed resume upload file size in megabytes (default: 5 MB)
 MAX_UPLOAD_SIZE_MB=5
+```
+
 ## Scanned & Image-Only PDF Detection
 
 To prevent wasted AI quota and misleading evaluations from non-extractable resumes, `utils/pdf_reader.py` detects scanned or image-only PDF documents:
