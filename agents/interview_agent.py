@@ -1,7 +1,7 @@
 import logging
 from typing import Dict, Any, List
 import prompts
-from utils.gemini import generate_json_response
+from utils.gemini import generate_json_response, format_ai_error_for_user
 from utils.prompt_security import (
     sanitize_untrusted_text,
     encapsulate_untrusted_input,
@@ -488,7 +488,7 @@ class InterviewAgent:
                     "Use quantitative metrics where possible.",
                     "Break down explanations into clear steps."
                 ],
-                "feedback": f"Evaluation system was unable to analyze this response. Context: {str(e)}"
+                "feedback": f"Evaluation system was unable to analyze this response due to a temporary AI service limitation. ({format_ai_error_for_user(e)})"
             }
 
     def calculate_session_summary(self, answers_list: List[Dict[str, Any]]) -> Dict[str, Any]:

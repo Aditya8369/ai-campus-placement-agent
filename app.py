@@ -281,6 +281,7 @@ from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
     format_ai_error_for_user,
+    scrub_api_key,
 )
 try:
     from utils.report_generator import (
@@ -2806,11 +2807,19 @@ def analyze():
         flash(err_msg, "error")
         return redirect(url_for("index"))
     except AIAnalysisError as aie:
-        logger.warning(f"AIAnalysisError in analysis workflow: {str(aie)}")
+        logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": aie.user_friendly_message}), 500
-        flash(aie.user_friendly_message, "error")
+            return jsonify({"success": False, "error": scrub_api_key(aie.user_friendly_message)}), 500
+        flash(scrub_api_key(aie.user_friendly_message), "error")
         return redirect(url_for("index"))
+    except ValueError as ve:
+        logger.warning(f"Validation error in analysis workflow: {scrub_api_key(str(ve))}")
+        if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": scrub_api_key(str(ve))}), 400
+        flash(scrub_api_key(str(ve)), "error")
+        return redirect(url_for("index"))
+    except Exception as e:
+        logger.error(f"Analysis workflow crashed: {scrub_api_key(str(e))}")
     except Exception as e:
         if isinstance(e, HTTPException) and e.code == 413:
             max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)

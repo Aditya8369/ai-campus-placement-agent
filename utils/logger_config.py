@@ -46,6 +46,12 @@ RESUME_HEADER_REGEX = re.compile(
     r'(?i)\b(curriculum\s+vitae|resume\s+summary|education|work\s+experience|professional\s+experience|technical\s+skills|projects|academic\s+background)\b'
 )
 
+# API Key and Secret Patterns (#497)
+GOOGLE_API_KEY_REGEX = re.compile(r'\bAIza[0-9A-Za-z\-_]{25,}\b')
+URL_API_KEY_REGEX = re.compile(r'([?&](?:key|api_key|token)=)[^&\s\'"]+', re.IGNORECASE)
+HEADER_API_KEY_REGEX = re.compile(r'(?i)(?:x-goog-api-key|authorization|bearer)\s*[:=]\s*[\'"]?([A-Za-z0-9_\-\.]{16,})[\'"]?')
+ASSIGNED_API_KEY_REGEX = re.compile(r'(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*[\'"]?([A-Za-z0-9_\-]{16,})[\'"]?')
+
 
 def get_current_request_id() -> str:
     """
@@ -171,6 +177,19 @@ def redact_text(text: Any) -> str:
     if len(text) > 80 and len(RESUME_HEADER_REGEX.findall(text)) >= 2:
         # Detected multiple resume section headers in the log line
         text = f"[REDACTED_RESUME_CONTENT len={len(text)}]"
+
+    # 7. Redact Google API keys, URLs with keys, and secret tokens (#497)
+    text = GOOGLE_API_KEY_REGEX.sub("[REDACTED_API_KEY]", text)
+    text = URL_API_KEY_REGEX.sub(r"\g<1>[REDACTED_API_KEY]", text)
+    text = HEADER_API_KEY_REGEX.sub("[REDACTED_API_KEY]", text)
+    text = ASSIGNED_API_KEY_REGEX.sub("[REDACTED_API_KEY]", text)
+    try:
+        import config
+        known_key = getattr(config, "GEMINI_API_KEY", "")
+        if known_key and len(known_key) >= 8 and known_key != "YOUR_GEMINI_API_KEY_HERE":
+            text = text.replace(known_key, "[REDACTED_API_KEY]")
+    except Exception:
+        pass
 
     return text
 
