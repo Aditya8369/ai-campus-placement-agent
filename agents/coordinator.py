@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Callable
 
 import prompts
 import config
-from utils.gemini import generate_json_response, AIResponseFormatError
+from utils.gemini import generate_json_response, AIResponseFormatError, scrub_api_key
 from agents.coordinator_schema import validate_coordinator_payload
 from utils.prompt_security import (
     sanitize_untrusted_text,
@@ -153,7 +153,8 @@ class CoordinatorAgent:
                 logger.error("CoordinatorAgent: Retry also produced malformed/invalid JSON. Re-raising format error.")
                 raise
         except Exception as api_err:
-            logger.error(f"CoordinatorAgent: AI call failed ({api_err}). Re-raising for user handling.")
+            clean_err = scrub_api_key(str(api_err))
+            logger.error(f"CoordinatorAgent: AI call failed ({clean_err}). Re-raising for user handling.")
             raise
 
         if not isinstance(raw_json_response, dict):

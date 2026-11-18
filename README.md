@@ -395,6 +395,7 @@ The application is configured using environment variables loaded via `python-dot
 | `GEMINI_RETRY_BACKOFF_FACTOR` | No | `2.0` | Backoff multiplier for subsequent retry delays (e.g., 1s &rarr; 2s &rarr; 4s). |
 | `GEMINI_RETRY_MAX_DELAY` | No | `10.0` | Maximum cap in seconds for any single retry backoff sleep. |
 | `GEMINI_RETRY_JITTER` | No | `true` | When `true`, adds randomized timing jitter to retry intervals to prevent burst concurrency. |
+| `GEMINI_REQUEST_TIMEOUT` | No | `30.0` | Request timeout in seconds on every AI call to prevent hanging when provider is slow or down (#497). |
 | `WTF_CSRF_ENABLED` | No | `true` | Enables Cross-Site Request Forgery validation on all state-modifying requests. |
 | `WTF_CSRF_TIME_LIMIT` | No | `3600` | Expiration time of CSRF tokens in seconds (default: 1 hour). |
 | `SESSION_COOKIE_SAMESITE` | No | `Lax` | Session cookie SameSite attribute (`Lax`, `Strict`, or `None`). |
@@ -512,6 +513,9 @@ GEMINI_RETRY_MAX_DELAY=10.0
 
 # Enable randomized jitter to avoid synchronized bursts (default: true)
 GEMINI_RETRY_JITTER=true
+
+# Request timeout in seconds on every AI call to prevent hanging (default: 30.0)
+GEMINI_REQUEST_TIMEOUT=30.0
 ```
 
 ---

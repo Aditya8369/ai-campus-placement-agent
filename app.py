@@ -271,6 +271,7 @@ from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
     format_ai_error_for_user,
+    scrub_api_key,
 )
 try:
     from utils.report_generator import (
@@ -2782,19 +2783,19 @@ def analyze():
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
     except AIAnalysisError as aie:
-        logger.warning(f"AIAnalysisError in analysis workflow: {str(aie)}")
+        logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": aie.user_friendly_message}), 500
-        flash(aie.user_friendly_message, "error")
+            return jsonify({"success": False, "error": scrub_api_key(aie.user_friendly_message)}), 500
+        flash(scrub_api_key(aie.user_friendly_message), "error")
         return redirect(url_for("index"))
     except ValueError as ve:
-        logger.warning(f"Validation error in analysis workflow: {str(ve)}")
+        logger.warning(f"Validation error in analysis workflow: {scrub_api_key(str(ve))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": str(ve)}), 400
-        flash(str(ve), "error")
+            return jsonify({"success": False, "error": scrub_api_key(str(ve))}), 400
+        flash(scrub_api_key(str(ve)), "error")
         return redirect(url_for("index"))
     except Exception as e:
-        logger.error(f"Analysis workflow crashed: {str(e)}")
+        logger.error(f"Analysis workflow crashed: {scrub_api_key(str(e))}")
         friendly_message = format_ai_error_for_user(e)
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"success": False, "error": friendly_message}), 500

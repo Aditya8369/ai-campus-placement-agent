@@ -6,6 +6,7 @@ service unavailability, authentication failures, and response truncation.
 Includes fallback recovery mechanisms and user-facing error message formatting.
 """
 
+import os
 import logging
 import json
 import re
@@ -24,19 +25,84 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# Custom AI Exception Hierarchy for Placement Agent (#80)
+# Sensitive Information & API Key Scrubbing (#497)
+# ==============================================================================
+
+GOOGLE_API_KEY_PATTERN = re.compile(r"\bAIza[0-9A-Za-z\-_]{25,}\b")
+URL_API_KEY_PATTERN = re.compile(r"([?&](?:key|api_key|token)=)[^&\s'\"]+", re.IGNORECASE)
+HEADER_API_KEY_PATTERN = re.compile(r"(?i)(?:x-goog-api-key|authorization|bearer)\s*[:=]\s*['\"]?([A-Za-z0-9_\-\.]{16,})['\"]?")
+ASSIGNED_API_KEY_PATTERN = re.compile(r"(?i)(?:api[_-]?key|secret[_-]?key|access[_-]?token)\s*[:=]\s*['\"]?([A-Za-z0-9_\-]{16,})['\"]?")
+
+
+def scrub_api_key(val: Any) -> Any:
+    """
+    Scans and scrubs Google Gemini API keys, query parameters, auth headers,
+    and configured credentials from strings, dicts, lists, or exceptions (#497).
+    Guarantees the API key never appears in logs, traces, or the UI.
+    """
+    if val is None:
+        return ""
+    if isinstance(val, Exception):
+        val = str(val)
+    if isinstance(val, str):
+        cleaned = val
+        try:
+            from utils.prompt_security import redact_sensitive_information
+            cleaned = redact_sensitive_information(cleaned)
+        except Exception:
+            pass
+
+        cleaned = GOOGLE_API_KEY_PATTERN.sub("[REDACTED_SECRET]", cleaned)
+        cleaned = URL_API_KEY_PATTERN.sub(r"\g<1>[REDACTED_SECRET]", cleaned)
+        cleaned = HEADER_API_KEY_PATTERN.sub("[REDACTED_SECRET]", cleaned)
+        cleaned = ASSIGNED_API_KEY_PATTERN.sub("[REDACTED_SECRET]", cleaned)
+
+        known_secrets = [
+            getattr(config, "GEMINI_API_KEY", ""),
+            os.getenv("GEMINI_API_KEY", ""),
+        ]
+        for s in known_secrets:
+            if s and len(s) >= 8 and s != "YOUR_GEMINI_API_KEY_HERE":
+                cleaned = cleaned.replace(s, "[REDACTED_SECRET]")
+
+        return cleaned
+    elif isinstance(val, dict):
+        return {k: scrub_api_key(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [scrub_api_key(item) for item in val]
+    elif isinstance(val, tuple):
+        return tuple(scrub_api_key(item) for item in val)
+    return val
+
+
+class _GeminiLoggingScrubFilter(logging.Filter):
+    """Logging filter ensuring logger output never exposes API keys or credentials (#497)."""
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            record.msg = scrub_api_key(record.msg)
+            if record.args:
+                if isinstance(record.args, dict):
+                    record.args = {k: scrub_api_key(v) for k, v in record.args.items()}
+                elif isinstance(record.args, (list, tuple)):
+                    record.args = tuple(scrub_api_key(a) for a in record.args)
+            if record.exc_text:
+                record.exc_text = scrub_api_key(record.exc_text)
+        except Exception:
+            pass
+        return True
+
+logger.addFilter(_GeminiLoggingScrubFilter())
+
+
+# ==============================================================================
+# Custom AI Exception Hierarchy for Placement Agent (#80, #497)
 # ==============================================================================
 
 class AIAnalysisError(Exception):
     """Base exception for all AI analysis processing failures."""
     def __init__(self, message: str, user_friendly_message: Optional[str] = None, retryable: bool = False):
-        try:
-            from utils.prompt_security import redact_sensitive_information
-            clean_message = redact_sensitive_information(message)
-            clean_user_message = redact_sensitive_information(user_friendly_message) if user_friendly_message else None
-        except Exception:
-            clean_message = message
-            clean_user_message = user_friendly_message
+        clean_message = scrub_api_key(message)
+        clean_user_message = scrub_api_key(user_friendly_message) if user_friendly_message else None
 
         super().__init__(clean_message)
         self.message = clean_message
@@ -70,6 +136,18 @@ class AINetworkError(AIAnalysisError):
                 "The AI service is busy, please try again in a minute."
             ),
             retryable=True,
+        )
+
+
+class AITimeoutError(AINetworkError):
+    """Raised when an AI request times out or takes too long to respond (#497)."""
+    def __init__(self, message: str = "AI request timed out", user_friendly_message: Optional[str] = None):
+        super().__init__(
+            message=message,
+            user_friendly_message=user_friendly_message or (
+                "The AI service is busy and took too long to respond. "
+                "Network timeout while connecting to AI service. Please check your connection and retry in a minute."
+            ),
         )
 
 
@@ -129,51 +207,61 @@ class AIBadRequestError(AIAnalysisError):
 def format_ai_error_for_user(exc: Exception) -> str:
     """
     Translates raw exceptions into friendly, actionable user messages for flash alerts.
-    Guarantees that raw exceptions, internal traces, or stack traces are never exposed to the user.
+    Guarantees that raw exceptions, internal traces, or API keys are never exposed to the user (#497).
     """
-    try:
-        from utils.prompt_security import redact_sensitive_information
-    except Exception:
-        def redact_sensitive_information(x): return x
-
     if isinstance(exc, AIAnalysisError):
-        return redact_sensitive_information(exc.user_friendly_message)
+        return scrub_api_key(exc.user_friendly_message)
 
-    err_str = str(exc).lower()
+    err_str = scrub_api_key(str(exc)).lower()
     if "rate limit" in err_str or "quota" in err_str or "429" in err_str or "resource_exhausted" in err_str:
-        return (
+        msg = (
             "The AI service is busy, please try again in a minute. "
             "API quota or rate limit exceeded. Please wait a few moments and try your analysis again."
         )
     elif "api key" in err_str or "unauthorized" in err_str or "forbidden" in err_str or "permission" in err_str:
-        return (
+        msg = (
             "AI Authentication issue: Invalid or missing GEMINI_API_KEY. Please verify your API key in settings."
         )
     elif "503" in err_str or "500" in err_str or "unavailable" in err_str or "overloaded" in err_str:
-        return "The AI service is busy, please try again in a minute."
-    elif "timeout" in err_str or "connection" in err_str or "timed out" in err_str or "network" in err_str:
-        return (
+        msg = "The AI service is busy, please try again in a minute."
+    elif "timeout" in err_str or "connection" in err_str or "timed out" in err_str or "network" in err_str or "deadline" in err_str:
+        msg = (
             "The AI service is busy, please try again in a minute. "
             "Network timeout while connecting to AI service. Please check your connection and retry in a minute."
         )
     elif "json" in err_str or "parse" in err_str:
-        return (
+        msg = (
             "The AI generated an incomplete response. Please try submitting again with more resume details."
         )
     else:
-        return "The AI service is busy, please try again in a minute."
+        msg = "The AI service is busy, please try again in a minute."
+
+    return scrub_api_key(msg)
 
 
-def get_gemini_client() -> genai.Client:
+def get_gemini_client(timeout: Optional[float] = None) -> genai.Client:
     """
     Initializes and returns the Gemini client using config settings.
     Raises AIAuthError if API Key is missing or default.
+    Configures http_options with request timeout (#497).
     """
     api_key = config.GEMINI_API_KEY
     if not api_key or api_key == "YOUR_GEMINI_API_KEY_HERE":
         logger.error("GEMINI_API_KEY is not configured in .env file.")
         raise AIAuthError("Missing Gemini API Key. Please set GEMINI_API_KEY in your .env file.")
-    return genai.Client(api_key=api_key)
+
+    timeout_sec = timeout if timeout is not None else getattr(config, "GEMINI_REQUEST_TIMEOUT", 30.0)
+    timeout_ms = int(timeout_sec * 1000) if timeout_sec else None
+
+    try:
+        http_options = types.HttpOptions(timeout=timeout_ms) if timeout_ms else None
+        return genai.Client(api_key=api_key, http_options=http_options)
+    except Exception as init_err:
+        clean_init_err = scrub_api_key(str(init_err))
+        logger.warning(
+            f"Could not initialize genai.Client with http_options ({clean_init_err}); falling back to standard client init."
+        )
+        return genai.Client(api_key=api_key)
 
 
 def _extract_json_string(text: str) -> str:
@@ -352,20 +440,43 @@ def classify_gemini_error(exc: Exception) -> AIAnalysisError:
     """
     Translates raw Google GenAI APIError or system exceptions into typed AIAnalysisError subclasses.
     Differentiates transient errors (429, 500, 503, timeouts) from permanent errors (400, 401, 403).
+    Ensures technical details are classified without exposing API keys (#497).
     """
     if isinstance(exc, AIAnalysisError):
         return exc
 
-    if isinstance(exc, (socket.timeout, TimeoutError)):
-        return AINetworkError(f"Network timeout contacting Gemini: {str(exc)}")
+    clean_exc_str = scrub_api_key(str(exc))
+    exc_type_name = type(exc).__name__.lower()
+    exc_module = getattr(type(exc), "__module__", "").lower()
 
+    # Timeouts (Transient) (#497)
+    if (
+        isinstance(exc, (socket.timeout, TimeoutError))
+        or "timeout" in exc_type_name
+        or "timeout" in exc_module
+        or "deadline" in clean_exc_str.lower()
+        or "timed out" in clean_exc_str.lower()
+    ):
+        return AITimeoutError(f"Network timeout contacting Gemini: {clean_exc_str}")
+
+    # Network Connection Failures (Transient)
     if isinstance(exc, (ConnectionError, ConnectionResetError, BrokenPipeError)):
-        return AINetworkError(f"Network connection failed contacting Gemini: {str(exc)}")
+        return AINetworkError(f"Network connection failed contacting Gemini: {clean_exc_str}")
 
     if isinstance(exc, APIError):
         code = getattr(exc, "code", None)
-        msg = str(exc)
+        msg = clean_exc_str
         msg_lower = msg.lower()
+
+        # 504 Gateway Timeout or Deadline Exceeded (Transient) (#497)
+        if (
+            code == 504
+            or "504" in msg
+            or "deadline_exceeded" in msg_lower
+            or "timed out" in msg_lower
+            or "timeout" in msg_lower
+        ):
+            return AITimeoutError(f"Gemini API timeout: {msg}")
 
         # 429 Rate Limit / Quota Exhaustion (Transient)
         if code == 429 or "429" in msg or "resource_exhausted" in msg_lower or "quota" in msg_lower:
@@ -379,13 +490,15 @@ def classify_gemini_error(exc: Exception) -> AIAnalysisError:
             or ("invalid_argument" in msg_lower and "key" in msg_lower)
             or "permission_denied" in msg_lower
             or "unauthenticated" in msg_lower
+            or "api key not valid" in msg_lower
+            or "api_key_invalid" in msg_lower
         ):
             return AIAuthError(f"Gemini authentication failed: {msg}")
 
         # 5xx Service Unavailable / Internal Server Error / Overloaded (Transient)
         if (
-            code in (500, 502, 503, 504)
-            or any(c in msg for c in ("500", "502", "503", "504"))
+            code in (500, 502, 503)
+            or any(c in msg for c in ("500", "502", "503"))
             or "unavailable" in msg_lower
             or "overloaded" in msg_lower
             or "internal error" in msg_lower
@@ -399,11 +512,13 @@ def classify_gemini_error(exc: Exception) -> AIAnalysisError:
         # Other API errors
         return AIAnalysisError(f"Gemini API Error: {msg}", retryable=False)
 
-    err_str = str(exc).lower()
-    if "connection" in err_str or "dns" in err_str or "network" in err_str or "timed out" in err_str:
-        return AINetworkError(f"Network error communicating with AI provider: {str(exc)}")
+    err_str = clean_exc_str.lower()
+    if "timeout" in err_str or "timed out" in err_str or "deadline" in err_str:
+        return AITimeoutError(f"Network timeout contacting Gemini: {clean_exc_str}")
+    if "connection" in err_str or "dns" in err_str or "network" in err_str:
+        return AINetworkError(f"Network error communicating with AI provider: {clean_exc_str}")
 
-    return AIAnalysisError(f"Unexpected AI processing error: {str(exc)}", retryable=False)
+    return AIAnalysisError(f"Unexpected AI processing error: {clean_exc_str}", retryable=False)
 
 
 def is_transient_error(exc: Exception) -> bool:
@@ -424,6 +539,7 @@ def generate_json_response(
     backoff_factor: Optional[float] = None,
     max_delay: Optional[float] = None,
     jitter: Optional[bool] = None,
+    request_timeout: Optional[float] = None,
     feature: Optional[str] = None,
     _sleep_fn: Callable[[float], None] = time.sleep,
 ) -> dict:
@@ -431,6 +547,7 @@ def generate_json_response(
     Sends a request to Gemini using the google-genai SDK, enforcing a JSON response.
     Wraps the call with exponential backoff and jitter retry logic for transient errors
     (429, 500, 503, timeouts), while failing fast on permanent errors (400, 401, 403).
+    Enforces a strict request timeout on every AI call (#497).
 
     Configuration defaults are loaded from config.py:
     - config.GEMINI_RETRY_ATTEMPTS (default 3 retries)
@@ -438,6 +555,7 @@ def generate_json_response(
     - config.GEMINI_RETRY_BACKOFF_FACTOR (default 2.0)
     - config.GEMINI_RETRY_MAX_DELAY (default 10.0s)
     - config.GEMINI_RETRY_JITTER (default True)
+    - config.GEMINI_REQUEST_TIMEOUT (default 30.0s)
     """
     retries = max_retries if max_retries is not None else getattr(config, "GEMINI_RETRY_ATTEMPTS", 3)
     init_d = initial_delay if initial_delay is not None else getattr(config, "GEMINI_RETRY_INITIAL_DELAY", 1.0)
@@ -450,6 +568,9 @@ def generate_json_response(
         max_d = getattr(config, "GEMINI_RETRY_MAX_DELAY", 10.0)
     use_jitter = jitter if jitter is not None else getattr(config, "GEMINI_RETRY_JITTER", True)
 
+    effective_timeout = request_timeout if request_timeout is not None else getattr(config, "GEMINI_REQUEST_TIMEOUT", 30.0)
+    timeout_ms = int(effective_timeout * 1000) if effective_timeout else None
+
     # Determine effective feature for operational telemetry (#434)
     effective_feature = (feature or "").strip().lower()
     if not effective_feature:
@@ -460,13 +581,22 @@ def generate_json_response(
             effective_feature = "analysis"
 
     total_attempts = max(1, retries + 1)
-    client = get_gemini_client()
+    try:
+        client = get_gemini_client(timeout=effective_timeout)
+    except TypeError:
+        client = get_gemini_client()
 
-    cfg = types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        response_mime_type="application/json",
-        temperature=0.2,
-    )
+    cfg_kwargs = {
+        "system_instruction": system_instruction,
+        "response_mime_type": "application/json",
+        "temperature": 0.2,
+    }
+    if timeout_ms:
+        try:
+            cfg_kwargs["http_options"] = types.HttpOptions(timeout=timeout_ms)
+        except Exception:
+            pass
+    cfg = types.GenerateContentConfig(**cfg_kwargs)
 
     # Defense-in-depth: Ensure outgoing model prompt contains no emails or phone numbers (#500)
     effective_prompt = prompt
@@ -598,6 +728,7 @@ def generate_json_response(
         except Exception as e:
             classified = classify_gemini_error(e)
             latency_ms = int((time.time() - start_time) * 1000)
+            clean_err = scrub_api_key(str(e))
 
             # Record AI call metrics failure (#434)
             try:
@@ -618,7 +749,6 @@ def generate_json_response(
             # Log failure to database if attempts are exhausted or non-retryable (#215)
             try:
                 from utils.database import log_gemini_api_call
-                from utils.prompt_security import redact_sensitive_information
                 log_gemini_api_call(
                     endpoint="generate_json_response",
                     model_name=getattr(config, "GEMINI_MODEL", "gemini-2.5-flash"),
@@ -627,7 +757,7 @@ def generate_json_response(
                     total_tokens=max(1, len(prompt) // 4),
                     latency_ms=latency_ms,
                     status="failed",
-                    error_message=redact_sensitive_information(str(e))[:300],
+                    error_message=clean_err[:300],
                 )
             except Exception:
                 pass
@@ -643,7 +773,7 @@ def generate_json_response(
                 )
                 logger.warning(
                     f"Gemini API transient failure on attempt {attempt}/{total_attempts} "
-                    f"({classified.__class__.__name__}: {str(e)}). "
+                    f"({classified.__class__.__name__}: {clean_err}). "
                     f"Retrying in {delay:.2f}s with exponential backoff..."
                 )
                 _sleep_fn(delay)
@@ -653,15 +783,14 @@ def generate_json_response(
             if not classified.retryable:
                 logger.error(
                     f"Gemini API permanent failure encountered on attempt {attempt} "
-                    f"({classified.__class__.__name__}: {str(e)}). Failing fast without retry."
+                    f"({classified.__class__.__name__}: {clean_err}). Failing fast without retry."
                 )
                 raise classified from e
             else:
                 # All transient retry attempts exhausted
                 logger.error(
                     f"Gemini API request failed after {total_attempts} attempts. "
-                    f"All transient retries exhausted. Real error: {str(e)}",
-                    exc_info=True,
+                    f"All transient retries exhausted. Real error: {clean_err}"
                 )
                 classified.user_friendly_message = (
                     "The AI service is busy, please try again in a minute."
