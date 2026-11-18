@@ -24,6 +24,7 @@ from flask import (
     Response,
     make_response,
     session as flask_session,
+    stream_with_context,
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -83,6 +84,9 @@ from utils.database import (
     revoke_other_auth_sessions,
     save_job_application,
     get_job_applications,
+    save_student_profile,
+    get_student_profile,
+    calculate_profile_completion,
     get_job_application_by_id,
     update_job_application,
     delete_job_application,
@@ -173,6 +177,11 @@ from utils.group_discussion_service import (
     MIN_WORD_COUNT,
     RECOMMENDED_MIN_WORDS,
     RECOMMENDED_MAX_WORDS,
+)
+from utils.student_data_exporter import (
+    build_student_data_export_manifest,
+    generate_student_data_zip_package,
+    stream_student_data_json_chunks,
 )
 from utils.topic_practice_service import (
     get_supported_topics,
@@ -454,7 +463,10 @@ def require_login():
                 flask_session["last_activity"] = now
             return None
         student_param = request.args.get("student_id")
-        if student_param:
+        if student_param and (
+            "user_id" not in flask_session
+            or flask_session.get("user_id") in (None, "", "default_student")
+        ):
             flask_session["user_id"] = student_param
             flask_session["user_name"] = student_param
             if "last_activity" not in flask_session:
@@ -944,7 +956,7 @@ def get_available_companies() -> list:
     """
     Loads list of companies dynamically from data/companies.json with fallback defaults.
     """
-    companies_file = config.BASE_DIR / "data" / "companies.json"
+    companies_file = Path(config.BASE_DIR) / "data" / "companies.json"
     default_companies = [
         "Accenture",
         "Adobe",
@@ -1867,6 +1879,170 @@ def api_account_export_manifest():
     return jsonify({"status": "success", "student_id": student_id, "manifest": manifest})
 
 
+# ============================================================================
+# CANDIDATE PROFILE & PLACEMENT READINESS TRACKER (#199)
+# ============================================================================
+
+@app.route("/profile", methods=["GET", "POST"])
+def profile_view():
+    """
+    Renders and manages candidate student profile and completion tracker (#199).
+    Calculates weighted placement readiness score and missing fields checklist.
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        department = request.form.get("department", "").strip()
+        grad_year_raw = request.form.get("grad_year", "").strip()
+        cgpa_raw = request.form.get("cgpa", "").strip()
+        target_role = request.form.get("target_role", "").strip()
+        target_company = request.form.get("target_company", "").strip()
+        skills_raw = request.form.get("skills", "").strip()
+        linkedin_url = request.form.get("linkedin_url", "").strip()
+        github_url = request.form.get("github_url", "").strip()
+
+        try:
+            grad_year = int(grad_year_raw) if grad_year_raw else None
+        except ValueError:
+            grad_year = None
+
+        try:
+            cgpa = float(cgpa_raw) if cgpa_raw else None
+        except ValueError:
+            cgpa = None
+
+        skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else []
+
+        save_student_profile(
+            student_id=student_id,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            department=department,
+            grad_year=grad_year,
+            cgpa=cgpa,
+            target_role=target_role,
+            target_company=target_company,
+            skills=skills,
+            linkedin_url=linkedin_url,
+            github_url=github_url
+        )
+        flash("Profile information updated successfully!", "success")
+        return redirect("/profile")
+
+    completion_info = calculate_profile_completion(student_id=student_id)
+    skills_csv = ", ".join(completion_info["profile"].get("skills", []))
+
+    return render_template(
+        "profile.html",
+        completion=completion_info,
+        profile=completion_info["profile"],
+        skills_csv=skills_csv,
+        student_id=student_id
+    )
+
+
+@app.route("/api/profile/completion", methods=["GET"])
+def api_profile_completion():
+    """
+    REST API endpoint returning candidate profile completion percentage and checklist (#199).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    data = calculate_profile_completion(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "data": data
+    }), 200
+
+
+# ============================================================================
+# STUDENT PERSONAL DATA DOWNLOAD PACKAGE ENDPOINTS (#258, #469)
+# ============================================================================
+
+@app.route("/api/student/data-export/manifest", methods=["GET"])
+def api_student_data_export_manifest():
+    """
+    Returns a summary manifest of all placement records, applications, notes,
+    and analyses owned by the authenticated student (#258, #469).
+    """
+    session_uid = (
+        flask_session.get("user_id")
+        or (flask_session.get("user") or {}).get("id")
+        or flask_session.get("student_id")
+    )
+    student_id = session_uid or request.args.get("student_id") or "default_student"
+    try:
+        manifest = build_student_data_export_manifest(student_id)
+        return jsonify({
+            "status": "success",
+            "manifest": manifest
+        }), 200
+    except Exception as e:
+        logger.error(f"Error compiling student data manifest: {e}")
+        return jsonify({"status": "error", "message": "Failed to compile personal data manifest."}), 500
+
+
+@app.route("/api/student/data-export/download", methods=["GET"])
+@app.route("/profile/download-data", methods=["GET"])
+def api_student_data_export_download():
+    """
+    Generates and streams a downloadable data export (JSON or ZIP) containing all personal
+    placement preparation data, strictly sanitized of passwords, hashes, and tokens (#469).
+    Generated on demand and streamed directly without writing to server disk.
+    """
+    session_uid = (
+        flask_session.get("user_id")
+        or (flask_session.get("user") or {}).get("id")
+        or flask_session.get("student_id")
+    )
+    student_id = session_uid or request.args.get("student_id") or "default_student"
+    export_format = (request.args.get("format") or "zip").strip().lower()
+
+    import datetime as dt
+    timestamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    try:
+        if export_format == "json":
+            filename = f"placement_data_export_{student_id}_{timestamp}.json"
+            return Response(
+                stream_with_context(stream_student_data_json_chunks(student_id)),
+                mimetype="application/json",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
+            )
+        else:
+            # Default ZIP package
+            zip_buffer = generate_student_data_zip_package(student_id)
+            filename = f"placement_data_export_{student_id}_{timestamp}.zip"
+            return send_file(
+                zip_buffer,
+                mimetype="application/zip",
+                as_attachment=True,
+                download_name=filename
+            )
+    except Exception as e:
+        logger.error(f"Error building student data export: {e}")
+        return jsonify({"status": "error", "message": "Failed to generate personal data download package."}), 500
+
+
 @app.route("/forgot-password", methods=["GET", "POST"])
 @rate_limit(max_requests=5, window_seconds=900, scope="forgot_password", is_api=False)
 def forgot_password():
@@ -2424,7 +2600,7 @@ def get_company_profile(company_name: str):
     Returns company hiring details from data/companies.json for the preview explorer modal.
     Enriched with source metadata, verification status, and freshness indicators.
     """
-    companies_file = config.BASE_DIR / "data" / "companies.json"
+    companies_file = Path(config.BASE_DIR) / "data" / "companies.json"
     try:
         if companies_file.exists():
             with open(companies_file, "r", encoding="utf-8") as f:
@@ -2447,7 +2623,7 @@ def download_company_cheat_sheet(company_name: str):
     """
     try:
         clean_company = (company_name or "").strip()
-        companies_file = config.BASE_DIR / "data" / "companies.json"
+        companies_file = Path(config.BASE_DIR) / "data" / "companies.json"
         company_data = None
 
         if companies_file.exists():
@@ -10859,7 +11035,7 @@ def company_checklist_view():
 
     company_guide = None
     try:
-        companies_file = config.BASE_DIR / "data" / "companies.json"
+        companies_file = Path(config.BASE_DIR) / "data" / "companies.json"
         if companies_file.exists():
             with open(companies_file, "r", encoding="utf-8") as f:
                 comp_data = json.load(f)

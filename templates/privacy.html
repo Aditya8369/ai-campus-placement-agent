@@ -149,10 +149,38 @@
           </div>
         </div>
 
-        <!-- Section 6: About This Project -->
+        <!-- Section 6: Data Portability & Download Your Data (#469) -->
+        <div class="card shadow-sm border-0 rounded-4 p-4 mb-4 bg-white" id="data-portability">
+          <h2 class="h5 fw-bold text-dark mb-3 d-flex align-items-center gap-2">
+            <i class="fa-solid fa-file-arrow-down text-primary"></i> 6. Data Portability &amp; Download Your Data
+          </h2>
+          <p class="text-secondary small mb-3">
+            In compliance with personal data portability standards (including GDPR Art. 20), students have the right to take their data with them at any time. You can download a complete, structured export of all records stored about you:
+          </p>
+          <ul class="text-secondary small mb-3 ps-3">
+            <li class="mb-2"><strong>Candidate Profile:</strong> Contact details, major, graduation year, target placement roles, and technical skills.</li>
+            <li class="mb-2"><strong>Placement Analyses:</strong> All resume evaluation reports, ATS compatibility scores, skill gap analyses, and progressive roadmaps.</li>
+            <li class="mb-2"><strong>Mock Interview Sessions:</strong> Practice questions, candidate answers, and evaluation metrics.</li>
+            <li class="mb-2"><strong>Application Tracker:</strong> Tracked job applications, company targets, deadlines, stages, and personal notes.</li>
+            <li class="mb-0"><strong>Study Notes &amp; Bookmarks:</strong> Saved interview preparation notes, bookmarked coding questions, and calendar preparation events.</li>
+          </ul>
+          <p class="text-secondary small mb-3">
+            The data export is generated on demand and streamed directly to your browser as a portable JSON file (or a compressed ZIP archive). It is never cached or stored on the server. For security, passwords, hashes, and session authentication tokens are strictly excluded.
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('api_student_data_export_download', format='json') }}" class="btn btn-sm btn-primary rounded-pill px-3" download>
+              <i class="fa-solid fa-download me-1"></i> Download My Data (JSON)
+            </a>
+            <a href="/profile" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+              <i class="fa-solid fa-user me-1"></i> Access via Profile
+            </a>
+          </div>
+        </div>
+
+        <!-- Section 7: About This Project -->
         <div class="card shadow-sm border-0 rounded-4 p-4 mb-4 bg-white">
           <h2 class="h5 fw-bold text-dark mb-3 d-flex align-items-center gap-2">
-            <i class="fa-solid fa-code text-primary"></i> 6. Open Source &amp; Project Scope
+            <i class="fa-solid fa-code text-primary"></i> 7. Open Source &amp; Project Scope
           </h2>
           <p class="text-secondary small mb-0">
             The AI Campus Placement Agent is an independently maintained, open-source educational project. It is not an enterprise data broker and makes no commercial claims. You can inspect the entire codebase, database schema, and agent pipelines on GitHub at 
