@@ -11,6 +11,7 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/print.css') }}" rel="stylesheet" media="print">
 </head>
 <body>
   <!-- Accessibility Skip-to-Content Link -->
@@ -41,8 +42,8 @@
         <a href="/role-preparation?analysis_id={{ analysis_id }}" class="btn btn-outline-info btn-sm rounded-pill px-2 px-sm-3" title="Role-Based Preparation Mode">
           <i class="fa-solid fa-user-gear me-1"></i> Role Prep
         </a>
-        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3 btn-print-report" id="btnPrintReportTop" onclick="window.print()" title="Print placement readiness report" aria-label="Print placement readiness report">
-          <i class="fa-solid fa-print me-1"></i> <span class="d-none d-sm-inline">Print</span> Report
+        <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3 btn-print-report btn-print-page" id="btnPrintThisPage" onclick="window.print()" title="Print this page" aria-label="Print this page">
+          <i class="fa-solid fa-print me-1"></i> <span class="d-none d-sm-inline">Print this page</span><span class="d-sm-none">Print</span>
         </button>
         <button type="button" class="btn btn-outline-success btn-sm rounded-pill px-2 px-sm-3" id="btnShareProfileModal" data-bs-toggle="modal" data-bs-target="#shareProfileModal">
           <i class="fa-solid fa-share-nodes me-1"></i> Share
@@ -643,9 +644,14 @@
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
           <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
-          <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill mx-auto">
-            <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
-          </a>
+          <div class="d-flex flex-wrap gap-2 justify-content-center">
+            <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill">
+              <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
+            </a>
+            <button type="button" class="btn btn-outline-secondary py-2 px-3 rounded-pill btn-print-page" id="btnPrintThisPageCard" onclick="window.print()" title="Print this page" aria-label="Print this page">
+              <i class="fa-solid fa-print me-2"></i> Print this page
+            </button>
+          </div>
         </div>
       </div>
     </div>
