@@ -2550,20 +2550,31 @@ def touch_auth_session(session_id: str, user_id: str) -> None:
         conn.close()
 
 
-def get_active_auth_sessions(user_id: str, timeout_seconds: int) -> List[Dict[str, Any]]:
+def get_active_auth_sessions(user_id: str, timeout_seconds: Optional[int] = None) -> List[Dict[str, Any]]:
     """List non-revoked sessions active within the configured inactivity window."""
-    cutoff = time.time() - max(int(timeout_seconds), 1)
     conn = get_db_connection()
     try:
-        rows = conn.execute(
-            """
-            SELECT id, client_label, created_at, last_seen_at
-            FROM auth_sessions
-            WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
-            ORDER BY last_seen_at DESC
-            """,
-            (user_id, cutoff),
-        ).fetchall()
+        if timeout_seconds is not None and timeout_seconds > 0:
+            cutoff = time.time() - timeout_seconds
+            rows = conn.execute(
+                """
+                SELECT id, client_label, created_at, last_seen_at
+                FROM auth_sessions
+                WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
+                ORDER BY last_seen_at DESC
+                """,
+                (user_id, cutoff),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, client_label, created_at, last_seen_at
+                FROM auth_sessions
+                WHERE user_id = ? AND revoked_at IS NULL
+                ORDER BY last_seen_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
         return [dict(row) for row in rows]
     finally:
         conn.close()
@@ -2601,6 +2612,62 @@ def revoke_other_auth_sessions(user_id: str, current_session_id: str) -> int:
         )
         conn.commit()
         return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def revoke_all_auth_sessions(user_id: str) -> int:
+    """Revoke every active session for a user (#473)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+            """,
+            (time.time(), user_id),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def change_user_password(user_id: str, new_password_hash: str, keep_session_id: Optional[str] = None) -> bool:
+    """
+    Updates user password and revokes all other (or all) active sessions (#473).
+    If keep_session_id is provided, keeps that session active and revokes all other sessions.
+    If keep_session_id is None, revokes all sessions for the user.
+    """
+    now = time.time()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_password_hash, user_id))
+        if cursor.rowcount == 0:
+            return False
+
+        if keep_session_id:
+            cursor.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = ?
+                WHERE user_id = ? AND id != ? AND revoked_at IS NULL
+                """,
+                (now, user_id, keep_session_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = ?
+                WHERE user_id = ? AND revoked_at IS NULL
+                """,
+                (now, user_id),
+            )
+        conn.commit()
+        return True
     finally:
         conn.close()
 
@@ -5394,6 +5461,13 @@ def reset_user_password(
             WHERE user_id = ? AND used_at IS NULL
         """, (now, user_id))
 
+        # Invalidate all active sessions for this user on password reset (#473)
+        conn.execute("""
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+        """, (now, user_id))
+
         conn.commit()
         return True
 
@@ -5540,6 +5614,13 @@ def reset_user_password(
             UPDATE password_reset_tokens
             SET used_at = ?
             WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        # Invalidate all active sessions for this user on password reset (#473)
+        conn.execute("""
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
         """, (now, user_id))
 
         conn.commit()
