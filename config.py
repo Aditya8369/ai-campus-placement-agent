@@ -104,7 +104,7 @@ MIN_PDF_TEXT_CHARS = int(os.getenv("MIN_PDF_TEXT_CHARS", "100"))
 MIN_PDF_EXTRACTED_CHARS = MIN_PDF_TEXT_CHARS
 ENABLE_OCR_FALLBACK = os.getenv("ENABLE_OCR_FALLBACK", "false").lower() in ("true", "1", "yes")
 
-# Gemini API Transient Error Retry & Exponential Backoff Configurations (Issue #155)
+# Gemini API Transient Error Retry & Exponential Backoff Configurations (Issue #155, #497)
 # Transient errors (429 rate limit, 500/503 server errors, network timeouts) are retried automatically.
 # Permanent errors (400 bad request, 401/403 invalid credentials) fail fast without retry.
 GEMINI_RETRY_ATTEMPTS = int(os.getenv("GEMINI_RETRY_ATTEMPTS", os.getenv("GEMINI_MAX_RETRIES", "3")))
@@ -113,6 +113,11 @@ GEMINI_RETRY_INITIAL_DELAY = float(os.getenv("GEMINI_RETRY_INITIAL_DELAY", "1.0"
 GEMINI_RETRY_BACKOFF_FACTOR = float(os.getenv("GEMINI_RETRY_BACKOFF_FACTOR", "2.0"))
 GEMINI_RETRY_MAX_DELAY = float(os.getenv("GEMINI_RETRY_MAX_DELAY", "10.0"))  # in seconds
 GEMINI_RETRY_JITTER = os.getenv("GEMINI_RETRY_JITTER", "true").lower() in ("true", "1", "yes")
+
+# Gemini API Request Timeout (in seconds) (#497)
+# Sets a request timeout on every AI call to prevent hanging when the AI provider is slow or down.
+GEMINI_REQUEST_TIMEOUT = float(os.getenv("GEMINI_REQUEST_TIMEOUT", "30.0"))
+AI_REQUEST_TIMEOUT = GEMINI_REQUEST_TIMEOUT
 
 # Session Expiration & Inactivity Tracking Configurations
 SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))

@@ -23,7 +23,7 @@ import config
 
 @pytest.fixture
 def mock_interview_setup(monkeypatch):
-    with tempfile.TemporaryDirectory() as tmpdir:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpdir:
         test_db = Path(tmpdir) / "test_reset.db"
         monkeypatch.setattr(config, "DATABASE_PATH", test_db)
         init_db()

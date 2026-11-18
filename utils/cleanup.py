@@ -2,6 +2,7 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import Optional
 
 import config
 
@@ -79,6 +80,39 @@ def cleanup_database_records(max_age_days: int = 30, dry_run: bool = False) -> d
         conn.close()
 
     return stats
+
+
+def cleanup_temporary_upload(file_uuid: Optional[str] = None, file_path: Optional[str] = None) -> int:
+    """
+    Deletes temporary uploaded resume files after analysis finishes or fails (#500).
+    Removes files on both success and error execution paths to protect student privacy.
+    Returns the count of files successfully removed.
+    """
+    removed_count = 0
+    if file_path:
+        p = Path(file_path)
+        if p.exists() and p.is_file():
+            try:
+                p.unlink()
+                removed_count += 1
+                logger.info(f"Cleaned up temporary upload file: {file_path}")
+            except Exception as e:
+                logger.warning(f"Could not remove temporary file {file_path}: {e}")
+
+    if file_uuid:
+        upload_dir = Path(config.UPLOAD_FOLDER)
+        if upload_dir.exists():
+            prefix = str(file_uuid)
+            for item in upload_dir.iterdir():
+                if item.is_file() and (item.name.startswith(f"{prefix}_") or item.name.startswith(f"{prefix}.")):
+                    try:
+                        item.unlink()
+                        removed_count += 1
+                        logger.info(f"Cleaned up temporary upload file matching UUID {file_uuid}: {item}")
+                    except Exception as e:
+                        logger.warning(f"Could not remove temporary upload file {item}: {e}")
+
+    return removed_count
 
 
 def run_full_retention_policy(max_file_age_hours: int = 24, max_db_age_days: int = 30, dry_run: bool = False) -> dict:

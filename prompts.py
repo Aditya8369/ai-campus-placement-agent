@@ -185,6 +185,10 @@ Provide feedback and ratings in JSON format matching this schema:
   "verbal_clarity_score": 82,
   "filler_words_detected": ["like", "um"],
   "filler_word_count": 2,
+  "clarity": "Concise assessment of verbal clarity, articulation, and conciseness.",
+  "structure": "Concise assessment of answer organization, logical flow, and STAR method adherence.",
+  "relevance": "Concise assessment of directness and topical alignment with the question asked.",
+  "tip": "Exactly one actionable tip to immediately improve this specific answer.",
   "star_analysis": {{
     "situation": "present",
     "task": "present",
