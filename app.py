@@ -5105,10 +5105,13 @@ def interview(analysis_id: str) -> str:
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
+@app.route("/interview/<analysis_id>/retry", methods=["POST"])
 @rate_limit(scope="interview_eval", is_api=True)
 def submit_interview_answer(analysis_id: str):
     """
     Endpoint that evaluates a candidate response dynamically and updates session progress.
+    Supports 'Improve this answer' retry loops (up to 2 retries per question) with side-by-side
+    score comparisons and addressed feedback tracking (#467).
     """
     try:
         post_data = request.get_json() or {}
@@ -5210,33 +5213,58 @@ def submit_interview_answer(analysis_id: str):
                 current_feedback = evaluation_results.get("feedback", "")
                 evaluation_results["feedback"] = f"{time_prefix} {current_feedback}".strip()
 
-        # Structure response details
-        response_record = {
-            "question_index": question_index,
-            "type": target_question["type"],
-            "question": target_question["question"],
-            "is_behavioral": is_behav,
-            "answer": candidate_response,
-            "evaluation": evaluation_results,
+        extra_meta = {
             "is_timed": is_timed or (time_taken_seconds is not None),
             "time_taken_seconds": time_taken_seconds,
             "time_limit_seconds": time_limit_seconds,
             "time_display": time_display,
         }
 
-        # Protection against duplicate submission attempts
-        is_replaced = False
+        # Check if an answer already exists for this question (Retry loop #467)
+        existing_idx = -1
         for idx, past_ans in enumerate(answers_list):
-            if past_ans["question_index"] == question_index:
-                answers_list[idx] = response_record
-                is_replaced = True
+            if past_ans.get("question_index") == question_index:
+                existing_idx = idx
                 break
-        if not is_replaced:
+
+        from utils.interview_retry_service import (
+            initialize_initial_attempt_record,
+            process_retry_answer,
+            MAX_RETRIES_PER_QUESTION,
+        )
+
+        is_retry = bool(post_data.get("is_retry")) or (existing_idx >= 0)
+        if existing_idx >= 0:
+            past_record = answers_list[existing_idx]
+            ok, updated_record, err = process_retry_answer(
+                past_answer_record=past_record,
+                candidate_response=candidate_response,
+                evaluation_results=evaluation_results,
+                additional_metadata=extra_meta,
+            )
+            if not ok:
+                return jsonify({
+                    "error": err,
+                    "success": False,
+                    "max_retries_reached": True,
+                    "retries_left": 0
+                }), 400
+            answers_list[existing_idx] = updated_record
+            response_record = updated_record
+        else:
+            response_record = initialize_initial_attempt_record(
+                question_index=question_index,
+                target_question=target_question,
+                candidate_response=candidate_response,
+                evaluation_results=evaluation_results,
+                additional_metadata=extra_meta,
+            )
             answers_list.append(response_record)
 
         # Calculate progress parameters
-        next_question_index = question_index + 1
-        is_completed = next_question_index >= len(questions_list)
+        furthest_answered = max((a.get("question_index", 0) for a in answers_list), default=-1)
+        next_question_index = min(len(questions_list), furthest_answered + 1)
+        is_completed = (furthest_answered + 1) >= len(questions_list)
 
         # Update session logs in database
         update_interview_session(
@@ -5266,6 +5294,12 @@ def submit_interview_answer(analysis_id: str):
 
         result_payload = {
             "evaluation": evaluation_results,
+            "attempt_number": response_record.get("attempt_number", 1),
+            "retry_count": response_record.get("retry_count", 0),
+            "retries_left": response_record.get("retries_left", MAX_RETRIES_PER_QUESTION),
+            "can_retry": response_record.get("can_retry", True),
+            "is_retry": is_retry,
+            "comparison": response_record.get("comparison"),
             "next_index": next_question_index,
             "completed": is_completed,
             "is_timed": is_timed or (time_taken_seconds is not None),
