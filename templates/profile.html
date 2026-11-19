@@ -216,6 +216,42 @@
             </ul>
           </div>
         </div>
+
+        <!-- Download My Data & Privacy Card (#469) -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+            <h5 class="card-title fw-bold mb-0">
+              <i class="fa-solid fa-file-arrow-down text-primary me-2"></i>Download My Data
+            </h5>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle small">Portability</span>
+          </div>
+          <div class="card-body">
+            <p class="text-secondary small mb-3">
+              Download all your personal platform records, including your profile, resume analyses, mock interview transcripts, job application tracker entries, and preparation notes. Generated on demand and streamed directly without storing on the server.
+            </p>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <a href="{{ url_for('api_student_data_export_download', format='json') }}" class="btn btn-primary btn-sm rounded-pill px-3" id="btnDownloadDataJson" download>
+                <i class="fa-solid fa-file-code me-1"></i> Download as JSON
+              </a>
+              <a href="{{ url_for('api_student_data_export_download', format='zip') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnDownloadDataZip" download>
+                <i class="fa-solid fa-file-zipper me-1"></i> Download as ZIP
+              </a>
+            </div>
+            <div class="pt-2 border-top">
+              <small class="text-muted d-block mb-1">
+                <i class="fa-solid fa-shield-halved text-success me-1"></i> Passwords, hashes, and session tokens are strictly excluded.
+              </small>
+              <small class="d-flex justify-content-between mt-2">
+                <a href="{{ url_for('privacy_policy') }}" class="text-decoration-underline text-secondary">
+                  <i class="fa-solid fa-user-shield me-1"></i> Privacy Notice
+                </a>
+                <a href="{{ url_for('delete_account') }}" class="text-danger text-decoration-none">
+                  <i class="fa-solid fa-trash-can me-1"></i> Delete Account
+                </a>
+              </small>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
