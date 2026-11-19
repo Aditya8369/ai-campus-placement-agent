@@ -612,6 +612,9 @@
           <a href="#selfIntroSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-id-card-clip me-1 text-primary"></i> Self Introduction
           </a>
+          <a href="#linkedInSuggestionsSection" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-brands fa-linkedin me-1 text-primary"></i> LinkedIn Profile
+          </a>
           <a href="/interview/{{ analysis_id }}" class="btn btn-sm btn-custom-primary rounded-pill px-3">
             <i class="fa-solid fa-comments me-1"></i> Practice Interview
           </a>
@@ -1405,6 +1408,230 @@
             <div id="practiceFeedbackPlaceholder" class="p-4 bg-white rounded-3 border text-center text-muted small flex-grow-1 d-flex flex-column justify-content-center align-items-center">
               <i class="fa-solid fa-chalkboard-user fa-2x text-secondary mb-2 opacity-50"></i>
               <span>Enter your practice pitch and click "Analyze Pitch" to get instant coaching on structure, clarity, and pacing.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LinkedIn Profile Suggestions (#538) -->
+    <div class="card glass-card p-4 border-0 mb-4" id="linkedInSuggestionsSection" data-linkedin='{{ initial_linkedin_suggestions_json|safe if initial_linkedin_suggestions_json is defined else "{}" }}' data-analysis-id="{{ analysis_id }}">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">
+            <i class="fa-brands fa-linkedin text-primary me-1"></i> Recruiter Presence Studio
+          </span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-brands fa-linkedin text-primary me-2"></i> LinkedIn Profile Suggestions
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+            <i class="fa-solid fa-sparkles me-1"></i> Derived Strictly from Resume
+          </span>
+          <a href="/linkedin-analyzer" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Profile Analyzer
+          </a>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">
+        Recruiters cross-reference your resume against LinkedIn during campus hiring rounds. Use these three length-compliant headline options, first-person narrative About bio, and recruiter search keywords — built strictly from your verified resume qualifications — to present consistent, discoverable professional branding.
+      </p>
+
+      <!-- Target Context & Regenerate Controls -->
+      <div class="p-3 bg-light rounded-4 border mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-lg-6 col-md-7 col-12">
+            <label for="linkedinTargetRoleInput" class="form-label small fw-bold text-secondary mb-1">Target Placement Role:</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-briefcase text-primary"></i></span>
+              <input type="text" class="form-control" id="linkedinTargetRoleInput" value="{{ initial_linkedin_suggestions.target_role|default(analysis.target_role|default('Software Engineer')) }}" placeholder="e.g. Software Engineer, Data Analyst, Web Developer">
+            </div>
+          </div>
+          <div class="col-lg-3 col-md-5 col-12 text-md-end mt-md-4">
+            <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnRegenerateLinkedIn" data-analysis-id="{{ analysis_id }}">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="linkedinSpinner" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-wand-magic-sparkles me-1" id="linkedinIcon"></i> Regenerate Suggestions
+            </button>
+          </div>
+          <div class="col-lg-3 col-12 text-lg-end mt-lg-4 text-muted small">
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1">
+              <i class="fa-solid fa-ruler-horizontal me-1"></i> Headline Limit: 220 chars
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Headline Options Grid (3 distinct options <= 220 chars with individual copy buttons) -->
+      <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <h5 class="fw-bold mb-0">
+            <i class="fa-solid fa-heading text-primary me-2"></i> Recommended Headline Options (Max 220 Chars)
+          </h5>
+          <span class="text-muted small">Choose the format that best fits your immediate campus recruitment target</span>
+        </div>
+
+        <div class="row g-3" id="linkedinHeadlinesContainer">
+          {% set headlines = initial_linkedin_suggestions.headline_options|default([]) %}
+          <!-- Headline 1: Role & Core Stack -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small" id="linkedinBadgeH1">
+                  {{ headlines[0].type if headlines|length > 0 else 'Role & Core Stack' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH1">
+                  <span id="linkedinLenH1">{{ headlines[0].char_count if headlines|length > 0 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH1">
+                {{ headlines[0].description if headlines|length > 0 else 'Search-optimized role and core tech stack.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText1" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[0].headline if headlines|length > 0 else 'Software Engineer | Open to Placements' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText1" aria-label="Copy Headline Option 1 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 1
+              </button>
+            </div>
+          </div>
+
+          <!-- Headline 2: Impact & Experience -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-success-subtle text-success border rounded-pill px-2 py-1 small" id="linkedinBadgeH2">
+                  {{ headlines[1].type if headlines|length > 1 else 'Impact & Experience' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH2">
+                  <span id="linkedinLenH2">{{ headlines[1].char_count if headlines|length > 1 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH2">
+                {{ headlines[1].description if headlines|length > 1 else 'Highlights hands-on experience and project outcomes.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText2" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[1].headline if headlines|length > 1 else 'Software Engineer Candidate | Building Reliable Systems' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText2" aria-label="Copy Headline Option 2 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 2
+              </button>
+            </div>
+          </div>
+
+          <!-- Headline 3: Specialization & Vision -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-info-subtle text-info border rounded-pill px-2 py-1 small" id="linkedinBadgeH3">
+                  {{ headlines[2].type if headlines|length > 2 else 'Specialization & Vision' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH3">
+                  <span id="linkedinLenH3">{{ headlines[2].char_count if headlines|length > 2 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH3">
+                {{ headlines[2].description if headlines|length > 2 else 'Focuses on specialization and campus placement aspirations.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText3" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[2].headline if headlines|length > 2 else 'Future Software Engineer | Problem Solver | Open to Placements' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText3" aria-label="Copy Headline Option 3 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 3
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- About Draft & Recruiter Keywords Grid -->
+      <div class="row g-4">
+        <!-- First-Person About Narrative -->
+        <div class="col-lg-7 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <h5 class="fw-bold mb-0">
+                <i class="fa-solid fa-user-pen text-primary me-2"></i> First-Person About Section Draft
+              </h5>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small">
+                  First-Person ('I' / 'My')
+                </span>
+                <span class="badge bg-white text-dark border rounded-pill px-2 py-1 small" id="linkedinAboutStats">
+                  <span id="linkedinAboutWordCount">{{ initial_linkedin_suggestions.about_word_count|default(0) }}</span> words &bull; <span id="linkedinAboutCharCount">{{ initial_linkedin_suggestions.about_char_count|default(0) }}</span> chars
+                </span>
+              </div>
+            </div>
+            <p class="text-muted small mb-2">
+              Crafted in the first person using only your verified technical skills, projects, and education. Paste directly into your LinkedIn profile summary.
+            </p>
+            <div class="p-3 bg-white rounded-3 border text-secondary flex-grow-1 mb-3 small" id="linkedinAboutText" style="white-space: pre-line; line-height: 1.6; min-height: 160px; word-break: break-word;">
+              {{ initial_linkedin_suggestions.about_section|default('I am an aspiring candidate prepared for campus placements. Let\'s connect!') }}
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span class="text-muted small"><i class="fa-solid fa-shield-halved text-success me-1"></i> Zero fabricated credentials</span>
+              <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 btn-copy-linkedin" data-copy-target="linkedinAboutText" id="btnCopyLinkedInAbout" aria-label="Copy About Section to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy About Section
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recruiter Search Keywords -->
+        <div class="col-lg-5 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <h5 class="fw-bold mb-0">
+                <i class="fa-solid fa-tags text-success me-2"></i> Recruiter Search Keywords
+              </h5>
+              <span class="badge bg-success-subtle text-success border rounded-pill px-2 py-1 small">
+                SEO Search Terms
+              </span>
+            </div>
+            <p class="text-muted small mb-2">
+              High-frequency keywords technical recruiters query on LinkedIn to find candidates for <strong id="linkedinRoleKeywordLabel">{{ initial_linkedin_suggestions.target_role|default('Software Engineer') }}</strong>.
+            </p>
+
+            <div class="bg-white p-3 rounded-3 border flex-grow-1 mb-3">
+              <!-- Matched in Resume -->
+              <div class="mb-3">
+                <div class="small fw-bold text-success mb-2">
+                  <i class="fa-solid fa-circle-check me-1"></i> Verified in Resume (<span id="linkedinMatchedCount">{{ initial_linkedin_suggestions.matched_keywords|length }}</span>):
+                </div>
+                <div class="d-flex flex-wrap gap-1" id="linkedinMatchedContainer">
+                  {% for kw in initial_linkedin_suggestions.matched_keywords|default([]) %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '{{ kw }}'" data-keyword="{{ kw }}">
+                    <i class="fa-solid fa-check me-1"></i>{{ kw }}
+                  </span>
+                  {% else %}
+                  <span class="text-muted small">No verified role keywords detected.</span>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Recommended for Role -->
+              <div>
+                <div class="small fw-bold text-primary mb-2">
+                  <i class="fa-solid fa-magnifying-glass me-1"></i> Recommended Search Terms (<span id="linkedinRecommendedCount">{{ initial_linkedin_suggestions.recommended_keywords|length }}</span>):
+                </div>
+                <div class="d-flex flex-wrap gap-1" id="linkedinRecommendedContainer">
+                  {% for kw in initial_linkedin_suggestions.recommended_keywords|default([]) %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '{{ kw }}'" data-keyword="{{ kw }}">
+                    + {{ kw }}
+                  </span>
+                  {% else %}
+                  <span class="text-success small">All key role search keywords present!</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span class="text-muted small">Click any tag or copy all</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCopyLinkedInKeywords" aria-label="Copy all recruiter search keywords to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy All Keywords
+              </button>
             </div>
           </div>
         </div>
