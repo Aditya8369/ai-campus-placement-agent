@@ -1159,6 +1159,36 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
+        "/api/status": {
+            "get": {
+                "tags": ["System & Utilities"],
+                "summary": "Public Application Services Operational Status",
+                "description": "Reports real-time operational status (operational, degraded, unavailable) for Application, Database, and AI Integration without exposing credentials.",
+                "operationId": "getPublicServiceStatus",
+                "responses": {
+                    "200": {
+                        "description": "Services are operational or degraded with safe fallbacks.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Critical service outage (e.g. database down).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/walkthrough": {
             "get": {
                 "tags": ["System & Utilities"],
@@ -1659,6 +1689,23 @@ OPENAPI_SPEC: Dict[str, Any] = {
                     "total_steps": {"type": "integer", "example": 4},
                     "recommended_next_step": {"type": "object"},
                     "steps": {"type": "array", "items": {"type": "object"}}
+                }
+            },
+            "PublicServiceStatusResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "enum": ["operational", "degraded", "unavailable"], "example": "operational"},
+                    "status_message": {"type": "string", "example": "All Systems Operational"},
+                    "timestamp": {"type": "string", "example": "2026-11-19T14:20:00.000000Z"},
+                    "response_time_ms": {"type": "number", "example": 1.45},
+                    "services": {
+                        "type": "object",
+                        "properties": {
+                            "application": {"type": "object"},
+                            "database": {"type": "object"},
+                            "ai_integration": {"type": "object"}
+                        }
+                    }
                 }
             }
         }

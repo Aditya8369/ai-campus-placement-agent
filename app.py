@@ -498,6 +498,9 @@ def require_login():
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
         "verify_two_factor",
+        "system_status_page",
+        "api_system_status",
+        "api_v1_system_status",
     }
 
     user_id = flask_session.get("user_id")
@@ -1035,6 +1038,44 @@ def health_check():
         "latency_ms": latency_ms,
         "checks": checks,
     }), http_status
+
+
+@app.route("/status", methods=["GET"], endpoint="system_status_page")
+def system_status_page():
+    """
+    Public Status Page for Application Services (#460).
+    Displays real-time operational status of Application, Database, and AI Integration
+    without exposing secrets, internal credentials, or tokens.
+    Returns HTML status dashboard, or JSON if requested via Accept header / ?format=json.
+    """
+    from utils.status_service import get_system_status
+    status_data, http_code = get_system_status()
+
+    is_json = (
+        request.args.get("format") == "json"
+        or "application/json" in request.headers.get("Accept", "")
+        or request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        return jsonify(status_data), http_code
+
+    return render_template("status.html", status_data=status_data), http_code
+
+
+@app.route("/api/status", methods=["GET"], endpoint="api_system_status")
+@app.route("/api/v1/status", methods=["GET"], endpoint="api_v1_system_status")
+@csrf.exempt
+def api_system_status():
+    """
+    Public JSON status endpoint for application services (#460).
+    Reports standardized operational status ('operational', 'degraded', 'unavailable')
+    for Application, Database, and AI Integration without exposing secrets or credentials.
+    """
+    from utils.status_service import get_system_status
+    status_data, http_code = get_system_status()
+    return jsonify(status_data), http_code
+
 
 @app.route("/set-language/<lang_code>", methods=["GET"], endpoint="set_language")
 def set_language(lang_code):
