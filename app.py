@@ -331,6 +331,7 @@ from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
 from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
+from agents.project_deep_dive_agent import ProjectDeepDiveAgent
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
 from utils.i18n import (
     get_translation,
@@ -953,6 +954,7 @@ linkedin_agent = LinkedInAgent()
 coding_practice_agent = CodingPracticeAgent()
 outreach_agent = OutreachGeneratorAgent()
 self_introduction_agent = SelfIntroductionAgent()
+project_deep_dive_agent = ProjectDeepDiveAgent()
 
 def get_available_companies() -> list:
     """
@@ -5812,6 +5814,131 @@ def api_evaluate_code(analysis_id: str = None):
             "status": "error",
             "message": f"Code evaluation failed: {str(e)}"
         }), 500
+
+
+# ============================================================================
+# PROJECT DEEP-DIVE INTERVIEW PRACTICE (#466)
+# ============================================================================
+
+@app.route("/interview/<analysis_id>/project-deep-dive", methods=["GET"])
+def project_deep_dive_view(analysis_id: str):
+    """
+    Renders Project Deep-Dive interview mode for candidate resume projects (#466).
+    Lists detected projects for selection, or displays an empty state if none are found.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("Cannot initialize Project Deep-Dive. Analysis record not found.", "error")
+        return redirect(url_for("index"))
+
+    projects = project_deep_dive_agent.extract_projects(analysis_record)
+    company_name = analysis_record.get("company_name", "Placement")
+
+    return render_template(
+        "project_deep_dive.html",
+        analysis_id=analysis_id,
+        analysis=analysis_record,
+        company_name=company_name,
+        projects=projects,
+        projects_json=json.dumps(projects),
+    )
+
+
+@app.route("/api/interview/<analysis_id>/projects", methods=["GET"])
+def api_get_analysis_projects(analysis_id: str):
+    """
+    API endpoint returning extracted project entries from the analysed resume (#466).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    projects = project_deep_dive_agent.extract_projects(analysis_record)
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "count": len(projects),
+        "projects": projects,
+    }), 200
+
+
+@app.route("/api/interview/<analysis_id>/project-deep-dive/questions", methods=["POST"])
+@rate_limit(scope="interview_eval", is_api=True)
+def api_generate_project_deep_dive_questions(analysis_id: str):
+    """
+    Generates 5 technical follow-up questions grounded strictly in the selected project entry (#466).
+    Rejects with 400 if project description is too thin, prompting the candidate to add detail first.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    project = payload.get("project")
+    project_id = payload.get("project_id")
+    additional_details = str(payload.get("additional_details", "")).strip()
+
+    # If full project object was not passed, resolve by project_id
+    if not project or not isinstance(project, dict):
+        projects = project_deep_dive_agent.extract_projects(analysis_record)
+        if project_id:
+            for p in projects:
+                if str(p.get("id")) == str(project_id):
+                    project = p
+                    break
+        if not project and projects:
+            project = projects[0]
+
+    if not project or not isinstance(project, dict):
+        return jsonify({
+            "success": False,
+            "error": "No valid project selected or detected in this resume.",
+            "questions": [],
+        }), 400
+
+    company_name = analysis_record.get("company_name", "Placement")
+    result = project_deep_dive_agent.generate_questions(
+        project=project,
+        company_name=company_name,
+        additional_details=additional_details,
+    )
+
+    if not result.get("success"):
+        return jsonify(result), 400
+
+    return jsonify(result), 200
+
+
+@app.route("/api/interview/<analysis_id>/project-deep-dive/evaluate", methods=["POST"])
+@rate_limit(scope="interview_eval", is_api=True)
+def api_evaluate_project_deep_dive_answer(analysis_id: str):
+    """
+    Evaluates candidate's response to a Project Deep-Dive question (#466).
+    Returns clarity, depth, and consistency scores with exactly one improvement tip.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    project = payload.get("project") or {}
+    question = str(payload.get("question", "")).strip()
+    answer = str(payload.get("answer", "")).strip()
+
+    if not question:
+        return jsonify({"success": False, "error": "Question prompt is required for evaluation."}), 400
+
+    evaluation = project_deep_dive_agent.evaluate_answer(
+        project=project,
+        question=question,
+        answer=answer,
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "evaluation": evaluation,
+    }), 200
 
 
 @app.route("/skills-assessment", methods=["GET", "POST"])

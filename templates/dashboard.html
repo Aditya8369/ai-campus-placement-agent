@@ -634,9 +634,14 @@
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
-          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill mx-auto">
-            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview
-          </a>
+          <div class="d-flex justify-content-center gap-2 flex-wrap">
+            <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill">
+              <i class="fa-solid fa-comments me-1"></i> Start Mock Interview
+            </a>
+            <a href="/interview/{{ analysis_id }}/project-deep-dive" class="btn btn-outline-primary py-2 px-3 rounded-pill" title="Practice defending projects from your resume">
+              <i class="fa-solid fa-diagram-project me-1"></i> Project Deep-Dive
+            </a>
+          </div>
         </div>
       </div>
       <div class="col-lg-4 col-md-6">
