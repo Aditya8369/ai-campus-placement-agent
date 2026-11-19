@@ -844,6 +844,7 @@ function initFormUpload() {
   const resumeEmptyNotice = document.getElementById("resumeEmptyNotice");
   const btnChangeResumeFile = document.getElementById("btnChangeResumeFile");
   const btnDiscardResumePreview = document.getElementById("btnDiscardResumePreview");
+  const fileSelectionAnnouncer = document.getElementById("fileSelectionAnnouncer");
 
   // Format file size nicely
   const formatFileSize = (bytes) => {
@@ -877,6 +878,9 @@ function initFormUpload() {
         uploadTypeErrorMessage.textContent = `Unsupported file type "${fileName.split('.').pop() || 'unknown'}". Only .pdf and .docx resume files are supported.`;
         uploadTypeErrorAlert.classList.remove("d-none");
       }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
+      }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
       // Clear input
@@ -893,6 +897,9 @@ function initFormUpload() {
         uploadTypeErrorMessage.textContent = "The uploaded file is empty. Please upload a valid resume.";
         uploadTypeErrorAlert.classList.remove("d-none");
       }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
+      }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
       if (fileInput) fileInput.value = "";
@@ -908,6 +915,9 @@ function initFormUpload() {
       if (uploadTypeErrorAlert && uploadTypeErrorMessage) {
         uploadTypeErrorMessage.textContent = `The uploaded file exceeds the maximum allowed size of 5 MB (${formatFileSize(file.size)}). Please upload a smaller file.`;
         uploadTypeErrorAlert.classList.remove("d-none");
+      }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
       }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
@@ -939,6 +949,10 @@ function initFormUpload() {
     if (fileFeedbackBadge && fileFeedbackBadgeText) {
       fileFeedbackBadgeText.innerHTML = `<i class="fa-solid ${iconClass} me-1"></i> ${fileName} (${formatFileSize(file.size)})`;
       fileFeedbackBadge.classList.remove("d-none");
+    }
+
+    if (fileSelectionAnnouncer) {
+      fileSelectionAnnouncer.textContent = `Resume file ${fileName} selected successfully (${formatFileSize(file.size)}). Ready for analysis.`;
     }
 
     // Populate Resume Preview Card (#133)
@@ -984,6 +998,9 @@ function initFormUpload() {
     }
     if (resumeEmptyNotice) {
       resumeEmptyNotice.classList.remove("d-none");
+    }
+    if (fileSelectionAnnouncer) {
+      fileSelectionAnnouncer.textContent = "Resume file selection cleared.";
     }
   };
 

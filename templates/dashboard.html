@@ -265,22 +265,26 @@
           <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex align-items-center justify-content-between">
             <div>
               <small class="text-secondary fw-semibold text-uppercase d-block mb-1">ATS Compatibility</small>
-              <div class="d-flex align-items-baseline gap-2">
+              <div class="d-flex align-items-baseline gap-2 flex-wrap">
                 <h2 class="fw-bold mb-0 text-dark" id="summaryAtsScore">{{ r_sum.ats_score }}</h2>
                 <span class="text-muted small">/ 100</span>
+                <span class="badge {{ 'bg-success-subtle text-success' if r_sum.ats_score >= 75 else ('bg-warning-subtle text-dark border-warning-subtle' if r_sum.ats_score >= 60 else 'bg-danger-subtle text-danger') }} border rounded-pill ms-1 small" id="atsScoreLevelBadge">
+                  <i class="fa-solid {{ 'fa-circle-check text-success' if r_sum.ats_score >= 75 else ('fa-triangle-exclamation text-dark' if r_sum.ats_score >= 60 else 'fa-circle-xmark text-danger') }} me-1" aria-hidden="true"></i>
+                  <span>{{ 'Strong Match' if r_sum.ats_score >= 75 else ('Moderate' if r_sum.ats_score >= 60 else 'Needs Revision') }}</span>
+                </span>
               </div>
               <small class="text-muted d-block mt-1">
                 Target: <strong>{{ r_sum.target_ats }}</strong>
                 {% if r_sum.ats_score >= r_sum.target_ats %}
-                  <span class="text-success ms-1"><i class="fa-solid fa-circle-check"></i> Meets Bar</span>
+                  <span class="text-success ms-1"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Meets Bar</span>
                 {% else %}
-                  <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up"></i> {{ r_sum.target_ats - r_sum.ats_score }} pts to Target</span>
+                  <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i> {{ r_sum.target_ats - r_sum.ats_score }} pts to Target</span>
                 {% endif %}
               </small>
             </div>
             <!-- Circular ATS Gauge -->
             <div class="circular-progress-container mb-0" style="width: 75px; height: 75px;">
-              <svg class="circular-progress-svg" viewBox="0 0 150 150" style="width: 75px; height: 75px;">
+              <svg class="circular-progress-svg" viewBox="0 0 150 150" style="width: 75px; height: 75px;" role="img" aria-label="ATS score circular gauge: {{ r_sum.ats_score }} out of 100 ({{ 'Strong Match' if r_sum.ats_score >= 75 else ('Moderate' if r_sum.ats_score >= 60 else 'Needs Revision') }})">
                 <circle class="circular-bg-ring" cx="75" cy="75" r="60"></circle>
                 <circle class="circular-fill-ring" cx="75" cy="75" r="60" data-score="{{ r_sum.ats_score }}"></circle>
               </svg>
@@ -321,7 +325,7 @@
             </div>
             <div class="mt-2">
               <div class="progress rounded-pill" style="height: 8px;">
-                <div class="progress-bar {{ 'bg-primary' if r_sum.has_custom_jd else 'bg-secondary' }}" role="progressbar" style="width: {{ r_sum.match_percentage }}%" aria-valuenow="{{ r_sum.match_percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                <div class="progress-bar {{ 'bg-primary' if r_sum.has_custom_jd else 'bg-secondary' }}" role="progressbar" style="width: {{ r_sum.match_percentage }}%" aria-valuenow="{{ r_sum.match_percentage }}" aria-valuemin="0" aria-valuemax="100" aria-label="Job description match: {{ r_sum.match_percentage }} percent"></div>
               </div>
             </div>
           </div>
@@ -362,8 +366,8 @@
             <div>
               <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Preparation Status</small>
               <div class="mt-1">
-                <span class="badge bg-{{ r_sum.readiness_badge }}-subtle text-{{ r_sum.readiness_badge }} border border-{{ r_sum.readiness_badge }}-subtle px-3 py-2 rounded-pill fw-bold fs-6">
-                  <i class="fa-solid {{ r_sum.readiness_icon }} me-1"></i> {{ r_sum.readiness_status }}
+                <span class="badge bg-{{ r_sum.readiness_badge }}-subtle {{ 'text-dark border-warning-subtle' if r_sum.readiness_badge == 'warning' else ('text-' ~ r_sum.readiness_badge ~ ' border-' ~ r_sum.readiness_badge ~ '-subtle') }} border px-3 py-2 rounded-pill fw-bold fs-6">
+                  <i class="fa-solid {{ r_sum.readiness_icon }} me-1" aria-hidden="true"></i> {{ r_sum.readiness_status }}
                 </span>
               </div>
               <small class="text-muted d-block mt-2">
@@ -438,8 +442,9 @@
                 <span class="fw-bold fs-4 text-dark" id="atsBreakdownTotalScore">{{ breakdown.total_score }}</span>
                 <span class="text-muted small">/ 100</span>
               </div>
-              <span class="badge {{ 'bg-success-subtle text-success' if breakdown.total_score >= 80 else ('bg-primary-subtle text-primary' if breakdown.total_score >= 65 else 'bg-warning-subtle text-warning') }} border fs-6 px-3 py-2 rounded-pill" id="atsBreakdownRatingBadge">
-                {{ breakdown.rating }}
+              <span class="badge {{ 'bg-success-subtle text-success' if breakdown.total_score >= 80 else ('bg-primary-subtle text-primary' if breakdown.total_score >= 65 else 'bg-warning-subtle text-dark border-warning-subtle') }} border fs-6 px-3 py-2 rounded-pill" id="atsBreakdownRatingBadge">
+                <i class="fa-solid {{ 'fa-circle-check text-success' if breakdown.total_score >= 80 else ('fa-circle-info text-primary' if breakdown.total_score >= 65 else 'fa-triangle-exclamation text-dark') }} me-1" aria-hidden="true"></i>
+                <span>{{ breakdown.rating }}</span>
               </span>
             </div>
           </div>
@@ -479,8 +484,9 @@
                   <div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                       <span class="fw-bold text-dark small">{{ sec.title }}</span>
-                      <span class="badge {{ 'bg-success-subtle text-success' if sec.status == 'Strong' else ('bg-warning-subtle text-warning' if sec.status == 'Fair' else 'bg-danger-subtle text-danger') }} border rounded-pill" style="font-size: 0.72rem;">
-                        {{ sec.status }}
+                      <span class="badge {{ 'bg-success-subtle text-success' if sec.status == 'Strong' else ('bg-warning-subtle text-dark border-warning-subtle' if sec.status == 'Fair' else 'bg-danger-subtle text-danger') }} border rounded-pill" style="font-size: 0.72rem;">
+                        <i class="fa-solid {{ 'fa-circle-check text-success' if sec.status == 'Strong' else ('fa-triangle-exclamation text-dark' if sec.status == 'Fair' else 'fa-circle-xmark text-danger') }} me-1" aria-hidden="true"></i>
+                        <span>{{ sec.status }}</span>
                       </span>
                     </div>
                     <div class="d-flex align-items-baseline justify-content-between mb-1">
@@ -488,7 +494,7 @@
                       <span class="text-muted small">/ {{ sec.max_score }} pts</span>
                     </div>
                     <div class="progress rounded-pill mb-2" style="height: 6px;">
-                      <div class="progress-bar {{ 'bg-success' if sec.status == 'Strong' else ('bg-warning' if sec.status == 'Fair' else 'bg-danger') }}" role="progressbar" style="width: {{ sec.earned_percentage }}%" aria-valuenow="{{ sec.score }}" aria-valuemin="0" aria-valuemax="{{ sec.max_score }}"></div>
+                      <div class="progress-bar {{ 'bg-success' if sec.status == 'Strong' else ('bg-warning' if sec.status == 'Fair' else 'bg-danger') }}" role="progressbar" style="width: {{ sec.earned_percentage }}%" aria-valuenow="{{ sec.score }}" aria-valuemin="0" aria-valuemax="{{ sec.max_score }}" aria-label="{{ sec.title }}: {{ sec.score }} out of {{ sec.max_score }} points ({{ sec.status }})"></div>
                     </div>
                     <p class="small text-secondary mb-2" style="font-size: 0.8rem;">
                       {{ sec.suggestion }}
@@ -517,8 +523,8 @@
                   <div class="p-2 px-3 rounded-3 border bg-light h-100">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                       <span class="small fw-bold text-dark">{{ b_info.title }}</span>
-                      <span class="badge {{ 'bg-success-subtle text-success' if b_info.passed else 'bg-warning-subtle text-warning' }} border rounded-pill" style="font-size: 0.7rem;">
-                        <i class="fa-solid {{ 'fa-check' if b_info.passed else 'fa-exclamation' }} me-1"></i>{{ b_info.status }}
+                      <span class="badge {{ 'bg-success-subtle text-success' if b_info.passed else 'bg-warning-subtle text-dark border-warning-subtle' }} border rounded-pill" style="font-size: 0.7rem;">
+                        <i class="fa-solid {{ 'fa-circle-check text-success' if b_info.passed else 'fa-triangle-exclamation text-dark' }} me-1" aria-hidden="true"></i>{{ b_info.status }}
                       </span>
                     </div>
                     <p class="small text-muted mb-0" style="font-size: 0.75rem;">
@@ -1042,7 +1048,7 @@
           <div class="col-lg-4 col-md-7 col-12">
             <div class="input-group input-group-sm">
               <span class="input-group-text bg-white border-end-0 rounded-start-pill"><i class="fa-solid fa-user-tag text-muted"></i></span>
-              <input type="text" id="outreachRoleInput" class="form-control rounded-end-pill" placeholder="Target Role Title (e.g. Software Engineer)" value="{{ initial_outreach.role_title|default('Software Engineer') }}">
+              <input type="text" id="outreachRoleInput" class="form-control rounded-end-pill" placeholder="Target Role Title (e.g. Software Engineer)" value="{{ initial_outreach.role_title|default('Software Engineer') }}" aria-label="Target Role Title for Outreach Pitch">
             </div>
           </div>
           <div class="col-lg-2 col-md-5 col-12 text-lg-end">
@@ -1355,7 +1361,7 @@
             </p>
 
             <div class="mb-3">
-              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroPracticeInput" rows="5" placeholder="Paste or type your delivered introduction here..."></textarea>
+              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroPracticeInput" rows="5" placeholder="Paste or type your delivered introduction here..." aria-label="Self-introduction practice speech script"></textarea>
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -2423,8 +2429,9 @@
               </div>
               <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
                 <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Readiness</small>
-                <span class="badge {{ 'bg-success-subtle text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('bg-primary-subtle text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'bg-warning-subtle text-warning') }} border" id="roleReadinessBadge">
-                  {{ role_gap_analysis.readiness_verdict|default('Targeted Prep') }}
+                <span class="badge {{ 'bg-success-subtle text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('bg-primary-subtle text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'bg-warning-subtle text-dark border-warning-subtle') }} border" id="roleReadinessBadge">
+                  <i class="fa-solid {{ 'fa-circle-check text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('fa-circle-info text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'fa-triangle-exclamation text-dark') }} me-1" aria-hidden="true"></i>
+                  <span>{{ role_gap_analysis.readiness_verdict|default('Targeted Prep') }}</span>
                 </span>
               </div>
               <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
@@ -2723,13 +2730,13 @@
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-book-open me-2 text-primary"></i> Topics to Learn</h6>
                   <ul class="mb-3 small list-unstyled">
                     {% for topic in w.topics %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_top_{{ loop.index }}"><span>{{ topic }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_top_{{ loop.index }}" aria-label="Mark task completed: {{ topic|escape }}"><span>{{ topic }}</span></label></li>
                     {% endfor %}
                   </ul>
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-code me-2 text-primary"></i> Coding Practice Tasks</h6>
                   <ul class="mb-0 small list-unstyled">
                     {% for code in w.coding_practice %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}"><span>{{ code }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}" aria-label="Mark task completed: {{ code|escape }}"><span>{{ code }}</span></label></li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -2737,13 +2744,13 @@
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-laptop-code me-2 text-primary"></i> Micro Projects</h6>
                   <ul class="mb-3 small list-unstyled">
                     {% for project in w.mini_projects %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}"><span>{{ project }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}" aria-label="Mark task completed: {{ project|escape }}"><span>{{ project }}</span></label></li>
                     {% endfor %}
                   </ul>
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-circle-question me-2 text-primary"></i> Interview Prep Questions</h6>
                   <ul class="mb-0 small list-unstyled">
                     {% for question in w.interview_questions %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}"><span>{{ question }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}" aria-label="Mark task completed: {{ question|escape }}"><span>{{ question }}</span></label></li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -3448,7 +3455,7 @@
               </ul>
             </div>
             <div class="mb-3">
-              <textarea id="modalOutreachEditor" class="form-control rounded-3 p-3 font-monospace small" rows="12" style="resize: vertical; line-height: 1.6;" placeholder="Generated outreach content..."></textarea>
+              <textarea id="modalOutreachEditor" class="form-control rounded-3 p-3 font-monospace small" rows="12" style="resize: vertical; line-height: 1.6;" placeholder="Generated outreach content..." aria-label="Edit outreach message text"></textarea>
             </div>
             <div class="d-flex justify-content-between align-items-center small text-muted">
               <span id="modalWordCount">0 words | 0 characters</span>
