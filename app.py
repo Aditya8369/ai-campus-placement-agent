@@ -1045,6 +1045,44 @@ def health_check():
         "checks": checks,
     }), http_status
 
+
+@app.route("/status", methods=["GET"], endpoint="system_status_page")
+def system_status_page():
+    """
+    Public Status Page for Application Services (#460).
+    Displays real-time operational status of Application, Database, and AI Integration
+    without exposing secrets, internal credentials, or tokens.
+    Returns HTML status dashboard, or JSON if requested via Accept header / ?format=json.
+    """
+    from utils.status_service import get_system_status
+    status_data, http_code = get_system_status()
+
+    is_json = (
+        request.args.get("format") == "json"
+        or "application/json" in request.headers.get("Accept", "")
+        or request.is_json
+        or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    )
+    if is_json:
+        return jsonify(status_data), http_code
+
+    return render_template("status.html", status_data=status_data), http_code
+
+
+@app.route("/api/status", methods=["GET"], endpoint="api_system_status")
+@app.route("/api/v1/status", methods=["GET"], endpoint="api_v1_system_status")
+@csrf.exempt
+def api_system_status():
+    """
+    Public JSON status endpoint for application services (#460).
+    Reports standardized operational status ('operational', 'degraded', 'unavailable')
+    for Application, Database, and AI Integration without exposing secrets or credentials.
+    """
+    from utils.status_service import get_system_status
+    status_data, http_code = get_system_status()
+    return jsonify(status_data), http_code
+
+
 @app.route("/set-language/<lang_code>", methods=["GET"], endpoint="set_language")
 def set_language(lang_code):
     """Set the active UI locale for the current session."""
@@ -3904,6 +3942,58 @@ def dashboard(analysis_id: str) -> str:
             "missing_skills": [],
         }
 
+    # Prepare LinkedIn Profile Suggestions (#538)
+    try:
+        candidate_target_role = (
+            analysis_record.get("target_role")
+            or results.get("target_role")
+            or "Software Engineer"
+        )
+        initial_linkedin_suggestions = linkedin_agent.generate_linkedin_suggestions(
+            resume_text=raw_resume,
+            target_role=candidate_target_role
+        )
+    except Exception as li_err:
+        logger.warning(f"Error preparing LinkedIn suggestions for dashboard: {li_err}")
+        initial_linkedin_suggestions = {
+            "target_role": "Software Engineer",
+            "candidate_name": None,
+            "headline_options": [
+                {
+                    "headline": "Software Engineer | Open to Campus Placements",
+                    "char_count": 46,
+                    "max_chars": 220,
+                    "type": "Role & Core Stack",
+                    "description": "Direct and keyword-rich headline."
+                },
+                {
+                    "headline": "Software Engineer Candidate | Dedicated to Clean Architecture",
+                    "char_count": 62,
+                    "max_chars": 220,
+                    "type": "Impact & Experience",
+                    "description": "Emphasizes practical development."
+                },
+                {
+                    "headline": "Future Software Engineer | Fast Learner & Problem Solver",
+                    "char_count": 57,
+                    "max_chars": 220,
+                    "type": "Specialization & Vision",
+                    "description": "Showcases domain focus."
+                }
+            ],
+            "about_section": (
+                "I am an aspiring Software Engineer committed to building reliable, clean software solutions. "
+                "I am actively seeking campus placement and entry-level opportunities. Let's connect!"
+            ),
+            "about_word_count": 24,
+            "about_char_count": 182,
+            "recruiter_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
+            "matched_keywords": [],
+            "recommended_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
+            "is_sparse": True,
+            "headline_limit": 220
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3938,9 +4028,238 @@ def dashboard(analysis_id: str) -> str:
         comparison_json=json.dumps(comparison),
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
+        initial_linkedin_suggestions=initial_linkedin_suggestions,
+        initial_linkedin_suggestions_json=json.dumps(initial_linkedin_suggestions),
         is_demo=is_demo,
         bullet_rewrites=bullet_rewrites
     )
+
+
+# ==============================================================================
+# LINKEDIN PROFILE SUGGESTIONS API (#538)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])
+def api_get_analysis_linkedin_suggestions(analysis_id: str):
+    """
+    Returns LinkedIn headline options, first-person About draft, and recruiter keywords (#538).
+    Strictly uses facts verified in candidate's resume, respects 220 char limit on headlines,
+    and handles sparse/minimal resumes gracefully.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+# TAILORED COVER LETTER GENERATOR & DOWNLOAD API (#537)
+# ==============================================================================
+
+@app.route("/cover-letter", methods=["GET"])
+@app.route("/cover-letter/<analysis_id>", methods=["GET"])
+def cover_letter_view(analysis_id: str = None):
+    """
+    Renders the dedicated Tailored Cover Letter Generator page (#537).
+    Allows students to generate 3-4 paragraph letters tailored to a pasted job description,
+    choose between formal and friendly tones, edit the letter, and copy/download it.
+    """
+    resume_text = ""
+    company_name = ""
+    target_role = "Software Engineer"
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and _is_student_authorized(analysis_record):
+            results = analysis_record.get("results") or {}
+            resume_text = (
+                analysis_record.get("resume_text")
+                or results.get("extracted_resume_text")
+                or results.get("resume_text")
+                or ""
+            )
+            company_name = analysis_record.get("company_name", "") or ""
+            target_role = analysis_record.get("target_role", "Software Engineer") or "Software Engineer"
+
+    return render_template(
+        "cover_letter.html",
+        resume_text=resume_text,
+        company_name=company_name,
+        target_role=target_role,
+        analysis_id=analysis_id or ""
+    )
+
+
+@app.route("/api/cover-letter/generate", methods=["POST"])
+def api_generate_tailored_cover_letter():
+    """
+    Direct API endpoint to generate a tailored 3-to-4 paragraph cover letter from
+    a resume, pasted job description, and optional company name (#537).
+    """
+    payload = request.get_json(silent=True) or {}
+    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (payload.get("company_name") or request.form.get("company_name") or "").strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "Resume text is missing. Please provide your resume to tailor the cover letter.",
+            "missing_field": "resume_text"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=resume_text,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/analysis/<analysis_id>/cover-letter", methods=["POST"])
+def api_analysis_tailored_cover_letter(analysis_id: str):
+    """
+    Generates a tailored 3-to-4 paragraph cover letter for a saved placement analysis (#537).
+    Loads the candidate's resume, takes the pasted job description, optional company name, and tone.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({
+            "success": False,
+            "error": "Analysis not found or unauthorized."
+        }), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
+    # Allow overriding target_role from query param or request JSON/form
+    target_role = (
+        request.args.get("target_role")
+        or (request.get_json(silent=True) or {}).get("target_role")
+        or request.form.get("target_role")
+        or analysis_record.get("target_role")
+        or results.get("target_role")
+        or "Software Engineer"
+    ).strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=raw_resume,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "suggestions": suggestions
+    }), 200
+
+
+@app.route("/api/linkedin/suggestions", methods=["POST"])
+def api_generate_linkedin_suggestions():
+    """
+    Direct API endpoint to generate LinkedIn suggestions from raw resume text (#538).
+    Accepts JSON: { "resume_text": "...", "target_role": "..." }
+    """
+    payload = request.get_json(silent=True) or {}
+    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
+    target_role = (payload.get("target_role") or request.form.get("target_role") or "Software Engineer").strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=resume_text,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "suggestions": suggestions
+    }), 200
+    payload = request.get_json(silent=True) or {}
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (
+        payload.get("company_name")
+        or request.form.get("company_name")
+        or analysis_record.get("company_name")
+        or ""
+    ).strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=raw_resume,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/cover-letter/download", methods=["POST"])
+def api_download_cover_letter():
+    """
+    Downloads an edited cover letter as a formatted .docx or .txt file (#537).
+    """
+    payload = request.get_json(silent=True) or {}
+    content = (payload.get("content") or payload.get("cover_letter") or request.form.get("content") or request.form.get("cover_letter") or "").strip()
+    file_format = (payload.get("format") or request.form.get("format") or "docx").strip().lower()
+    company_name = (payload.get("company_name") or request.form.get("company_name") or "Company").strip()
+    candidate_name = (payload.get("candidate_name") or request.form.get("candidate_name") or "Candidate").strip()
+    role_title = (payload.get("role_title") or request.form.get("role_title") or "Software Engineer").strip()
+
+    if not content:
+        return jsonify({
+            "success": False,
+            "error": "Cannot download empty cover letter content."
+        }), 400
+
+    safe_comp = re.sub(r"[^\w\-]", "_", company_name)
+    if file_format == "txt":
+        txt_out = outreach_agent.export_cover_letter_txt(
+            cover_letter_text=content,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title
+        )
+        return send_file(
+            io.BytesIO(txt_out.encode("utf-8")),
+            mimetype="text/plain",
+            as_attachment=True,
+            download_name=f"Cover_Letter_{safe_comp}.txt"
+        )
+    else:  # default docx
+        docx_bytes = outreach_agent.export_cover_letter_docx(
+            cover_letter_text=content,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title
+        )
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=f"Cover_Letter_{safe_comp}.docx"
+        )
 
 
 # ==============================================================================
