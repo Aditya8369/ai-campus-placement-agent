@@ -3895,6 +3895,58 @@ def dashboard(analysis_id: str) -> str:
             "missing_skills": [],
         }
 
+    # Prepare LinkedIn Profile Suggestions (#538)
+    try:
+        candidate_target_role = (
+            analysis_record.get("target_role")
+            or results.get("target_role")
+            or "Software Engineer"
+        )
+        initial_linkedin_suggestions = linkedin_agent.generate_linkedin_suggestions(
+            resume_text=raw_resume,
+            target_role=candidate_target_role
+        )
+    except Exception as li_err:
+        logger.warning(f"Error preparing LinkedIn suggestions for dashboard: {li_err}")
+        initial_linkedin_suggestions = {
+            "target_role": "Software Engineer",
+            "candidate_name": None,
+            "headline_options": [
+                {
+                    "headline": "Software Engineer | Open to Campus Placements",
+                    "char_count": 46,
+                    "max_chars": 220,
+                    "type": "Role & Core Stack",
+                    "description": "Direct and keyword-rich headline."
+                },
+                {
+                    "headline": "Software Engineer Candidate | Dedicated to Clean Architecture",
+                    "char_count": 62,
+                    "max_chars": 220,
+                    "type": "Impact & Experience",
+                    "description": "Emphasizes practical development."
+                },
+                {
+                    "headline": "Future Software Engineer | Fast Learner & Problem Solver",
+                    "char_count": 57,
+                    "max_chars": 220,
+                    "type": "Specialization & Vision",
+                    "description": "Showcases domain focus."
+                }
+            ],
+            "about_section": (
+                "I am an aspiring Software Engineer committed to building reliable, clean software solutions. "
+                "I am actively seeking campus placement and entry-level opportunities. Let's connect!"
+            ),
+            "about_word_count": 24,
+            "about_char_count": 182,
+            "recruiter_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
+            "matched_keywords": [],
+            "recommended_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
+            "is_sparse": True,
+            "headline_limit": 220
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3929,9 +3981,79 @@ def dashboard(analysis_id: str) -> str:
         comparison_json=json.dumps(comparison),
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
+        initial_linkedin_suggestions=initial_linkedin_suggestions,
+        initial_linkedin_suggestions_json=json.dumps(initial_linkedin_suggestions),
         is_demo=is_demo,
         bullet_rewrites=bullet_rewrites
     )
+
+
+# ==============================================================================
+# LINKEDIN PROFILE SUGGESTIONS API (#538)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])
+def api_get_analysis_linkedin_suggestions(analysis_id: str):
+    """
+    Returns LinkedIn headline options, first-person About draft, and recruiter keywords (#538).
+    Strictly uses facts verified in candidate's resume, respects 220 char limit on headlines,
+    and handles sparse/minimal resumes gracefully.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
+    # Allow overriding target_role from query param or request JSON/form
+    target_role = (
+        request.args.get("target_role")
+        or (request.get_json(silent=True) or {}).get("target_role")
+        or request.form.get("target_role")
+        or analysis_record.get("target_role")
+        or results.get("target_role")
+        or "Software Engineer"
+    ).strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=raw_resume,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "suggestions": suggestions
+    }), 200
+
+
+@app.route("/api/linkedin/suggestions", methods=["POST"])
+def api_generate_linkedin_suggestions():
+    """
+    Direct API endpoint to generate LinkedIn suggestions from raw resume text (#538).
+    Accepts JSON: { "resume_text": "...", "target_role": "..." }
+    """
+    payload = request.get_json(silent=True) or {}
+    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
+    target_role = (payload.get("target_role") or request.form.get("target_role") or "Software Engineer").strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=resume_text,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "suggestions": suggestions
+    }), 200
 
 
 # ==============================================================================

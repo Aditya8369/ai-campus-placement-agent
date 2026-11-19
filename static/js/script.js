@@ -114,6 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
+  initLinkedInSuggestions();
   initInterviewDraftLogoutCleanup();
 });
 
@@ -2746,7 +2747,6 @@ function initMockInterview() {
       timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
     }
 
-    const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
     // Compute final speech and non-verbal telemetry metrics
@@ -6932,6 +6932,248 @@ function initSelfIntroductionStudio() {
     } else {
       el.innerHTML = '<i class="fa-solid fa-circle-xmark text-danger"></i>';
     }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+}
+
+/**
+ * LinkedIn Profile Suggestions Studio (#538)
+ * Manages length-compliant headline options, first-person About narrative,
+ * recruiter keyword badges, copy-to-clipboard interactions, and live regeneration.
+ */
+function initLinkedInSuggestions() {
+  const section = document.getElementById("linkedInSuggestionsSection");
+  if (!section) return;
+
+  const analysisId = section.getAttribute("data-analysis-id") || "";
+  const btnRegenerate = document.getElementById("btnRegenerateLinkedIn");
+  const roleInput = document.getElementById("linkedinTargetRoleInput");
+  const spinner = document.getElementById("linkedinSpinner");
+  const icon = document.getElementById("linkedinIcon");
+
+  // Helper: copy to clipboard with fallback and visual feedback
+  function copyTextWithFeedback(text, btn, successMessage) {
+    if (!text) {
+      if (typeof showToast === "function") showToast("Nothing to copy yet", "info");
+      return;
+    }
+    const cleanText = text.trim();
+    const originalHtml = btn.innerHTML;
+
+    function onSuccess() {
+      btn.innerHTML = '<i class="fa-solid fa-check text-success me-1"></i> Copied!';
+      btn.classList.add("btn-success-subtle");
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove("btn-success-subtle");
+      }, 2000);
+      if (typeof showToast === "function" && successMessage) {
+        showToast(successMessage, "success");
+      }
+    }
+
+    if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(cleanText).then(onSuccess).catch(() => {
+        fallbackCopy(cleanText, onSuccess);
+      });
+    } else {
+      fallbackCopy(cleanText, onSuccess);
+    }
+  }
+
+  function fallbackCopy(text, onSuccess) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      onSuccess();
+    } catch (err) {
+      if (typeof showToast === "function") showToast("Failed to copy to clipboard", "error");
+    }
+  }
+
+  // Bind copy buttons for headlines and about section
+  section.querySelectorAll(".btn-copy-linkedin").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-copy-target");
+      if (!targetId) return;
+      const targetEl = document.getElementById(targetId);
+      if (!targetEl) return;
+      const textToCopy = targetEl.textContent || targetEl.innerText || "";
+      const label = targetId.includes("About") ? "About section copied to clipboard!" : "Headline copied to clipboard!";
+      copyTextWithFeedback(textToCopy, btn, label);
+    });
+  });
+
+  // Bind copy button for all recruiter keywords
+  const btnCopyKeywords = document.getElementById("btnCopyLinkedInKeywords");
+  if (btnCopyKeywords) {
+    btnCopyKeywords.addEventListener("click", () => {
+      const kwPills = section.querySelectorAll(".linkedin-kw-pill");
+      const keywords = [];
+      kwPills.forEach(p => {
+        const kw = p.getAttribute("data-keyword") || p.textContent.replace(/^[\+\s\u2713\u2714]+/, "").trim();
+        if (kw && !keywords.includes(kw)) keywords.push(kw);
+      });
+      if (keywords.length === 0) {
+        if (typeof showToast === "function") showToast("No keywords to copy", "info");
+        return;
+      }
+      const kwString = keywords.join(", ");
+      copyTextWithFeedback(kwString, btnCopyKeywords, "All recruiter keywords copied as comma-separated list!");
+    });
+  }
+
+  // Bind individual keyword pill click-to-copy
+  function bindKeywordPills() {
+    section.querySelectorAll(".linkedin-kw-pill").forEach(pill => {
+      pill.style.cursor = "pointer";
+      pill.addEventListener("click", () => {
+        const kw = pill.getAttribute("data-keyword") || pill.textContent.replace(/^[\+\s\u2713\u2714]+/, "").trim();
+        if (!kw) return;
+        copyTextWithFeedback(kw, pill, `Copied keyword "${kw}"!`);
+      });
+    });
+  }
+  bindKeywordPills();
+
+  // Handle Regenerate LinkedIn Suggestions
+  if (btnRegenerate) {
+    btnRegenerate.addEventListener("click", async () => {
+      const targetRole = (roleInput ? roleInput.value : "").trim() || "Software Engineer";
+      if (!analysisId) return;
+
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+      btnRegenerate.disabled = true;
+
+      try {
+        const res = await fetch(`/api/analysis/${analysisId}/linkedin-suggestions?target_role=${encodeURIComponent(targetRole)}`, {
+          method: "GET",
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        const data = await res.json();
+        if (data && data.success && data.suggestions) {
+          updateSuggestionsUI(data.suggestions);
+          if (typeof showToast === "function") {
+            showToast("LinkedIn suggestions regenerated successfully!", "success");
+          }
+        } else {
+          throw new Error((data && data.error) || "Failed to regenerate suggestions");
+        }
+      } catch (err) {
+        console.error("Error regenerating LinkedIn suggestions:", err);
+        if (typeof showToast === "function") {
+          showToast(err.message || "Failed to regenerate suggestions", "error");
+        }
+      } finally {
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+        btnRegenerate.disabled = false;
+      }
+    });
+  }
+
+  function updateSuggestionsUI(sug) {
+    if (!sug) return;
+    const headlines = sug.headline_options || [];
+
+    // Headline 1
+    if (headlines[0]) {
+      const b1 = document.getElementById("linkedinBadgeH1");
+      const l1 = document.getElementById("linkedinLenH1");
+      const d1 = document.getElementById("linkedinDescH1");
+      const t1 = document.getElementById("linkedinHeadlineText1");
+      if (b1) b1.textContent = headlines[0].type || "Role & Core Stack";
+      if (l1) l1.textContent = headlines[0].char_count || headlines[0].headline.length;
+      if (d1) d1.textContent = headlines[0].description || "";
+      if (t1) t1.textContent = headlines[0].headline || "";
+    }
+
+    // Headline 2
+    if (headlines[1]) {
+      const b2 = document.getElementById("linkedinBadgeH2");
+      const l2 = document.getElementById("linkedinLenH2");
+      const d2 = document.getElementById("linkedinDescH2");
+      const t2 = document.getElementById("linkedinHeadlineText2");
+      if (b2) b2.textContent = headlines[1].type || "Impact & Experience";
+      if (l2) l2.textContent = headlines[1].char_count || headlines[1].headline.length;
+      if (d2) d2.textContent = headlines[1].description || "";
+      if (t2) t2.textContent = headlines[1].headline || "";
+    }
+
+    // Headline 3
+    if (headlines[2]) {
+      const b3 = document.getElementById("linkedinBadgeH3");
+      const l3 = document.getElementById("linkedinLenH3");
+      const d3 = document.getElementById("linkedinDescH3");
+      const t3 = document.getElementById("linkedinHeadlineText3");
+      if (b3) b3.textContent = headlines[2].type || "Specialization & Vision";
+      if (l3) l3.textContent = headlines[2].char_count || headlines[2].headline.length;
+      if (d3) d3.textContent = headlines[2].description || "";
+      if (t3) t3.textContent = headlines[2].headline || "";
+    }
+
+    // About Section
+    const aboutEl = document.getElementById("linkedinAboutText");
+    const aboutWordsEl = document.getElementById("linkedinAboutWordCount");
+    const aboutCharsEl = document.getElementById("linkedinAboutCharCount");
+    if (aboutEl) aboutEl.textContent = sug.about_section || "";
+    if (aboutWordsEl) aboutWordsEl.textContent = sug.about_word_count || (sug.about_section ? sug.about_section.split(/\s+/).length : 0);
+    if (aboutCharsEl) aboutCharsEl.textContent = sug.about_char_count || (sug.about_section ? sug.about_section.length : 0);
+
+    // Keywords
+    const roleLabel = document.getElementById("linkedinRoleKeywordLabel");
+    if (roleLabel) roleLabel.textContent = sug.target_role || "Software Engineer";
+
+    const matchedContainer = document.getElementById("linkedinMatchedContainer");
+    const matchedCountEl = document.getElementById("linkedinMatchedCount");
+    const matched = sug.matched_keywords || [];
+    if (matchedCountEl) matchedCountEl.textContent = matched.length;
+    if (matchedContainer) {
+      if (matched.length > 0) {
+        matchedContainer.innerHTML = matched.map(kw => `
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '${escapeHtml(kw)}'" data-keyword="${escapeHtml(kw)}">
+            <i class="fa-solid fa-check me-1"></i>${escapeHtml(kw)}
+          </span>
+        `).join("");
+      } else {
+        matchedContainer.innerHTML = '<span class="text-muted small">No verified role keywords detected.</span>';
+      }
+    }
+
+    const recContainer = document.getElementById("linkedinRecommendedContainer");
+    const recCountEl = document.getElementById("linkedinRecommendedCount");
+    const recommended = sug.recommended_keywords || [];
+    if (recCountEl) recCountEl.textContent = recommended.length;
+    if (recContainer) {
+      if (recommended.length > 0) {
+        recContainer.innerHTML = recommended.map(kw => `
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '${escapeHtml(kw)}'" data-keyword="${escapeHtml(kw)}">
+            + ${escapeHtml(kw)}
+          </span>
+        `).join("");
+      } else {
+        recContainer.innerHTML = '<span class="text-success small">All key role search keywords present!</span>';
+      }
+    }
+
+    bindKeywordPills();
   }
 
   function escapeHtml(str) {
