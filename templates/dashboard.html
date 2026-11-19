@@ -2305,6 +2305,87 @@
           <i class="fa-solid fa-download me-1"></i> Export Study Plan (.md)
         </button>
       </div>
+
+      <!-- Interactive Missing Skills Timeline Customizer (#536) -->
+      <div class="p-3 mb-4 rounded-4 bg-light-subtle border shadow-sm" id="roadmapCustomizerControls">
+        <div class="row align-items-center g-3">
+          <div class="col-lg-4 col-md-6 col-12">
+            <label for="roadmapWeeksSelect" class="form-label small fw-bold text-dark mb-1">
+              <i class="fa-solid fa-calendar-days text-primary me-1"></i> Preparation Timeline:
+            </label>
+            <select id="roadmapWeeksSelect" class="form-select form-select-sm rounded-pill" aria-label="Select roadmap duration in weeks">
+              <option value="2" {% if initial_timeline_roadmap and initial_timeline_roadmap.weeks == 2 %}selected{% endif %}>2 Weeks (Sprint Mode)</option>
+              <option value="4" {% if initial_timeline_roadmap and initial_timeline_roadmap.weeks == 4 %}selected{% endif %}>4 Weeks (Targeted Prep)</option>
+              <option value="6" {% if not initial_timeline_roadmap or initial_timeline_roadmap.weeks == 6 %}selected{% endif %}>6 Weeks (Standard Recommended)</option>
+              <option value="8" {% if initial_timeline_roadmap and initial_timeline_roadmap.weeks == 8 %}selected{% endif %}>8 Weeks (Comprehensive)</option>
+              <option value="12" {% if initial_timeline_roadmap and initial_timeline_roadmap.weeks == 12 %}selected{% endif %}>12 Weeks (Semester Plan)</option>
+            </select>
+          </div>
+          <div class="col-lg-4 col-md-6 col-12">
+            <label for="roadmapHoursSelect" class="form-label small fw-bold text-dark mb-1">
+              <i class="fa-solid fa-clock text-primary me-1"></i> Available Hours per Week:
+            </label>
+            <select id="roadmapHoursSelect" class="form-select form-select-sm rounded-pill" aria-label="Select study commitment hours per week">
+              <option value="5" {% if initial_timeline_roadmap and initial_timeline_roadmap.hours_per_week == 5 %}selected{% endif %}>5 Hours / Week (Light Study)</option>
+              <option value="10" {% if not initial_timeline_roadmap or initial_timeline_roadmap.hours_per_week == 10 %}selected{% endif %}>10 Hours / Week (Recommended)</option>
+              <option value="15" {% if initial_timeline_roadmap and initial_timeline_roadmap.hours_per_week == 15 %}selected{% endif %}>15 Hours / Week (Intensive)</option>
+              <option value="20" {% if initial_timeline_roadmap and initial_timeline_roadmap.hours_per_week == 20 %}selected{% endif %}>20 Hours / Week (Full Immersion)</option>
+            </select>
+          </div>
+          <div class="col-lg-4 col-12 text-md-end mt-3 mt-lg-0 pt-lg-3">
+            <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnRecalculateRoadmap" data-analysis-id="{{ analysis_id }}">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="roadmapSpinner" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-wand-magic-sparkles me-1" id="roadmapRecalcIcon"></i> Recalculate Roadmap
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Zero Missing Skills Congratulatory Banner (#536) -->
+      <div id="zeroMissingSkillsBanner" class="p-4 mb-4 rounded-4 bg-success-subtle border border-success-subtle shadow-sm {% if not initial_timeline_roadmap or not initial_timeline_roadmap.is_zero_missing %}d-none{% endif %}">
+        <div class="d-flex align-items-center">
+          <div class="me-3 fs-1 text-success">
+            <i class="fa-solid fa-trophy"></i>
+          </div>
+          <div class="flex-grow-1">
+            <h5 class="fw-bold text-success mb-1">
+              <i class="fa-solid fa-circle-check me-1"></i> Zero Missing Skills &mdash; Fully Qualified!
+            </h5>
+            <p class="small text-secondary mb-2" id="zeroMissingSkillsMsg">
+              {{ initial_timeline_roadmap.congratulatory_message if initial_timeline_roadmap and initial_timeline_roadmap.congratulatory_message else "Congratulations! You have zero missing skills for this target role. Your profile completely covers the required technical competencies. Focus on mock interview practice and technical communication!" }}
+            </p>
+            <div class="d-flex flex-wrap gap-2">
+              <a href="#interviewPrepSection" class="btn btn-sm btn-success rounded-pill px-3">
+                <i class="fa-solid fa-comments me-1"></i> Practice Mock Interviews
+              </a>
+              <a href="#codingSection" class="btn btn-sm btn-outline-success rounded-pill px-3">
+                <i class="fa-solid fa-code me-1"></i> Technical Coding Practice
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deferred Skills Container (#536) -->
+      <div id="deferredSkillsContainer" class="p-3 mb-4 rounded-4 bg-warning-subtle border border-warning-subtle shadow-xs {% if not initial_timeline_roadmap or not initial_timeline_roadmap.deferred_skills %}d-none{% endif %}">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="small fw-bold text-dark">
+            <i class="fa-solid fa-clock-rotate-left text-warning me-1"></i> Deferred Skills (Prioritized for Subsequent Phase):
+          </span>
+          <span class="badge bg-warning text-dark rounded-pill small" id="deferredSkillsCountBadge">
+            {{ initial_timeline_roadmap.deferred_skills|length if initial_timeline_roadmap and initial_timeline_roadmap.deferred_skills else 0 }} Deferred
+          </span>
+        </div>
+        <div class="d-flex flex-wrap gap-2" id="deferredSkillsBadges">
+          {% for def_item in (initial_timeline_roadmap.deferred_skills if initial_timeline_roadmap else []) %}
+            <div class="p-2 px-3 bg-white rounded-3 border border-warning-subtle small shadow-xs">
+              <span class="fw-bold text-dark">{{ def_item.skill }}</span>
+              <span class="badge bg-light text-secondary border rounded-pill ms-1">{{ def_item.importance }}</span>
+              <small class="text-muted d-block mt-1">{{ def_item.reason }}</small>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
       {% if analysis.results.section_status is mapping and analysis.results.section_status.learning_roadmap == 'unavailable' %}
         <div class="alert alert-warning border-0 rounded-4 shadow-sm mb-3 section-unavailable-alert" role="alert">
           <div class="d-flex align-items-center">
@@ -2396,19 +2477,32 @@
           </div>
         </div>
       </div>
-      <div class="timeline-wrapper">
-        {% for w in analysis.results.learning_roadmap %}
-          <div class="timeline-node">
+      <!-- Week-by-Week Learning Roadmap Timeline (#536) -->
+      <div class="timeline-wrapper {% if initial_timeline_roadmap and initial_timeline_roadmap.is_zero_missing %}d-none{% endif %}" id="customRoadmapTimeline">
+        {% set active_plan = (initial_timeline_roadmap.plan if (initial_timeline_roadmap and initial_timeline_roadmap.plan) else (analysis.results.learning_roadmap|default([]))) %}
+        {% for w in active_plan %}
+          <div class="timeline-node" data-week-index="{{ loop.index }}">
             <div class="card border-0 bg-light p-4 rounded-4 shadow-sm week-card" data-week-id="{{ w.week|replace(' ', '_') }}">
-              <div class="d-flex justify-content-between align-items-center flex-wrap mb-2">
-                <h5 class="fw-bold mb-0 text-primary">{{ w.week }}</h5>
+              <div class="d-flex justify-content-between align-items-center flex-wrap mb-2 gap-2">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <h5 class="fw-bold mb-0 text-primary">{{ w.week }}</h5>
+                  {% if w.skills %}
+                    {% for sk in w.skills %}
+                      <span class="badge bg-primary-subtle text-primary border rounded-pill small py-1 px-2">
+                        <i class="fa-solid fa-bullseye me-1"></i>{{ sk }}
+                      </span>
+                    {% endfor %}
+                  {% endif %}
+                </div>
                 <div class="d-flex align-items-center gap-2">
                   <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 copy-week-btn" data-week-name="{{ w.week }}" title="Copy week tasks to clipboard" aria-label="Copy week tasks to clipboard">
                     <i class="fa-regular fa-copy me-1"></i> Copy Week
                   </button>
-                  <span class="badge bg-primary text-white rounded-pill py-2 px-3">{{ w.estimated_hours }} Hours recommended</span>
+                  <span class="badge bg-primary text-white rounded-pill py-2 px-3">{{ w.estimated_hours|default(10) }} Hours / week</span>
                 </div>
               </div>
+
+              <!-- Week Progress Bar -->
               <div class="week-progress-container mb-3">
                 <div class="d-flex justify-content-between small text-secondary mb-1">
                   <span>Week Progress</span>
@@ -2418,44 +2512,80 @@
                   <div class="progress-bar bg-success week-progress-bar" style="width: 0%"></div>
                 </div>
               </div>
-              <div class="row">
-                <div class="col-md-6 mb-3 mb-md-0">
+
+              <!-- Week Details: Topics, Coding Practice & Micro Tasks -->
+              <div class="row g-3">
+                <div class="col-md-6">
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-book-open me-2 text-primary"></i> Topics to Learn</h6>
                   <ul class="mb-3 small list-unstyled">
-                    {% for topic in w.topics %}
+                    {% for topic in w.topics|default([]) %}
                       <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_top_{{ loop.index }}"><span>{{ topic }}</span></label></li>
                     {% endfor %}
                   </ul>
-                  <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-code me-2 text-primary"></i> Coding Practice Tasks</h6>
-                  <ul class="mb-0 small list-unstyled">
-                    {% for code in w.coding_practice %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}"><span>{{ code }}</span></label></li>
-                    {% endfor %}
-                  </ul>
+                  {% if w.coding_practice %}
+                    <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-code me-2 text-primary"></i> Coding Practice Drills</h6>
+                    <ul class="mb-0 small list-unstyled">
+                      {% for code in w.coding_practice %}
+                        <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}"><span>{{ code }}</span></label></li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
                 </div>
+
                 <div class="col-md-6">
-                  <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-laptop-code me-2 text-primary"></i> Micro Projects</h6>
-                  <ul class="mb-3 small list-unstyled">
-                    {% for project in w.mini_projects %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}"><span>{{ project }}</span></label></li>
-                    {% endfor %}
-                  </ul>
-                  <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-circle-question me-2 text-primary"></i> Interview Prep Questions</h6>
-                  <ul class="mb-0 small list-unstyled">
-                    {% for question in w.interview_questions %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}"><span>{{ question }}</span></label></li>
-                    {% endfor %}
-                  </ul>
+                  <!-- One Small Practice Task per Week (#536) -->
+                  {% if w.practice_task %}
+                    <div class="p-3 bg-white rounded-3 border-start border-primary border-4 mb-3 shadow-xs">
+                      <h6 class="small fw-bold text-dark mb-1 d-flex align-items-center">
+                        <i class="fa-solid fa-laptop-code text-primary me-2"></i> Weekly Practice Task
+                        <span class="badge bg-primary-subtle text-primary border rounded-pill ms-auto small">1 Task / Wk</span>
+                      </h6>
+                      <p class="small text-secondary mb-0 fw-semibold">{{ w.practice_task }}</p>
+                    </div>
+                  {% elif w.mini_projects %}
+                    <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-laptop-code me-2 text-primary"></i> Micro Projects</h6>
+                    <ul class="mb-3 small list-unstyled">
+                      {% for project in w.mini_projects %}
+                        <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}"><span>{{ project }}</span></label></li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
+
+                  <!-- Suggested Types of Free Resources (#536) -->
+                  {% if w.resource_types %}
+                    <div class="p-3 bg-white rounded-3 border small shadow-xs">
+                      <span class="fw-bold text-secondary d-block mb-1">
+                        <i class="fa-solid fa-graduation-cap text-success me-1"></i> Recommended Free Resource Types:
+                      </span>
+                      <div class="d-flex flex-wrap gap-1">
+                        {% for rt in w.resource_types %}
+                          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2">
+                            <i class="fa-solid fa-circle-check me-1"></i>{{ rt }}
+                          </span>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  {% elif w.interview_questions %}
+                    <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-circle-question me-2 text-primary"></i> Interview Prep Questions</h6>
+                    <ul class="mb-0 small list-unstyled">
+                      {% for question in w.interview_questions %}
+                        <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}"><span>{{ question }}</span></label></li>
+                      {% endfor %}
+                    </ul>
+                  {% endif %}
                 </div>
               </div>
-              <div class="border-top mt-3 pt-3">
-                <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-rotate-left me-2 text-primary"></i> Revision Tasks</h6>
-                <p class="mb-0 small text-secondary">
-                  {% for rev in w.revision_tasks %}
-                    {{ rev }}{% if not loop.last %}, {% endif %}
-                  {% endfor %}
-                </p>
-              </div>
+
+              {% if w.revision_tasks %}
+                <div class="border-top mt-3 pt-3">
+                  <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-rotate-left me-2 text-primary"></i> Revision Tasks</h6>
+                  <p class="mb-0 small text-secondary">
+                    {% for rev in w.revision_tasks %}
+                      {{ rev }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                  </p>
+                </div>
+              {% endif %}
             </div>
           </div>
         {% endfor %}

@@ -326,6 +326,7 @@ from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
 from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
+from agents.roadmap_agent import RoadmapAgent, generate_learning_roadmap, roadmap_agent
 from utils.i18n import (
     get_translation,
     get_all_translations_for_locale,
@@ -3895,6 +3896,26 @@ def dashboard(analysis_id: str) -> str:
             "missing_skills": [],
         }
 
+    # Prepare Timeline-Driven Learning Roadmap for Missing Skills (#536)
+    try:
+        initial_timeline_roadmap = generate_learning_roadmap(
+            missing_skills=clean_missing,
+            weeks=6,
+            hours_per_week=10,
+            target_role=analysis_record.get("target_role") or "Target Role"
+        )
+    except Exception as tl_err:
+        logger.warning(f"Error generating initial timeline learning roadmap: {tl_err}")
+        initial_timeline_roadmap = {
+            "success": True,
+            "weeks": 6,
+            "hours_per_week": 10,
+            "is_zero_missing": len(clean_missing) == 0,
+            "congratulatory_message": "Congratulations! You have zero missing skills for this target role." if len(clean_missing) == 0 else None,
+            "plan": [],
+            "deferred_skills": []
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3910,6 +3931,8 @@ def dashboard(analysis_id: str) -> str:
         initial_outreach_json=json.dumps(initial_outreach),
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
+        initial_timeline_roadmap=initial_timeline_roadmap,
+        initial_timeline_roadmap_json=json.dumps(initial_timeline_roadmap),
         supported_roles=SUPPORTED_ROLES,
         available_roles=available_roles,
         selected_role_id=selected_role_id,
@@ -4278,6 +4301,82 @@ def api_analysis_role_skill_gap(analysis_id: str):
     except Exception as exc:
         logger.error(f"Error evaluating role skill gap for analysis {analysis_id}: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+# ==============================================================================
+# TIMELINE LEARNING ROADMAP FOR MISSING SKILLS API (#536)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/custom-roadmap", methods=["POST"])
+def api_generate_custom_analysis_roadmap(analysis_id: str):
+    """
+    Generates a personalized week-by-week learning roadmap for missing skills (#536).
+    Accepts student timeline choice (weeks) and weekly study hours commitment.
+    Orders missing skills by prerequisites and importance.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    weeks = payload.get("weeks", 6)
+    hours_per_week = payload.get("hours_per_week", 10)
+
+    # Gather missing skills from analysis record
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+    missing_skills = []
+
+    raw_missing = job_match.get("missing_skills") or []
+    if isinstance(raw_missing, list):
+        missing_skills.extend(raw_missing)
+    elif isinstance(raw_missing, str) and raw_missing.strip():
+        missing_skills.extend([s.strip() for s in raw_missing.split(",") if s.strip()])
+
+    if results.get("skill_gap") and isinstance(results["skill_gap"], list):
+        for sg in results["skill_gap"]:
+            if isinstance(sg, dict):
+                skill_name = sg.get("skill") or sg.get("missing_skill")
+                if skill_name:
+                    missing_skills.append({
+                        "skill": skill_name,
+                        "importance": sg.get("importance") or sg.get("priority", "Medium"),
+                        "difficulty": sg.get("difficulty", "Medium")
+                    })
+            elif isinstance(sg, str) and sg.strip():
+                missing_skills.append(sg.strip())
+
+    target_role = analysis_record.get("target_role") or "Target Role"
+
+    roadmap_data = generate_learning_roadmap(
+        missing_skills=missing_skills,
+        weeks=weeks,
+        hours_per_week=hours_per_week,
+        target_role=target_role
+    )
+    return jsonify(roadmap_data), 200
+
+
+@app.route("/api/roadmap/generate", methods=["POST"])
+def api_generate_roadmap_standalone():
+    """
+    Direct endpoint to generate a personalized learning roadmap for missing skills (#536).
+    Takes missing_skills list, weeks, and hours_per_week.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    missing_skills = payload.get("missing_skills", [])
+    weeks = payload.get("weeks", 6)
+    hours_per_week = payload.get("hours_per_week", 10)
+    target_role = payload.get("target_role", "Target Role")
+
+    roadmap_data = generate_learning_roadmap(
+        missing_skills=missing_skills,
+        weeks=weeks,
+        hours_per_week=hours_per_week,
+        target_role=target_role
+    )
+    return jsonify(roadmap_data), 200
+
 
 
 # ==============================================================================
