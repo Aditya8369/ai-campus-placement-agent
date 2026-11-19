@@ -770,44 +770,46 @@
       </div>
 
       <!-- Live Stream Error Alert -->
-      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3 rounded-3" role="alert">
-        <div class="d-flex align-items-start gap-2">
-          <i class="fa-solid fa-triangle-exclamation mt-1 flex-shrink-0" aria-hidden="true"></i>
-          <div>
-            <span class="fw-bold d-block small">Analysis Pipeline Error</span>
-            <span id="progressErrorMessage" class="small"></span>
-          </div>
+      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3" role="alert">
+        <div class="d-flex align-items-center mb-1">
+          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
+          <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
         </div>
-        <div class="mt-3 text-end d-flex justify-content-end gap-2 flex-wrap">
-          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnCloseProgressError">Dismiss &amp; Edit</button>
-          <button type="button" class="btn btn-sm btn-danger rounded-pill px-3" id="btnRetryProgress">Retry Analysis</button>
+        <div id="progressErrorMessage" class="small mb-3"></div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-sm btn-danger text-white rounded-pill px-3" id="btnRetryAnalysis">
+            <i class="fa-solid fa-rotate-right me-1"></i> Retry
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCloseProgressError">
+            Dismiss
+          </button>
         </div>
       </div>
 
-      <ul class="progress-steps-list text-start mb-3" id="progressStepsList">
+      <ul class="progress-steps-list text-start" id="analysisProgressStepsList">
         <li class="progress-step text-muted" id="step1">
           <div class="step-indicator">1</div>
-          <span>Reading &amp; extracting resume content</span>
+          <span class="step-name">Reading resume</span>
         </li>
         <li class="progress-step text-muted" id="step2">
           <div class="step-indicator">2</div>
-          <span>Analyzing ATS formatting &amp; structure</span>
+          <span class="step-name">Checking format</span>
         </li>
         <li class="progress-step text-muted" id="step3">
           <div class="step-indicator">3</div>
-          <span>Benchmarking role &amp; job description match</span>
+          <span class="step-name">Matching job description</span>
         </li>
         <li class="progress-step text-muted" id="step4">
           <div class="step-indicator">4</div>
-          <span>Extracting skills &amp; detecting competency gaps</span>
+          <span class="step-name">Finding skill gaps</span>
         </li>
         <li class="progress-step text-muted" id="step5">
           <div class="step-indicator">5</div>
-          <span>Generating suggestions &amp; 6-week roadmap</span>
+          <span class="step-name">Building roadmap</span>
         </li>
         <li class="progress-step text-muted" id="step6">
           <div class="step-indicator">6</div>
-          <span>Compiling final placement readiness report</span>
+          <span class="step-name">Preparing interview questions</span>
         </li>
       </ul>
       <p class="text-muted small mb-0" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
