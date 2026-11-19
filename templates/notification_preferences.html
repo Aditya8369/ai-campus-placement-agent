@@ -43,7 +43,7 @@
                                 <!-- Frequency Selection -->
                                 <div>
                                     <label class="small text-muted d-block mb-1">Frequency</label>
-                                    <select class="form-select form-select-sm category-freq" style="min-width: 140px;">
+                                    <select class="form-select form-select-sm category-freq" style="min-width: 140px;" aria-label="Notification frequency for {{ pref.category_title|escape }}">
                                         <option value="realtime" {% if pref.frequency == 'realtime' %}selected{% endif %}>Immediate / Real-time</option>
                                         <option value="daily_digest" {% if pref.frequency == 'daily_digest' %}selected{% endif %}>Daily Digest</option>
                                         <option value="weekly_digest" {% if pref.frequency == 'weekly_digest' %}selected{% endif %}>Weekly Digest</option>
@@ -68,7 +68,7 @@
 
                                 <!-- Master Category Toggle -->
                                 <div class="form-check form-switch ps-4 border-start">
-                                    <input class="form-check-input category-enabled" type="checkbox" id="cat_{{ pref.category_id }}" {% if pref.enabled %}checked{% endif %}>
+                                    <input class="form-check-input category-enabled" type="checkbox" id="cat_{{ pref.category_id }}" {% if pref.enabled %}checked{% endif %} aria-label="Enable notifications for {{ pref.category_title|escape }}">
                                 </div>
                             </div>
                         </div>

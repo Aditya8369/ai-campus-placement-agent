@@ -50,7 +50,7 @@
   </header>
 
   <!-- Redoc Mount Point -->
-  <redoc spec-url="/api/openapi.json"></redoc>
+  <redoc spec-url="{{ spec_url|default('/api/openapi.json') }}"></redoc>
 
   <!-- Redoc Bundle JS -->
   <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>

@@ -110,61 +110,61 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Full Name *</label>
-                  <input type="text" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="e.g. Alex Johnson">
+                  <label for="profileFullName" class="form-label small fw-semibold">Full Name *</label>
+                  <input type="text" id="profileFullName" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="e.g. Alex Johnson">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Email Address *</label>
-                  <input type="email" name="email" class="form-control" value="{{ profile.email or '' }}" placeholder="alex@university.edu">
-                </div>
-              </div>
-
-              <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Phone Number</label>
-                  <input type="tel" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Department / Major</label>
-                  <input type="text" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">
+                  <label for="profileEmail" class="form-label small fw-semibold">Email Address *</label>
+                  <input type="email" id="profileEmail" name="email" class="form-control" value="{{ profile.email or '' }}" placeholder="alex@university.edu">
                 </div>
               </div>
 
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Graduation Year</label>
-                  <input type="number" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
+                  <label for="profilePhone" class="form-label small fw-semibold">Phone Number</label>
+                  <input type="tel" id="profilePhone" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Cumulative CGPA</label>
-                  <input type="number" step="0.01" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                  <label for="profileDepartment" class="form-label small fw-semibold">Department / Major</label>
+                  <input type="text" id="profileDepartment" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">
                 </div>
               </div>
 
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Target Placement Role</label>
-                  <input type="text" name="target_role" class="form-control" value="{{ profile.target_role or '' }}" placeholder="Software Development Engineer">
+                  <label for="profileGradYear" class="form-label small fw-semibold">Graduation Year</label>
+                  <input type="number" id="profileGradYear" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Target / Dream Company</label>
-                  <input type="text" name="target_company" class="form-control" value="{{ profile.target_company or '' }}" placeholder="Google, Microsoft, Amazon">
+                  <label for="profileCgpa" class="form-label small fw-semibold">Cumulative CGPA</label>
+                  <input type="number" step="0.01" id="profileCgpa" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                </div>
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label for="profileTargetRole" class="form-label small fw-semibold">Target Placement Role</label>
+                  <input type="text" id="profileTargetRole" name="target_role" class="form-control" value="{{ profile.target_role or '' }}" placeholder="Software Development Engineer">
+                </div>
+                <div class="col-md-6">
+                  <label for="profileTargetCompany" class="form-label small fw-semibold">Target / Dream Company</label>
+                  <input type="text" id="profileTargetCompany" name="target_company" class="form-control" value="{{ profile.target_company or '' }}" placeholder="Google, Microsoft, Amazon">
                 </div>
               </div>
 
               <div class="mb-3">
-                <label class="form-label small fw-semibold">Key Technical Skills (Comma-separated, at least 3)</label>
-                <input type="text" name="skills" class="form-control" value="{{ skills_csv }}" placeholder="Python, SQL, React, Docker">
+                <label for="profileSkills" class="form-label small fw-semibold">Key Technical Skills (Comma-separated, at least 3)</label>
+                <input type="text" id="profileSkills" name="skills" class="form-control" value="{{ skills_csv }}" placeholder="Python, SQL, React, Docker">
               </div>
 
               <div class="row g-3 mb-4">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
-                  <input type="url" name="linkedin_url" class="form-control" value="{{ profile.linkedin_url or '' }}" placeholder="https://linkedin.com/in/username">
+                  <label for="profileLinkedinUrl" class="form-label small fw-semibold">LinkedIn Profile URL</label>
+                  <input type="url" id="profileLinkedinUrl" name="linkedin_url" class="form-control" value="{{ profile.linkedin_url or '' }}" placeholder="https://linkedin.com/in/username">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">GitHub Profile URL</label>
-                  <input type="url" name="github_url" class="form-control" value="{{ profile.github_url or '' }}" placeholder="https://github.com/username">
+                  <label for="profileGithubUrl" class="form-label small fw-semibold">GitHub Profile URL</label>
+                  <input type="url" id="profileGithubUrl" name="github_url" class="form-control" value="{{ profile.github_url or '' }}" placeholder="https://github.com/username">
                 </div>
               </div>
 

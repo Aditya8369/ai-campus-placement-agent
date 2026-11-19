@@ -27,11 +27,12 @@
                                 </span>
                                 <input type="text" id="search-input" class="form-control border-start-0" 
                                        placeholder="Search keywords, topics, companies, questions..."
-                                       value="{{ initial_query }}">
+                                       value="{{ initial_query }}"
+                                       aria-label="Search keywords, topics, companies, or questions">
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <select id="category-filter" class="form-select">
+                            <select id="category-filter" class="form-select" aria-label="Filter results by category">
                                 <option value="all">All Saved Categories</option>
                                 <option value="analyses">Resume Analyses</option>
                                 <option value="applications">Job Applications</option>
