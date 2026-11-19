@@ -504,9 +504,14 @@ def require_login():
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
         "verify_two_factor",
-        "companies_search_view",
-        "company_suggest_view",
-        "api_submit_company_suggestion",
+        "openapi_json",
+        "api_docs_ui",
+        "api_redoc_ui",
+        "api_version_info_legacy",
+        "api_version_info_v1",
+        "api_v1_openapi_json",
+        "api_v1_docs",
+        "api_v1_redoc",
     }
 
     user_id = flask_session.get("user_id")
@@ -17827,6 +17832,11 @@ def api_get_gd_history():
         "attempts": attempts
     }), 200
 
+
+
+# Initialize API versioning (/api/v1/...) with legacy alias support & RFC 8594 headers (#445)
+from utils.api_versioning import register_api_versioning
+register_api_versioning(app)
 
 
 if __name__ == "__main__":

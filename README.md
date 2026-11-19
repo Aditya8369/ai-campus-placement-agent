@@ -361,6 +361,14 @@ The project is configured for deployment on Vercel using Python Serverless Funct
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
 - **Pre-Flight Smoke Check**: Run `python utils/deployment_check.py` to verify deployment integrity, configuration files, and critical public routes before releasing.
 
+### API Documentation & Versioning (#410, #445)
+The platform provides a comprehensive OpenAPI 3.0.3 specification and URI-based versioning (`/api/v1/...`):
+- **Interactive Swagger UI**: Explore and test endpoints at `/api/v1/docs` (or `/docs`).
+- **Redoc Reference**: View 3-column structured documentation at `/api/v1/redoc` (or `/redoc`).
+- **OpenAPI 3.0.3 Specification**: Raw JSON available at `/api/v1/openapi.json` (or `/api/openapi.json`).
+- **API Version Discovery**: Query active and supported versions at `GET /api/v1/version` (or `/api/version`).
+- **API Versioning Guide**: Read [docs/API_VERSIONING.md](docs/API_VERSIONING.md) for backwards-compatibility policies, RFC 8594 deprecation headers, and instructions for adding future versions (e.g. `v2`).
+
 ### 6. Run Resume Parser & Layout Tests
 Verify resume text extraction and structured section parsing across all supported layouts (single column, two column, tables, and no section headings) with one command:
 ```bash
