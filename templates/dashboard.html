@@ -1077,21 +1077,94 @@
 
       <!-- Outreach Tabs Content -->
       <div class="tab-content" id="outreachPillsTabContent">
-        <!-- Tab 1: Formal Cover Letter -->
+        <!-- Tab 1: Tailored Cover Letter Studio (#537) -->
         <div class="tab-pane fade show active" id="pills-cover" role="tabpanel" aria-labelledby="pills-cover-tab" tabindex="0">
           <div class="p-4 bg-light rounded-4 border position-relative">
-            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
-              <span class="small text-muted">
-                <i class="fa-solid fa-building me-1"></i> Tailored for <b>{{ analysis.company_name }}</b>
-                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-2 outreach-active-tone-badge">Tone: {{ initial_outreach.tone|capitalize }}</span>
-              </span>
-              <div class="d-flex gap-2">
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-copy-outreach" data-copy-target="coverLetterContent">
+            
+            <!-- Controls Bar: Job Description Input & Customization -->
+            <div class="bg-white p-3 rounded-4 border mb-3 shadow-sm">
+              <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <label for="coverLetterJobDescInput" class="form-label small fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-paste text-primary me-1"></i> Target Job Description (Paste here to tailor):
+                </label>
+                <span class="badge bg-primary-subtle text-primary border rounded-pill small">
+                  <i class="fa-solid fa-bullseye me-1"></i> Tailors skills &amp; experience directly to JD
+                </span>
+              </div>
+              <textarea id="coverLetterJobDescInput" class="form-control rounded-3 p-3 small mb-2" rows="4" placeholder="Paste the target job description or requirements here to tailor your cover letter..."></textarea>
+              
+              <!-- Helpful warning message when job description is missing (#537) -->
+              <div id="coverLetterJdWarning" class="alert alert-warning py-2 px-3 small d-none mb-2" role="alert">
+                <i class="fa-solid fa-circle-exclamation me-1"></i> <strong>Job Description Missing:</strong> Please paste the target job description to generate a tailored cover letter.
+              </div>
+
+              <div class="row g-2 align-items-center">
+                <!-- Optional Company Name -->
+                <div class="col-lg-4 col-md-6 col-12">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-light text-muted"><i class="fa-solid fa-building"></i></span>
+                    <input type="text" id="coverLetterCompanyInput" class="form-control" placeholder="Company Name (optional)" value="{{ analysis.company_name|default('') }}">
+                  </div>
+                </div>
+
+                <!-- Tone Choice: Formal or Friendly (#537) -->
+                <div class="col-lg-4 col-md-6 col-12">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="small fw-bold text-secondary">Tone:</span>
+                    <div class="btn-group btn-group-sm w-100" role="group" id="coverLetterToneButtonGroup" aria-label="Cover Letter Tone Choice">
+                      <button type="button" class="btn btn-primary active cl-tone-btn" id="coverLetterToneFormal" data-tone="formal">
+                        <i class="fa-solid fa-briefcase me-1"></i> Formal
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary cl-tone-btn" id="coverLetterToneFriendly" data-tone="friendly">
+                        <i class="fa-solid fa-face-smile me-1"></i> Friendly
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Regenerate Button (#537) -->
+                <div class="col-lg-4 col-12 text-md-end">
+                  <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnGenerateTailoredLetter" data-analysis-id="{{ analysis_id }}">
+                    <span class="spinner-border spinner-border-sm me-1 d-none" id="tailoredLetterSpinner" role="status" aria-hidden="true"></span>
+                    <i class="fa-solid fa-wand-magic-sparkles me-1" id="tailoredLetterIcon"></i> Regenerate Letter
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Letter Editor Header & Stats -->
+            <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="small fw-bold text-dark"><i class="fa-solid fa-pen-nib text-primary me-1"></i> Editable Cover Letter Draft</span>
+                <span class="badge bg-light text-secondary border rounded-pill px-2 py-1 small" id="coverLetterStatsBadge">
+                  <span id="coverLetterParaCount">4</span> paragraphs &bull; <span id="coverLetterWordCount">{{ initial_outreach.cover_letter.split()|length if initial_outreach.cover_letter else 0 }}</span> words
+                </span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnCopyCoverLetter" aria-label="Copy Cover Letter to clipboard">
                   <i class="fa-regular fa-copy me-1"></i> Copy Letter
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" id="btnDownloadCoverDocx" aria-label="Download Cover Letter as Word document">
+                  <i class="fa-solid fa-file-word me-1"></i> Download .docx
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnDownloadCoverTxt" aria-label="Download Cover Letter as plain text">
+                  <i class="fa-solid fa-file-lines me-1"></i> Download .txt
                 </button>
               </div>
             </div>
-            <div class="outreach-text-display small lh-lg text-dark" id="coverLetterContent" style="white-space: pre-wrap; font-family: inherit;">{{ initial_outreach.cover_letter }}</div>
+
+            <!-- Editable Text Area (#537) -->
+            <div class="mb-2">
+              <textarea id="coverLetterEditor" class="form-control rounded-4 p-3 bg-white text-dark small lh-lg" rows="12" style="font-family: inherit; resize: vertical; line-height: 1.7;" aria-label="Editable Tailored Cover Letter">{{ initial_outreach.cover_letter }}</textarea>
+            </div>
+
+            <!-- Grounding footer note -->
+            <div class="d-flex justify-content-between align-items-center text-muted small flex-wrap gap-2">
+              <span><i class="fa-solid fa-shield-halved text-success me-1"></i> Grounded strictly in your resume &bull; Zero fabricated qualifications</span>
+              <a href="/cover-letter/{{ analysis_id }}" class="text-decoration-none small">
+                <i class="fa-solid fa-up-right-from-square me-1"></i> Open in Fullscreen Studio
+              </a>
+            </div>
           </div>
         </div>
 
