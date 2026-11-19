@@ -81,6 +81,11 @@ from utils.database import (
     get_active_auth_sessions,
     revoke_auth_session,
     revoke_other_auth_sessions,
+    revoke_all_auth_sessions,
+    change_user_password,
+    save_student_profile,
+    get_student_profile,
+    calculate_profile_completion,
     save_job_application,
     get_job_applications,
     get_job_application_by_id,
@@ -398,10 +403,33 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION
 
 
 def _session_client_label() -> str:
-    """Return a coarse client description without storing raw user-agent or network data."""
+    """Return a coarse client description from the user agent without storing raw network data."""
     user_agent = request.user_agent
     browser = (user_agent.browser or "").lower()
     platform = (user_agent.platform or "").lower()
+    ua_str = (user_agent.string or request.headers.get("User-Agent") or "").lower()
+
+    if not browser:
+        if "edg" in ua_str:
+            browser = "edge"
+        elif "chrome" in ua_str or "crios" in ua_str:
+            browser = "chrome"
+        elif "firefox" in ua_str or "fxios" in ua_str:
+            browser = "firefox"
+        elif "safari" in ua_str and "chrome" not in ua_str and "crios" not in ua_str:
+            browser = "safari"
+
+    if not platform:
+        if "windows" in ua_str:
+            platform = "windows"
+        elif "macintosh" in ua_str or "mac os" in ua_str:
+            platform = "macos"
+        elif "iphone" in ua_str or "ipad" in ua_str or "ios" in ua_str:
+            platform = "ios"
+        elif "android" in ua_str:
+            platform = "android"
+        elif "linux" in ua_str:
+            platform = "linux"
 
     if "edge" in browser or "edg" in browser:
         browser_name = "Edge"
@@ -425,7 +453,7 @@ def _session_client_label() -> str:
     elif platform == "linux":
         platform_name = "Linux"
     else:
-        platform_name = "another device"
+        platform_name = "Desktop"
     return f"{browser_name} on {platform_name}"
 
 
@@ -442,7 +470,7 @@ def require_login():
     now = time.time()
     timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
 
-    if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+    if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS") and not flask_session.get("auth_session_id"):
         aid = None
         if request.view_args:
             aid = request.view_args.get("analysis_id") or request.view_args.get("id_a") or request.view_args.get("id")
@@ -631,6 +659,7 @@ def require_login():
         if is_json_request:
             resp = jsonify({
                 "status": "error",
+                "error": "unauthorized",
                 "message": "Authentication required."
             })
             resp.status_code = 401
@@ -1830,9 +1859,109 @@ def api_verify_recovery_code():
     return jsonify({"success": True, "message": msg}), 200
 
 
+@app.route("/profile", methods=["GET", "POST"])
+def profile_view():
+    """
+    Renders candidate student profile, completion tracker, and active sessions (#199, #473).
+    """
+    student_id = (
+        flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    if request.method == "POST":
+        full_name = request.form.get("full_name", "").strip()
+        email = request.form.get("email", "").strip()
+        phone = request.form.get("phone", "").strip()
+        department = request.form.get("department", "").strip()
+        grad_year_raw = request.form.get("grad_year", "").strip()
+        cgpa_raw = request.form.get("cgpa", "").strip()
+        target_role = request.form.get("target_role", "").strip()
+        target_company = request.form.get("target_company", "").strip()
+        skills_raw = request.form.get("skills", "").strip()
+        linkedin_url = request.form.get("linkedin_url", "").strip()
+        github_url = request.form.get("github_url", "").strip()
+
+        try:
+            grad_year = int(grad_year_raw) if grad_year_raw else None
+        except ValueError:
+            grad_year = None
+
+        try:
+            cgpa = float(cgpa_raw) if cgpa_raw else None
+        except ValueError:
+            cgpa = None
+
+        skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else []
+
+        save_student_profile(
+            student_id=student_id,
+            full_name=full_name,
+            email=email,
+            phone=phone,
+            department=department,
+            grad_year=grad_year,
+            cgpa=cgpa,
+            target_role=target_role,
+            target_company=target_company,
+            skills=skills,
+            linkedin_url=linkedin_url,
+            github_url=github_url
+        )
+        flash("Profile information updated successfully!", "success")
+        return redirect("/profile")
+
+    completion_info = calculate_profile_completion(student_id=student_id)
+    skills_csv = ", ".join(completion_info["profile"].get("skills", []))
+
+    # Fetch active sessions for the signed-in user (#473)
+    user_id = flask_session.get("user_id") or student_id
+    timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
+    session_rows = get_active_auth_sessions(user_id, timeout_seconds)
+    current_session_id = flask_session.get("auth_session_id")
+    sessions = []
+    for session_row in session_rows:
+        session_item = dict(session_row)
+        session_item["is_current"] = (session_item["id"] == current_session_id)
+        session_item["created_display"] = _format_session_timestamp(session_item.get("created_at"))
+        session_item["last_seen_display"] = _format_session_timestamp(session_item.get("last_seen_at"))
+        sessions.append(session_item)
+
+    return render_template(
+        "profile.html",
+        completion=completion_info,
+        profile=completion_info["profile"],
+        skills_csv=skills_csv,
+        student_id=student_id,
+        sessions=sessions,
+        current_session_id=current_session_id
+    )
+
+
+@app.route("/api/profile/completion", methods=["GET"])
+def api_profile_completion():
+    """
+    REST API endpoint returning candidate profile completion percentage and checklist (#199).
+    """
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    data = calculate_profile_completion(student_id=student_id)
+    return jsonify({
+        "status": "success",
+        "data": data
+    }), 200
+
+
 @app.route("/account/sessions", methods=["GET"])
 def account_sessions():
-    """Show the signed-in user's active sessions with privacy-conscious details."""
+    """Show the signed-in user's active sessions with privacy-conscious details (#473)."""
     user_id = flask_session.get("user_id")
     session_rows = get_active_auth_sessions(
         user_id,
@@ -1851,34 +1980,144 @@ def account_sessions():
 
 @app.route("/account/sessions/revoke", methods=["POST"])
 def revoke_account_session():
-    """Revoke one of the current user's sessions, including the current session."""
+    """Revoke one of the current user's sessions, including the current session (#473)."""
     user_id = flask_session.get("user_id")
-    session_id = (request.form.get("session_id") or "").strip()
+    data = request.get_json(silent=True) if request.is_json else request.form
+    session_id = (data.get("session_id") or "").strip()
+    next_url = request.form.get("next") or request.referrer or url_for("account_sessions")
     current_session_id = flask_session.get("auth_session_id")
+    is_json = request.is_json or "application/json" in request.headers.get("Accept", "")
+
     if not session_id or not revoke_auth_session(user_id, session_id):
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": "That session is no longer active."}), 404
         flash("That session is no longer active.", "warning")
-        return redirect(url_for("account_sessions"))
+        return redirect(next_url)
 
     if session_id == current_session_id:
         flask_session.clear()
+        if is_json:
+            return jsonify({"status": "success", "success": True, "is_current": True, "message": "This session has been revoked. Please sign in again."}), 200
         flash("This session has been revoked. Please sign in again.", "success")
         return redirect(url_for("login"))
 
+    if is_json:
+        return jsonify({"status": "success", "success": True, "is_current": False, "message": "The selected session was revoked."}), 200
     flash("The selected session was revoked.", "success")
-    return redirect(url_for("account_sessions"))
+    return redirect(next_url)
 
 
 @app.route("/account/sessions/revoke-others", methods=["POST"])
 def revoke_other_account_sessions():
-    """Revoke every active session except the session making this request."""
+    """Revoke every active session except the session making this request (#473)."""
     user_id = flask_session.get("user_id")
+    next_url = request.form.get("next") or request.referrer or url_for("account_sessions")
     current_session_id = flask_session.get("auth_session_id")
     revoked_count = revoke_other_auth_sessions(user_id, current_session_id)
+    is_json = request.is_json or "application/json" in request.headers.get("Accept", "")
+
+    if is_json:
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "revoked_count": revoked_count,
+            "message": f"Signed out of {revoked_count} other device{'s' if revoked_count != 1 else ''}."
+        }), 200
+
     flash(
-        f"Revoked {revoked_count} other session{'s' if revoked_count != 1 else ''}.",
+        f"Signed out of {revoked_count} other device{'s' if revoked_count != 1 else ''}.",
         "success",
     )
-    return redirect(url_for("account_sessions"))
+    return redirect(next_url)
+
+
+@app.route("/account/change-password", methods=["POST"])
+def account_change_password():
+    """Change the authenticated user's password and revoke all other sessions (#473)."""
+    user_id = flask_session.get("user_id")
+    is_json = request.is_json or "application/json" in request.headers.get("Accept", "")
+    if not user_id:
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": "Authentication required."}), 401
+        flash("Please log in to change your password.", "error")
+        return redirect(url_for("login"))
+
+    data = request.get_json(silent=True) if request.is_json else request.form
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+    confirm_password = data.get("confirm_password", "")
+    next_url = request.form.get("next") or request.referrer or url_for("profile_view")
+
+    user = get_user_by_id(user_id)
+    if not user:
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": "User account not found."}), 404
+        flash("User account not found.", "error")
+        return redirect(url_for("login"))
+
+    if not current_password or not new_password or not confirm_password:
+        msg = "All password fields are required."
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": msg}), 400
+        flash(msg, "error")
+        return redirect(next_url)
+
+    if not check_password_hash(user.get("password_hash", ""), current_password):
+        msg = "Current password is incorrect."
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": msg}), 400
+        flash(msg, "error")
+        return redirect(next_url)
+
+    if len(new_password) < 8:
+        msg = "New password must be at least 8 characters long."
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": msg}), 400
+        flash(msg, "error")
+        return redirect(next_url)
+
+    if new_password != confirm_password:
+        msg = "New passwords do not match."
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": msg}), 400
+        flash(msg, "error")
+        return redirect(next_url)
+
+    new_hash = generate_password_hash(new_password)
+    current_session_id = flask_session.get("auth_session_id")
+    changed = change_user_password(user_id, new_hash, keep_session_id=current_session_id)
+    if changed:
+        msg = "Password updated successfully. All other active sessions have been signed out."
+        if is_json:
+            return jsonify({"status": "success", "success": True, "message": msg}), 200
+        flash(msg, "success")
+    else:
+        msg = "Failed to update password. Please try again."
+        if is_json:
+            return jsonify({"status": "error", "success": False, "error": msg}), 500
+        flash(msg, "error")
+    return redirect(next_url)
+
+
+@app.route("/api/account/sessions", methods=["GET"])
+def api_get_account_sessions():
+    """Returns the authenticated user's active sessions in JSON (#473)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "success": False, "error": "unauthorized"}), 401
+
+    timeout_seconds = app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800))
+    session_rows = get_active_auth_sessions(user_id, timeout_seconds)
+    current_session_id = flask_session.get("auth_session_id")
+    sessions = []
+    for s in session_rows:
+        item = dict(s)
+        item["is_current"] = (item["id"] == current_session_id)
+        item["created_display"] = _format_session_timestamp(item.get("created_at"))
+        item["last_seen_display"] = _format_session_timestamp(item.get("last_seen_at"))
+        sessions.append(item)
+
+    return jsonify({"status": "success", "success": True, "sessions": sessions}), 200
 
 
 @app.route("/account/delete", methods=["GET", "POST"])
