@@ -378,6 +378,100 @@
                     </li>
                   {% endfor %}
                 </ul>
+
+                {% if ans.comparison and ans.comparison.criteria %}
+                  <div class="card border rounded-3 p-3 my-2 bg-light retry-comparison-card shadow-xs">
+                    <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+                      <span class="small fw-bold text-dark"><i class="fa-solid fa-code-compare text-primary me-1"></i> Attempt Comparison (Attempt {{ ans.attempt_number or ans.attempts|length }} vs Attempt {{ (ans.attempt_number or ans.attempts|length) - 1 }}):</span>
+                      {% set ov = ans.comparison.overall %}
+                      {% if ov.status == 'improved' %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-up me-1"></i> Overall: +{{ ov.diff }} pts</span>
+                      {% elif ov.status == 'declined' %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-down me-1"></i> Overall: {{ ov.diff }} pts</span>
+                      {% else %}
+                        <span class="badge bg-secondary-subtle text-secondary border rounded-pill"><i class="fa-solid fa-equals me-1"></i> Overall: Unchanged</span>
+                      {% endif %}
+                    </div>
+                    <div class="row g-2 mb-2">
+                      {% for crit_key, crit in ans.comparison.criteria.items() %}
+                        <div class="col-6 col-md-3">
+                          <div class="bg-white p-2 rounded-2 border text-center h-100">
+                            <span class="d-block small text-muted">{{ crit.label }}</span>
+                            <span class="fw-bold">{{ crit.current_score }}/100</span>
+                            {% if crit.diff > 0 %}
+                              <span class="badge bg-success-subtle text-success ms-1 small">+{{ crit.diff }}</span>
+                            {% elif crit.diff < 0 %}
+                              <span class="badge bg-danger-subtle text-danger ms-1 small">{{ crit.diff }}</span>
+                            {% else %}
+                              <span class="badge bg-secondary-subtle text-secondary ms-1 small">0</span>
+                            {% endif %}
+                          </div>
+                        </div>
+                      {% endfor %}
+                    </div>
+                    {% if ans.comparison.addressed_points %}
+                      <div class="small text-success mb-1">
+                        <b><i class="fa-solid fa-check-circle me-1"></i> Addressed Feedback:</b>
+                        <ul class="mb-0 ps-3">
+                          {% for pt in ans.comparison.addressed_points %}
+                            <li>{{ pt }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                    {% if ans.comparison.unaddressed_points %}
+                      <div class="small text-danger mb-0">
+                        <b><i class="fa-solid fa-triangle-exclamation me-1"></i> Focus Areas:</b>
+                        <ul class="mb-0 ps-3">
+                          {% for upt in ans.comparison.unaddressed_points %}
+                            <li>{{ upt }}</li>
+                          {% endfor %}
+                        </ul>
+                      </div>
+                    {% endif %}
+                  </div>
+                {% endif %}
+
+                {% if ans.attempts and ans.attempts|length > 1 %}
+                  <div class="mt-2 mb-2">
+                    <button type="button" class="btn btn-sm btn-link text-decoration-none p-0 text-muted small" data-bs-toggle="collapse" data-bs-target="#earlierAttempts-{{ ans.question_index }}">
+                      <i class="fa-solid fa-clock-rotate-left me-1"></i> View Earlier Attempts ({{ ans.attempts|length - 1 }})
+                    </button>
+                    <div class="collapse mt-2" id="earlierAttempts-{{ ans.question_index }}">
+                      <div class="card card-body bg-white border p-3 small">
+                        {% for ea in ans.attempts[:-1] %}
+                          <div class="mb-2 {% if not loop.last %}pb-2 border-bottom{% endif %}">
+                            <div class="d-flex justify-content-between align-items-center mb-1">
+                              <strong>Attempt {{ ea.attempt_number }}:</strong>
+                              <span class="text-muted small">Tech: {{ ea.evaluation.technical_accuracy|default(50) }}/100 &bull; Comm: {{ ea.evaluation.communication_score|default(50) }}/100</span>
+                            </div>
+                            <div class="text-secondary mb-1"><em>"{{ ea.answer }}"</em></div>
+                            {% if ea.evaluation.feedback %}
+                              <div class="text-muted small"><b>Feedback:</b> {{ ea.evaluation.feedback }}</div>
+                            {% endif %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+
+                {% set retries_used = ans.retry_count|default(0) %}
+                {% set retries_left = 2 - retries_used %}
+                {% if not interview.completed and retries_left > 0 %}
+                  <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 retry-action-bar">
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-try-again" data-question-index="{{ ans.question_index }}" data-retries-left="{{ retries_left }}">
+                      <i class="fa-solid fa-rotate-left me-1"></i> Try Again ({{ retries_left }} {{ 'retry' if retries_left == 1 else 'retries' }} left)
+                    </button>
+                    <span class="small text-muted">Incorporate the feedback above and refine your response.</span>
+                  </div>
+                {% elif not interview.completed and retries_used >= 2 %}
+                  <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center">
+                    <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+                      <i class="fa-solid fa-ban me-1"></i> Max retries reached (2/2)
+                    </span>
+                  </div>
+                {% endif %}
               </div>
             {% endfor %}
 

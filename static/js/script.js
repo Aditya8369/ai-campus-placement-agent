@@ -2163,7 +2163,7 @@ function initMockInterview() {
     window.speechSynthesis.speak(utterance);
   }
 
-  // Delegated click listener for all TTS buttons (initial & dynamically added)
+  // Delegated click listener for all TTS and Try-Again retry buttons (initial & dynamically added)
   if (chatContainer) {
     chatContainer.addEventListener("click", (e) => {
       const ttsBtn = e.target.closest(".btn-tts");
@@ -2171,6 +2171,64 @@ function initMockInterview() {
         e.preventDefault();
         const textToSpeak = ttsBtn.getAttribute("data-tts") || ttsBtn.closest(".chat-bubble-agent")?.innerText || "";
         speakQuestionText(textToSpeak, ttsBtn);
+        return;
+      }
+
+      // Try-Again Retry Loop Action (#467)
+      const tryBtn = e.target.closest(".btn-try-again");
+      if (tryBtn) {
+        e.preventDefault();
+        const qIndex = tryBtn.getAttribute("data-question-index");
+        const retriesLeft = parseInt(tryBtn.getAttribute("data-retries-left") || "2", 10);
+        if (retriesLeft <= 0) return;
+
+        // Remember previous active question index before entering retry mode
+        if (!chatForm.getAttribute("data-previous-active-index")) {
+          chatForm.setAttribute("data-previous-active-index", chatForm.getAttribute("data-question-index") || "0");
+        }
+
+        // Set retry state on the form
+        chatForm.setAttribute("data-is-retry", "true");
+        chatForm.setAttribute("data-question-index", qIndex);
+
+        // Display retry banner above the input area
+        let retryBanner = document.getElementById("retryAlertBanner");
+        if (!retryBanner) {
+          retryBanner = document.createElement("div");
+          retryBanner.id = "retryAlertBanner";
+          retryBanner.className = "alert alert-info py-2 px-3 mb-2 d-flex justify-content-between align-items-center rounded-3 shadow-xs";
+          chatForm.insertBefore(retryBanner, chatForm.firstChild);
+        }
+        retryBanner.innerHTML = `
+          <div class="small">
+            <i class="fa-solid fa-rotate-left text-primary me-1"></i>
+            <strong>Retrying Question ${parseInt(qIndex, 10) + 1}</strong>: Refine your response using the feedback above (${retriesLeft} ${retriesLeft === 1 ? 'retry' : 'retries'} remaining).
+          </div>
+          <button type="button" class="btn-close btn-sm" id="btnCancelRetry" aria-label="Cancel retry"></button>
+        `;
+
+        const cancelBtn = retryBanner.querySelector("#btnCancelRetry");
+        if (cancelBtn) {
+          cancelBtn.addEventListener("click", () => {
+            retryBanner.remove();
+            chatForm.removeAttribute("data-is-retry");
+            const prevIndex = chatForm.getAttribute("data-previous-active-index");
+            if (prevIndex !== null) {
+              chatForm.setAttribute("data-question-index", prevIndex);
+              chatForm.removeAttribute("data-previous-active-index");
+            }
+            submitBtn.innerHTML = "Submit Answer";
+          });
+        }
+
+        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Submit Refined Answer';
+        if (answerInput) {
+          answerInput.disabled = false;
+          submitBtn.disabled = false;
+          answerInput.value = "";
+          answerInput.focus();
+          answerInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
       }
     });
   }
@@ -2775,6 +2833,7 @@ function initMockInterview() {
     const loaderBubble = appendChatBubble("<i>Interview Agent & STAR Story Coach are analyzing your response and verbal delivery...</i>", "agent");
 
     try {
+      const isRetrySubmission = chatForm.getAttribute("data-is-retry") === "true";
       const response = await fetch(`/interview/${analysisId}/submit`, {
         method: "POST",
         headers: {
@@ -2784,6 +2843,7 @@ function initMockInterview() {
         body: JSON.stringify({
           answer: answer,
           question_index: questionIndex,
+          is_retry: isRetrySubmission,
           speech_metrics: finalSpeechMetrics,
           is_timed: isAnswerTimed,
           time_taken_seconds: timeTakenSeconds,
@@ -2793,6 +2853,11 @@ function initMockInterview() {
 
       const result = await response.json();
       loaderBubble.remove();
+
+      // Clean up retry banner and form state after submission
+      document.getElementById("retryAlertBanner")?.remove();
+      chatForm.removeAttribute("data-is-retry");
+      submitBtn.innerHTML = "Submit Answer";
 
       if (result.error) {
         appendChatBubble(`Error: ${result.error}`, "agent");
@@ -2925,6 +2990,104 @@ function initMockInterview() {
         `;
       }
 
+      // Side-by-side retry comparison card (#467)
+      let comparisonHtml = "";
+      if (result.comparison && result.comparison.criteria) {
+        const comp = result.comparison;
+        const ov = comp.overall || {};
+        let ovBadge = "";
+        if (ov.status === "improved") {
+          ovBadge = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-up me-1"></i> Overall: +${ov.diff} pts</span>`;
+        } else if (ov.status === "declined") {
+          ovBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-down me-1"></i> Overall: ${ov.diff} pts</span>`;
+        } else {
+          ovBadge = `<span class="badge bg-secondary-subtle text-secondary border rounded-pill"><i class="fa-solid fa-equals me-1"></i> Overall: Unchanged</span>`;
+        }
+
+        let critCols = "";
+        for (const [ckey, cinfo] of Object.entries(comp.criteria)) {
+          const diffSign = cinfo.diff > 0 ? `+${cinfo.diff}` : `${cinfo.diff}`;
+          let diffBadge = "";
+          if (cinfo.diff > 0) {
+            diffBadge = `<span class="badge bg-success-subtle text-success ms-1 small">${diffSign}</span>`;
+          } else if (cinfo.diff < 0) {
+            diffBadge = `<span class="badge bg-danger-subtle text-danger ms-1 small">${diffSign}</span>`;
+          } else {
+            diffBadge = `<span class="badge bg-secondary-subtle text-secondary ms-1 small">0</span>`;
+          }
+
+          critCols += `
+            <div class="col-6 col-md-3">
+              <div class="bg-white p-2 rounded-2 border text-center h-100">
+                <span class="d-block small text-muted">${escapeHtml(cinfo.label || ckey)}</span>
+                <span class="fw-bold">${cinfo.current_score}/100</span>
+                ${diffBadge}
+              </div>
+            </div>
+          `;
+        }
+
+        let addressedHtml = "";
+        if (comp.addressed_points && comp.addressed_points.length > 0) {
+          addressedHtml = `
+            <div class="small text-success mb-1 mt-2">
+              <b><i class="fa-solid fa-check-circle me-1"></i> Addressed Feedback:</b>
+              <ul class="mb-0 ps-3">
+                ${comp.addressed_points.map(pt => `<li>${escapeHtml(pt)}</li>`).join("")}
+              </ul>
+            </div>
+          `;
+        }
+
+        let unaddressedHtml = "";
+        if (comp.unaddressed_points && comp.unaddressed_points.length > 0) {
+          unaddressedHtml = `
+            <div class="small text-danger mb-0 mt-2">
+              <b><i class="fa-solid fa-triangle-exclamation me-1"></i> Focus Areas:</b>
+              <ul class="mb-0 ps-3">
+                ${comp.unaddressed_points.map(pt => `<li>${escapeHtml(pt)}</li>`).join("")}
+              </ul>
+            </div>
+          `;
+        }
+
+        comparisonHtml = `
+          <div class="card border rounded-3 p-3 my-2 bg-light retry-comparison-card shadow-xs">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+              <span class="small fw-bold text-dark"><i class="fa-solid fa-code-compare text-primary me-1"></i> Attempt Comparison (Attempt ${result.attempt_number || 2} vs Attempt ${result.attempt_number ? result.attempt_number - 1 : 1}):</span>
+              ${ovBadge}
+            </div>
+            <div class="row g-2 mb-1">
+              ${critCols}
+            </div>
+            ${addressedHtml}
+            ${unaddressedHtml}
+          </div>
+        `;
+      }
+
+      // Retry Action Button (#467)
+      let retryBarHtml = "";
+      const retriesLeft = typeof result.retries_left === "number" ? result.retries_left : (2 - (result.retry_count || 0));
+      if (!result.completed && retriesLeft > 0) {
+        retryBarHtml = `
+          <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 retry-action-bar">
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-try-again" data-question-index="${questionIndex}" data-retries-left="${retriesLeft}">
+              <i class="fa-solid fa-rotate-left me-1"></i> Try Again (${retriesLeft} ${retriesLeft === 1 ? 'retry' : 'retries'} left)
+            </button>
+            <span class="small text-muted">Incorporate the feedback above and refine your response.</span>
+          </div>
+        `;
+      } else if (!result.completed && (result.retry_count || 0) >= 2) {
+        retryBarHtml = `
+          <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center">
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+              <i class="fa-solid fa-ban me-1"></i> Max retries reached (2/2)
+            </span>
+          </div>
+        `;
+      }
+
       const feedbackText = `
         <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
           <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
@@ -2941,6 +3104,7 @@ function initMockInterview() {
         ${fillersHtml}
         ${starHtml}
         ${perAnswerFeedbackHtml}
+        ${comparisonHtml}
         <b>Suggestions:</b><br/>
         <ul class="mb-0 mt-1 list-unstyled">
           ${(evalData.suggestions || []).map(s => `
@@ -2952,10 +3116,44 @@ function initMockInterview() {
             </li>
           `).join("")}
         </ul>
+        ${retryBarHtml}
       `;
       appendChatBubble(feedbackText, "evaluation");
 
-      if (result.completed) {
+      if (result.is_retry) {
+        // Update all retry buttons and action bars for this question in the DOM
+        const qIdxStr = String(questionIndex);
+        const newRetriesLeft = typeof result.retries_left === "number" ? result.retries_left : 0;
+        document.querySelectorAll(`.btn-try-again[data-question-index="${qIdxStr}"]`).forEach((b) => {
+          b.setAttribute("data-retries-left", String(newRetriesLeft));
+          if (newRetriesLeft <= 0) {
+            const bar = b.closest(".retry-action-bar");
+            if (bar) {
+              bar.innerHTML = `
+                <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+                  <i class="fa-solid fa-ban me-1"></i> Max retries reached (2/2)
+                </span>
+              `;
+            }
+          } else {
+            b.innerHTML = `<i class="fa-solid fa-rotate-left me-1"></i> Try Again (${newRetriesLeft} ${newRetriesLeft === 1 ? 'retry' : 'retries'} left)`;
+          }
+        });
+
+        // Restore active question index to next pending question if applicable
+        const prevIndex = chatForm.getAttribute("data-previous-active-index");
+        if (prevIndex !== null && !result.completed) {
+          chatForm.setAttribute("data-question-index", prevIndex);
+          chatForm.removeAttribute("data-previous-active-index");
+        } else if (result.next_index !== undefined && !result.completed) {
+          chatForm.setAttribute("data-question-index", String(result.next_index));
+        }
+
+        resetInputs();
+        if (typeof showToast === "function") {
+          showToast(`Retry evaluation recorded (Attempt ${result.attempt_number || 2}). See comparison above.`);
+        }
+      } else if (result.completed) {
         stopQuestionTimer();
         clearAllDraftsForThisSession();
         if (interviewTimerBar) {
