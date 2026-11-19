@@ -119,7 +119,7 @@
           <!-- Manual Entry Secret -->
           <div class="col-md-7">
             <div class="p-3 bg-light rounded-3 border">
-              <label class="form-label small fw-semibold text-dark mb-1">
+              <label for="secretKeyText" class="form-label small fw-semibold text-dark mb-1">
                 Can't scan? Enter this secret key manually:
               </label>
               <div class="input-group mb-2">
@@ -127,7 +127,8 @@
                        class="form-control font-monospace text-center fw-bold bg-white"
                        value="{{ formatted_secret }}"
                        id="secretKeyText"
-                       readonly>
+                       readonly
+                       aria-label="Secret Key for manual entry">
                 <button class="btn btn-outline-primary" type="button" id="btnCopySecret" title="Copy Secret Key">
                   <i class="fa-regular fa-copy me-1"></i> Copy
                 </button>

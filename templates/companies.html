@@ -55,6 +55,9 @@
               <i class="fa-solid fa-layer-group me-1"></i> {{ total_count }} Companies Listed
             </span>
             <small class="text-muted">Updated for 2026 Campus Drive Season</small>
+            <a href="/companies/suggest" class="btn btn-outline-primary btn-sm rounded-pill px-3 mt-2 shadow-sm">
+              <i class="fa-solid fa-lightbulb me-1"></i> Suggest Company / Update
+            </a>
           </div>
         </div>
       </div>
@@ -414,6 +417,9 @@
                 <a href="/company-checklist?company={{ company.company_name }}" class="btn btn-primary rounded-3">
                   <i class="fa-solid fa-list-check me-1"></i> Go to Preparation Checklist
                 </a>
+                <a href="/companies/suggest?type=update&company_id={{ company.id }}&company_name={{ company.company_name }}" class="btn btn-outline-warning rounded-3" title="Suggest improvements or update rounds">
+                  <i class="fa-solid fa-pen-to-square me-1"></i> Suggest Update
+                </a>
                 {% if company.careers_url or company.website_url %}
                 <a href="{{ company.careers_url or company.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary rounded-3">
                   <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Official Careers
@@ -443,9 +449,12 @@
           {% if industry_filter != 'All' %}in industry <strong>"{{ industry_filter }}"</strong>{% endif %}.
           Try adjusting your search terms, removing filters, or browsing all available recruiters.
         </p>
-        <div class="d-flex justify-content-center gap-2">
+        <div class="d-flex justify-content-center flex-wrap gap-2">
           <a href="/companies" class="btn btn-primary rounded-pill px-4">
             <i class="fa-solid fa-rotate-left me-1"></i> Reset All Filters
+          </a>
+          <a href="/companies/suggest{% if search_query %}?company_name={{ search_query }}{% endif %}" class="btn btn-outline-primary rounded-pill px-4">
+            <i class="fa-solid fa-lightbulb me-1"></i> Suggest this Company
           </a>
           <a href="/company-checklist" class="btn btn-outline-secondary rounded-pill px-4">
             <i class="fa-solid fa-list-check me-1"></i> Explore Checklists

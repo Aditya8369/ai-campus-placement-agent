@@ -265,22 +265,26 @@
           <div class="p-3 bg-light rounded-4 border h-100 kpi-tile d-flex align-items-center justify-content-between">
             <div>
               <small class="text-secondary fw-semibold text-uppercase d-block mb-1">ATS Compatibility</small>
-              <div class="d-flex align-items-baseline gap-2">
+              <div class="d-flex align-items-baseline gap-2 flex-wrap">
                 <h2 class="fw-bold mb-0 text-dark" id="summaryAtsScore">{{ r_sum.ats_score }}</h2>
                 <span class="text-muted small">/ 100</span>
+                <span class="badge {{ 'bg-success-subtle text-success' if r_sum.ats_score >= 75 else ('bg-warning-subtle text-dark border-warning-subtle' if r_sum.ats_score >= 60 else 'bg-danger-subtle text-danger') }} border rounded-pill ms-1 small" id="atsScoreLevelBadge">
+                  <i class="fa-solid {{ 'fa-circle-check text-success' if r_sum.ats_score >= 75 else ('fa-triangle-exclamation text-dark' if r_sum.ats_score >= 60 else 'fa-circle-xmark text-danger') }} me-1" aria-hidden="true"></i>
+                  <span>{{ 'Strong Match' if r_sum.ats_score >= 75 else ('Moderate' if r_sum.ats_score >= 60 else 'Needs Revision') }}</span>
+                </span>
               </div>
               <small class="text-muted d-block mt-1">
                 Target: <strong>{{ r_sum.target_ats }}</strong>
                 {% if r_sum.ats_score >= r_sum.target_ats %}
-                  <span class="text-success ms-1"><i class="fa-solid fa-circle-check"></i> Meets Bar</span>
+                  <span class="text-success ms-1"><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Meets Bar</span>
                 {% else %}
-                  <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up"></i> {{ r_sum.target_ats - r_sum.ats_score }} pts to Target</span>
+                  <span class="text-warning ms-1"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i> {{ r_sum.target_ats - r_sum.ats_score }} pts to Target</span>
                 {% endif %}
               </small>
             </div>
             <!-- Circular ATS Gauge -->
             <div class="circular-progress-container mb-0" style="width: 75px; height: 75px;">
-              <svg class="circular-progress-svg" viewBox="0 0 150 150" style="width: 75px; height: 75px;">
+              <svg class="circular-progress-svg" viewBox="0 0 150 150" style="width: 75px; height: 75px;" role="img" aria-label="ATS score circular gauge: {{ r_sum.ats_score }} out of 100 ({{ 'Strong Match' if r_sum.ats_score >= 75 else ('Moderate' if r_sum.ats_score >= 60 else 'Needs Revision') }})">
                 <circle class="circular-bg-ring" cx="75" cy="75" r="60"></circle>
                 <circle class="circular-fill-ring" cx="75" cy="75" r="60" data-score="{{ r_sum.ats_score }}"></circle>
               </svg>
@@ -321,7 +325,7 @@
             </div>
             <div class="mt-2">
               <div class="progress rounded-pill" style="height: 8px;">
-                <div class="progress-bar {{ 'bg-primary' if r_sum.has_custom_jd else 'bg-secondary' }}" role="progressbar" style="width: {{ r_sum.match_percentage }}%" aria-valuenow="{{ r_sum.match_percentage }}" aria-valuemin="0" aria-valuemax="100"></div>
+                <div class="progress-bar {{ 'bg-primary' if r_sum.has_custom_jd else 'bg-secondary' }}" role="progressbar" style="width: {{ r_sum.match_percentage }}%" aria-valuenow="{{ r_sum.match_percentage }}" aria-valuemin="0" aria-valuemax="100" aria-label="Job description match: {{ r_sum.match_percentage }} percent"></div>
               </div>
             </div>
           </div>
@@ -362,8 +366,8 @@
             <div>
               <small class="text-secondary fw-semibold text-uppercase d-block mb-1">Preparation Status</small>
               <div class="mt-1">
-                <span class="badge bg-{{ r_sum.readiness_badge }}-subtle text-{{ r_sum.readiness_badge }} border border-{{ r_sum.readiness_badge }}-subtle px-3 py-2 rounded-pill fw-bold fs-6">
-                  <i class="fa-solid {{ r_sum.readiness_icon }} me-1"></i> {{ r_sum.readiness_status }}
+                <span class="badge bg-{{ r_sum.readiness_badge }}-subtle {{ 'text-dark border-warning-subtle' if r_sum.readiness_badge == 'warning' else ('text-' ~ r_sum.readiness_badge ~ ' border-' ~ r_sum.readiness_badge ~ '-subtle') }} border px-3 py-2 rounded-pill fw-bold fs-6">
+                  <i class="fa-solid {{ r_sum.readiness_icon }} me-1" aria-hidden="true"></i> {{ r_sum.readiness_status }}
                 </span>
               </div>
               <small class="text-muted d-block mt-2">
@@ -438,8 +442,9 @@
                 <span class="fw-bold fs-4 text-dark" id="atsBreakdownTotalScore">{{ breakdown.total_score }}</span>
                 <span class="text-muted small">/ 100</span>
               </div>
-              <span class="badge {{ 'bg-success-subtle text-success' if breakdown.total_score >= 80 else ('bg-primary-subtle text-primary' if breakdown.total_score >= 65 else 'bg-warning-subtle text-warning') }} border fs-6 px-3 py-2 rounded-pill" id="atsBreakdownRatingBadge">
-                {{ breakdown.rating }}
+              <span class="badge {{ 'bg-success-subtle text-success' if breakdown.total_score >= 80 else ('bg-primary-subtle text-primary' if breakdown.total_score >= 65 else 'bg-warning-subtle text-dark border-warning-subtle') }} border fs-6 px-3 py-2 rounded-pill" id="atsBreakdownRatingBadge">
+                <i class="fa-solid {{ 'fa-circle-check text-success' if breakdown.total_score >= 80 else ('fa-circle-info text-primary' if breakdown.total_score >= 65 else 'fa-triangle-exclamation text-dark') }} me-1" aria-hidden="true"></i>
+                <span>{{ breakdown.rating }}</span>
               </span>
             </div>
           </div>
@@ -479,8 +484,9 @@
                   <div>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                       <span class="fw-bold text-dark small">{{ sec.title }}</span>
-                      <span class="badge {{ 'bg-success-subtle text-success' if sec.status == 'Strong' else ('bg-warning-subtle text-warning' if sec.status == 'Fair' else 'bg-danger-subtle text-danger') }} border rounded-pill" style="font-size: 0.72rem;">
-                        {{ sec.status }}
+                      <span class="badge {{ 'bg-success-subtle text-success' if sec.status == 'Strong' else ('bg-warning-subtle text-dark border-warning-subtle' if sec.status == 'Fair' else 'bg-danger-subtle text-danger') }} border rounded-pill" style="font-size: 0.72rem;">
+                        <i class="fa-solid {{ 'fa-circle-check text-success' if sec.status == 'Strong' else ('fa-triangle-exclamation text-dark' if sec.status == 'Fair' else 'fa-circle-xmark text-danger') }} me-1" aria-hidden="true"></i>
+                        <span>{{ sec.status }}</span>
                       </span>
                     </div>
                     <div class="d-flex align-items-baseline justify-content-between mb-1">
@@ -488,7 +494,7 @@
                       <span class="text-muted small">/ {{ sec.max_score }} pts</span>
                     </div>
                     <div class="progress rounded-pill mb-2" style="height: 6px;">
-                      <div class="progress-bar {{ 'bg-success' if sec.status == 'Strong' else ('bg-warning' if sec.status == 'Fair' else 'bg-danger') }}" role="progressbar" style="width: {{ sec.earned_percentage }}%" aria-valuenow="{{ sec.score }}" aria-valuemin="0" aria-valuemax="{{ sec.max_score }}"></div>
+                      <div class="progress-bar {{ 'bg-success' if sec.status == 'Strong' else ('bg-warning' if sec.status == 'Fair' else 'bg-danger') }}" role="progressbar" style="width: {{ sec.earned_percentage }}%" aria-valuenow="{{ sec.score }}" aria-valuemin="0" aria-valuemax="{{ sec.max_score }}" aria-label="{{ sec.title }}: {{ sec.score }} out of {{ sec.max_score }} points ({{ sec.status }})"></div>
                     </div>
                     <p class="small text-secondary mb-2" style="font-size: 0.8rem;">
                       {{ sec.suggestion }}
@@ -517,8 +523,8 @@
                   <div class="p-2 px-3 rounded-3 border bg-light h-100">
                     <div class="d-flex align-items-center justify-content-between mb-1">
                       <span class="small fw-bold text-dark">{{ b_info.title }}</span>
-                      <span class="badge {{ 'bg-success-subtle text-success' if b_info.passed else 'bg-warning-subtle text-warning' }} border rounded-pill" style="font-size: 0.7rem;">
-                        <i class="fa-solid {{ 'fa-check' if b_info.passed else 'fa-exclamation' }} me-1"></i>{{ b_info.status }}
+                      <span class="badge {{ 'bg-success-subtle text-success' if b_info.passed else 'bg-warning-subtle text-dark border-warning-subtle' }} border rounded-pill" style="font-size: 0.7rem;">
+                        <i class="fa-solid {{ 'fa-circle-check text-success' if b_info.passed else 'fa-triangle-exclamation text-dark' }} me-1" aria-hidden="true"></i>{{ b_info.status }}
                       </span>
                     </div>
                     <p class="small text-muted mb-0" style="font-size: 0.75rem;">
@@ -685,9 +691,14 @@
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Practice Live Mock Interviews</h5>
           <p class="text-secondary small mb-3">Simulate a conversational technical, behavioral, and HR interview session customized for {{ analysis.company_name }} hiring standards.</p>
-          <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill mx-auto">
-            <i class="fa-solid fa-comments me-2"></i> Start Mock Interview
-          </a>
+          <div class="d-flex justify-content-center gap-2 flex-wrap">
+            <a href="/interview/{{ analysis_id }}" class="btn btn-custom-primary py-2 px-3 rounded-pill">
+              <i class="fa-solid fa-comments me-1"></i> Start Mock Interview
+            </a>
+            <a href="/interview/{{ analysis_id }}/project-deep-dive" class="btn btn-outline-primary py-2 px-3 rounded-pill" title="Practice defending projects from your resume">
+              <i class="fa-solid fa-diagram-project me-1"></i> Project Deep-Dive
+            </a>
+          </div>
         </div>
       </div>
       <div class="col-lg-4 col-md-6">
@@ -1099,7 +1110,7 @@
           <div class="col-lg-4 col-md-7 col-12">
             <div class="input-group input-group-sm">
               <span class="input-group-text bg-white border-end-0 rounded-start-pill"><i class="fa-solid fa-user-tag text-muted"></i></span>
-              <input type="text" id="outreachRoleInput" class="form-control rounded-end-pill" placeholder="Target Role Title (e.g. Software Engineer)" value="{{ initial_outreach.role_title|default('Software Engineer') }}">
+              <input type="text" id="outreachRoleInput" class="form-control rounded-end-pill" placeholder="Target Role Title (e.g. Software Engineer)" value="{{ initial_outreach.role_title|default('Software Engineer') }}" aria-label="Target Role Title for Outreach Pitch">
             </div>
           </div>
           <div class="col-lg-2 col-md-5 col-12 text-lg-end">
@@ -1137,21 +1148,94 @@
 
       <!-- Outreach Tabs Content -->
       <div class="tab-content" id="outreachPillsTabContent">
-        <!-- Tab 1: Formal Cover Letter -->
+        <!-- Tab 1: Tailored Cover Letter Studio (#537) -->
         <div class="tab-pane fade show active" id="pills-cover" role="tabpanel" aria-labelledby="pills-cover-tab" tabindex="0">
           <div class="p-4 bg-light rounded-4 border position-relative">
-            <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
-              <span class="small text-muted">
-                <i class="fa-solid fa-building me-1"></i> Tailored for <b>{{ analysis.company_name }}</b>
-                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-2 outreach-active-tone-badge">Tone: {{ initial_outreach.tone|capitalize }}</span>
-              </span>
-              <div class="d-flex gap-2">
-                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-copy-outreach" data-copy-target="coverLetterContent">
+            
+            <!-- Controls Bar: Job Description Input & Customization -->
+            <div class="bg-white p-3 rounded-4 border mb-3 shadow-sm">
+              <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <label for="coverLetterJobDescInput" class="form-label small fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-paste text-primary me-1"></i> Target Job Description (Paste here to tailor):
+                </label>
+                <span class="badge bg-primary-subtle text-primary border rounded-pill small">
+                  <i class="fa-solid fa-bullseye me-1"></i> Tailors skills &amp; experience directly to JD
+                </span>
+              </div>
+              <textarea id="coverLetterJobDescInput" class="form-control rounded-3 p-3 small mb-2" rows="4" placeholder="Paste the target job description or requirements here to tailor your cover letter..."></textarea>
+              
+              <!-- Helpful warning message when job description is missing (#537) -->
+              <div id="coverLetterJdWarning" class="alert alert-warning py-2 px-3 small d-none mb-2" role="alert">
+                <i class="fa-solid fa-circle-exclamation me-1"></i> <strong>Job Description Missing:</strong> Please paste the target job description to generate a tailored cover letter.
+              </div>
+
+              <div class="row g-2 align-items-center">
+                <!-- Optional Company Name -->
+                <div class="col-lg-4 col-md-6 col-12">
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-light text-muted"><i class="fa-solid fa-building"></i></span>
+                    <input type="text" id="coverLetterCompanyInput" class="form-control" placeholder="Company Name (optional)" value="{{ analysis.company_name|default('') }}">
+                  </div>
+                </div>
+
+                <!-- Tone Choice: Formal or Friendly (#537) -->
+                <div class="col-lg-4 col-md-6 col-12">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="small fw-bold text-secondary">Tone:</span>
+                    <div class="btn-group btn-group-sm w-100" role="group" id="coverLetterToneButtonGroup" aria-label="Cover Letter Tone Choice">
+                      <button type="button" class="btn btn-primary active cl-tone-btn" id="coverLetterToneFormal" data-tone="formal">
+                        <i class="fa-solid fa-briefcase me-1"></i> Formal
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary cl-tone-btn" id="coverLetterToneFriendly" data-tone="friendly">
+                        <i class="fa-solid fa-face-smile me-1"></i> Friendly
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Regenerate Button (#537) -->
+                <div class="col-lg-4 col-12 text-md-end">
+                  <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnGenerateTailoredLetter" data-analysis-id="{{ analysis_id }}">
+                    <span class="spinner-border spinner-border-sm me-1 d-none" id="tailoredLetterSpinner" role="status" aria-hidden="true"></span>
+                    <i class="fa-solid fa-wand-magic-sparkles me-1" id="tailoredLetterIcon"></i> Regenerate Letter
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Letter Editor Header & Stats -->
+            <div class="d-flex justify-content-between align-items-center mb-2 border-bottom pb-2 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <span class="small fw-bold text-dark"><i class="fa-solid fa-pen-nib text-primary me-1"></i> Editable Cover Letter Draft</span>
+                <span class="badge bg-light text-secondary border rounded-pill px-2 py-1 small" id="coverLetterStatsBadge">
+                  <span id="coverLetterParaCount">4</span> paragraphs &bull; <span id="coverLetterWordCount">{{ initial_outreach.cover_letter.split()|length if initial_outreach.cover_letter else 0 }}</span> words
+                </span>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnCopyCoverLetter" aria-label="Copy Cover Letter to clipboard">
                   <i class="fa-regular fa-copy me-1"></i> Copy Letter
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-success rounded-pill px-3" id="btnDownloadCoverDocx" aria-label="Download Cover Letter as Word document">
+                  <i class="fa-solid fa-file-word me-1"></i> Download .docx
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnDownloadCoverTxt" aria-label="Download Cover Letter as plain text">
+                  <i class="fa-solid fa-file-lines me-1"></i> Download .txt
                 </button>
               </div>
             </div>
-            <div class="outreach-text-display small lh-lg text-dark" id="coverLetterContent" style="white-space: pre-wrap; font-family: inherit;">{{ initial_outreach.cover_letter }}</div>
+
+            <!-- Editable Text Area (#537) -->
+            <div class="mb-2">
+              <textarea id="coverLetterEditor" class="form-control rounded-4 p-3 bg-white text-dark small lh-lg" rows="12" style="font-family: inherit; resize: vertical; line-height: 1.7;" aria-label="Editable Tailored Cover Letter">{{ initial_outreach.cover_letter }}</textarea>
+            </div>
+
+            <!-- Grounding footer note -->
+            <div class="d-flex justify-content-between align-items-center text-muted small flex-wrap gap-2">
+              <span><i class="fa-solid fa-shield-halved text-success me-1"></i> Grounded strictly in your resume &bull; Zero fabricated qualifications</span>
+              <a href="/cover-letter/{{ analysis_id }}" class="text-decoration-none small">
+                <i class="fa-solid fa-up-right-from-square me-1"></i> Open in Fullscreen Studio
+              </a>
+            </div>
           </div>
         </div>
 
@@ -1339,7 +1423,7 @@
             </p>
 
             <div class="mb-3">
-              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroPracticeInput" rows="5" placeholder="Paste or type your delivered introduction here..."></textarea>
+              <textarea class="form-control rounded-3 font-monospace small" id="selfIntroPracticeInput" rows="5" placeholder="Paste or type your delivered introduction here..." aria-label="Self-introduction practice speech script"></textarea>
             </div>
 
             <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1392,6 +1476,230 @@
             <div id="practiceFeedbackPlaceholder" class="p-4 bg-white rounded-3 border text-center text-muted small flex-grow-1 d-flex flex-column justify-content-center align-items-center">
               <i class="fa-solid fa-chalkboard-user fa-2x text-secondary mb-2 opacity-50"></i>
               <span>Enter your practice pitch and click "Analyze Pitch" to get instant coaching on structure, clarity, and pacing.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LinkedIn Profile Suggestions (#538) -->
+    <div class="card glass-card p-4 border-0 mb-4" id="linkedInSuggestionsSection" data-linkedin='{{ initial_linkedin_suggestions_json|safe if initial_linkedin_suggestions_json is defined else "{}" }}' data-analysis-id="{{ analysis_id }}">
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+        <div>
+          <span class="text-primary fw-semibold text-uppercase small">
+            <i class="fa-brands fa-linkedin text-primary me-1"></i> Recruiter Presence Studio
+          </span>
+          <h4 class="fw-bold mb-0">
+            <i class="fa-brands fa-linkedin text-primary me-2"></i> LinkedIn Profile Suggestions
+          </h4>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2">
+            <i class="fa-solid fa-sparkles me-1"></i> Derived Strictly from Resume
+          </span>
+          <a href="/linkedin-analyzer" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+            <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Profile Analyzer
+          </a>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">
+        Recruiters cross-reference your resume against LinkedIn during campus hiring rounds. Use these three length-compliant headline options, first-person narrative About bio, and recruiter search keywords — built strictly from your verified resume qualifications — to present consistent, discoverable professional branding.
+      </p>
+
+      <!-- Target Context & Regenerate Controls -->
+      <div class="p-3 bg-light rounded-4 border mb-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-lg-6 col-md-7 col-12">
+            <label for="linkedinTargetRoleInput" class="form-label small fw-bold text-secondary mb-1">Target Placement Role:</label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-briefcase text-primary"></i></span>
+              <input type="text" class="form-control" id="linkedinTargetRoleInput" value="{{ initial_linkedin_suggestions.target_role|default(analysis.target_role|default('Software Engineer')) }}" placeholder="e.g. Software Engineer, Data Analyst, Web Developer">
+            </div>
+          </div>
+          <div class="col-lg-3 col-md-5 col-12 text-md-end mt-md-4">
+            <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 w-100" id="btnRegenerateLinkedIn" data-analysis-id="{{ analysis_id }}">
+              <span class="spinner-border spinner-border-sm me-1 d-none" id="linkedinSpinner" role="status" aria-hidden="true"></span>
+              <i class="fa-solid fa-wand-magic-sparkles me-1" id="linkedinIcon"></i> Regenerate Suggestions
+            </button>
+          </div>
+          <div class="col-lg-3 col-12 text-lg-end mt-lg-4 text-muted small">
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-2 py-1">
+              <i class="fa-solid fa-ruler-horizontal me-1"></i> Headline Limit: 220 chars
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Headline Options Grid (3 distinct options <= 220 chars with individual copy buttons) -->
+      <div class="mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+          <h5 class="fw-bold mb-0">
+            <i class="fa-solid fa-heading text-primary me-2"></i> Recommended Headline Options (Max 220 Chars)
+          </h5>
+          <span class="text-muted small">Choose the format that best fits your immediate campus recruitment target</span>
+        </div>
+
+        <div class="row g-3" id="linkedinHeadlinesContainer">
+          {% set headlines = initial_linkedin_suggestions.headline_options|default([]) %}
+          <!-- Headline 1: Role & Core Stack -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small" id="linkedinBadgeH1">
+                  {{ headlines[0].type if headlines|length > 0 else 'Role & Core Stack' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH1">
+                  <span id="linkedinLenH1">{{ headlines[0].char_count if headlines|length > 0 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH1">
+                {{ headlines[0].description if headlines|length > 0 else 'Search-optimized role and core tech stack.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText1" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[0].headline if headlines|length > 0 else 'Software Engineer | Open to Placements' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText1" aria-label="Copy Headline Option 1 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 1
+              </button>
+            </div>
+          </div>
+
+          <!-- Headline 2: Impact & Experience -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-success-subtle text-success border rounded-pill px-2 py-1 small" id="linkedinBadgeH2">
+                  {{ headlines[1].type if headlines|length > 1 else 'Impact & Experience' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH2">
+                  <span id="linkedinLenH2">{{ headlines[1].char_count if headlines|length > 1 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH2">
+                {{ headlines[1].description if headlines|length > 1 else 'Highlights hands-on experience and project outcomes.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText2" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[1].headline if headlines|length > 1 else 'Software Engineer Candidate | Building Reliable Systems' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText2" aria-label="Copy Headline Option 2 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 2
+              </button>
+            </div>
+          </div>
+
+          <!-- Headline 3: Specialization & Vision -->
+          <div class="col-lg-4 col-12">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="badge bg-info-subtle text-info border rounded-pill px-2 py-1 small" id="linkedinBadgeH3">
+                  {{ headlines[2].type if headlines|length > 2 else 'Specialization & Vision' }}
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="linkedinCharCountH3">
+                  <span id="linkedinLenH3">{{ headlines[2].char_count if headlines|length > 2 else 0 }}</span> / 220
+                </span>
+              </div>
+              <p class="text-muted small mb-2" id="linkedinDescH3">
+                {{ headlines[2].description if headlines|length > 2 else 'Focuses on specialization and campus placement aspirations.' }}
+              </p>
+              <div class="p-3 bg-light rounded-3 border fw-semibold text-dark flex-grow-1 mb-3 small linkedin-headline-text" id="linkedinHeadlineText3" style="white-space: pre-wrap; word-break: break-word;">
+                {{ headlines[2].headline if headlines|length > 2 else 'Future Software Engineer | Problem Solver | Open to Placements' }}
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill w-100 btn-copy-linkedin" data-copy-target="linkedinHeadlineText3" aria-label="Copy Headline Option 3 to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy Option 3
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- About Draft & Recruiter Keywords Grid -->
+      <div class="row g-4">
+        <!-- First-Person About Narrative -->
+        <div class="col-lg-7 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <h5 class="fw-bold mb-0">
+                <i class="fa-solid fa-user-pen text-primary me-2"></i> First-Person About Section Draft
+              </h5>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small">
+                  First-Person ('I' / 'My')
+                </span>
+                <span class="badge bg-white text-dark border rounded-pill px-2 py-1 small" id="linkedinAboutStats">
+                  <span id="linkedinAboutWordCount">{{ initial_linkedin_suggestions.about_word_count|default(0) }}</span> words &bull; <span id="linkedinAboutCharCount">{{ initial_linkedin_suggestions.about_char_count|default(0) }}</span> chars
+                </span>
+              </div>
+            </div>
+            <p class="text-muted small mb-2">
+              Crafted in the first person using only your verified technical skills, projects, and education. Paste directly into your LinkedIn profile summary.
+            </p>
+            <div class="p-3 bg-white rounded-3 border text-secondary flex-grow-1 mb-3 small" id="linkedinAboutText" style="white-space: pre-line; line-height: 1.6; min-height: 160px; word-break: break-word;">
+              {{ initial_linkedin_suggestions.about_section|default('I am an aspiring candidate prepared for campus placements. Let\'s connect!') }}
+            </div>
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span class="text-muted small"><i class="fa-solid fa-shield-halved text-success me-1"></i> Zero fabricated credentials</span>
+              <button type="button" class="btn btn-sm btn-custom-primary rounded-pill px-3 btn-copy-linkedin" data-copy-target="linkedinAboutText" id="btnCopyLinkedInAbout" aria-label="Copy About Section to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy About Section
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recruiter Search Keywords -->
+        <div class="col-lg-5 col-12">
+          <div class="p-3 bg-light rounded-4 border h-100 d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <h5 class="fw-bold mb-0">
+                <i class="fa-solid fa-tags text-success me-2"></i> Recruiter Search Keywords
+              </h5>
+              <span class="badge bg-success-subtle text-success border rounded-pill px-2 py-1 small">
+                SEO Search Terms
+              </span>
+            </div>
+            <p class="text-muted small mb-2">
+              High-frequency keywords technical recruiters query on LinkedIn to find candidates for <strong id="linkedinRoleKeywordLabel">{{ initial_linkedin_suggestions.target_role|default('Software Engineer') }}</strong>.
+            </p>
+
+            <div class="bg-white p-3 rounded-3 border flex-grow-1 mb-3">
+              <!-- Matched in Resume -->
+              <div class="mb-3">
+                <div class="small fw-bold text-success mb-2">
+                  <i class="fa-solid fa-circle-check me-1"></i> Verified in Resume (<span id="linkedinMatchedCount">{{ initial_linkedin_suggestions.matched_keywords|length }}</span>):
+                </div>
+                <div class="d-flex flex-wrap gap-1" id="linkedinMatchedContainer">
+                  {% for kw in initial_linkedin_suggestions.matched_keywords|default([]) %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '{{ kw }}'" data-keyword="{{ kw }}">
+                    <i class="fa-solid fa-check me-1"></i>{{ kw }}
+                  </span>
+                  {% else %}
+                  <span class="text-muted small">No verified role keywords detected.</span>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Recommended for Role -->
+              <div>
+                <div class="small fw-bold text-primary mb-2">
+                  <i class="fa-solid fa-magnifying-glass me-1"></i> Recommended Search Terms (<span id="linkedinRecommendedCount">{{ initial_linkedin_suggestions.recommended_keywords|length }}</span>):
+                </div>
+                <div class="d-flex flex-wrap gap-1" id="linkedinRecommendedContainer">
+                  {% for kw in initial_linkedin_suggestions.recommended_keywords|default([]) %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '{{ kw }}'" data-keyword="{{ kw }}">
+                    + {{ kw }}
+                  </span>
+                  {% else %}
+                  <span class="text-success small">All key role search keywords present!</span>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span class="text-muted small">Click any tag or copy all</span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCopyLinkedInKeywords" aria-label="Copy all recruiter search keywords to clipboard">
+                <i class="fa-regular fa-copy me-1"></i> Copy All Keywords
+              </button>
             </div>
           </div>
         </div>
@@ -2183,8 +2491,9 @@
               </div>
               <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
                 <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Readiness</small>
-                <span class="badge {{ 'bg-success-subtle text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('bg-primary-subtle text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'bg-warning-subtle text-warning') }} border" id="roleReadinessBadge">
-                  {{ role_gap_analysis.readiness_verdict|default('Targeted Prep') }}
+                <span class="badge {{ 'bg-success-subtle text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('bg-primary-subtle text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'bg-warning-subtle text-dark border-warning-subtle') }} border" id="roleReadinessBadge">
+                  <i class="fa-solid {{ 'fa-circle-check text-success' if (role_gap_analysis.match_percentage|default(0)) >= 80 else ('fa-circle-info text-primary' if (role_gap_analysis.match_percentage|default(0)) >= 55 else 'fa-triangle-exclamation text-dark') }} me-1" aria-hidden="true"></i>
+                  <span>{{ role_gap_analysis.readiness_verdict|default('Targeted Prep') }}</span>
                 </span>
               </div>
               <div class="text-center px-3 py-2 bg-white rounded-3 border shadow-xs">
@@ -2483,13 +2792,13 @@
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-book-open me-2 text-primary"></i> Topics to Learn</h6>
                   <ul class="mb-3 small list-unstyled">
                     {% for topic in w.topics %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_top_{{ loop.index }}"><span>{{ topic }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_top_{{ loop.index }}" aria-label="Mark task completed: {{ topic|escape }}"><span>{{ topic }}</span></label></li>
                     {% endfor %}
                   </ul>
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-code me-2 text-primary"></i> Coding Practice Tasks</h6>
                   <ul class="mb-0 small list-unstyled">
                     {% for code in w.coding_practice %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}"><span>{{ code }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_code_{{ loop.index }}" aria-label="Mark task completed: {{ code|escape }}"><span>{{ code }}</span></label></li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -2497,13 +2806,13 @@
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-laptop-code me-2 text-primary"></i> Micro Projects</h6>
                   <ul class="mb-3 small list-unstyled">
                     {% for project in w.mini_projects %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}"><span>{{ project }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_proj_{{ loop.index }}" aria-label="Mark task completed: {{ project|escape }}"><span>{{ project }}</span></label></li>
                     {% endfor %}
                   </ul>
                   <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-circle-question me-2 text-primary"></i> Interview Prep Questions</h6>
                   <ul class="mb-0 small list-unstyled">
                     {% for question in w.interview_questions %}
-                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}"><span>{{ question }}</span></label></li>
+                      <li class="mb-1"><label class="form-check-label d-flex align-items-start"><input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="{{ analysis_id }}" data-task-id="{{ w.week|replace(' ', '_') }}_q_{{ loop.index }}" aria-label="Mark task completed: {{ question|escape }}"><span>{{ question }}</span></label></li>
                     {% endfor %}
                   </ul>
                 </div>
@@ -3208,7 +3517,7 @@
               </ul>
             </div>
             <div class="mb-3">
-              <textarea id="modalOutreachEditor" class="form-control rounded-3 p-3 font-monospace small" rows="12" style="resize: vertical; line-height: 1.6;" placeholder="Generated outreach content..."></textarea>
+              <textarea id="modalOutreachEditor" class="form-control rounded-3 p-3 font-monospace small" rows="12" style="resize: vertical; line-height: 1.6;" placeholder="Generated outreach content..." aria-label="Edit outreach message text"></textarea>
             </div>
             <div class="d-flex justify-content-between align-items-center small text-muted">
               <span id="modalWordCount">0 words | 0 characters</span>

@@ -290,6 +290,16 @@ body {
   animation: pulse-ring 1.5s infinite;
 }
 
+.progress-step.error {
+  color: var(--danger-red, #dc3545) !important;
+}
+
+.progress-step.error .step-indicator {
+  border-color: #dc3545 !important;
+  background: #dc3545 !important;
+  color: white !important;
+}
+
 @keyframes pulse-ring {
   0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.7); }
   70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(26, 115, 232, 0); }
@@ -3313,25 +3323,146 @@ footer a:hover {
 }
 
 @media (max-width: 575.98px) {
+    /* Prevent horizontal scrolling at 360px width and below */
+    html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
     .hero-section {
         padding: 28px 0;
     }
 
     .hero-section h1 {
-        font-size: 1.9rem;
+        font-size: 1.75rem;
     }
 
     .features-section {
-        padding: 32px 0;
+        padding: 24px 0;
+    }
+
+    /* Stack sections with full-width cards */
+    .features-section .card,
+    .hero-section .card,
+    .kpi-tile,
+    .walkthrough-card {
+        width: 100% !important;
+        margin-bottom: 12px;
     }
 
     #uploadArea {
         padding: 20px 12px;
     }
 
-    .container {
-        padding-left: 16px;
-        padding-right: 16px;
+    .container,
+    .container-fluid {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        max-width: 100% !important;
+    }
+
+    /* Stack form buttons vertically on narrow screens */
+    #analysisForm .d-flex.flex-column.flex-sm-row {
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    #btnSubmitAnalysis,
+    #btnClearForm,
+    #btnTrySampleResume,
+    #btnReviewResumeDirect,
+    #btnExploreCompany {
+        width: 100% !important;
+    }
+
+    /* Progress Overlay Mobile Fit */
+    .progress-overlay {
+        padding: 12px !important;
+    }
+
+    .progress-panel {
+        width: 100% !important;
+        max-width: 340px !important;
+        padding: 20px 14px !important;
+        margin: 0 auto;
+        border-radius: 16px;
+        box-sizing: border-box;
+    }
+
+    .progress-panel h3 {
+        font-size: 1.25rem !important;
+    }
+
+    .progress-steps-list {
+        margin: 16px 0 !important;
+        font-size: 0.85rem !important;
+    }
+
+    .progress-step {
+        gap: 10px !important;
+        margin-bottom: 12px;
+    }
+
+    .step-indicator {
+        width: 26px !important;
+        height: 26px !important;
+        font-size: 0.75rem !important;
+        flex-shrink: 0;
+    }
+
+    /* Ensure tables and code never cause horizontal window scroll */
+    .table-responsive {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    pre, code, .font-monospace {
+        max-width: 100% !important;
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+    }
+}
+
+/* Specific styling for 360px viewport smartphones */
+@media (max-width: 400px) {
+    .navbar-brand-custom {
+        font-size: 0.95rem !important;
+        max-width: 200px;
+        white-space: normal;
+        line-height: 1.2;
+    }
+
+    /* Stack multi-column elements to single-column at 360px width */
+    .col-6 {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+
+    .kpi-tile,
+    .glass-card,
+    .card {
+        padding: 14px 10px !important;
+    }
+
+    .company-pill-badge {
+        font-size: 0.8rem;
+        padding: 6px 10px !important;
+    }
+
+    .modal-dialog {
+        margin: 8px !important;
+        max-width: calc(100% - 16px) !important;
+    }
+
+    .progress-panel {
+        max-width: 320px !important;
+        padding: 16px 10px !important;
+    }
+
+    .progress-steps-list {
+        font-size: 0.8rem !important;
     }
 }
 

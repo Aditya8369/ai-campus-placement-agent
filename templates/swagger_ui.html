@@ -73,7 +73,7 @@
   <script>
     window.onload = function () {
       SwaggerUIBundle({
-        url: "/api/openapi.json",
+        url: "{{ spec_url|default('/api/openapi.json') }}",
         dom_id: "#swagger-ui",
         deepLinking: true,
         presets: [
