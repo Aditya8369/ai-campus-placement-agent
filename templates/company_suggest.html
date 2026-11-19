@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Suggest a Company Profile - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/companies" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-building me-1"></i> Companies Directory
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3 shadow-sm" role="alert">
+              <i class="fa-solid fa-circle-info me-2"></i> {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="row justify-content-center">
+      <div class="col-lg-9 col-xl-8">
+
+        <!-- Header Card -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4 bg-white">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1.5 rounded-pill fw-semibold text-uppercase small">
+              <i class="fa-solid fa-lightbulb me-1"></i> Community Contribution
+            </span>
+            <span class="badge bg-secondary-subtle text-secondary border px-3 py-1.5 rounded-pill small">
+              Peer-Reviewed
+            </span>
+          </div>
+          <h2 class="fw-bold text-dark mb-2">Suggest a Company or Profile Update</h2>
+          <p class="text-secondary mb-0 leading-relaxed">
+            Help expand the campus placement directory. Suggest a new recruiting company or propose updates to an existing profile. Submissions are reviewed by maintainers before becoming publicly visible.
+          </p>
+        </div>
+
+        <!-- Suggestion Form Card -->
+        <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 bg-white">
+          <form method="POST" action="/companies/suggest" id="companySuggestionForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+            <!-- Suggestion Type Radio -->
+            <div class="mb-4 p-3 bg-light rounded-3 border">
+              <label class="form-label fw-bold text-dark small text-uppercase mb-2 d-block">Submission Type</label>
+              <div class="d-flex flex-wrap gap-4">
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="suggestion_type"
+                    id="typeNew"
+                    value="new"
+                    {% if selected_type != 'update' %}checked{% endif %}
+                    onchange="toggleSuggestionType()"
+                  >
+                  <label class="form-check-label fw-semibold text-dark" for="typeNew">
+                    <i class="fa-solid fa-plus-circle text-primary me-1"></i> Suggest New Company
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="suggestion_type"
+                    id="typeUpdate"
+                    value="update"
+                    {% if selected_type == 'update' %}checked{% endif %}
+                    onchange="toggleSuggestionType()"
+                  >
+                  <label class="form-check-label fw-semibold text-dark" for="typeUpdate">
+                    <i class="fa-solid fa-pen-to-square text-warning me-1"></i> Request Profile Update
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Existing Company Select (Shown only for update) -->
+            <div class="mb-4" id="targetCompanyGroup" style="display: {% if selected_type == 'update' %}block{% else %}none{% endif %};">
+              <label for="target_company_id" class="form-label fw-semibold text-dark">
+                Select Existing Company <span class="text-danger">*</span>
+              </label>
+              <select class="form-select bg-light" id="target_company_id" name="target_company_id" onchange="onTargetCompanySelected()">
+                <option value="">-- Choose from Directory --</option>
+                {% for comp in existing_companies %}
+                <option
+                  value="{{ comp.id }}"
+                  data-name="{{ comp.company_name }}"
+                  data-industry="{{ comp.industry }}"
+                  data-tier="{{ comp.hiring_tier }}"
+                  data-website="{{ comp.website_url or '' }}"
+                  data-careers="{{ comp.careers_url or '' }}"
+                  data-ctc="{{ comp.typical_ctc_range or '' }}"
+                  data-hq="{{ comp.headquarters or '' }}"
+                  {% if selected_company_id == comp.id or selected_company_name == comp.company_name %}selected{% endif %}
+                >
+                  {{ comp.company_name }} ({{ comp.hiring_tier }} &bull; {{ comp.industry }})
+                </option>
+                {% endfor %}
+              </select>
+              <div class="form-text small">Select the verified company profile you wish to propose improvements for.</div>
+            </div>
+
+            <!-- Company Name -->
+            <div class="mb-3">
+              <label for="company_name" class="form-label fw-semibold text-dark">
+                Company Name <span class="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                class="form-control bg-light"
+                id="company_name"
+                name="company_name"
+                required
+                placeholder="e.g. Goldman Sachs, Atlassian, Razorpay"
+                value="{{ prefill_name or '' }}"
+              >
+            </div>
+
+            <div class="row g-3 mb-3">
+              <!-- Industry -->
+              <div class="col-md-6">
+                <label for="industry" class="form-label fw-semibold text-dark">Industry / Domain</label>
+                <input
+                  type="text"
+                  class="form-control bg-light"
+                  id="industry"
+                  name="industry"
+                  list="industryOptions"
+                  placeholder="e.g. Fintech, SaaS, E-Commerce, EdTech"
+                  value="{{ prefill_industry or '' }}"
+                >
+                <datalist id="industryOptions">
+                  {% for ind in available_industries %}
+                  <option value="{{ ind }}">
+                  {% endfor %}
+                </datalist>
+              </div>
+
+              <!-- Hiring Tier -->
+              <div class="col-md-6">
+                <label for="hiring_tier" class="form-label fw-semibold text-dark">Expected Hiring Tier</label>
+                <select class="form-select bg-light" id="hiring_tier" name="hiring_tier">
+                  {% for t in available_tiers %}
+                  <option value="{{ t }}" {% if prefill_tier == t %}selected{% endif %}>{{ t }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <!-- Website URL -->
+              <div class="col-md-6">
+                <label for="website_url" class="form-label fw-semibold text-dark">Corporate Website</label>
+                <input
+                  type="url"
+                  class="form-control bg-light"
+                  id="website_url"
+                  name="website_url"
+                  placeholder="https://example.com"
+                  value="{{ prefill_website or '' }}"
+                >
+              </div>
+
+              <!-- Careers URL -->
+              <div class="col-md-6">
+                <label for="careers_url" class="form-label fw-semibold text-dark">Careers Portal / Job Board</label>
+                <input
+                  type="url"
+                  class="form-control bg-light"
+                  id="careers_url"
+                  name="careers_url"
+                  placeholder="https://example.com/careers"
+                  value="{{ prefill_careers or '' }}"
+                >
+              </div>
+            </div>
+
+            <div class="row g-3 mb-3">
+              <!-- Headquarters -->
+              <div class="col-md-6">
+                <label for="headquarters" class="form-label fw-semibold text-dark">Headquarters / Primary Office</label>
+                <input
+                  type="text"
+                  class="form-control bg-light"
+                  id="headquarters"
+                  name="headquarters"
+                  placeholder="e.g. Bengaluru, India or San Jose, CA"
+                  value="{{ prefill_hq or '' }}"
+                >
+              </div>
+
+              <!-- Typical CTC Range -->
+              <div class="col-md-6">
+                <label for="typical_ctc_range" class="form-label fw-semibold text-dark">Typical CTC Package Range</label>
+                <input
+                  type="text"
+                  class="form-control bg-light"
+                  id="typical_ctc_range"
+                  name="typical_ctc_range"
+                  placeholder="e.g. 12 - 20 LPA (FTE) / 50k/mo (Intern)"
+                  value="{{ prefill_ctc or '' }}"
+                >
+              </div>
+            </div>
+
+            <!-- Tech Stack -->
+            <div class="mb-3">
+              <label for="primary_tech_stack" class="form-label fw-semibold text-dark">
+                Primary Tech Stack / Key Skills
+              </label>
+              <input
+                type="text"
+                class="form-control bg-light"
+                id="primary_tech_stack"
+                name="primary_tech_stack"
+                placeholder="Comma-separated: Java, Python, Spring Boot, React, AWS, Docker"
+                value="{{ prefill_tech or '' }}"
+              >
+              <div class="form-text small">Enter primary languages, frameworks, or cloud platforms emphasized in technical rounds.</div>
+            </div>
+
+            <!-- Hiring Process / Rounds -->
+            <div class="mb-3">
+              <label for="hiring_workflow" class="form-label fw-semibold text-dark">
+                Hiring Process & Assessment Stages
+              </label>
+              <textarea
+                class="form-control bg-light"
+                id="hiring_workflow"
+                name="hiring_workflow"
+                rows="3"
+                placeholder="Enter rounds separated by comma or new lines, e.g.:&#10;1. Online Assessment (DSA & Aptitude)&#10;2. Technical Interview 1 (Data Structures)&#10;3. Managerial & System Design Round&#10;4. HR / Culture Fit Discussion"
+              >{{ prefill_workflow or '' }}</textarea>
+              <div class="form-text small">List known evaluation rounds based on campus recruitment drives or senior candidate experiences.</div>
+            </div>
+
+            <!-- Overview -->
+            <div class="mb-3">
+              <label for="overview" class="form-label fw-semibold text-dark">Company Overview</label>
+              <textarea
+                class="form-control bg-light"
+                id="overview"
+                name="overview"
+                rows="2"
+                placeholder="Brief summary of company domain, core products, and engineering culture..."
+              >{{ prefill_overview or '' }}</textarea>
+            </div>
+
+            <!-- Additional Notes / Justification -->
+            <div class="mb-4">
+              <label for="notes" class="form-label fw-semibold text-dark">Notes or Source Reference</label>
+              <textarea
+                class="form-control bg-light"
+                id="notes"
+                name="notes"
+                rows="2"
+                placeholder="Add context: e.g. 'Visited campus for 2026 Batch on Sep 2026', official job description link, or reason for suggested change."
+              ></textarea>
+            </div>
+
+            <!-- Submitter Info Accordion/Group -->
+            <div class="p-3 bg-light rounded-3 border mb-4">
+              <span class="fw-semibold text-secondary small text-uppercase d-block mb-2">Submitter Details (Optional)</span>
+              <div class="row g-2">
+                <div class="col-sm-6">
+                  <input
+                    type="text"
+                    class="form-control form-control-sm bg-white"
+                    name="submitter_name"
+                    placeholder="Your Name (Optional)"
+                    value="{{ current_user_name or '' }}"
+                  >
+                </div>
+                <div class="col-sm-6">
+                  <input
+                    type="email"
+                    class="form-control form-control-sm bg-white"
+                    name="submitter_email"
+                    placeholder="Your Email (Optional, for status updates)"
+                    value="{{ current_user_email or '' }}"
+                  >
+                </div>
+              </div>
+            </div>
+
+            <!-- Submit Button & Navigation -->
+            <div class="d-flex align-items-center justify-content-between pt-3 border-top">
+              <a href="/companies" class="btn btn-outline-secondary rounded-pill px-4">
+                <i class="fa-solid fa-arrow-left me-1"></i> Cancel
+              </a>
+              <button type="submit" class="btn btn-primary rounded-pill px-4 fw-semibold shadow-sm" id="submitBtn">
+                <i class="fa-solid fa-paper-plane me-1"></i> Submit Suggestion
+              </button>
+            </div>
+          </form>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Script for Dynamic Form Interactions -->
+  <script>
+    function toggleSuggestionType() {
+      const isUpdate = document.getElementById('typeUpdate').checked;
+      const targetGroup = document.getElementById('targetCompanyGroup');
+      targetGroup.style.display = isUpdate ? 'block' : 'none';
+    }
+
+    function onTargetCompanySelected() {
+      const select = document.getElementById('target_company_id');
+      const opt = select.options[select.selectedIndex];
+      if (!opt || !opt.value) return;
+
+      const nameInput = document.getElementById('company_name');
+      const indInput = document.getElementById('industry');
+      const tierSelect = document.getElementById('hiring_tier');
+      const webInput = document.getElementById('website_url');
+      const carInput = document.getElementById('careers_url');
+      const ctcInput = document.getElementById('typical_ctc_range');
+      const hqInput = document.getElementById('headquarters');
+
+      if (opt.dataset.name) nameInput.value = opt.dataset.name;
+      if (opt.dataset.industry) indInput.value = opt.dataset.industry;
+      if (opt.dataset.tier) tierSelect.value = opt.dataset.tier;
+      if (opt.dataset.website) webInput.value = opt.dataset.website;
+      if (opt.dataset.careers) carInput.value = opt.dataset.careers;
+      if (opt.dataset.ctc) ctcInput.value = opt.dataset.ctc;
+      if (opt.dataset.hq) hqInput.value = opt.dataset.hq;
+    }
+  </script>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -114,7 +114,52 @@ document.addEventListener("DOMContentLoaded", () => {
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
+  initProjectDeepDive();
+  initInterviewDraftLogoutCleanup();
+  initTailoredCoverLetterStudio();
 });
+
+/**
+ * Clear all interview draft answers from browser storage (#475).
+ * Used upon user logout, session end, or account reset.
+ */
+function clearAllInterviewDrafts() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("interview_draft_")) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (err) {
+    console.warn("Unable to clear interview drafts from localStorage:", err);
+  }
+}
+window.clearAllInterviewDrafts = clearAllInterviewDrafts;
+
+function initInterviewDraftLogoutCleanup() {
+  if (document.cookie.includes("interview_drafts_cleared=1")) {
+    clearAllInterviewDrafts();
+    document.cookie = "interview_drafts_cleared=; Max-Age=0; path=/;";
+  }
+  document.addEventListener("click", (e) => {
+    const logoutTarget = e.target.closest('a[href*="/logout"], form[action*="/logout"] button, #logoutLink, .btn-logout, [data-action="logout"]');
+    if (logoutTarget) {
+      clearAllInterviewDrafts();
+    }
+  });
+  document.addEventListener("submit", (e) => {
+    const formAction = e.target.getAttribute("action") || "";
+    if (formAction.includes("/logout")) {
+      clearAllInterviewDrafts();
+    }
+  });
+  if (window.location.pathname.includes("/logout") || window.location.pathname.includes("/login")) {
+    clearAllInterviewDrafts();
+  }
+}
 
 /**
  * Resolves preferred color scheme based on stored user choice,
@@ -799,6 +844,7 @@ function initFormUpload() {
   const resumeEmptyNotice = document.getElementById("resumeEmptyNotice");
   const btnChangeResumeFile = document.getElementById("btnChangeResumeFile");
   const btnDiscardResumePreview = document.getElementById("btnDiscardResumePreview");
+  const fileSelectionAnnouncer = document.getElementById("fileSelectionAnnouncer");
 
   // Format file size nicely
   const formatFileSize = (bytes) => {
@@ -832,6 +878,9 @@ function initFormUpload() {
         uploadTypeErrorMessage.textContent = `Unsupported file type "${fileName.split('.').pop() || 'unknown'}". Only .pdf and .docx resume files are supported.`;
         uploadTypeErrorAlert.classList.remove("d-none");
       }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
+      }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
       // Clear input
@@ -848,6 +897,9 @@ function initFormUpload() {
         uploadTypeErrorMessage.textContent = "The uploaded file is empty. Please upload a valid resume.";
         uploadTypeErrorAlert.classList.remove("d-none");
       }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
+      }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
       if (fileInput) fileInput.value = "";
@@ -863,6 +915,9 @@ function initFormUpload() {
       if (uploadTypeErrorAlert && uploadTypeErrorMessage) {
         uploadTypeErrorMessage.textContent = `The uploaded file exceeds the maximum allowed size of 5 MB (${formatFileSize(file.size)}). Please upload a smaller file.`;
         uploadTypeErrorAlert.classList.remove("d-none");
+      }
+      if (fileSelectionAnnouncer && uploadTypeErrorMessage) {
+        fileSelectionAnnouncer.textContent = `Upload error: ${uploadTypeErrorMessage.textContent}`;
       }
       uploadArea.classList.add("border-danger");
       uploadArea.style.backgroundColor = "#fff8f8";
@@ -894,6 +949,10 @@ function initFormUpload() {
     if (fileFeedbackBadge && fileFeedbackBadgeText) {
       fileFeedbackBadgeText.innerHTML = `<i class="fa-solid ${iconClass} me-1"></i> ${fileName} (${formatFileSize(file.size)})`;
       fileFeedbackBadge.classList.remove("d-none");
+    }
+
+    if (fileSelectionAnnouncer) {
+      fileSelectionAnnouncer.textContent = `Resume file ${fileName} selected successfully (${formatFileSize(file.size)}). Ready for analysis.`;
     }
 
     // Populate Resume Preview Card (#133)
@@ -939,6 +998,9 @@ function initFormUpload() {
     }
     if (resumeEmptyNotice) {
       resumeEmptyNotice.classList.remove("d-none");
+    }
+    if (fileSelectionAnnouncer) {
+      fileSelectionAnnouncer.textContent = "Resume file selection cleared.";
     }
   };
 
@@ -1017,6 +1079,8 @@ function initFormUpload() {
   const progressSubtitle = document.getElementById("progressSubtitle");
   const analysisProgressBar = document.getElementById("analysisProgressBar");
   const progressSpinner = document.getElementById("progressSpinner");
+  const progressSuccessIcon = document.getElementById("progressSuccessIcon");
+  const progressErrorIcon = document.getElementById("progressErrorIcon");
   const progressErrorAlert = document.getElementById("progressErrorAlert");
   const progressErrorMessage = document.getElementById("progressErrorMessage");
   const progressErrorStepName = document.getElementById("progressErrorStepName");
@@ -1052,8 +1116,13 @@ function initFormUpload() {
 
   if (btnCloseProgressError) {
     btnCloseProgressError.addEventListener("click", () => {
-      if (progressOverlay) progressOverlay.classList.add("d-none");
+      if (progressOverlay) {
+        progressOverlay.classList.add("d-none");
+        progressOverlay.removeAttribute("data-state");
+      }
       if (progressSpinner) progressSpinner.classList.remove("d-none");
+      if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+      if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
       if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
       enableSubmitButton();
     });
@@ -1082,7 +1151,10 @@ function initFormUpload() {
   };
 
   function resetProgressPanel() {
+    if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
+    if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+    if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
     if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
     if (progressTitle) progressTitle.textContent = "Coordinating AI Agents";
     if (progressSubtitle) progressSubtitle.textContent = "Orchestrating multi-agent analysis in progress...";
@@ -1091,7 +1163,7 @@ function initFormUpload() {
     if (analysisProgressBar) {
       analysisProgressBar.style.width = "5%";
       analysisProgressBar.setAttribute("aria-valuenow", "5");
-      analysisProgressBar.classList.add("progress-bar-animated");
+      analysisProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
     }
 
     stepOrder.forEach((stepId, idx) => {
@@ -1320,6 +1392,8 @@ function initFormUpload() {
   const btnReviewResumeDirect = document.getElementById("btnReviewResumeDirect");
   if (btnReviewResumeDirect) {
     btnReviewResumeDirect.addEventListener("click", () => {
+      if (isSubmitting) return;
+
       const textInput = document.getElementById("resumeTextInput");
       const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
       const hasText = textInput && textInput.value.trim().length > 0;
@@ -1336,6 +1410,7 @@ function initFormUpload() {
         return;
       }
 
+      setActionButtonsProcessing(true);
       const reviewSwitch = document.getElementById("reviewStepSwitch");
       if (reviewSwitch) reviewSwitch.checked = true;
       uploadForm.action = "/resume/review";
@@ -1367,6 +1442,9 @@ function initFormUpload() {
       consentCheck.focus();
       return;
     }
+
+    // Lock submission state and disable action buttons
+    setActionButtonsProcessing(true);
 
     // Check if user selected the Resume Review & Correction step
     const reviewStepSwitch = document.getElementById("reviewStepSwitch");
@@ -1407,7 +1485,13 @@ function initFormUpload() {
           if (!response.ok || !data.success) {
             throw new Error(data.error || "Batch comparison failed.");
           }
-          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
           if (progressTitle) progressTitle.textContent = "Comparison Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
           setTimeout(() => {
@@ -1501,8 +1585,14 @@ function initFormUpload() {
           }
         });
 
+        if (progressSpinner) progressSpinner.classList.add("d-none");
+        if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+        if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
+
         if (analysisProgressBar) {
           analysisProgressBar.style.width = "100%";
+          analysisProgressBar.setAttribute("aria-valuenow", "100");
+          analysisProgressBar.className = "progress-bar bg-success";
           analysisProgressBar.classList.remove("progress-bar-animated");
         }
         if (progressTitle) progressTitle.textContent = "Analysis Complete!";
@@ -1576,6 +1666,7 @@ function initFormUpload() {
         alert(`Failed at ${stepLabel}: ${errMsg}`);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
+      setActionButtonsProcessing(false);
     }
 
     const formData = new FormData(uploadForm);
@@ -1588,6 +1679,22 @@ function initFormUpload() {
         const data = await response.json();
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initiate background analysis.");
+        }
+
+        if (data.cached && data.redirect_url) {
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+          if (progressTitle) progressTitle.textContent = "Analysis Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 400);
+          return;
         }
 
         const streamUrl = data.stream_url;
@@ -1659,7 +1766,15 @@ function initCircularProgress() {
  */
 function initMockInterview() {
   const chatForm = document.getElementById("chatForm");
-  if (!chatForm) return;
+  if (!chatForm) {
+    if (document.getElementById("btnResetSession") || document.getElementById("inlineStrengthsWeaknessesCard")) {
+      clearAllInterviewDrafts();
+    }
+    return;
+  }
+
+  const analysisId = chatForm.getAttribute("data-analysis-id") || "";
+  const sessionId = chatForm.getAttribute("data-session-id") || analysisId;
 
   const chatContainer = document.getElementById("chatContainer");
   const answerInput = document.getElementById("answerInput");
@@ -2236,7 +2351,7 @@ function initMockInterview() {
     window.speechSynthesis.speak(utterance);
   }
 
-  // Delegated click listener for all TTS buttons (initial & dynamically added)
+  // Delegated click listener for all TTS and Try-Again retry buttons (initial & dynamically added)
   if (chatContainer) {
     chatContainer.addEventListener("click", (e) => {
       const ttsBtn = e.target.closest(".btn-tts");
@@ -2244,6 +2359,64 @@ function initMockInterview() {
         e.preventDefault();
         const textToSpeak = ttsBtn.getAttribute("data-tts") || ttsBtn.closest(".chat-bubble-agent")?.innerText || "";
         speakQuestionText(textToSpeak, ttsBtn);
+        return;
+      }
+
+      // Try-Again Retry Loop Action (#467)
+      const tryBtn = e.target.closest(".btn-try-again");
+      if (tryBtn) {
+        e.preventDefault();
+        const qIndex = tryBtn.getAttribute("data-question-index");
+        const retriesLeft = parseInt(tryBtn.getAttribute("data-retries-left") || "2", 10);
+        if (retriesLeft <= 0) return;
+
+        // Remember previous active question index before entering retry mode
+        if (!chatForm.getAttribute("data-previous-active-index")) {
+          chatForm.setAttribute("data-previous-active-index", chatForm.getAttribute("data-question-index") || "0");
+        }
+
+        // Set retry state on the form
+        chatForm.setAttribute("data-is-retry", "true");
+        chatForm.setAttribute("data-question-index", qIndex);
+
+        // Display retry banner above the input area
+        let retryBanner = document.getElementById("retryAlertBanner");
+        if (!retryBanner) {
+          retryBanner = document.createElement("div");
+          retryBanner.id = "retryAlertBanner";
+          retryBanner.className = "alert alert-info py-2 px-3 mb-2 d-flex justify-content-between align-items-center rounded-3 shadow-xs";
+          chatForm.insertBefore(retryBanner, chatForm.firstChild);
+        }
+        retryBanner.innerHTML = `
+          <div class="small">
+            <i class="fa-solid fa-rotate-left text-primary me-1"></i>
+            <strong>Retrying Question ${parseInt(qIndex, 10) + 1}</strong>: Refine your response using the feedback above (${retriesLeft} ${retriesLeft === 1 ? 'retry' : 'retries'} remaining).
+          </div>
+          <button type="button" class="btn-close btn-sm" id="btnCancelRetry" aria-label="Cancel retry"></button>
+        `;
+
+        const cancelBtn = retryBanner.querySelector("#btnCancelRetry");
+        if (cancelBtn) {
+          cancelBtn.addEventListener("click", () => {
+            retryBanner.remove();
+            chatForm.removeAttribute("data-is-retry");
+            const prevIndex = chatForm.getAttribute("data-previous-active-index");
+            if (prevIndex !== null) {
+              chatForm.setAttribute("data-question-index", prevIndex);
+              chatForm.removeAttribute("data-previous-active-index");
+            }
+            submitBtn.innerHTML = "Submit Answer";
+          });
+        }
+
+        submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Submit Refined Answer';
+        if (answerInput) {
+          answerInput.disabled = false;
+          submitBtn.disabled = false;
+          answerInput.value = "";
+          answerInput.focus();
+          answerInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
       }
     });
   }
@@ -2399,6 +2572,9 @@ function initMockInterview() {
       });
       const res = await resp.json();
       if (res.success) {
+        if (typeof clearAllDraftsForThisSession === "function") {
+          clearAllDraftsForThisSession();
+        }
         window.location.reload();
       } else {
         alert(res.error || "Failed to reset interview session.");
@@ -2565,6 +2741,7 @@ function initMockInterview() {
           const currentVal = answerInput.value.trim();
           answerInput.value = currentVal ? `${currentVal} ${textToInsert}` : textToInsert;
           triggerWordCounter(answerInput);
+          if (typeof saveCurrentDraft === "function") saveCurrentDraft();
           liveInterimText.innerText = "";
           finalTranscript = "";
           updateTranscriptWordCount("");
@@ -2593,7 +2770,7 @@ function initMockInterview() {
   }
 
   // -------------------------------------------------------------
-  // 3. Live Word Counter & Keyboard Shortcuts
+  // 3. Live Word Counter, Keyboard Shortcuts & Draft Autosave (#475)
   // -------------------------------------------------------------
   function triggerWordCounter(inputEl) {
     const wordCountBadge = document.getElementById("wordCountBadge");
@@ -2608,16 +2785,170 @@ function initMockInterview() {
     }
   }
 
+  const draftStatusBadge = document.getElementById("draftStatusBadge");
+  let draftIndicatorTimer = null;
+  let lastSavedDraftText = "";
+  let draftDebounceTimer = null;
+
+  function showDraftIndicator(message, persistent = false) {
+    if (!draftStatusBadge) return;
+    if (draftIndicatorTimer) {
+      clearTimeout(draftIndicatorTimer);
+      draftIndicatorTimer = null;
+    }
+    const isRestored = message.toLowerCase().includes("restored");
+    const icon = isRestored
+      ? '<i class="fa-solid fa-clock-rotate-left text-success me-1"></i>'
+      : '<i class="fa-regular fa-floppy-disk text-primary me-1"></i>';
+    draftStatusBadge.innerHTML = `${icon}<span>${message}</span>`;
+    draftStatusBadge.classList.remove("d-none");
+    if (!persistent) {
+      draftIndicatorTimer = setTimeout(() => {
+        draftStatusBadge.classList.add("d-none");
+      }, 3000);
+    }
+  }
+
+  function hideDraftIndicator() {
+    if (!draftStatusBadge) return;
+    if (draftIndicatorTimer) {
+      clearTimeout(draftIndicatorTimer);
+      draftIndicatorTimer = null;
+    }
+    draftStatusBadge.classList.add("d-none");
+  }
+
+  function getDraftStorageKey(qIndex) {
+    const q = (typeof qIndex !== "undefined" && qIndex !== null)
+      ? qIndex
+      : parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || analysisId || "";
+    return `interview_draft_${targetSession}_${q}`;
+  }
+
+  function saveCurrentDraft() {
+    if (!answerInput) return;
+    const currentText = answerInput.value;
+    const currentQ = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+
+    if (currentText && currentText.trim().length > 0) {
+      if (currentText !== lastSavedDraftText) {
+        try {
+          localStorage.setItem(key, currentText);
+          lastSavedDraftText = currentText;
+          showDraftIndicator("Draft saved");
+        } catch (err) {
+          console.warn("Unable to save interview draft to localStorage:", err);
+        }
+      }
+    } else {
+      if (lastSavedDraftText) {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {}
+        lastSavedDraftText = "";
+        hideDraftIndicator();
+      }
+    }
+  }
+
+  function restoreCurrentDraft() {
+    if (!answerInput) return;
+    const currentQ = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || "";
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+
+    try {
+      let saved = localStorage.getItem(key);
+      if (!saved && altAnalysisId && altAnalysisId !== targetSession) {
+        saved = localStorage.getItem(`interview_draft_${altAnalysisId}_${currentQ}`);
+      }
+
+      if (saved && saved.trim().length > 0) {
+        if (!answerInput.value || !answerInput.value.trim()) {
+          answerInput.value = saved;
+          lastSavedDraftText = saved;
+          triggerWordCounter(answerInput);
+          updateLiveSpeechTelemetry(answerInput.value);
+          showDraftIndicator("Draft restored", true);
+        }
+      }
+    } catch (err) {
+      console.warn("Unable to restore interview draft from localStorage:", err);
+    }
+  }
+
+  function clearDraftForQuestion(qIndex) {
+    const currentQ = (typeof qIndex !== "undefined" && qIndex !== null)
+      ? qIndex
+      : parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+    try {
+      localStorage.removeItem(key);
+      if (altAnalysisId) {
+        localStorage.removeItem(`interview_draft_${altAnalysisId}_${currentQ}`);
+      }
+    } catch (e) {}
+    lastSavedDraftText = "";
+    hideDraftIndicator();
+  }
+
+  function clearAllDraftsForThisSession() {
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || "";
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("interview_draft_")) {
+          if (!targetSession && !altAnalysisId) {
+            keysToRemove.push(k);
+          } else if ((targetSession && k.includes(`_${targetSession}_`)) || (altAnalysisId && k.includes(`_${altAnalysisId}_`))) {
+            keysToRemove.push(k);
+          }
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {}
+    lastSavedDraftText = "";
+    hideDraftIndicator();
+  }
+
+  // Restore unsent draft on page initialization (#475)
+  restoreCurrentDraft();
+
   if (answerInput) {
     answerInput.addEventListener("input", () => {
       triggerWordCounter(answerInput);
       updateLiveSpeechTelemetry(answerInput.value);
+
+      // Hide restored indicator once user resumes typing
+      if (draftStatusBadge && draftStatusBadge.innerText.includes("restored")) {
+        hideDraftIndicator();
+      }
+
+      // Debounced autosave (1.2 seconds after typing pause)
+      if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
+      draftDebounceTimer = setTimeout(saveCurrentDraft, 1200);
     });
 
+    // Periodic draft autosave every 2.5 seconds (#475)
+    const draftAutosaveInterval = setInterval(saveCurrentDraft, 2500);
+
+    // Persist draft immediately before accidental page unload or reload
+    window.addEventListener("beforeunload", saveCurrentDraft);
+
+    // Ctrl/Cmd + Enter submits only when the answer is not empty (#475)
     answerInput.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        chatForm.requestSubmit();
+        const trimmed = (answerInput.value || "").trim();
+        if (trimmed.length > 0) {
+          chatForm.requestSubmit();
+        }
       }
     });
   }
@@ -2634,6 +2965,10 @@ function initMockInterview() {
         return;
       }
     }
+
+    // Clear draft for this question upon submission (#475)
+    const questionIndex = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    clearDraftForQuestion(questionIndex);
 
     // Stop active speech recognition or TTS
     if (recognition && isRecording) {
@@ -2657,7 +2992,6 @@ function initMockInterview() {
       timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
     }
 
-    const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
     // Compute final speech and non-verbal telemetry metrics
@@ -2686,6 +3020,7 @@ function initMockInterview() {
     const loaderBubble = appendChatBubble("<i>Interview Agent & STAR Story Coach are analyzing your response and verbal delivery...</i>", "agent");
 
     try {
+      const isRetrySubmission = chatForm.getAttribute("data-is-retry") === "true";
       const response = await fetch(`/interview/${analysisId}/submit`, {
         method: "POST",
         headers: {
@@ -2695,6 +3030,7 @@ function initMockInterview() {
         body: JSON.stringify({
           answer: answer,
           question_index: questionIndex,
+          is_retry: isRetrySubmission,
           speech_metrics: finalSpeechMetrics,
           is_timed: isAnswerTimed,
           time_taken_seconds: timeTakenSeconds,
@@ -2704,6 +3040,11 @@ function initMockInterview() {
 
       const result = await response.json();
       loaderBubble.remove();
+
+      // Clean up retry banner and form state after submission
+      document.getElementById("retryAlertBanner")?.remove();
+      chatForm.removeAttribute("data-is-retry");
+      submitBtn.innerHTML = "Submit Answer";
 
       if (result.error) {
         appendChatBubble(`Error: ${result.error}`, "agent");
@@ -2836,6 +3177,104 @@ function initMockInterview() {
         `;
       }
 
+      // Side-by-side retry comparison card (#467)
+      let comparisonHtml = "";
+      if (result.comparison && result.comparison.criteria) {
+        const comp = result.comparison;
+        const ov = comp.overall || {};
+        let ovBadge = "";
+        if (ov.status === "improved") {
+          ovBadge = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-up me-1"></i> Overall: +${ov.diff} pts</span>`;
+        } else if (ov.status === "declined") {
+          ovBadge = `<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill"><i class="fa-solid fa-arrow-trend-down me-1"></i> Overall: ${ov.diff} pts</span>`;
+        } else {
+          ovBadge = `<span class="badge bg-secondary-subtle text-secondary border rounded-pill"><i class="fa-solid fa-equals me-1"></i> Overall: Unchanged</span>`;
+        }
+
+        let critCols = "";
+        for (const [ckey, cinfo] of Object.entries(comp.criteria)) {
+          const diffSign = cinfo.diff > 0 ? `+${cinfo.diff}` : `${cinfo.diff}`;
+          let diffBadge = "";
+          if (cinfo.diff > 0) {
+            diffBadge = `<span class="badge bg-success-subtle text-success ms-1 small">${diffSign}</span>`;
+          } else if (cinfo.diff < 0) {
+            diffBadge = `<span class="badge bg-danger-subtle text-danger ms-1 small">${diffSign}</span>`;
+          } else {
+            diffBadge = `<span class="badge bg-secondary-subtle text-secondary ms-1 small">0</span>`;
+          }
+
+          critCols += `
+            <div class="col-6 col-md-3">
+              <div class="bg-white p-2 rounded-2 border text-center h-100">
+                <span class="d-block small text-muted">${escapeHtml(cinfo.label || ckey)}</span>
+                <span class="fw-bold">${cinfo.current_score}/100</span>
+                ${diffBadge}
+              </div>
+            </div>
+          `;
+        }
+
+        let addressedHtml = "";
+        if (comp.addressed_points && comp.addressed_points.length > 0) {
+          addressedHtml = `
+            <div class="small text-success mb-1 mt-2">
+              <b><i class="fa-solid fa-check-circle me-1"></i> Addressed Feedback:</b>
+              <ul class="mb-0 ps-3">
+                ${comp.addressed_points.map(pt => `<li>${escapeHtml(pt)}</li>`).join("")}
+              </ul>
+            </div>
+          `;
+        }
+
+        let unaddressedHtml = "";
+        if (comp.unaddressed_points && comp.unaddressed_points.length > 0) {
+          unaddressedHtml = `
+            <div class="small text-danger mb-0 mt-2">
+              <b><i class="fa-solid fa-triangle-exclamation me-1"></i> Focus Areas:</b>
+              <ul class="mb-0 ps-3">
+                ${comp.unaddressed_points.map(pt => `<li>${escapeHtml(pt)}</li>`).join("")}
+              </ul>
+            </div>
+          `;
+        }
+
+        comparisonHtml = `
+          <div class="card border rounded-3 p-3 my-2 bg-light retry-comparison-card shadow-xs">
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+              <span class="small fw-bold text-dark"><i class="fa-solid fa-code-compare text-primary me-1"></i> Attempt Comparison (Attempt ${result.attempt_number || 2} vs Attempt ${result.attempt_number ? result.attempt_number - 1 : 1}):</span>
+              ${ovBadge}
+            </div>
+            <div class="row g-2 mb-1">
+              ${critCols}
+            </div>
+            ${addressedHtml}
+            ${unaddressedHtml}
+          </div>
+        `;
+      }
+
+      // Retry Action Button (#467)
+      let retryBarHtml = "";
+      const retriesLeft = typeof result.retries_left === "number" ? result.retries_left : (2 - (result.retry_count || 0));
+      if (!result.completed && retriesLeft > 0) {
+        retryBarHtml = `
+          <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 retry-action-bar">
+            <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-try-again" data-question-index="${questionIndex}" data-retries-left="${retriesLeft}">
+              <i class="fa-solid fa-rotate-left me-1"></i> Try Again (${retriesLeft} ${retriesLeft === 1 ? 'retry' : 'retries'} left)
+            </button>
+            <span class="small text-muted">Incorporate the feedback above and refine your response.</span>
+          </div>
+        `;
+      } else if (!result.completed && (result.retry_count || 0) >= 2) {
+        retryBarHtml = `
+          <div class="mt-3 pt-2 border-top d-flex justify-content-between align-items-center">
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+              <i class="fa-solid fa-ban me-1"></i> Max retries reached (2/2)
+            </span>
+          </div>
+        `;
+      }
+
       const feedbackText = `
         <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
           <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
@@ -2852,6 +3291,7 @@ function initMockInterview() {
         ${fillersHtml}
         ${starHtml}
         ${perAnswerFeedbackHtml}
+        ${comparisonHtml}
         <b>Suggestions:</b><br/>
         <ul class="mb-0 mt-1 list-unstyled">
           ${(evalData.suggestions || []).map(s => `
@@ -2863,11 +3303,46 @@ function initMockInterview() {
             </li>
           `).join("")}
         </ul>
+        ${retryBarHtml}
       `;
       appendChatBubble(feedbackText, "evaluation");
 
-      if (result.completed) {
+      if (result.is_retry) {
+        // Update all retry buttons and action bars for this question in the DOM
+        const qIdxStr = String(questionIndex);
+        const newRetriesLeft = typeof result.retries_left === "number" ? result.retries_left : 0;
+        document.querySelectorAll(`.btn-try-again[data-question-index="${qIdxStr}"]`).forEach((b) => {
+          b.setAttribute("data-retries-left", String(newRetriesLeft));
+          if (newRetriesLeft <= 0) {
+            const bar = b.closest(".retry-action-bar");
+            if (bar) {
+              bar.innerHTML = `
+                <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+                  <i class="fa-solid fa-ban me-1"></i> Max retries reached (2/2)
+                </span>
+              `;
+            }
+          } else {
+            b.innerHTML = `<i class="fa-solid fa-rotate-left me-1"></i> Try Again (${newRetriesLeft} ${newRetriesLeft === 1 ? 'retry' : 'retries'} left)`;
+          }
+        });
+
+        // Restore active question index to next pending question if applicable
+        const prevIndex = chatForm.getAttribute("data-previous-active-index");
+        if (prevIndex !== null && !result.completed) {
+          chatForm.setAttribute("data-question-index", prevIndex);
+          chatForm.removeAttribute("data-previous-active-index");
+        } else if (result.next_index !== undefined && !result.completed) {
+          chatForm.setAttribute("data-question-index", String(result.next_index));
+        }
+
+        resetInputs();
+        if (typeof showToast === "function") {
+          showToast(`Retry evaluation recorded (Attempt ${result.attempt_number || 2}). See comparison above.`);
+        }
+      } else if (result.completed) {
         stopQuestionTimer();
+        clearAllDraftsForThisSession();
         if (interviewTimerBar) {
           interviewTimerBar.classList.add("d-none");
         }
@@ -2927,6 +3402,7 @@ function initMockInterview() {
           chatForm.setAttribute("data-question-index", nextQ.index);
           chatForm.setAttribute("data-question-type", nextQ.type || "Technical");
           resetInputs();
+          restoreCurrentDraft();
 
           // Start timer for next question if timed mode is enabled (#431)
           if (isTimedMode) {
@@ -6850,5 +7326,469 @@ function initSelfIntroductionStudio() {
     return div.innerHTML;
   }
 }
+
+/**
+ * Project Deep-Dive Interview Practice Mode (#466).
+ * Handles project selection, thin project enrichment, grounded question delivery,
+ * answer evaluation with scores & improvement tips, and overall session completion.
+ */
+function initProjectDeepDive() {
+  const pDataStore = document.getElementById("projectsDataStore");
+  if (!pDataStore) return;
+
+  const mainContainer = document.getElementById("main-content");
+  const analysisId = mainContainer ? mainContainer.getAttribute("data-analysis-id") : "";
+  const companyName = mainContainer ? mainContainer.getAttribute("data-company-name") : "Placement";
+
+  let rawProjects = [];
+  try {
+    rawProjects = JSON.parse(pDataStore.getAttribute("data-projects") || "[]");
+  } catch (err) {
+    rawProjects = [];
+  }
+
+  // DOM Elements
+  const projectSelectionView = document.getElementById("projectSelectionView");
+  const simulatorView = document.getElementById("projectDeepDiveSimulatorView");
+  const activeProjectTitle = document.getElementById("activeProjectTitle");
+  const activeProjectTechStack = document.getElementById("activeProjectTechStack");
+  const activeProjectDescription = document.getElementById("activeProjectDescription");
+  const projectContextDrawer = document.getElementById("projectContextDrawer");
+  const btnToggleProjectContext = document.getElementById("btnToggleProjectContext");
+  const btnChangeProject = document.getElementById("btnChangeProject");
+
+  const questionProgressText = document.getElementById("questionProgressText");
+  const activeCategoryBadge = document.getElementById("activeCategoryBadge");
+  const progressBar = document.getElementById("progressBar");
+  const activeQuestionText = document.getElementById("activeQuestionText");
+  const btnTtsQuestion = document.getElementById("btnTtsQuestion");
+
+  const answerForm = document.getElementById("projectAnswerForm");
+  const answerInput = document.getElementById("projectAnswerInput");
+  const answerWordCount = document.getElementById("answerWordCount");
+  const btnSubmitAnswer = document.getElementById("btnSubmitProjectAnswer");
+
+  const answerEvalCard = document.getElementById("answerEvaluationCard");
+  const evalOverallScoreBadge = document.getElementById("evalOverallScoreBadge");
+  const evalClarityScore = document.getElementById("evalClarityScore");
+  const evalDepthScore = document.getElementById("evalDepthScore");
+  const evalConsistencyScore = document.getElementById("evalConsistencyScore");
+  const evalTipText = document.getElementById("evalTipText");
+  const evalFeedbackText = document.getElementById("evalFeedbackText");
+  const btnNextQuestion = document.getElementById("btnNextQuestion");
+
+  // Modals
+  const thinProjectModalEl = document.getElementById("thinProjectModal");
+  const customProjectModalEl = document.getElementById("customProjectModal");
+  const summaryModalEl = document.getElementById("deepDiveSummaryModal");
+
+  // State
+  let activeProject = null;
+  let activeQuestions = [];
+  let currentQuestionIndex = 0;
+  let evaluationsHistory = [];
+  let pendingThinProject = null;
+
+  function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  const categoryLabels = {
+    "design_choices": "Design Choices",
+    "challenges": "Challenges & Bugs",
+    "testing": "Testing & Verification",
+    "improvements": "Retrospective & Polish",
+    "tradeoffs": "Technical Trade-offs"
+  };
+
+  // 1. Project selection handlers
+  document.querySelectorAll(".btn-select-project").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pid = btn.getAttribute("data-project-id");
+      const proj = rawProjects.find((p) => String(p.id) === String(pid));
+      if (proj) {
+        startProjectDeepDive(proj);
+      }
+    });
+  });
+
+  // 2. Thin project selection handler
+  document.querySelectorAll(".btn-select-thin-project").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pid = btn.getAttribute("data-project-id");
+      const proj = rawProjects.find((p) => String(p.id) === String(pid));
+      if (proj && thinProjectModalEl) {
+        pendingThinProject = proj;
+        document.getElementById("modalProjectTitle").value = proj.title || "";
+        document.getElementById("modalProjectTech").value = proj.tech_stack || "";
+        document.getElementById("modalProjectAdditionalDetails").value = "";
+        const modal = new bootstrap.Modal(thinProjectModalEl);
+        modal.show();
+      }
+    });
+  });
+
+  const btnConfirmStartWithDetails = document.getElementById("btnConfirmStartWithDetails");
+  if (btnConfirmStartWithDetails) {
+    btnConfirmStartWithDetails.addEventListener("click", () => {
+      if (!pendingThinProject) return;
+      const extraTech = document.getElementById("modalProjectTech")?.value.trim() || "";
+      const extraDetails = document.getElementById("modalProjectAdditionalDetails")?.value.trim() || "";
+
+      const updatedProj = { ...pendingThinProject };
+      if (extraTech) updatedProj.tech_stack = extraTech;
+      
+      const modalInstance = bootstrap.Modal.getInstance(thinProjectModalEl);
+      if (modalInstance) modalInstance.hide();
+
+      startProjectDeepDive(updatedProj, extraDetails);
+    });
+  }
+
+  // 3. Custom project creation handler (when resume has no projects)
+  const btnOpenCustomModal = document.getElementById("btnOpenCustomProjectModal");
+  if (btnOpenCustomModal && customProjectModalEl) {
+    btnOpenCustomModal.addEventListener("click", () => {
+      const modal = new bootstrap.Modal(customProjectModalEl);
+      modal.show();
+    });
+  }
+
+  const btnSaveCustomProject = document.getElementById("btnSaveCustomProject");
+  if (btnSaveCustomProject) {
+    btnSaveCustomProject.addEventListener("click", () => {
+      const title = document.getElementById("customProjectTitle")?.value.trim() || "";
+      const tech = document.getElementById("customProjectTech")?.value.trim() || "";
+      const desc = document.getElementById("customProjectDesc")?.value.trim() || "";
+
+      if (!title || !desc) {
+        if (typeof showToast === "function") showToast("Please provide both a project title and description.");
+        return;
+      }
+
+      const customProj = {
+        id: "custom-" + Date.now(),
+        title: title,
+        tech_stack: tech,
+        description: desc,
+        short_description: desc.slice(0, 150),
+        is_thin: false,
+        word_count: desc.split(/\s+/).length
+      };
+
+      const modalInstance = bootstrap.Modal.getInstance(customProjectModalEl);
+      if (modalInstance) modalInstance.hide();
+
+      startProjectDeepDive(customProj);
+    });
+  }
+
+  // 4. Start Deep-Dive Session
+  async function startProjectDeepDive(project, additionalDetails = "") {
+    activeProject = project;
+    currentQuestionIndex = 0;
+    evaluationsHistory = [];
+
+    // Switch views
+    if (projectSelectionView) projectSelectionView.classList.add("d-none");
+    if (simulatorView) simulatorView.classList.remove("d-none");
+
+    // Populate active project headers
+    if (activeProjectTitle) activeProjectTitle.textContent = project.title || "Project";
+    if (activeProjectTechStack) activeProjectTechStack.textContent = project.tech_stack ? `Tech Stack: ${project.tech_stack}` : "Tech Stack: Stated on resume";
+    if (activeProjectDescription) activeProjectDescription.textContent = project.description || "No project description provided.";
+
+    // Show loading on question card
+    if (activeQuestionText) {
+      activeQuestionText.innerHTML = '<span class="spinner-border spinner-border-sm text-primary me-2" role="status"></span> Generating 5 grounded technical follow-up questions...';
+    }
+    if (answerForm) answerForm.classList.add("d-none");
+    if (answerEvalCard) answerEvalCard.classList.add("d-none");
+
+    try {
+      const resp = await fetch(`/api/interview/${analysisId}/project-deep-dive/questions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCsrfToken()
+        },
+        body: JSON.stringify({
+          project: project,
+          additional_details: additionalDetails
+        })
+      });
+
+      const data = await resp.json();
+      if (!resp.ok || !data.success) {
+        throw new Error(data.error || "Failed to generate project questions.");
+      }
+
+      activeQuestions = data.questions || [];
+      if (activeQuestions.length === 0) {
+        throw new Error("No questions were generated for this project.");
+      }
+
+      renderQuestion(0);
+    } catch (err) {
+      if (activeQuestionText) {
+        activeQuestionText.innerHTML = `<span class="text-danger"><i class="fa-solid fa-triangle-exclamation me-1"></i> ${escapeHtml(err.message)}</span>`;
+      }
+      if (typeof showToast === "function") {
+        showToast(err.message);
+      }
+    }
+  }
+
+  // 5. Render Question
+  function renderQuestion(qIndex) {
+    if (!activeQuestions[qIndex]) return;
+    const q = activeQuestions[qIndex];
+    currentQuestionIndex = qIndex;
+
+    const total = activeQuestions.length;
+    const pct = Math.round(((qIndex + 1) / total) * 100);
+
+    if (questionProgressText) questionProgressText.textContent = `Question ${qIndex + 1} of ${total}`;
+    if (progressBar) {
+      progressBar.style.width = `${pct}%`;
+      progressBar.setAttribute("aria-valuenow", String(pct));
+    }
+    if (activeCategoryBadge) {
+      activeCategoryBadge.textContent = categoryLabels[q.category] || q.category || "Technical Rationale";
+    }
+
+    if (activeQuestionText) {
+      activeQuestionText.textContent = q.question;
+    }
+
+    // Reset and show answer input
+    if (answerInput) {
+      answerInput.value = "";
+      answerInput.disabled = false;
+      answerInput.focus();
+    }
+    if (answerWordCount) answerWordCount.textContent = "0 words";
+    if (btnSubmitAnswer) {
+      btnSubmitAnswer.disabled = false;
+      btnSubmitAnswer.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Submit Answer';
+    }
+
+    if (answerForm) answerForm.classList.remove("d-none");
+    if (answerEvalCard) answerEvalCard.classList.add("d-none");
+  }
+
+  // 6. Word counter & Keyboard shortcut on answer input
+  if (answerInput) {
+    answerInput.addEventListener("input", () => {
+      const words = answerInput.value.trim().split(/\s+/).filter(Boolean);
+      if (answerWordCount) answerWordCount.textContent = `${words.length} words`;
+    });
+
+    answerInput.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (answerInput.value.trim() && !btnSubmitAnswer.disabled) {
+          answerForm.requestSubmit();
+        }
+      }
+    });
+  }
+
+  // 7. Toggle context drawer
+  if (btnToggleProjectContext && projectContextDrawer) {
+    btnToggleProjectContext.addEventListener("click", () => {
+      const bsCollapse = bootstrap.Collapse.getOrCreateInstance(projectContextDrawer);
+      bsCollapse.toggle();
+    });
+  }
+
+  // 8. Change Project button
+  if (btnChangeProject) {
+    btnChangeProject.addEventListener("click", () => {
+      if (simulatorView) simulatorView.classList.add("d-none");
+      if (projectSelectionView) projectSelectionView.classList.remove("d-none");
+    });
+  }
+
+  // 9. Audio TTS on question
+  if (btnTtsQuestion) {
+    btnTtsQuestion.addEventListener("click", () => {
+      if (!("speechSynthesis" in window)) {
+        if (typeof showToast === "function") showToast("Speech synthesis not supported in this browser.");
+        return;
+      }
+      const textToSpeak = activeQuestionText ? activeQuestionText.textContent : "";
+      if (!textToSpeak) return;
+
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 1.0;
+      btnTtsQuestion.classList.add("btn-primary");
+      btnTtsQuestion.classList.remove("btn-outline-primary");
+      utterance.onend = () => {
+        btnTtsQuestion.classList.remove("btn-primary");
+        btnTtsQuestion.classList.add("btn-outline-primary");
+      };
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+
+  // 10. Submit Answer & Evaluate
+  if (answerForm) {
+    answerForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const ans = answerInput ? answerInput.value.trim() : "";
+      if (!ans) return;
+
+      if (btnSubmitAnswer) {
+        btnSubmitAnswer.disabled = true;
+        btnSubmitAnswer.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Evaluating Technical Defense...';
+      }
+      if (answerInput) answerInput.disabled = true;
+
+      const currentQ = activeQuestions[currentQuestionIndex];
+
+      try {
+        const resp = await fetch(`/api/interview/${analysisId}/project-deep-dive/evaluate`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCsrfToken()
+          },
+          body: JSON.stringify({
+            project: activeProject,
+            question: currentQ.question,
+            question_index: currentQuestionIndex,
+            answer: ans
+          })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+          throw new Error(data.error || "Evaluation failed.");
+        }
+
+        const ev = data.evaluation || {};
+        evaluationsHistory.push(ev);
+
+        // Populate Evaluation Card
+        if (evalOverallScoreBadge) {
+          const ov = ev.overall_score || 0;
+          evalOverallScoreBadge.textContent = `${ov} / 100`;
+          evalOverallScoreBadge.className = `badge border rounded-pill px-3 py-1 fw-bold fs-6 ${ov >= 75 ? "bg-success-subtle text-success border-success-subtle" : (ov >= 50 ? "bg-warning-subtle text-dark border-warning-subtle" : "bg-danger-subtle text-danger border-danger-subtle")}`;
+        }
+        if (evalClarityScore) evalClarityScore.textContent = `${ev.clarity_score || 0}%`;
+        if (evalDepthScore) evalDepthScore.textContent = `${ev.depth_score || 0}%`;
+        if (evalConsistencyScore) evalConsistencyScore.textContent = `${ev.consistency_score || 0}%`;
+        if (evalTipText) evalTipText.textContent = ev.tip || "Quantify the technical impact and trade-offs of your choices.";
+        if (evalFeedbackText) evalFeedbackText.textContent = ev.feedback || "Answer evaluated against your project scope.";
+
+        // Update Next button label
+        if (btnNextQuestion) {
+          if (currentQuestionIndex + 1 < activeQuestions.length) {
+            btnNextQuestion.innerHTML = 'Next Question <i class="fa-solid fa-arrow-right ms-1"></i>';
+          } else {
+            btnNextQuestion.innerHTML = 'Complete Deep-Dive &amp; View Summary <i class="fa-solid fa-award ms-1"></i>';
+          }
+        }
+
+        if (answerForm) answerForm.classList.add("d-none");
+        if (answerEvalCard) answerEvalCard.classList.remove("d-none");
+
+      } catch (err) {
+        if (btnSubmitAnswer) {
+          btnSubmitAnswer.disabled = false;
+          btnSubmitAnswer.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Submit Answer';
+        }
+        if (answerInput) answerInput.disabled = false;
+        if (typeof showToast === "function") showToast(err.message);
+      }
+    });
+  }
+
+  // 11. Next Question Button
+  if (btnNextQuestion) {
+    btnNextQuestion.addEventListener("click", () => {
+      if (currentQuestionIndex + 1 < activeQuestions.length) {
+        renderQuestion(currentQuestionIndex + 1);
+      } else {
+        showCompletionSummary();
+      }
+    });
+  }
+
+  // 12. Show Completion Summary Modal
+  function showCompletionSummary() {
+    if (!summaryModalEl) return;
+
+    let sumClarity = 0, sumDepth = 0, sumConsistency = 0, sumOverall = 0;
+    const tips = [];
+
+    evaluationsHistory.forEach((ev) => {
+      sumClarity += ev.clarity_score || 0;
+      sumDepth += ev.depth_score || 0;
+      sumConsistency += ev.consistency_score || 0;
+      sumOverall += ev.overall_score || 0;
+      if (ev.tip) tips.push(ev.tip);
+    });
+
+    const cnt = Math.max(1, evaluationsHistory.length);
+    const avgClarity = Math.round(sumClarity / cnt);
+    const avgDepth = Math.round(sumDepth / cnt);
+    const avgConsistency = Math.round(sumConsistency / cnt);
+    const avgOverall = Math.round(sumOverall / cnt);
+
+    const summaryOverallScore = document.getElementById("summaryOverallScore");
+    const summaryReadinessBadge = document.getElementById("summaryReadinessBadge");
+    const summaryAvgClarity = document.getElementById("summaryAvgClarity");
+    const summaryAvgDepth = document.getElementById("summaryAvgDepth");
+    const summaryAvgConsistency = document.getElementById("summaryAvgConsistency");
+    const summaryTipsList = document.getElementById("summaryTipsList");
+
+    if (summaryOverallScore) summaryOverallScore.textContent = `${avgOverall}% Overall Score`;
+    if (summaryAvgClarity) summaryAvgClarity.textContent = `${avgClarity}%`;
+    if (summaryAvgDepth) summaryAvgDepth.textContent = `${avgDepth}%`;
+    if (summaryAvgConsistency) summaryAvgConsistency.textContent = `${avgConsistency}%`;
+
+    if (summaryReadinessBadge) {
+      if (avgOverall >= 80) {
+        summaryReadinessBadge.textContent = "Placement Ready (Project Defense)";
+        summaryReadinessBadge.className = "badge bg-success-subtle text-success border border-success-subtle rounded-pill px-4 py-2 fs-6 fw-bold mb-2";
+      } else if (avgOverall >= 65) {
+        summaryReadinessBadge.textContent = "Competent (Needs Targeted Polish)";
+        summaryReadinessBadge.className = "badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-4 py-2 fs-6 fw-bold mb-2";
+      } else {
+        summaryReadinessBadge.textContent = "Needs Comprehensive Preparation";
+        summaryReadinessBadge.className = "badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-4 py-2 fs-6 fw-bold mb-2";
+      }
+    }
+
+    if (summaryTipsList) {
+      summaryTipsList.innerHTML = tips.map((t) => `<li class="mb-1">${escapeHtml(t)}</li>`).join("");
+    }
+
+    const modal = new bootstrap.Modal(summaryModalEl);
+    modal.show();
+  }
+
+  // 13. Restart / Practice Another Project
+  const btnRestartAnother = document.getElementById("btnRestartAnotherProject");
+  if (btnRestartAnother && summaryModalEl) {
+    btnRestartAnother.addEventListener("click", () => {
+      const modalInstance = bootstrap.Modal.getInstance(summaryModalEl);
+      if (modalInstance) modalInstance.hide();
+      if (simulatorView) simulatorView.classList.add("d-none");
+      if (projectSelectionView) projectSelectionView.classList.remove("d-none");
+    });
+  }
+}
+
 
 
