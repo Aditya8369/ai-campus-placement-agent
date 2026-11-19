@@ -114,7 +114,9 @@ document.addEventListener("DOMContentLoaded", () => {
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
+  initLinkedInSuggestions();
   initInterviewDraftLogoutCleanup();
+  initTailoredCoverLetterStudio();
 });
 
 /**
@@ -1060,22 +1062,108 @@ function initFormUpload() {
   const progressSubtitle = document.getElementById("progressSubtitle");
   const analysisProgressBar = document.getElementById("analysisProgressBar");
   const progressSpinner = document.getElementById("progressSpinner");
+  const progressSuccessIcon = document.getElementById("progressSuccessIcon");
+  const progressErrorIcon = document.getElementById("progressErrorIcon");
   const progressErrorAlert = document.getElementById("progressErrorAlert");
   const progressErrorMessage = document.getElementById("progressErrorMessage");
   const btnCloseProgressError = document.getElementById("btnCloseProgressError");
+  const btnRetryProgress = document.getElementById("btnRetryProgress");
+
+  let isSubmitting = false;
+
+  const setActionButtonsProcessing = (processing) => {
+    isSubmitting = processing;
+    const submitBtn = document.getElementById("btnSubmitAnalysis") || uploadForm.querySelector("button[type='submit']");
+    const clearBtn = document.getElementById("btnClearForm");
+    const reviewBtn = document.getElementById("btnReviewResumeDirect");
+    const sampleBtn = document.getElementById("btnTrySampleResume");
+    const heroSampleBtn = document.getElementById("btnHeroTrySampleResume");
+    const exploreBtn = document.getElementById("btnExploreCompany");
+    const formButtons = uploadForm.querySelectorAll("button, input[type='submit']");
+
+    formButtons.forEach((btn) => {
+      if (btn.id === "btnCloseProgressError" || btn.id === "btnRetryProgress") return;
+      if (processing) {
+        btn.setAttribute("disabled", "true");
+        btn.classList.add("disabled");
+      } else {
+        btn.removeAttribute("disabled");
+        btn.classList.remove("disabled");
+      }
+    });
+
+    [sampleBtn, heroSampleBtn].forEach((btn) => {
+      if (!btn) return;
+      if (processing) {
+        btn.classList.add("disabled");
+        btn.setAttribute("aria-disabled", "true");
+        btn.style.pointerEvents = "none";
+      } else {
+        btn.classList.remove("disabled");
+        btn.removeAttribute("aria-disabled");
+        btn.style.pointerEvents = "";
+      }
+    });
+
+    if (submitBtn) {
+      const icon = submitBtn.querySelector("i") || submitBtn.querySelector("#submitBtnIcon");
+      const span = submitBtn.querySelector("span") || submitBtn.querySelector("#submitBtnSpan");
+      if (processing) {
+        if (!submitBtn.hasAttribute("data-original-html")) {
+          submitBtn.setAttribute("data-original-html", submitBtn.innerHTML);
+        }
+        if (icon) icon.className = "spinner-border spinner-border-sm me-2";
+        if (span) span.textContent = "Processing Analysis...";
+      } else {
+        const origHtml = submitBtn.getAttribute("data-original-html");
+        if (origHtml) {
+          submitBtn.innerHTML = origHtml;
+          submitBtn.removeAttribute("data-original-html");
+        } else {
+          if (icon) icon.className = "fa-solid fa-wand-magic-sparkles me-2";
+          if (span) span.textContent = "Analyze Readiness";
+        }
+      }
+    }
+  };
 
   if (btnCloseProgressError) {
     btnCloseProgressError.addEventListener("click", () => {
-      if (progressOverlay) progressOverlay.classList.add("d-none");
+      if (progressOverlay) {
+        progressOverlay.classList.add("d-none");
+        progressOverlay.removeAttribute("data-state");
+      }
       if (progressSpinner) progressSpinner.classList.remove("d-none");
+      if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+      if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
       if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      setActionButtonsProcessing(false);
+    });
+  }
+
+  if (btnRetryProgress) {
+    btnRetryProgress.addEventListener("click", () => {
+      if (progressOverlay) {
+        progressOverlay.classList.add("d-none");
+        progressOverlay.removeAttribute("data-state");
+      }
+      if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      setActionButtonsProcessing(false);
+      // Trigger submission retry
+      if (uploadForm) {
+        const submitEvent = new Event("submit", { cancelable: true, bubbles: true });
+        uploadForm.dispatchEvent(submitEvent);
+      }
     });
   }
 
   const stepOrder = ["step1", "step2", "step3", "step4", "step5", "step6"];
 
   function resetProgressPanel() {
+    if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
+    if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+    if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
     if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
     if (progressTitle) progressTitle.textContent = "Coordinating AI Agents";
     if (progressSubtitle) progressSubtitle.textContent = "Orchestrating multi-agent analysis in progress...";
@@ -1084,7 +1172,7 @@ function initFormUpload() {
     if (analysisProgressBar) {
       analysisProgressBar.style.width = "5%";
       analysisProgressBar.setAttribute("aria-valuenow", "5");
-      analysisProgressBar.classList.add("progress-bar-animated");
+      analysisProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
     }
 
     stepOrder.forEach((stepId, idx) => {
@@ -1307,6 +1395,8 @@ function initFormUpload() {
   const btnReviewResumeDirect = document.getElementById("btnReviewResumeDirect");
   if (btnReviewResumeDirect) {
     btnReviewResumeDirect.addEventListener("click", () => {
+      if (isSubmitting) return;
+
       const textInput = document.getElementById("resumeTextInput");
       const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
       const hasText = textInput && textInput.value.trim().length > 0;
@@ -1323,6 +1413,7 @@ function initFormUpload() {
         return;
       }
 
+      setActionButtonsProcessing(true);
       const reviewSwitch = document.getElementById("reviewStepSwitch");
       if (reviewSwitch) reviewSwitch.checked = true;
       uploadForm.action = "/resume/review";
@@ -1333,6 +1424,12 @@ function initFormUpload() {
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
+
+    // Prevent duplicate submissions if user clicks twice
+    if (isSubmitting) {
+      console.warn("Analysis submission already in progress. Ignoring duplicate click.");
+      return false;
+    }
 
     const textInput = document.getElementById("resumeTextInput");
     const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
@@ -1351,6 +1448,9 @@ function initFormUpload() {
       return;
     }
 
+    // Lock submission state and disable action buttons
+    setActionButtonsProcessing(true);
+
     // Check if user selected the Resume Review & Correction step
     const reviewStepSwitch = document.getElementById("reviewStepSwitch");
     if (reviewStepSwitch && reviewStepSwitch.checked) {
@@ -1363,6 +1463,7 @@ function initFormUpload() {
     if (batchModeSwitch && batchModeSwitch.checked) {
       const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
       if (selectedChecks.length === 0) {
+        setActionButtonsProcessing(false);
         alert("Please select at least one company to compare.");
         return;
       }
@@ -1387,7 +1488,13 @@ function initFormUpload() {
           if (!response.ok || !data.success) {
             throw new Error(data.error || "Batch comparison failed.");
           }
-          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
           if (progressTitle) progressTitle.textContent = "Comparison Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
           setTimeout(() => {
@@ -1442,13 +1549,16 @@ function initFormUpload() {
             if (ind) ind.innerHTML = "✓";
           } else if (idx === currentIdx) {
             el.className = "progress-step active";
+            if (ind) ind.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width: 12px; height: 12px;"></span>';
           } else {
             el.className = "progress-step text-muted";
+            if (ind) ind.textContent = String(idx + 1);
           }
         });
       }
 
       if (status === "completed" || step === "completed") {
+        if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
         stepOrder.forEach((sId) => {
           const el = document.getElementById(sId);
           if (el) {
@@ -1458,8 +1568,14 @@ function initFormUpload() {
           }
         });
 
+        if (progressSpinner) progressSpinner.classList.add("d-none");
+        if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+        if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
+
         if (analysisProgressBar) {
           analysisProgressBar.style.width = "100%";
+          analysisProgressBar.setAttribute("aria-valuenow", "100");
+          analysisProgressBar.className = "progress-bar bg-success";
           analysisProgressBar.classList.remove("progress-bar-animated");
         }
         if (progressTitle) progressTitle.textContent = "Analysis Complete!";
@@ -1481,12 +1597,32 @@ function initFormUpload() {
           eventSource.close();
           eventSource = null;
         }
-        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.");
+        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.", step);
       }
     }
 
-    function showPipelineError(errMsg) {
+    function showPipelineError(errMsg, failedStepId) {
+      if (progressOverlay) progressOverlay.setAttribute("data-state", "error");
       if (progressSpinner) progressSpinner.classList.add("d-none");
+      if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+      if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+      if (progressTitle) progressTitle.textContent = "Analysis Could Not Complete";
+      if (progressSubtitle) progressSubtitle.textContent = "An error occurred during multi-agent analysis.";
+
+      if (analysisProgressBar) {
+        analysisProgressBar.className = "progress-bar bg-danger";
+        analysisProgressBar.classList.remove("progress-bar-animated");
+      }
+
+      if (failedStepId) {
+        const errStep = document.getElementById(failedStepId);
+        if (errStep) {
+          errStep.className = "progress-step error";
+          const ind = errStep.querySelector(".step-indicator");
+          if (ind) ind.innerHTML = "!";
+        }
+      }
+
       const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
       if (progressAnnouncer) progressAnnouncer.textContent = `Analysis error: ${errMsg}`;
       if (progressErrorAlert && progressErrorMessage) {
@@ -1496,6 +1632,7 @@ function initFormUpload() {
         alert(errMsg);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
+      setActionButtonsProcessing(false);
     }
 
     const formData = new FormData(uploadForm);
@@ -1508,6 +1645,22 @@ function initFormUpload() {
         const data = await response.json();
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initiate background analysis.");
+        }
+
+        if (data.cached && data.redirect_url) {
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+          if (progressTitle) progressTitle.textContent = "Analysis Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 400);
+          return;
         }
 
         const streamUrl = data.stream_url;
@@ -2746,7 +2899,6 @@ function initMockInterview() {
       timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
     }
 
-    const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
     // Compute final speech and non-verbal telemetry metrics
@@ -6932,6 +7084,248 @@ function initSelfIntroductionStudio() {
     } else {
       el.innerHTML = '<i class="fa-solid fa-circle-xmark text-danger"></i>';
     }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+}
+
+/**
+ * LinkedIn Profile Suggestions Studio (#538)
+ * Manages length-compliant headline options, first-person About narrative,
+ * recruiter keyword badges, copy-to-clipboard interactions, and live regeneration.
+ */
+function initLinkedInSuggestions() {
+  const section = document.getElementById("linkedInSuggestionsSection");
+  if (!section) return;
+
+  const analysisId = section.getAttribute("data-analysis-id") || "";
+  const btnRegenerate = document.getElementById("btnRegenerateLinkedIn");
+  const roleInput = document.getElementById("linkedinTargetRoleInput");
+  const spinner = document.getElementById("linkedinSpinner");
+  const icon = document.getElementById("linkedinIcon");
+
+  // Helper: copy to clipboard with fallback and visual feedback
+  function copyTextWithFeedback(text, btn, successMessage) {
+    if (!text) {
+      if (typeof showToast === "function") showToast("Nothing to copy yet", "info");
+      return;
+    }
+    const cleanText = text.trim();
+    const originalHtml = btn.innerHTML;
+
+    function onSuccess() {
+      btn.innerHTML = '<i class="fa-solid fa-check text-success me-1"></i> Copied!';
+      btn.classList.add("btn-success-subtle");
+      setTimeout(() => {
+        btn.innerHTML = originalHtml;
+        btn.classList.remove("btn-success-subtle");
+      }, 2000);
+      if (typeof showToast === "function" && successMessage) {
+        showToast(successMessage, "success");
+      }
+    }
+
+    if (navigator.clipboard && window.isSecureContext && typeof navigator.clipboard.writeText === "function") {
+      navigator.clipboard.writeText(cleanText).then(onSuccess).catch(() => {
+        fallbackCopy(cleanText, onSuccess);
+      });
+    } else {
+      fallbackCopy(cleanText, onSuccess);
+    }
+  }
+
+  function fallbackCopy(text, onSuccess) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      onSuccess();
+    } catch (err) {
+      if (typeof showToast === "function") showToast("Failed to copy to clipboard", "error");
+    }
+  }
+
+  // Bind copy buttons for headlines and about section
+  section.querySelectorAll(".btn-copy-linkedin").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-copy-target");
+      if (!targetId) return;
+      const targetEl = document.getElementById(targetId);
+      if (!targetEl) return;
+      const textToCopy = targetEl.textContent || targetEl.innerText || "";
+      const label = targetId.includes("About") ? "About section copied to clipboard!" : "Headline copied to clipboard!";
+      copyTextWithFeedback(textToCopy, btn, label);
+    });
+  });
+
+  // Bind copy button for all recruiter keywords
+  const btnCopyKeywords = document.getElementById("btnCopyLinkedInKeywords");
+  if (btnCopyKeywords) {
+    btnCopyKeywords.addEventListener("click", () => {
+      const kwPills = section.querySelectorAll(".linkedin-kw-pill");
+      const keywords = [];
+      kwPills.forEach(p => {
+        const kw = p.getAttribute("data-keyword") || p.textContent.replace(/^[\+\s\u2713\u2714]+/, "").trim();
+        if (kw && !keywords.includes(kw)) keywords.push(kw);
+      });
+      if (keywords.length === 0) {
+        if (typeof showToast === "function") showToast("No keywords to copy", "info");
+        return;
+      }
+      const kwString = keywords.join(", ");
+      copyTextWithFeedback(kwString, btnCopyKeywords, "All recruiter keywords copied as comma-separated list!");
+    });
+  }
+
+  // Bind individual keyword pill click-to-copy
+  function bindKeywordPills() {
+    section.querySelectorAll(".linkedin-kw-pill").forEach(pill => {
+      pill.style.cursor = "pointer";
+      pill.addEventListener("click", () => {
+        const kw = pill.getAttribute("data-keyword") || pill.textContent.replace(/^[\+\s\u2713\u2714]+/, "").trim();
+        if (!kw) return;
+        copyTextWithFeedback(kw, pill, `Copied keyword "${kw}"!`);
+      });
+    });
+  }
+  bindKeywordPills();
+
+  // Handle Regenerate LinkedIn Suggestions
+  if (btnRegenerate) {
+    btnRegenerate.addEventListener("click", async () => {
+      const targetRole = (roleInput ? roleInput.value : "").trim() || "Software Engineer";
+      if (!analysisId) return;
+
+      if (spinner) spinner.classList.remove("d-none");
+      if (icon) icon.classList.add("d-none");
+      btnRegenerate.disabled = true;
+
+      try {
+        const res = await fetch(`/api/analysis/${analysisId}/linkedin-suggestions?target_role=${encodeURIComponent(targetRole)}`, {
+          method: "GET",
+          headers: {
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        });
+        const data = await res.json();
+        if (data && data.success && data.suggestions) {
+          updateSuggestionsUI(data.suggestions);
+          if (typeof showToast === "function") {
+            showToast("LinkedIn suggestions regenerated successfully!", "success");
+          }
+        } else {
+          throw new Error((data && data.error) || "Failed to regenerate suggestions");
+        }
+      } catch (err) {
+        console.error("Error regenerating LinkedIn suggestions:", err);
+        if (typeof showToast === "function") {
+          showToast(err.message || "Failed to regenerate suggestions", "error");
+        }
+      } finally {
+        if (spinner) spinner.classList.add("d-none");
+        if (icon) icon.classList.remove("d-none");
+        btnRegenerate.disabled = false;
+      }
+    });
+  }
+
+  function updateSuggestionsUI(sug) {
+    if (!sug) return;
+    const headlines = sug.headline_options || [];
+
+    // Headline 1
+    if (headlines[0]) {
+      const b1 = document.getElementById("linkedinBadgeH1");
+      const l1 = document.getElementById("linkedinLenH1");
+      const d1 = document.getElementById("linkedinDescH1");
+      const t1 = document.getElementById("linkedinHeadlineText1");
+      if (b1) b1.textContent = headlines[0].type || "Role & Core Stack";
+      if (l1) l1.textContent = headlines[0].char_count || headlines[0].headline.length;
+      if (d1) d1.textContent = headlines[0].description || "";
+      if (t1) t1.textContent = headlines[0].headline || "";
+    }
+
+    // Headline 2
+    if (headlines[1]) {
+      const b2 = document.getElementById("linkedinBadgeH2");
+      const l2 = document.getElementById("linkedinLenH2");
+      const d2 = document.getElementById("linkedinDescH2");
+      const t2 = document.getElementById("linkedinHeadlineText2");
+      if (b2) b2.textContent = headlines[1].type || "Impact & Experience";
+      if (l2) l2.textContent = headlines[1].char_count || headlines[1].headline.length;
+      if (d2) d2.textContent = headlines[1].description || "";
+      if (t2) t2.textContent = headlines[1].headline || "";
+    }
+
+    // Headline 3
+    if (headlines[2]) {
+      const b3 = document.getElementById("linkedinBadgeH3");
+      const l3 = document.getElementById("linkedinLenH3");
+      const d3 = document.getElementById("linkedinDescH3");
+      const t3 = document.getElementById("linkedinHeadlineText3");
+      if (b3) b3.textContent = headlines[2].type || "Specialization & Vision";
+      if (l3) l3.textContent = headlines[2].char_count || headlines[2].headline.length;
+      if (d3) d3.textContent = headlines[2].description || "";
+      if (t3) t3.textContent = headlines[2].headline || "";
+    }
+
+    // About Section
+    const aboutEl = document.getElementById("linkedinAboutText");
+    const aboutWordsEl = document.getElementById("linkedinAboutWordCount");
+    const aboutCharsEl = document.getElementById("linkedinAboutCharCount");
+    if (aboutEl) aboutEl.textContent = sug.about_section || "";
+    if (aboutWordsEl) aboutWordsEl.textContent = sug.about_word_count || (sug.about_section ? sug.about_section.split(/\s+/).length : 0);
+    if (aboutCharsEl) aboutCharsEl.textContent = sug.about_char_count || (sug.about_section ? sug.about_section.length : 0);
+
+    // Keywords
+    const roleLabel = document.getElementById("linkedinRoleKeywordLabel");
+    if (roleLabel) roleLabel.textContent = sug.target_role || "Software Engineer";
+
+    const matchedContainer = document.getElementById("linkedinMatchedContainer");
+    const matchedCountEl = document.getElementById("linkedinMatchedCount");
+    const matched = sug.matched_keywords || [];
+    if (matchedCountEl) matchedCountEl.textContent = matched.length;
+    if (matchedContainer) {
+      if (matched.length > 0) {
+        matchedContainer.innerHTML = matched.map(kw => `
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '${escapeHtml(kw)}'" data-keyword="${escapeHtml(kw)}">
+            <i class="fa-solid fa-check me-1"></i>${escapeHtml(kw)}
+          </span>
+        `).join("");
+      } else {
+        matchedContainer.innerHTML = '<span class="text-muted small">No verified role keywords detected.</span>';
+      }
+    }
+
+    const recContainer = document.getElementById("linkedinRecommendedContainer");
+    const recCountEl = document.getElementById("linkedinRecommendedCount");
+    const recommended = sug.recommended_keywords || [];
+    if (recCountEl) recCountEl.textContent = recommended.length;
+    if (recContainer) {
+      if (recommended.length > 0) {
+        recContainer.innerHTML = recommended.map(kw => `
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small linkedin-kw-pill" role="button" title="Click to copy '${escapeHtml(kw)}'" data-keyword="${escapeHtml(kw)}">
+            + ${escapeHtml(kw)}
+          </span>
+        `).join("");
+      } else {
+        recContainer.innerHTML = '<span class="text-success small">All key role search keywords present!</span>';
+      }
+    }
+
+    bindKeywordPills();
   }
 
   function escapeHtml(str) {

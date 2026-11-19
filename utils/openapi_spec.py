@@ -1212,6 +1212,36 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
+        "/api/status": {
+            "get": {
+                "tags": ["System & Utilities"],
+                "summary": "Public Application Services Operational Status",
+                "description": "Reports real-time operational status (operational, degraded, unavailable) for Application, Database, and AI Integration without exposing credentials.",
+                "operationId": "getPublicServiceStatus",
+                "responses": {
+                    "200": {
+                        "description": "Services are operational or degraded with safe fallbacks.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Critical service outage (e.g. database down).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/walkthrough": {
             "get": {
                 "tags": ["System & Utilities"],
