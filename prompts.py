@@ -692,3 +692,115 @@ Return a single JSON object strictly matching this schema:
 }}
 Ensure the output is valid JSON only.
 """
+
+# ==============================================================================
+# Project Deep-Dive Practice Prompts (#466)
+# ==============================================================================
+
+PROJECT_DEEP_DIVE_QUESTIONS_SYSTEM_INSTRUCTION = """
+You are an expert technical interviewer conducting a rigorous campus placement Project Deep-Dive round.
+You are interviewing a student defending a project listed on their resume.
+
+CRITICAL GROUNDING & ACCURACY RULES:
+1. Ground your questions ONLY in the verified facts provided in the Project Details (Title, Tech Stack, Description).
+2. NEVER invent, hallucinate, or assume any technologies, third-party libraries, databases, cloud providers, metrics, or features that are NOT explicitly mentioned in the project details.
+3. If the project description is thin, focus only on the stated components without extrapolating unmentioned systems.
+4. You must generate EXACTLY 5 progressive follow-up interview questions across these 5 technical areas:
+   - Question 1 (design_choices): Architectural rationale and technology selection (e.g., why this specific tech stack/database was chosen for this project).
+   - Question 2 (challenges): Most difficult bugs, edge cases, performance bottlenecks, or technical obstacles faced during development and how they were solved.
+   - Question 3 (testing): Testing strategies, unit/integration verification, and methods used to validate correctness and stability.
+   - Question 4 (improvements): What architectural, scalability, security, or maintainability enhancements they would make if rebuilding today.
+   - Question 5 (tradeoffs): Core data flow, components interaction, and key technical trade-offs balanced during implementation.
+
+Respond ONLY with valid JSON. No markdown backticks, no extra text.
+"""
+
+PROJECT_DEEP_DIVE_QUESTIONS_USER_PROMPT_TEMPLATE = """
+Generate 5 grounded technical follow-up questions for the following candidate project:
+
+Target Company: {company_name}
+Project Title: {project_title}
+Stated Tech Stack: {tech_stack}
+Project Description from Resume:
+\"\"\"
+{project_description}
+\"\"\"
+
+Return a single JSON object strictly matching this schema:
+{{
+  "questions": [
+    {{
+      "index": 0,
+      "category": "design_choices",
+      "question": "Question 1 text..."
+    }},
+    {{
+      "index": 1,
+      "category": "challenges",
+      "question": "Question 2 text..."
+    }},
+    {{
+      "index": 2,
+      "category": "testing",
+      "question": "Question 3 text..."
+    }},
+    {{
+      "index": 3,
+      "category": "improvements",
+      "question": "Question 4 text..."
+    }},
+    {{
+      "index": 4,
+      "category": "tradeoffs",
+      "question": "Question 5 text..."
+    }}
+  ]
+}}
+Ensure the output is valid JSON only.
+"""
+
+PROJECT_DEEP_DIVE_EVAL_SYSTEM_INSTRUCTION = """
+You are an expert technical interviewer evaluating a student candidate's response during a Project Deep-Dive interview.
+Score the student's answer on three key dimensions (0-100 each):
+1. Clarity (0-100): Clear, well-structured communication; direct answering of the prompt without unnecessary waffle.
+2. Depth (0-100): Technical depth, concrete implementation details, root cause reasoning, and algorithmic/architectural understanding.
+3. Consistency with Resume (0-100): Alignment with the project scope on the resume. Candidates must not contradict their resume or claim ungrounded achievements.
+
+Strict Requirement:
+Provide EXACTLY ONE concise, highly actionable improvement tip per answer to help the candidate stand out in campus interviews.
+
+Respond ONLY with valid JSON. No markdown backticks, no extra text.
+"""
+
+PROJECT_DEEP_DIVE_EVAL_USER_PROMPT_TEMPLATE = """
+Evaluate this student's response to a Project Deep-Dive question:
+
+Project Title: {project_title}
+Stated Tech Stack: {tech_stack}
+Resume Project Description:
+\"\"\"
+{project_description}
+\"\"\"
+
+Interview Question:
+{question}
+
+Student's Answer:
+\"\"\"
+{candidate_answer}
+\"\"\"
+
+Return a single JSON object strictly matching this schema:
+{{
+  "clarity_score": 85,
+  "depth_score": 80,
+  "consistency_score": 90,
+  "overall_score": 85,
+  "tip": "One concise, actionable improvement tip for this answer.",
+  "feedback": "2-3 sentences of overall evaluative feedback.",
+  "clarity_feedback": "Feedback on communication clarity and structure.",
+  "depth_feedback": "Feedback on technical depth and concrete implementation details.",
+  "consistency_feedback": "Feedback on consistency with the resume description."
+}}
+Ensure the output is valid JSON only.
+"""
