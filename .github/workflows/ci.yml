@@ -1,10 +1,10 @@
-name: CI/CD Pipeline
+name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
@@ -52,14 +52,21 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Install Linters
+      - name: Install Dependencies & Linters
         run: |
           python -m pip install --upgrade pip
+          pip install -r requirements.txt
           pip install flake8 black isort
 
       - name: Run Flake8 Critical Error Check
         run: |
+          # Stop the build if there are Python syntax errors or undefined names
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run Flake8 Style & Complexity Check
+        run: |
+          # Report complexity and style warnings
+          flake8 . --count --exit-zero --max-complexity=15 --max-line-length=127 --statistics
 
       - name: Run Black Code Formatting Check
         run: black --check .
@@ -80,6 +87,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install Security Tools
         run: |
@@ -103,6 +111,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
       - name: Install Runtime Requirements
         run: |

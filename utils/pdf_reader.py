@@ -159,7 +159,8 @@ def validate_resume_file(
     if name_to_check:
         ext = os.path.splitext(name_to_check)[1].lower()
         if ext not in ALLOWED_RESUME_EXTENSIONS:
-            return False, f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported."
+            ext_display = f"'{ext}'" if ext else "none"
+            return False, f"Unsupported file format (Invalid file format {ext_display}). Only PDF (.pdf) and Word (.docx) resumes are supported."
     else:
         ext = ""
 
@@ -202,6 +203,7 @@ class ScannedPDFError(ValueError):
         elif extracted_length == 0:
             user_message = (
                 "The uploaded PDF appears to be scanned or image-based with no readable text. "
+                "Scanned images are not supported. "
                 "PyPDF2 could not extract text from this document. "
                 "Please upload a text-based PDF resume or paste your resume text directly."
             )
@@ -209,12 +211,17 @@ class ScannedPDFError(ValueError):
             user_message = (
                 f"The uploaded PDF appears to be scanned or image-based (found only {extracted_length} "
                 f"readable characters, minimum {min_required} required). "
+                "Scanned images are not supported. "
                 "Please upload a text-based PDF resume or paste your resume text directly."
             )
         super().__init__(user_message)
         self.message = user_message
         self.extracted_length = extracted_length
         self.min_required = min_required
+
+
+# Alias for unified scanned resume handling across document types
+ScannedResumeError = ScannedPDFError
 
 
 class PasswordProtectedPDFError(ValueError):
@@ -282,7 +289,15 @@ def extract_text_from_pdf(pdf_path: str) -> str:
 
         num_pages = len(reader.pages)
         if num_pages == 0:
-            raise ValueError("The PDF file contains no readable pages.")
+            raise ScannedPDFError(
+                message=(
+                    "The PDF file contains no readable pages. "
+                    "Scanned images and empty documents are not supported. "
+                    "Please upload a text-based PDF resume or paste your resume text directly."
+                ),
+                extracted_length=0,
+                min_required=min_chars
+            )
 
         if num_pages > MAX_PDF_PAGES:
             raise ValueError(
@@ -487,11 +502,22 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO, bytes, bytearray]
         combined_text = "\n".join(extracted_lines).strip()
 
         # Validate extracted text content
+        if not combined_text:
+            logger.warning(
+                "Halting analysis: DOCX document contains no extractable text. Document appears to contain scanned images or empty blocks."
+            )
+            raise ValueError(
+                "Could not extract sufficient text from DOCX document: No extractable text found. "
+                "Scanned images and image-only documents are not supported. "
+                "Please upload a text-based resume (PDF or DOCX) with selectable text, or paste your resume text directly."
+            )
+
         is_valid, validation_msg = validate_resume_text(combined_text)
         if not is_valid:
             logger.warning(f"Extracted DOCX text validation failed: {validation_msg}")
             raise ValueError(
                 f"Could not extract sufficient text from DOCX document: {validation_msg} "
+                "Scanned images and image-only documents are not supported. "
                 "Ensure your Word document contains actual text rather than embedded images or empty sections."
             )
 
@@ -515,6 +541,59 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO, bytes, bytearray]
         raise RuntimeError(f"Failed to parse Word document: {str(e)}")
 
 
+def deinterleave_two_column_text(text: str) -> str:
+    """
+    Detects if text contains a side-by-side two-column layout separated by '|'
+    and un-interleaves it into sequential column text blocks.
+    """
+    if not text:
+        return ""
+    lines = text.splitlines()
+    pipe_indices = []
+    for line in lines:
+        if line.count("|") == 1:
+            idx = line.find("|")
+            if idx > 15:
+                pipe_indices.append(idx)
+
+    if len(pipe_indices) < 3:
+        return text
+
+    from collections import Counter
+    c = Counter(pipe_indices)
+    modal_idx, count = c.most_common(1)[0]
+
+    # Only treat as 2-column layout if at least 3 lines share a vertically aligned column divider
+    if count >= 3:
+        top_lines: List[str] = []
+        left_col: List[str] = []
+        right_col: List[str] = []
+        in_columns = False
+
+        for line in lines:
+            split_pos = None
+            for p in range(modal_idx - 4, modal_idx + 5):
+                if p < len(line) and line[p] == '|':
+                    split_pos = p
+                    break
+            if split_pos is not None:
+                in_columns = True
+                l_part = line[:split_pos].strip()
+                r_part = line[split_pos + 1:].strip()
+                if l_part:
+                    left_col.append(l_part)
+                if r_part:
+                    right_col.append(r_part)
+            elif not in_columns:
+                top_lines.append(line)
+            else:
+                left_col.append(line)
+
+        return "\n".join(top_lines) + "\n\n" + "\n".join(left_col) + "\n\n" + "\n".join(right_col)
+
+    return text
+
+
 def standardize_resume_sections(text: str) -> Dict[str, str]:
     """
     Parses unstructured or semi-structured resume text into standardized canonical sections:
@@ -530,7 +609,7 @@ def standardize_resume_sections(text: str) -> Dict[str, str]:
     if not text or not text.strip():
         return {}
 
-    raw_text = text.strip()
+    raw_text = deinterleave_two_column_text(text.strip())
 
     section_patterns = [
         ("summary", re.compile(r"(?:^|\n)\s*(?:[#*_\-~=]+\s*)?(?:professional summary|executive summary|career objective|about me|summary|objective|profile)(?:\s*[:\n]|\s*$)", re.IGNORECASE)),

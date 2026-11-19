@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Two-Factor Authentication - Account Security - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Top Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="{{ url_for('account_sessions') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-laptop me-1"></i> Active Sessions
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container py-4 py-md-5" style="max-width: 860px;">
+    <!-- Page Header -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4 pb-2 border-bottom">
+      <div>
+        <p class="text-primary fw-semibold mb-1"><i class="fa-solid fa-shield-halved me-1"></i> Account Security</p>
+        <h1 class="h2 fw-bold mb-1">Two-Factor Authentication (2FA)</h1>
+        <p class="text-muted mb-0">Add an extra layer of protection to your account by requiring an authenticator code when signing in.</p>
+      </div>
+      <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm rounded-pill">
+        <i class="fa-solid fa-arrow-left me-1"></i> Back to Dashboard
+      </a>
+    </div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show p-3 small mb-4" role="alert">
+          <i class="fa-solid {{ 'fa-circle-exclamation' if category in ['error', 'warning'] else 'fa-circle-check' }} me-2"></i>
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% if two_factor.enabled %}
+      <!-- 2FA Enabled Status Card -->
+      <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="bg-success-subtle text-success p-3 rounded-circle d-flex align-items-center justify-content-center" style="width: 56px; height: 56px;">
+                <i class="fa-solid fa-shield-check fs-3"></i>
+              </div>
+              <div>
+                <div class="d-flex align-items-center gap-2">
+                  <h5 class="fw-bold mb-0">Two-factor authentication is active</h5>
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                    <i class="fa-solid fa-check me-1"></i> Protected
+                  </span>
+                </div>
+                <p class="text-muted small mb-0 mt-1">
+                  Your account requires a 6-digit verification code from your authenticator app each time you sign in.
+                </p>
+              </div>
+            </div>
+            <div>
+              <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-2" data-bs-toggle="modal" data-bs-target="#disable2faModal">
+                <i class="fa-solid fa-shield-slash me-1"></i> Disable 2FA
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recovery Guidance & Backup Codes Section -->
+      <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="fa-solid fa-life-ring text-warning fs-5"></i>
+            <h5 class="fw-bold mb-0">Emergency Recovery Guidance</h5>
+          </div>
+          <p class="text-secondary small mb-3">
+            What happens if you lose your phone or switch devices? Backup recovery codes ensure you can always regain access to your account even without your authenticator app.
+          </p>
+
+          <div class="p-3 bg-light rounded-3 border mb-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <div>
+                <span class="fw-semibold text-dark">Active Backup Recovery Codes:</span>
+                <span class="badge {{ 'bg-success' if two_factor.backup_codes_count > 2 else 'bg-warning text-dark' }} rounded-pill ms-2">
+                  {{ two_factor.backup_codes_count }} remaining
+                </span>
+                <div class="small text-muted mt-1">
+                  Each recovery code can be used exactly once. Once used, it is permanently consumed.
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal" data-bs-target="#regenerateCodesModal">
+                <i class="fa-solid fa-rotate me-1"></i> Generate New Codes
+              </button>
+            </div>
+          </div>
+
+          <div class="alert alert-info border-0 rounded-3 mb-0 small">
+            <i class="fa-solid fa-circle-info me-2"></i>
+            <strong>Lost Authenticator Recovery Procedure:</strong>
+            <ol class="mb-0 mt-2 ps-3">
+              <li>On the sign-in screen, enter your email and password normally.</li>
+              <li>On the verification step, click <em>"Lost access to your phone? Use a recovery code"</em>.</li>
+              <li>Enter any one of your unused 8-character recovery codes to complete sign-in.</li>
+              <li>Once signed in, visit this page to disable and re-configure your authenticator app.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+    {% else %}
+      <!-- 2FA Disabled / Setup Invitation Card -->
+      <div class="card border-0 shadow-sm rounded-4 mb-4">
+        <div class="card-body p-4 p-md-5">
+          <div class="row align-items-center g-4">
+            <div class="col-md-8">
+              <span class="badge bg-secondary-subtle text-secondary border px-3 py-1 rounded-pill mb-2">
+                <i class="fa-solid fa-shield-slash me-1"></i> Currently Disabled
+              </span>
+              <h3 class="fw-bold mb-2">Protect your account with Two-Factor Authentication</h3>
+              <p class="text-secondary mb-4">
+                Two-factor authentication adds an extra layer of security. In addition to your password, you will need a 6-digit code generated by an authenticator app on your phone whenever you sign in.
+              </p>
+
+              <div class="row g-3 mb-4">
+                <div class="col-sm-6">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-check text-success mt-1"></i>
+                    <div class="small">
+                      <strong class="d-block text-dark">Password Exposure Defense</strong>
+                      Even if someone learns your password, they cannot access your account without your phone.
+                    </div>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-check text-success mt-1"></i>
+                    <div class="small">
+                      <strong class="d-block text-dark">Industry Standard (TOTP)</strong>
+                      Works with Google Authenticator, Microsoft Authenticator, Authy, Apple Passwords, and 1Password.
+                    </div>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-check text-success mt-1"></i>
+                    <div class="small">
+                      <strong class="d-block text-dark">Offline & Instant</strong>
+                      Codes are generated directly on your device without needing cellular service or SMS.
+                    </div>
+                  </div>
+                </div>
+                <div class="col-sm-6">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-check text-success mt-1"></i>
+                    <div class="small">
+                      <strong class="d-block text-dark">Emergency Recovery Codes</strong>
+                      Includes 8 printable single-use backup codes so you are never locked out.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <a href="{{ url_for('setup_two_factor') }}" class="btn btn-primary rounded-pill px-4 py-2 fw-semibold">
+                <i class="fa-solid fa-shield-halved me-2"></i> Enable Two-Factor Authentication
+              </a>
+            </div>
+
+            <div class="col-md-4 text-center">
+              <div class="p-4 bg-light rounded-4 border">
+                <i class="fa-solid fa-mobile-screen-button text-primary" style="font-size: 5rem;"></i>
+                <div class="mt-3 small fw-semibold text-secondary">
+                  Authenticator App Compatible
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Security Tips Card -->
+    <div class="card border-0 shadow-sm rounded-4">
+      <div class="card-body p-4">
+        <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-shield me-2 text-primary"></i>Placement Account Security Best Practices</h6>
+        <ul class="text-secondary small mb-0 ps-3">
+          <li>Never share your authenticator codes or emergency recovery codes with anyone.</li>
+          <li>Keep your backup recovery codes stored offline or in an encrypted password vault.</li>
+          <li>Review your <a href="{{ url_for('account_sessions') }}" class="text-decoration-underline text-primary">Active Sessions</a> periodically to revoke unrecognized devices.</li>
+        </ul>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal: Disable 2FA -->
+  {% if two_factor.enabled %}
+  <div class="modal fade" id="disable2faModal" tabindex="-1" aria-labelledby="disable2faModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 rounded-4 shadow">
+        <form method="POST" action="{{ url_for('disable_two_factor') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold text-danger" id="disable2faModalLabel">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Disable Two-Factor Authentication?
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <p class="text-secondary small">
+              Disabling two-factor authentication will remove the second verification step. Your account will only be protected by your password.
+            </p>
+            <p class="small fw-semibold text-dark mb-2">
+              To confirm, please enter your account password or a current 6-digit code from your authenticator app:
+            </p>
+            <div class="mb-3">
+              <label for="disablePassword" class="form-label small fw-semibold">Account Password</label>
+              <input type="password" class="form-control rounded-3" id="disablePassword" name="password" placeholder="Enter your current password">
+            </div>
+            <div class="text-center small text-muted my-2">&mdash; OR &mdash;</div>
+            <div class="mb-2">
+              <label for="disableCode" class="form-label small fw-semibold">6-Digit Authenticator Code</label>
+              <input type="text" class="form-control rounded-3 font-monospace text-center" id="disableCode" name="code" placeholder="000000" maxlength="6" inputmode="numeric">
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-outline-secondary rounded-pill btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-danger rounded-pill btn-sm px-4 fw-semibold">Confirm & Disable</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Regenerate Backup Codes -->
+  <div class="modal fade" id="regenerateCodesModal" tabindex="-1" aria-labelledby="regenerateCodesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 rounded-4 shadow">
+        <form method="POST" action="{{ url_for('regenerate_backup_codes') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          <div class="modal-header border-0 pb-0">
+            <h5 class="modal-title fw-bold" id="regenerateCodesModalLabel">
+              <i class="fa-solid fa-rotate me-1 text-primary"></i> Generate New Backup Codes
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body py-3">
+            <p class="text-secondary small">
+              Generating new backup codes will <strong>immediately invalidate all existing backup codes</strong>. Make sure you copy and save the new codes.
+            </p>
+            <div class="mb-2">
+              <label for="regenPassword" class="form-label small fw-semibold">Account Password</label>
+              <input type="password" class="form-control rounded-3" id="regenPassword" name="password" placeholder="Enter your current password to confirm" required>
+            </div>
+          </div>
+          <div class="modal-footer border-0 pt-0">
+            <button type="button" class="btn btn-outline-secondary rounded-pill btn-sm px-3" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-primary rounded-pill btn-sm px-4 fw-semibold">Generate New Codes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

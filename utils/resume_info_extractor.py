@@ -35,8 +35,17 @@ COMMON_TECH_SKILLS = [
     "TensorFlow", "PyTorch", "Keras", "Scikit-Learn", "Pandas", "NumPy", "OpenCV",
     "Data Structures", "Algorithms", "Object-Oriented Programming", "OOP", "DBMS",
     "Operating Systems", "Computer Networks", "System Design", "Agile", "Scrum",
-    "Unit Testing", "PyTest", "Jest", "Selenium", "Postman", "Kafka", "RabbitMQ"
+    "Unit Testing", "PyTest", "Jest", "Selenium", "Postman", "Kafka", "RabbitMQ", "WebSockets"
 ]
+
+NON_SKILL_WORDS = {
+    "category", "technologies", "technology", "skills", "skill", "tools", "tool",
+    "languages", "language", "programming", "frameworks", "framework", "databases",
+    "database", "platforms", "platform", "libraries", "library", "web & cloud",
+    "web", "cloud", "proficient", "familiar", "technical", "competencies", "core",
+    "highlights", "description", "details", "role", "company", "duration", "year",
+    "level", "expertise", "others", "miscellaneous"
+}
 
 
 def extract_candidate_name(raw_text: str, summary_text: str = "") -> Tuple[str, str]:
@@ -71,20 +80,31 @@ def extract_candidate_name(raw_text: str, summary_text: str = "") -> Tuple[str, 
     candidate_name = ""
     for line in lines[:6]:
         clean = re.sub(r"[#*_\-~=]+", " ", line).strip()
-        clean = re.sub(r"\s+", " ", clean)
 
-        # Exclude lines with email, phone, or URLs
+        # If line contains delimiters like '|', multiple spaces (2+), or tabs alongside email/phone
+        candidate_segment = re.sub(r"\s+", " ", clean).strip()
         if "@" in clean or re.search(r"\b\d{4,}\b", clean) or "http" in clean.lower():
-            continue
+            raw_segments = [s.strip() for s in re.split(r"[|•\t]|\s{2,}", clean) if s.strip()]
+            found_seg = False
+            for seg in raw_segments:
+                seg_clean = re.sub(r"\s+", " ", seg).strip()
+                if "@" not in seg_clean and not re.search(r"\b\d{3,}\b", seg_clean) and "http" not in seg_clean.lower():
+                    words = seg_clean.split()
+                    if 2 <= len(words) <= 4:
+                        candidate_segment = seg_clean
+                        found_seg = True
+                        break
+            if not found_seg:
+                continue
 
-        words = clean.split()
+        words = candidate_segment.split()
         if 2 <= len(words) <= 4:
             lower_words = [w.lower().strip(".,:;()") for w in words]
             if any(w in stop_words for w in lower_words):
                 continue
             # Person names are typically capitalized and purely alphabetic
             if all(w[0].isupper() and re.match(r"^[A-Za-z.\-']+$", w) for w in words):
-                candidate_name = clean
+                candidate_name = candidate_segment
                 break
 
     if candidate_name and len(candidate_name.split()) >= 2:
@@ -119,6 +139,7 @@ def extract_phone(raw_text: str) -> Tuple[str, str]:
 def extract_education_entries(education_text: str) -> List[Dict[str, Any]]:
     """
     Parses education text into structured degree/institution entries.
+    Supports single-column, two-column, table-formatted, and narrative formats.
     Flags entries with incomplete information.
     """
     if not education_text or not education_text.strip():
@@ -127,17 +148,72 @@ def extract_education_entries(education_text: str) -> List[Dict[str, Any]]:
     lines = [l.strip() for l in education_text.splitlines() if l.strip()]
     entries: List[Dict[str, Any]] = []
 
-    # Degree patterns
+    # Degree patterns - stop before newline, comma, or pipe
     degree_pattern = re.compile(
-        r"\b(B\.?Tech|B\.?E\.?|B\.?Sc|B\.?S|M\.?Tech|M\.?S|M\.?Sc|MCA|BCA|Bachelor|Master|High School|12th|10th|Diploma|Intermediate)\b[^\n,]*",
+        r"\b(B\.?Tech|B\.?E\.?|B\.?Sc|B\.?S|M\.?Tech|M\.?S|M\.?Sc|MCA|BCA|Bachelor|Master|High School|12th|10th|Diploma|Intermediate)\b[^\n,|]*",
         re.IGNORECASE
     )
     year_pattern = re.compile(r"\b(19\d{2}|20\d{2})\s*(?:[-–to]+\s*(19\d{2}|20\d{2}|present|current))?\b", re.IGNORECASE)
-    score_pattern = re.compile(r"\b(?:CGPA|GPA|Score|Percentage|Marks)?\s*[:=\-]?\s*(\d+(?:\.\d+)?\s*(?:/\s*\d+(?:\.\d+)?)?%?)\b", re.IGNORECASE)
+    # Strictly match score with prefix or decimal/percentage format, preventing 4-digit years from matching
+    score_pattern = re.compile(
+        r"(?:CGPA|GPA|Score|Percentage|Marks|Grade)\s*[:=\-]?\s*(\d+(?:\.\d+)?\s*(?:/\s*\d+(?:\.\d+)?)?%?)|\b([0-9]\.\d{1,2}(?:\s*/\s*10(?:\.0)?)?)\s*(?:CGPA|GPA)?\b|\b([1-9]\d(?:\.\d+)?%)\b",
+        re.IGNORECASE
+    )
 
     current_entry: Dict[str, Any] = {}
 
     for line in lines:
+        # Check if line is a table formatted row (e.g. Degree | Institution | Year | Score)
+        if "|" in line:
+            parts = [p.strip() for p in line.split("|") if p.strip()]
+            header_count = sum(1 for p in parts if any(k in p.lower() for k in ["degree", "institution", "college", "university", "year", "score", "cgpa", "gpa", "percentage", "board", "examination", "marks"]))
+            if header_count >= 2:
+                # Table header row - skip
+                continue
+
+            # Table data row
+            if len(parts) >= 2:
+                table_entry = {
+                    "id": str(uuid.uuid4())[:8],
+                    "institution": "",
+                    "degree": "",
+                    "field_of_study": "",
+                    "graduation_year": "",
+                    "score": "",
+                    "is_incomplete": False,
+                    "extraction_status": "extracted"
+                }
+                for p in parts:
+                    d_match = degree_pattern.search(p)
+                    y_match = year_pattern.search(p)
+                    s_match = score_pattern.search(p)
+                    has_inst = any(k in p.lower() for k in ["university", "college", "institute", "school", "academy", "polytechnic", "vidyalaya", "iit", "nit", "bits"])
+
+                    if d_match and not table_entry["degree"]:
+                        table_entry["degree"] = d_match.group(0).strip()
+                        field_m = re.search(r"in\s+([A-Za-z\s&]+)", p, re.IGNORECASE)
+                        if field_m:
+                            table_entry["field_of_study"] = field_m.group(1).strip()
+                    elif has_inst and not table_entry["institution"]:
+                        table_entry["institution"] = p.strip()
+                    elif y_match and not table_entry["graduation_year"]:
+                        table_entry["graduation_year"] = y_match.group(0).strip()
+                    elif s_match and not table_entry["score"]:
+                        score_val = next(g for g in s_match.groups() if g is not None)
+                        if not re.fullmatch(r"(19|20)\d{2}", score_val):
+                            table_entry["score"] = score_val.strip()
+                    elif not table_entry["institution"] and not d_match and not y_match:
+                        table_entry["institution"] = p.strip()
+
+                if not table_entry["field_of_study"] and table_entry["degree"]:
+                    field_m = re.search(r"in\s+([A-Za-z\s&]+)", table_entry["degree"], re.IGNORECASE)
+                    if field_m:
+                        table_entry["field_of_study"] = field_m.group(1).strip()
+
+                if table_entry["degree"] or table_entry["institution"]:
+                    entries.append(table_entry)
+                    continue
+
         has_degree = degree_pattern.search(line)
         has_year = year_pattern.search(line)
         has_institution = any(k in line.lower() for k in ["university", "college", "institute", "school", "academy", "polytechnic", "vidyalaya", "iit", "nit", "bits"])
@@ -160,43 +236,59 @@ def extract_education_entries(education_text: str) -> List[Dict[str, Any]]:
             }
 
         if has_degree and not current_entry["degree"]:
-            current_entry["degree"] = has_degree.group(0).strip()
+            deg_raw = has_degree.group(0).strip()
+            current_entry["degree"] = re.split(r"\s+(?:from|at)\s+", deg_raw, flags=re.IGNORECASE)[0].strip()
             # Check for field of study
-            field_match = re.search(r"in\s+([A-Za-z\s&]+)", line, re.IGNORECASE)
+            field_match = re.search(r"in\s+([A-Za-z\s&]+?)(?:\s+(?:from|at)|\s*,|\s*$)", line, re.IGNORECASE)
             if field_match:
                 current_entry["field_of_study"] = field_match.group(1).strip()
 
         if has_institution and not current_entry["institution"]:
-            current_entry["institution"] = line.strip(" -•*")
-        elif not current_entry["institution"] and not has_degree:
-            current_entry["institution"] = line.strip(" -•*")
+            # If line has degree or narrative phrases, extract just institution
+            inst_match = re.search(r"(?:from|at)\s+([A-Za-z\s]+(?:University|College|Institute|School|Academy|Polytechnic))", line, re.IGNORECASE)
+            if inst_match:
+                current_entry["institution"] = inst_match.group(1).strip()
+            else:
+                current_entry["institution"] = line.strip(" -•*")
 
         if has_year and not current_entry["graduation_year"]:
             current_entry["graduation_year"] = has_year.group(0).strip()
 
         score_match = score_pattern.search(line)
         if score_match and not current_entry["score"]:
-            current_entry["score"] = score_match.group(1).strip()
+            score_val = next(g for g in score_match.groups() if g is not None)
+            if not re.fullmatch(r"(19|20)\d{2}", score_val):
+                current_entry["score"] = score_val.strip()
 
     if current_entry and (current_entry.get("degree") or current_entry.get("institution")):
         entries.append(current_entry)
 
-    # If parsing couldn't isolate structured items, create a single item from the text
+    # Narrative fallback for unstructured or no-section-headings text
     if not entries and education_text.strip():
         first_line = lines[0] if lines else education_text[:100]
         deg_match = degree_pattern.search(education_text)
         year_match = year_pattern.search(education_text)
         score_match = score_pattern.search(education_text)
-        entries.append({
-            "id": str(uuid.uuid4())[:8],
-            "institution": first_line if "university" in first_line.lower() or "college" in first_line.lower() else "University / Institution",
-            "degree": deg_match.group(0).strip() if deg_match else "Degree / Diploma",
-            "field_of_study": "Computer Science / Engineering",
-            "graduation_year": year_match.group(0).strip() if year_match else "",
-            "score": score_match.group(1).strip() if score_match else "",
-            "is_incomplete": True,
-            "extraction_status": "needs_review"
-        })
+        inst_match = re.search(r"\b([A-Za-z\s]+(?:University|College|Institute|School|Academy|Polytechnic|IIT|NIT|BITS))\b", education_text, re.IGNORECASE)
+        field_match = re.search(r"in\s+([A-Za-z\s&]+?)(?:\s+from|\s+at|\s*,|\s*$)", education_text, re.IGNORECASE)
+
+        if deg_match or inst_match:
+            score_val = ""
+            if score_match:
+                s_cand = next(g for g in score_match.groups() if g is not None)
+                if not re.fullmatch(r"(19|20)\d{2}", s_cand):
+                    score_val = s_cand.strip()
+
+            entries.append({
+                "id": str(uuid.uuid4())[:8],
+                "institution": inst_match.group(1).strip() if inst_match else (first_line if "university" in first_line.lower() or "college" in first_line.lower() else "University / Institution"),
+                "degree": deg_match.group(0).strip() if deg_match else "Degree / Diploma",
+                "field_of_study": field_match.group(1).strip() if field_match else "Computer Science",
+                "graduation_year": year_match.group(0).strip() if year_match else "",
+                "score": score_val,
+                "is_incomplete": False if (deg_match and inst_match and year_match) else True,
+                "extraction_status": "extracted" if (deg_match and inst_match and year_match) else "needs_review"
+            })
 
     # Validate each entry completeness
     for e in entries:
@@ -224,7 +316,8 @@ def extract_skills_list(skills_text: str, full_resume_text: str) -> List[str]:
     lower_target = target_text.lower()
     for skill in COMMON_TECH_SKILLS:
         skill_clean = skill.lower()
-        if re.search(r"\b" + re.escape(skill_clean) + r"\b", lower_target):
+        bound_end = r"\b" if skill_clean[-1].isalnum() else r"(?!\w)"
+        if re.search(r"\b" + re.escape(skill_clean) + bound_end, lower_target):
             detected_skills.add(skill)
 
     # 2. Also split skills section by delimiters (comma, bullet, pipes, newlines)
@@ -234,7 +327,7 @@ def extract_skills_list(skills_text: str, full_resume_text: str) -> List[str]:
             item = part.strip()
             # Clean category prefixes like "Programming Languages:", "Frameworks:"
             item = re.sub(r"^[A-Za-z\s]+:\s*", "", item).strip()
-            if 2 <= len(item) <= 30 and not any(k in item.lower() for k in ["skill", "proficient", "familiar", "technical", "competencies"]):
+            if 2 <= len(item) <= 30 and item.lower() not in NON_SKILL_WORDS and not any(k in item.lower() for k in ["skill", "proficient", "familiar", "technical", "competencies"]):
                 # Capitalize nicely if not already in detected
                 if not any(item.lower() == s.lower() for s in detected_skills):
                     detected_skills.add(item.title() if item.islower() else item)
@@ -256,6 +349,39 @@ def extract_projects_entries(projects_text: str) -> List[Dict[str, Any]]:
     for line in lines:
         is_bullet = line.startswith(("-", "•", "*", "–"))
         clean_line = line.lstrip("-•*– ").strip()
+
+        # Skip header / contact / education / skills / experience lines when unsegmented text is provided
+        if "@" in clean_line or re.search(r"\b\d{4,}\b", clean_line) or "http" in clean_line.lower():
+            continue
+        if any(k in clean_line.lower() for k in ["bachelor", "master", "b.tech", "university", "college", "gpa", "cgpa"]):
+            continue
+        if clean_line.lower().startswith(("proficient in", "skills:", "technical skills", "technologies:", "languages:")):
+            continue
+        if any(k in clean_line.lower() for k in ["internship at", "intern at", "engineer at", "developer at"]):
+            continue
+
+        # Narrative project match: "Developed a Real-Time Chat Application using Python, WebSockets, Redis, and React supporting 1,000 concurrent users."
+        narrative_p = re.search(
+            r"\b(?:developed|built|engineered|created|architected|designed)\s+(?:a|an)?\s*(.+?)(?:\s+(?:using|with|in)\s+(.+?))?(?:\s+(?:supporting|that|which|to|\.|$)\s*(.*))?$",
+            clean_line,
+            re.IGNORECASE
+        )
+        if narrative_p and not is_bullet:
+            proj_title = narrative_p.group(1).strip()
+            proj_tech = narrative_p.group(2).strip() if narrative_p.group(2) else ""
+            proj_desc = narrative_p.group(3).strip() if narrative_p.group(3) else clean_line
+            if len(proj_title) < 70:
+                projects.append({
+                    "id": str(uuid.uuid4())[:8],
+                    "title": proj_title,
+                    "technologies": proj_tech,
+                    "description": proj_desc,
+                    "link": "",
+                    "is_incomplete": False,
+                    "extraction_status": "extracted"
+                })
+                current_proj = {}
+                continue
 
         # Check if this line looks like a project title (short, not a bullet, or bold header)
         is_title_candidate = (
@@ -335,8 +461,48 @@ def extract_experience_entries(experience_text: str) -> List[Dict[str, Any]]:
         is_bullet = line.startswith(("-", "•", "*", "–"))
         clean_line = line.lstrip("-•*– ").strip()
 
+        # Skip header / contact info lines
+        if "@" in clean_line or (re.search(r"\b\d{4,}\b", clean_line) and not date_regex.search(clean_line)) or "http" in clean_line.lower():
+            continue
+
+        # Skip lines that belong to other sections when processing unsegmented text
+        if (
+            bool(re.search(r"\b(B\.?Tech|B\.?E\.?|B\.?Sc|B\.?S|M\.?Tech|M\.?S|M\.?Sc|MCA|BCA|Bachelor|Master|High School|Diploma)\b", clean_line, re.IGNORECASE)) or
+            any(k in clean_line.lower() for k in ["university", "college", "cgpa", "gpa"]) or
+            clean_line.lower().startswith(("proficient in", "skills:", "technical skills", "technologies:", "languages:", "developed a", "built a", "created a", "engineered a", "projects:"))
+        ):
+            continue
+
+        # Check for table format: Role | Company | Duration | Highlights
+        if "|" in clean_line:
+            parts = [p.strip() for p in clean_line.split("|") if p.strip()]
+            header_count = sum(1 for p in parts if any(k in p.lower() for k in ["role", "company", "duration", "highlights", "period", "dates", "title", "organization"]))
+            if header_count >= 2:
+                # Table header row - skip
+                continue
+
+            if len(parts) >= 2:
+                exp_entry = {
+                    "id": str(uuid.uuid4())[:8],
+                    "role": parts[0],
+                    "company": parts[1],
+                    "duration": parts[2] if len(parts) > 2 else "",
+                    "responsibilities": " | ".join(parts[3:]) if len(parts) > 3 else "",
+                    "is_incomplete": False,
+                    "extraction_status": "extracted"
+                }
+                experiences.append(exp_entry)
+                continue
+
         has_dates = date_regex.search(clean_line)
-        is_heading_candidate = not is_bullet and len(clean_line) < 80 and (
+        is_pure_date = bool(re.fullmatch(r"\(?\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|[0-9]{4})\b.*?(?:Present|[0-9]{4})\s*\)?", clean_line, re.IGNORECASE))
+
+        # If line is only dates and current_exp is awaiting duration
+        if is_pure_date and current_exp and current_exp.get("role") and not current_exp.get("duration"):
+            current_exp["duration"] = clean_line
+            continue
+
+        is_heading_candidate = not is_bullet and len(clean_line) < 80 and not is_pure_date and (
             has_dates or any(k in clean_line.lower() for k in ["intern", "engineer", "developer", "lead", "assistant", "associate", "trainee", "analyst"])
         )
 
@@ -355,7 +521,33 @@ def extract_experience_entries(experience_text: str) -> List[Dict[str, Any]]:
                 "extraction_status": "extracted"
             }
 
+        # Narrative match for unstructured text: "Completed a Software Engineer Internship at Rocky Mountain Cloud from June 2023 to August 2023 where I built microservices"
+        narrative_m = re.search(
+            r"\b(?:completed|undertook|served as|worked as)?\s*(?:a|an)?\s*([A-Za-z\s]+(?:Intern(?:ship)?|Engineer|Developer|Analyst|Associate|Lead|Manager|Trainee))\s+at\s+([A-Za-z0-9\s&.,-]+?)(?:\s+(?:from|during|\(|in)\s+([A-Za-z0-9\s–-]+?))?(?:\s+(?:where|and|\.|,)\s+(.*))?$",
+            clean_line,
+            re.IGNORECASE
+        )
+        if narrative_m and not is_bullet and not current_exp.get("role"):
+            current_exp["role"] = narrative_m.group(1).strip()
+            current_exp["company"] = narrative_m.group(2).strip()
+            if narrative_m.group(3):
+                current_exp["duration"] = narrative_m.group(3).strip()
+            if narrative_m.group(4):
+                current_exp["responsibilities"] = narrative_m.group(4).strip()
+            if narrative_m.group(3) and narrative_m.group(4):
+                experiences.append(current_exp)
+                current_exp = {}
+            continue
+
         if not current_exp["role"]:
+            # Only treat line as role if it contains role indicators or separators
+            is_valid_role_line = (
+                any(k in clean_line.lower() for k in ["intern", "engineer", "developer", "lead", "assistant", "associate", "trainee", "analyst", "consultant", "specialist", "manager", "architect", "designer", "programmer"]) or
+                " at " in clean_line or " - " in clean_line or " | " in clean_line
+            )
+            if not is_valid_role_line:
+                continue
+
             # Check for combined formats: "Software Engineer Intern - Google (May 2023 - Aug 2023)"
             if " - " in clean_line or " at " in clean_line or " | " in clean_line:
                 sep = " at " if " at " in clean_line else (" - " if " - " in clean_line else " | ")
@@ -423,7 +615,10 @@ def extract_resume_information(raw_text: str, filename: str = "", file_uuid: Opt
     summary_status = "extracted" if len(clean_summary) >= 20 else "needs_review"
 
     # 2. Education
-    education_list = extract_education_entries(sections.get("education", ""))
+    edu_text = sections.get("education", "")
+    education_list = extract_education_entries(edu_text)
+    if not education_list and raw_text:
+        education_list = extract_education_entries(raw_text)
     education_status = "extracted" if education_list and not any(e["is_incomplete"] for e in education_list) else "needs_review"
 
     # 3. Skills
@@ -431,11 +626,17 @@ def extract_resume_information(raw_text: str, filename: str = "", file_uuid: Opt
     skills_status = "extracted" if len(skills_list) >= 3 else "needs_review"
 
     # 4. Projects
-    projects_list = extract_projects_entries(sections.get("projects", ""))
+    proj_text = sections.get("projects", "")
+    projects_list = extract_projects_entries(proj_text)
+    if not projects_list and raw_text:
+        projects_list = extract_projects_entries(raw_text)
     projects_status = "extracted" if projects_list and not any(p["is_incomplete"] for p in projects_list) else "needs_review"
 
     # 5. Experience
-    experience_list = extract_experience_entries(sections.get("experience", ""))
+    exp_text = sections.get("experience", "")
+    experience_list = extract_experience_entries(exp_text)
+    if not experience_list and raw_text:
+        experience_list = extract_experience_entries(raw_text)
     experience_status = "extracted" if experience_list and not any(exp["is_incomplete"] for exp in experience_list) else "needs_review"
 
     # Compile field-level review flags and guidance messages

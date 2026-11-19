@@ -1,0 +1,90 @@
+{
+  "id": "web_developer",
+  "name": "Web Developer",
+  "category": "Frontend & Fullstack",
+  "description": "Constructs modern, responsive, and performant web applications using modern client-side and server-side technologies.",
+  "required_skills": [
+    "HTML",
+    "CSS",
+    "JavaScript",
+    "React",
+    "Responsive Design",
+    "Git",
+    "REST APIs"
+  ],
+  "nice_to_have_skills": [
+    "TypeScript",
+    "Node.js",
+    "Next.js",
+    "Tailwind CSS",
+    "Redux",
+    "Web Performance"
+  ],
+  "suggested_topics": {
+    "HTML": [
+      "Semantic HTML5 Markup and Content Structure",
+      "Web Content Accessibility Guidelines (WCAG) & ARIA Roles",
+      "Form Validation and Modern Media Embeds"
+    ],
+    "CSS": [
+      "Flexible Box (Flexbox) and Two-Dimensional CSS Grid",
+      "CSS Custom Properties (Variables) and Theming",
+      "Keyframe Animations, Smooth Transitions, and Transforms"
+    ],
+    "JavaScript": [
+      "Asynchronous Execution (Event Loop, Promises, Async/Await)",
+      "DOM Traversal, Event Delegation, and Mutation",
+      "ES6+ Modern Syntax (Destructuring, Modules, Spread)"
+    ],
+    "React": [
+      "Functional Components and Hooks (useState, useEffect, useMemo)",
+      "State Management and Lifting State Up",
+      "Component Lifecycle, Virtual DOM, and Re-rendering Optimization"
+    ],
+    "Responsive Design": [
+      "Mobile-First Media Queries and Fluid Typography",
+      "Flexible Images and Viewport Units (vw, vh, rem)",
+      "Cross-Browser and Multi-Device Compatibility"
+    ],
+    "Git": [
+      "Trunk-Based and Feature-Branch Git Workflows",
+      "Rebase vs Merge Best Practices",
+      "Resolving Merge Conflicts Cleanly in Pull Requests"
+    ],
+    "REST APIs": [
+      "Data Fetching with Fetch API and Axios",
+      "Handling Async State Transitions (Loading, Error, Success)",
+      "Client-Side Request Caching and Data Formatting"
+    ],
+    "TypeScript": [
+      "Type Annotations, Primitive Types, and Unions",
+      "Interfaces, Type Aliases, and Generics",
+      "Typing React Props, State, and Event Handlers"
+    ],
+    "Node.js": [
+      "Express Server Setup and Middleware Pipelines",
+      "Node.js Event Loop and Non-Blocking File I/O",
+      "RESTful Endpoint Controllers and Request Validation"
+    ],
+    "Next.js": [
+      "Server Components vs. Client Components",
+      "Server-Side Rendering (SSR) and Incremental Static Regeneration",
+      "File-System Routing and API Route Handlers"
+    ],
+    "Tailwind CSS": [
+      "Utility-First Styling Workflow and JIT Compiler",
+      "Responsive Modifiers and State Variants (hover, focus)",
+      "Design System Customization in tailwind.config"
+    ],
+    "Redux": [
+      "Redux Toolkit (RTK) ConfigureStore and Slices",
+      "Async Operations with createAsyncThunk",
+      "Immutability and useSelector / useDispatch Hooks"
+    ],
+    "Web Performance": [
+      "Core Web Vitals Optimization (LCP, INP, CLS)",
+      "Code Splitting, Dynamic Imports, and Lazy Loading",
+      "Asset Minification, Compression, and Browser Caching"
+    ]
+  }
+}

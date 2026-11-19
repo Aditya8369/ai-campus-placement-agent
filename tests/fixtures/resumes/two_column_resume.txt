@@ -1,0 +1,13 @@
+Devon Vance
+devon.vance@example.com | +1 555-890-1234 | Austin, TX
+
+--------------------------------------------------------------------------------------
+EDUCATION                                  | WORK EXPERIENCE
+Bachelor of Science in Computer Science    | Full Stack Intern at Horizon Cloud
+University of Texas at Austin              | Jun 2023 - Aug 2023
+2020 - 2024 (GPA: 3.75)                    | - Implemented user authentication in Node.js
+                                           | - Created responsive React UI components
+TECHNICAL SKILLS                           | 
+Python, TypeScript, React, Node.js, Docker | PROJECTS
+MongoDB, Git, REST APIs, PostgreSQL        | DevCollab Platform | React, Node.js
+                                           | - Real-time collaborative code editor

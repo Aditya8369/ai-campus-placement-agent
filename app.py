@@ -27,6 +27,7 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.exceptions import RequestEntityTooLarge, HTTPException
 from utils.rate_limiter import rate_limit
 from utils.migrations import run_database_migrations, get_migration_status
 import config
@@ -70,6 +71,10 @@ from utils.database import (
     create_user,
     get_user_by_email,
     get_user_by_id,
+    enable_user_two_factor,
+    disable_user_two_factor,
+    update_user_backup_codes,
+    get_user_two_factor_status,
     create_auth_session,
     get_active_auth_session,
     touch_auth_session,
@@ -155,6 +160,9 @@ from utils.database import (
     get_student_aptitude_attempts,
     get_aptitude_attempt_by_id,
     get_student_weak_aptitude_topics,
+    save_gd_attempt,
+    get_student_gd_attempts,
+    get_gd_attempt_by_id,
 )
 from utils.aptitude_service import (
     load_aptitude_questions,
@@ -163,6 +171,20 @@ from utils.aptitude_service import (
     record_and_evaluate_aptitude_test,
     get_student_aptitude_summary,
     VALID_CATEGORIES as APTITUDE_CATEGORIES,
+)
+from utils.group_discussion_service import (
+    load_gd_topics,
+    get_topic_by_id,
+    get_random_topic,
+    get_topics_by_category,
+    validate_contribution,
+    evaluate_gd_contribution,
+    record_and_evaluate_gd_attempt,
+    VALID_CATEGORIES,
+    VALID_CONTRIBUTION_TYPES,
+    MIN_WORD_COUNT,
+    RECOMMENDED_MIN_WORDS,
+    RECOMMENDED_MAX_WORDS,
 )
 from utils.topic_practice_service import (
     get_supported_topics,
@@ -244,6 +266,15 @@ from utils.demo_mode import (
     SYNTHETIC_SAMPLE_RESUME_TEXT,
     SYNTHETIC_SAMPLE_JOB_DESCRIPTION,
 )
+from utils.role_skill_gap_service import (
+    get_available_roles,
+    get_role_profile,
+    analyze_role_skill_gap,
+    extract_candidate_skills,
+    normalize_skill_name,
+    skills_match,
+)
+from utils.ats_score_service import evaluate_resume_ats_score
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -262,6 +293,7 @@ from utils.gemini import (
     AIAnalysisError,
     AIRateLimitError,
     format_ai_error_for_user,
+    scrub_api_key,
 )
 try:
     from utils.report_generator import (
@@ -322,6 +354,18 @@ from utils.output_localization import (
 
 # CSRF Protection & Token Security (#300)
 from utils.csrf import csrf, CSRFError, generate_csrf
+
+# Two-Factor Authentication & Recovery Codes (#380)
+from utils.totp import (
+    generate_totp_secret,
+    format_totp_secret,
+    generate_totp_uri,
+    generate_totp_code,
+    verify_totp_code,
+    generate_backup_codes,
+    hash_backup_code,
+    verify_and_consume_backup_code,
+)
 
 # Configure structured application logging (#301)
 from utils.logger_config import (
@@ -441,6 +485,9 @@ def require_login():
         "register",
         "verify_email",
         "resend_verification",
+        "forgot_password",
+        "reset_password",
+        "privacy_policy",
         "healthz",
         "health",
         "api_health",
@@ -467,6 +514,7 @@ def require_login():
         "api_aptitude_submit",
         "api_aptitude_history",
         "api_aptitude_weak_topics",
+        "verify_two_factor",
     }
 
     user_id = flask_session.get("user_id")
@@ -1022,6 +1070,39 @@ def set_language(lang_code):
     return redirect(request.referrer or url_for("index"))
 
 
+@app.route("/api/validate/input", methods=["POST"])
+def api_validate_input():
+    """
+    Central input validation testing and client pre-flight check endpoint (#276).
+    """
+    from utils.input_validator import (
+        validate_registration_payload,
+        validate_job_application_payload,
+        validate_interview_answer_payload,
+        ValidationError
+    )
+    payload = request.get_json(silent=True) or request.form
+    target_type = payload.get("type", "registration")
+    data = payload.get("data") or {}
+
+    try:
+        if target_type == "registration":
+            validated = validate_registration_payload(data)
+        elif target_type == "job_application":
+            validated = validate_job_application_payload(data)
+        elif target_type == "interview_answer":
+            validated = validate_interview_answer_payload(data)
+        else:
+            return jsonify({"success": False, "error": f"Unknown validation schema type '{target_type}'."}), 400
+
+        return jsonify({"success": True, "validated": validated}), 200
+    except ValidationError as ve:
+        return jsonify(ve.to_dict()), 422
+    except Exception as e:
+        logger.error(f"Error in input validation pre-flight: {e}")
+        return jsonify({"success": False, "error": "Internal validation error."}), 500
+
+
 @app.route("/api/translations", methods=["GET"])
 @app.route("/api/translations/<locale>", methods=["GET"])
 def api_translations(locale=None):
@@ -1189,6 +1270,7 @@ def api_session_logout():
         "message": "Logged out successfully."
     })
     resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.set_cookie("interview_drafts_cleared", "1", max_age=60, path="/")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
@@ -1209,6 +1291,7 @@ def logout():
         flash("You have been logged out.", "success")
         resp = make_response(redirect(url_for("index")))
     resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.set_cookie("interview_drafts_cleared", "1", max_age=60, path="/")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"
@@ -1239,6 +1322,17 @@ def login():
             flash("Please verify your email address before logging in. Check your inbox for the verification link or request a new one below.", "warning")
             return render_template("login.html", unverified_email=email)
 
+        # Two-Factor Authentication Second Step (#380)
+        if bool(user.get("two_factor_enabled", 0)):
+            flask_session.clear()
+            flask_session["2fa_pending_user_id"] = user["id"]
+            flask_session["2fa_pending_email"] = user["email"]
+            flask_session["2fa_pending_time"] = time.time()
+            next_page = request.args.get("next") or request.form.get("next")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                flask_session["2fa_pending_next"] = next_page
+            return redirect(url_for("verify_two_factor"))
+
         flask_session.clear()
         now = time.time()
         flask_session["user_id"] = user["id"]
@@ -1257,6 +1351,446 @@ def login():
         return redirect(url_for("index"))
 
     return render_template("login.html")
+
+
+@app.route("/login/2fa", methods=["GET", "POST"])
+def verify_two_factor():
+    """
+    Second sign-in step: Verifies 6-digit TOTP code or emergency backup recovery code (#380).
+    """
+    pending_user_id = flask_session.get("2fa_pending_user_id")
+    pending_time = flask_session.get("2fa_pending_time", 0)
+
+    # 10-minute timeout for completing the second sign-in step
+    if not pending_user_id or (time.time() - float(pending_time)) > 600:
+        flask_session.pop("2fa_pending_user_id", None)
+        flask_session.pop("2fa_pending_email", None)
+        flask_session.pop("2fa_pending_time", None)
+        flask_session.pop("2fa_pending_next", None)
+        flash("Two-factor verification session expired or invalid. Please sign in again.", "warning")
+        return redirect(url_for("login"))
+
+    user = get_user_by_id(pending_user_id)
+    if not user or not bool(user.get("two_factor_enabled", 0)):
+        flask_session.clear()
+        flash("Two-factor authentication is not active on this account.", "error")
+        return redirect(url_for("login"))
+
+    email = user.get("email", "")
+    parts = email.split("@")
+    if len(parts) == 2 and len(parts[0]) > 2:
+        masked_email = f"{parts[0][0]}***{parts[0][-1]}@{parts[1]}"
+    elif len(parts) == 2:
+        masked_email = f"***@{parts[1]}"
+    else:
+        masked_email = email
+
+    if request.method == "POST":
+        totp_code = (request.form.get("code") or "").strip()
+        backup_code = (request.form.get("backup_code") or "").strip()
+
+        # 1. Verify emergency backup recovery code if provided (#380, #406)
+        if backup_code:
+            # Check dedicated account recovery codes table first (#406)
+            from utils.recovery_code_service import recovery_code_service
+            is_valid_rec, rec_msg = recovery_code_service.verify_and_consume_code(user["id"], backup_code)
+
+            if is_valid_rec:
+                logger.info("User %s signed in using an account recovery code (#406).", user["id"])
+                next_page = flask_session.get("2fa_pending_next")
+                flask_session.clear()
+                now = time.time()
+                flask_session["user_id"] = user["id"]
+                flask_session["user_name"] = user["name"]
+                flask_session["last_activity"] = now
+                flask_session["login_time"] = now
+                auth_session = create_auth_session(user["id"], _session_client_label())
+                flask_session["auth_session_id"] = auth_session["id"]
+                flask_session["auth_session_token"] = auth_session["token"]
+                flask_session.permanent = True
+
+                flash(
+                    f"Signed in using an emergency recovery code. This code has been consumed. {rec_msg}",
+                    "warning"
+                )
+                if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                    return redirect(next_page)
+                return redirect(url_for("index"))
+
+            # Fallback to legacy 2FA backup codes (#380)
+            stored_hashes = user.get("two_factor_backup_codes")
+            is_valid, remaining_hashes = verify_and_consume_backup_code(stored_hashes, backup_code)
+            if is_valid:
+                update_user_backup_codes(user["id"], remaining_hashes)
+                logger.info("User %s signed in using a backup recovery code.", user["id"])
+
+                next_page = flask_session.get("2fa_pending_next")
+                flask_session.clear()
+                now = time.time()
+                flask_session["user_id"] = user["id"]
+                flask_session["user_name"] = user["name"]
+                flask_session["last_activity"] = now
+                flask_session["login_time"] = now
+                auth_session = create_auth_session(user["id"], _session_client_label())
+                flask_session["auth_session_id"] = auth_session["id"]
+                flask_session["auth_session_token"] = auth_session["token"]
+                flask_session.permanent = True
+
+                remaining_count = len(remaining_hashes)
+                flash(
+                    f"Signed in using an emergency backup recovery code. This code has been consumed. "
+                    f"You have {remaining_count} backup code{'s' if remaining_count != 1 else ''} remaining.",
+                    "warning"
+                )
+                if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                    return redirect(next_page)
+                return redirect(url_for("index"))
+            else:
+                flash("Invalid or already used backup recovery code. Please check your saved codes.", "error")
+                return render_template("login_two_factor.html", masked_email=masked_email)
+
+        # 2. Verify 6-digit TOTP authenticator app code
+        if not totp_code:
+            flash("Please enter the 6-digit verification code from your authenticator app.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+        secret = user.get("two_factor_secret", "")
+        if verify_totp_code(secret, totp_code):
+            next_page = flask_session.get("2fa_pending_next")
+            flask_session.clear()
+            now = time.time()
+            flask_session["user_id"] = user["id"]
+            flask_session["user_name"] = user["name"]
+            flask_session["last_activity"] = now
+            flask_session["login_time"] = now
+            auth_session = create_auth_session(user["id"], _session_client_label())
+            flask_session["auth_session_id"] = auth_session["id"]
+            flask_session["auth_session_token"] = auth_session["token"]
+            flask_session.permanent = True
+
+            flash("Two-factor authentication verified successfully. Welcome back!", "success")
+            if next_page and next_page.startswith("/") and not next_page.startswith("//"):
+                return redirect(next_page)
+            return redirect(url_for("index"))
+        else:
+            flash("Invalid verification code. Please check your authenticator app and try again.", "error")
+            return render_template("login_two_factor.html", masked_email=masked_email)
+
+    return render_template("login_two_factor.html", masked_email=masked_email)
+
+
+@app.route("/account/two-factor", methods=["GET"])
+def two_factor_settings():
+    """
+    Displays current two-factor authentication security status and recovery guidance (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    two_factor_status = get_user_two_factor_status(user_id)
+    return render_template(
+        "two_factor_settings.html",
+        user=user,
+        two_factor=two_factor_status
+    )
+
+
+@app.route("/account/two-factor/setup", methods=["GET", "POST"])
+def setup_two_factor():
+    """
+    Two-factor authentication setup flow (#380).
+    Generates TOTP secret and backup recovery codes, and verifies confirmation code before enabling.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is already enabled for your account.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    if request.method == "POST":
+        verification_code = (request.form.get("code") or "").strip()
+        current_password = request.form.get("password") or ""
+
+        # Verify password to authorize security change
+        if not check_password_hash(user["password_hash"], current_password):
+            flash("Incorrect account password. Please enter your current password to confirm setup.", "error")
+            secret = flask_session.get("pending_2fa_secret", "")
+            raw_codes = flask_session.get("pending_2fa_raw_codes", [])
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        secret = flask_session.get("pending_2fa_secret")
+        raw_codes = flask_session.get("pending_2fa_raw_codes")
+        if not secret or not raw_codes:
+            flash("Setup session expired. Please restart the two-factor setup process.", "warning")
+            return redirect(url_for("setup_two_factor"))
+
+        # Verify confirmation code against pending secret
+        if not verify_totp_code(secret, verification_code):
+            flash("Invalid verification code. Please ensure your authenticator app time is synced and enter the 6-digit code currently shown.", "error")
+            formatted_secret = format_totp_secret(secret)
+            otpauth_uri = generate_totp_uri(secret, user["email"])
+            return render_template(
+                "setup_two_factor.html",
+                secret=secret,
+                formatted_secret=formatted_secret,
+                otpauth_uri=otpauth_uri,
+                backup_codes=raw_codes
+            )
+
+        # Hash emergency recovery codes and persist to database
+        hashed_codes = [hash_backup_code(c) for c in raw_codes]
+        enable_user_two_factor(user_id, secret, hashed_codes)
+
+        flask_session.pop("pending_2fa_secret", None)
+        flask_session.pop("pending_2fa_raw_codes", None)
+
+        flash("Two-factor authentication has been successfully enabled! Be sure you have saved your recovery codes.", "success")
+        return redirect(url_for("two_factor_settings"))
+
+    # GET: Generate fresh secret and 8 backup recovery codes
+    secret = generate_totp_secret()
+    raw_codes = generate_backup_codes(8)
+    flask_session["pending_2fa_secret"] = secret
+    flask_session["pending_2fa_raw_codes"] = raw_codes
+
+    formatted_secret = format_totp_secret(secret)
+    otpauth_uri = generate_totp_uri(secret, user["email"])
+
+    return render_template(
+        "setup_two_factor.html",
+        secret=secret,
+        formatted_secret=formatted_secret,
+        otpauth_uri=otpauth_uri,
+        backup_codes=raw_codes
+    )
+
+
+@app.route("/account/two-factor/disable", methods=["POST"])
+def disable_two_factor():
+    """
+    Disables two-factor authentication after verifying user password or current 2FA code (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication is not currently enabled.", "info")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    verification_code = (request.form.get("code") or "").strip()
+
+    is_verified = False
+    if password and check_password_hash(user["password_hash"], password):
+        is_verified = True
+    elif verification_code and verify_totp_code(user.get("two_factor_secret", ""), verification_code):
+        is_verified = True
+
+    if not is_verified:
+        flash("Verification failed. Please enter your correct account password or a valid 6-digit code to disable two-factor authentication.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    disable_user_two_factor(user_id)
+    flash("Two-factor authentication has been disabled. Your account is now protected by password only.", "warning")
+    return redirect(url_for("two_factor_settings"))
+
+
+@app.route("/account/two-factor/regenerate-backup-codes", methods=["POST"])
+def regenerate_backup_codes():
+    """
+    Regenerates a new set of 8 emergency backup recovery codes after verifying password (#380).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    if not bool(user.get("two_factor_enabled", 0)):
+        flash("Two-factor authentication must be enabled before generating recovery codes.", "warning")
+        return redirect(url_for("two_factor_settings"))
+
+    password = request.form.get("password") or ""
+    if not check_password_hash(user["password_hash"], password):
+        flash("Incorrect password. Recovery codes could not be regenerated.", "error")
+        return redirect(url_for("two_factor_settings"))
+
+    new_raw_codes = generate_backup_codes(8)
+    new_hashed_codes = [hash_backup_code(c) for c in new_raw_codes]
+    update_user_backup_codes(user_id, new_hashed_codes)
+
+    return render_template(
+        "two_factor_recovery_codes.html",
+        backup_codes=new_raw_codes
+    )
+
+
+# ==============================================================================
+# Secure Account Recovery Code System (#406)
+# ==============================================================================
+
+@app.route("/account/recovery-codes", methods=["GET"])
+def account_recovery_codes_dashboard():
+    """
+    Displays the user's account recovery codes dashboard with status and generation history (#406).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required to access recovery codes.", "error")
+        return redirect(url_for("login"))
+
+    from utils.recovery_code_service import recovery_code_service
+    status = recovery_code_service.get_recovery_codes_status(user_id)
+
+    return render_template(
+        "account_recovery_codes_dashboard.html",
+        user=user,
+        status=status
+    )
+
+
+@app.route("/account/recovery-codes/generate", methods=["POST"])
+def generate_account_recovery_codes():
+    """
+    Generates a fresh set of one-time account recovery codes after verifying password (#406).
+    Invalidates any existing recovery codes and displays plaintext codes strictly once.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required to generate recovery codes.", "error")
+        return redirect(url_for("login"))
+
+    password = request.form.get("password") or ""
+    if not check_password_hash(user["password_hash"], password):
+        flash("Incorrect password. Recovery codes were not generated.", "error")
+        return redirect(url_for("account_recovery_codes_dashboard"))
+
+    from utils.recovery_code_service import recovery_code_service
+    code_set = recovery_code_service.generate_new_code_set(user_id, count=10)
+
+    # Store ephemeral plaintext codes in session strictly for the download route or immediate view
+    flask_session["ephemeral_recovery_codes"] = code_set["recovery_codes"]
+    flask_session["ephemeral_recovery_user_email"] = user["email"]
+
+    return render_template(
+        "account_recovery_codes_generated.html",
+        recovery_codes=code_set["recovery_codes"]
+    )
+
+
+@app.route("/account/recovery-codes/download", methods=["GET"])
+def download_account_recovery_codes():
+    """
+    Streams a downloadable .txt file of newly generated recovery codes (#406).
+    Codes are only available immediately following generation.
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        flash("Authentication required.", "error")
+        return redirect(url_for("login"))
+
+    codes = flask_session.get("ephemeral_recovery_codes")
+    email = flask_session.get("ephemeral_recovery_user_email") or user.get("email", "user")
+
+    if not codes:
+        flash("No recovery codes available for download. Codes are only downloadable immediately upon generation.", "warning")
+        return redirect(url_for("account_recovery_codes_dashboard"))
+
+    from utils.recovery_code_service import recovery_code_service
+    download_text = recovery_code_service.generate_download_text(email, codes)
+
+    response = Response(download_text, mimetype="text/plain; charset=utf-8")
+    response.headers["Content-Disposition"] = "attachment; filename=placement-account-recovery-codes.txt"
+    return response
+
+
+# API Endpoints for Secure Account Recovery Code System (#406)
+@app.route("/api/account/recovery-codes/status", methods=["GET"])
+def api_recovery_codes_status():
+    """
+    API endpoint returning recovery codes metadata (remaining count, status) (#406).
+    """
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.recovery_code_service import recovery_code_service
+    status = recovery_code_service.get_recovery_codes_status(user_id)
+    return jsonify({"success": True, "status": status}), 200
+
+
+@app.route("/api/account/recovery-codes/generate", methods=["POST"])
+def api_generate_recovery_codes():
+    """
+    API endpoint to generate a new set of recovery codes after password authentication (#406).
+    """
+    user_id = flask_session.get("user_id")
+    user = get_user_by_id(user_id) if user_id else None
+    if not user:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or request.form
+    password = payload.get("password") or ""
+
+    if not check_password_hash(user["password_hash"], password):
+        return jsonify({"success": False, "error": "Incorrect account password"}), 403
+
+    from utils.recovery_code_service import recovery_code_service
+    code_set = recovery_code_service.generate_new_code_set(user_id, count=10)
+
+    # Ephemeral session storage for download
+    flask_session["ephemeral_recovery_codes"] = code_set["recovery_codes"]
+    flask_session["ephemeral_recovery_user_email"] = user["email"]
+
+    return jsonify({
+        "success": True,
+        "message": "New recovery codes generated. Existing codes have been invalidated.",
+        "batch_id": code_set["batch_id"],
+        "total_count": code_set["total_count"],
+        "recovery_codes": code_set["recovery_codes"]
+    }), 201
+
+
+@app.route("/api/account/recovery-codes/verify", methods=["POST"])
+def api_verify_recovery_code():
+    """
+    API endpoint to verify and consume a recovery code (#406).
+    """
+    payload = request.get_json(silent=True) or request.form
+    user_id = flask_session.get("2fa_pending_user_id") or flask_session.get("user_id") or payload.get("user_id")
+    code = payload.get("code") or ""
+
+    if not user_id or not code:
+        return jsonify({"success": False, "error": "user_id and code are required"}), 400
+
+    from utils.recovery_code_service import recovery_code_service
+    is_valid, msg = recovery_code_service.verify_and_consume_code(user_id, code)
+
+    if not is_valid:
+        return jsonify({"success": False, "error": msg}), 400
+
+    return jsonify({"success": True, "message": msg}), 200
 
 
 @app.route("/account/sessions", methods=["GET"])
@@ -1820,6 +2354,30 @@ def api_walkthrough_reset():
     }), 200
 
 
+# ============================================================================
+# OPENAPI 3.0.3 DOCUMENTATION & INTERACTIVE EXPLORER (#410)
+# ============================================================================
+
+@app.route("/api/openapi.json", methods=["GET"])
+def openapi_json():
+    """Returns the complete OpenAPI 3.0.3 specification JSON for API endpoints (#410)."""
+    from utils.openapi_spec import get_openapi_spec
+    return jsonify(get_openapi_spec()), 200
+
+
+@app.route("/docs", methods=["GET"])
+@app.route("/api/docs", methods=["GET"])
+def api_docs_ui():
+    """Renders interactive Swagger UI for API exploration and testing (#410)."""
+    return render_template("swagger_ui.html")
+
+
+@app.route("/redoc", methods=["GET"])
+def api_redoc_ui():
+    """Renders Redoc three-column API documentation reference viewer (#410)."""
+    return render_template("redoc.html")
+
+
 @app.route("/")
 def index() -> str:
     """
@@ -1994,11 +2552,12 @@ def _extract_and_validate_resume(req):
         filename_lower = uploaded_file.filename.lower()
         ext = os.path.splitext(uploaded_file.filename)[1].lower()
         if ext not in ALLOWED_RESUME_EXTENSIONS:
+            ext_display = f"'{ext}'" if ext else "none"
             return (
                 None,
                 None,
                 None,
-                f"Unsupported file format (Invalid file format '{ext}'). Only PDF (.pdf) and Word (.docx) resumes are supported.",
+                f"Unsupported file format (Invalid file format {ext_display}). Only PDF (.pdf) and Word (.docx) resumes are supported.",
             )
 
         # Enforce maximum upload file size before writing to disk (Issue #153)
@@ -2054,15 +2613,35 @@ def _extract_and_validate_resume(req):
             return extracted_resume_text, resume_filename, file_uuid, None
         except ScannedPDFError as spe:
             logger.warning(f"Scanned or image-only PDF rejected: {spe}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(spe)
         except PasswordProtectedPDFError as ppe:
             logger.warning("Password-protected PDF rejected without logging credentials.")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(ppe)
         except ValueError as ve:
             logger.warning(f"Validation error reading resume file: {ve}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, str(ve)
         except Exception as err:
             logger.error(f"Unexpected error reading resume file: {err}")
+            if os.path.exists(saved_file_path):
+                try:
+                    os.remove(saved_file_path)
+                except Exception:
+                    pass
             return None, None, None, f"Could not process uploaded file: {str(err)}"
     else:
         return None, None, None, "Please upload a PDF resume or paste your resume text."
@@ -2076,6 +2655,7 @@ def analyze():
     persists result states, and redirects to candidate dashboards.
     Supports optional ?async=true query parameter or AJAX calls for background execution.
     """
+    file_uuid = None
     try:
         # Validate privacy & third-party AI processing consent (#304)
         if not _has_privacy_consent(request):
@@ -2232,25 +2812,55 @@ def analyze():
 
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        logger.warning(f"Validation error in analysis workflow: {err_msg}")
+        if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+            return jsonify({"success": False, "error": err_msg}), status_code
+        flash(err_msg, "error")
+        return redirect(url_for("index"))
     except AIAnalysisError as aie:
-        logger.warning(f"AIAnalysisError in analysis workflow: {str(aie)}")
+        logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": aie.user_friendly_message}), 500
-        flash(aie.user_friendly_message, "error")
+            return jsonify({"success": False, "error": scrub_api_key(aie.user_friendly_message)}), 500
+        flash(scrub_api_key(aie.user_friendly_message), "error")
         return redirect(url_for("index"))
     except ValueError as ve:
-        logger.warning(f"Validation error in analysis workflow: {str(ve)}")
+        logger.warning(f"Validation error in analysis workflow: {scrub_api_key(str(ve))}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": str(ve)}), 400
-        flash(str(ve), "error")
+            return jsonify({"success": False, "error": scrub_api_key(str(ve))}), 400
+        flash(scrub_api_key(str(ve)), "error")
         return redirect(url_for("index"))
     except Exception as e:
+        logger.error(f"Analysis workflow crashed: {scrub_api_key(str(e))}")
+    except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                return jsonify({"success": False, "error": msg}), 413
+            flash(msg, "error")
+            return redirect(url_for("index"))
         logger.error(f"Analysis workflow crashed: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"success": False, "error": friendly_message}), 500
         flash(friendly_message, "error")
         return redirect(url_for("index"))
+    finally:
+        # Delete temporary uploaded files after analysis finishes or fails (#500)
+        if file_uuid:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=file_uuid)
+            except Exception as clean_err:
+                logger.warning(f"Error during temporary upload cleanup for {file_uuid}: {clean_err}")
 
 
 @app.route("/api/analysis/start", methods=["POST"])
@@ -2357,7 +2967,20 @@ def start_analysis_async():
             "status_url": f"/api/analysis/status/{task.task_id}"
         }), 202
 
+    except (RequestEntityTooLarge, ValueError) as ve:
+        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+        err_msg = (
+            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            if isinstance(ve, RequestEntityTooLarge)
+            else str(ve)
+        )
+        status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
+        return jsonify({"success": False, "error": err_msg}), status_code
     except Exception as e:
+        if isinstance(e, HTTPException) and e.code == 413:
+            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
+            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
+            return jsonify({"success": False, "error": msg}), 413
         logger.error(f"Failed to start async analysis: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
@@ -2865,6 +3488,13 @@ def api_confirm_resume_analysis():
         logger.error(f"Error analyzing verified resume: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
+    finally:
+        if file_uuid:
+            try:
+                from utils.cleanup import cleanup_temporary_upload
+                cleanup_temporary_upload(file_uuid=file_uuid)
+            except Exception:
+                pass
 
 
 @app.route("/dashboard/<analysis_id>")
@@ -3026,7 +3656,32 @@ def dashboard(analysis_id: str) -> str:
     job_match = results.get("job_match") or results.get("job_compatibility") or {}
     skill_gap = results.get("skill_gap") or []
 
-    ats_score = int(resume_analysis.get("ats_score", 0))
+    # Prepare Deterministic ATS Resume Score & Section Breakdown (#494)
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    ats_breakdown = results.get("ats_breakdown")
+    try:
+        if not ats_breakdown and raw_resume:
+            ats_breakdown = evaluate_resume_ats_score(raw_resume)
+        elif not ats_breakdown:
+            candidate_skills = resume_analysis.get("skills", [])
+            candidate_summary = resume_analysis.get("summary", "")
+            synthetic_text = f"Summary: {candidate_summary}\nSkills: {', '.join(candidate_skills)}"
+            ats_breakdown = evaluate_resume_ats_score(synthetic_text)
+
+        if ats_breakdown and int(resume_analysis.get("ats_score", 0)) == 0:
+            ats_score = ats_breakdown["total_score"]
+        else:
+            ats_score = int(resume_analysis.get("ats_score", 0)) or (ats_breakdown["total_score"] if ats_breakdown else 0)
+    except Exception as ats_err:
+        logger.warning(f"Error computing ATS section breakdown for dashboard: {ats_err}")
+        ats_breakdown = None
+        ats_score = int(resume_analysis.get("ats_score", 0))
+
     match_percentage = int(job_match.get("match_percentage", 0))
     skill_gaps_count = len(skill_gap) if isinstance(skill_gap, list) else 0
     from utils.score_explanations import build_score_explanations
@@ -3097,6 +3752,7 @@ def dashboard(analysis_id: str) -> str:
         "target_match": target_match,
         "top_recommendations": top_recommendations,
         "score_explanations": score_explanations,
+        "ats_breakdown": ats_breakdown,
     }
     # Prepare verified skills comparison metrics for Visual Skills Comparison Chart
     results = analysis_record.get("results") or {}
@@ -3233,6 +3889,42 @@ def dashboard(analysis_id: str) -> str:
             "recent_score": None
         }
 
+    # Prepare Weak Bullet Point Rewrites (#429)
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        bullet_rewrites = get_bullet_rewrites_for_analysis(analysis_record)
+    except Exception as br_err:
+        logger.warning(f"Error preparing bullet rewrites for dashboard: {br_err}")
+        bullet_rewrites = {
+            "has_bullets": False,
+            "bullets": [],
+            "total_detected": 0,
+            "empty_message": "Resume bullet rewrites could not be generated."
+        }
+
+    # Prepare Role-Targeted Skill Gap Benchmark (#495)
+    try:
+        available_roles = get_available_roles()
+        selected_role_id = (
+            request.args.get("role")
+            or request.args.get("role_id")
+            or (available_roles[0]["id"] if available_roles else "software_developer")
+        )
+        role_gap_analysis = analyze_role_skill_gap(analysis_record, selected_role_id)
+    except Exception as rsg_err:
+        logger.warning(f"Error preparing role-targeted skill gap benchmark for dashboard: {rsg_err}")
+        available_roles = []
+        selected_role_id = "software_developer"
+        role_gap_analysis = {
+            "role_id": "software_developer",
+            "role_name": "Software Developer",
+            "match_percentage": 0,
+            "readiness_verdict": "Unknown",
+            "summary": "Skill gap benchmark unavailable.",
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -3249,11 +3941,18 @@ def dashboard(analysis_id: str) -> str:
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
         supported_roles=SUPPORTED_ROLES,
+        available_roles=available_roles,
+        selected_role_id=selected_role_id,
+        role_gap_analysis=role_gap_analysis,
+        role_gap_analysis_json=json.dumps(role_gap_analysis),
         readiness_summary=readiness_summary,
         skills_comparison=skills_comparison,
         skills_comparison_json=json.dumps(skills_comparison),
         skill_evidence=skill_evidence,
         skill_evidence_json=json.dumps(skill_evidence),
+        skill_gap_resources=skill_gap_resources,
+        analysis_annotations=analysis_annotations,
+        keyword_highlighter=keyword_highlighter,
         score_explanations=score_explanations,
         streak=streak_data,
         comparison=comparison,
@@ -3261,8 +3960,96 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
         aptitude_summary=aptitude_summary,
-        is_demo=is_demo
+        is_demo=is_demo,
+        bullet_rewrites=bullet_rewrites
     )
+
+
+# ==============================================================================
+# ATS RESUME SCORING & SECTION BREAKDOWN API (#494)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/ats-breakdown", methods=["GET"])
+def api_get_analysis_ats_breakdown(analysis_id: str):
+    """
+    Returns the deterministic ATS resume score and section-wise breakdown (#494).
+    Scores contact info, summary, skills, experience, projects, and education
+    out of 100, evaluates basics checks, and identifies the section hurting the score most.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    ats_breakdown = results.get("ats_breakdown")
+    if not ats_breakdown:
+        from utils.ats_score_service import evaluate_resume_ats_score
+        raw_resume = analysis_record.get("resume_text", "")
+        ats_breakdown = evaluate_resume_ats_score(raw_resume)
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "total_score": ats_breakdown.get("total_score", 0),
+        "rating": ats_breakdown.get("rating", "Needs Rework"),
+        "hurts_most": ats_breakdown.get("hurts_most"),
+        "sections": ats_breakdown.get("sections", {}),
+        "basics": ats_breakdown.get("basics", {}),
+        "data": ats_breakdown,
+    }), 200
+
+
+@app.route("/api/resume/ats-score", methods=["POST"])
+def api_evaluate_resume_ats_score():
+    """
+    Evaluates resume text deterministically and returns the ATS section breakdown (#494).
+    Accepts JSON body:
+      - resume_text: raw text of the resume to score
+      - analysis_id: (optional) ID of existing analysis to load text from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text")
+        analysis_id = data.get("analysis_id")
+
+        if not resume_text and analysis_id:
+            record = get_analysis(analysis_id)
+            if record and _is_student_authorized(record):
+                resume_text = record.get("resume_text", "")
+
+        from utils.ats_score_service import evaluate_resume_ats_score
+        ats_breakdown = evaluate_resume_ats_score(resume_text or "")
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "total_score": ats_breakdown["total_score"],
+            "rating": ats_breakdown["rating"],
+            "hurts_most": ats_breakdown["hurts_most"],
+            "sections": ats_breakdown["sections"],
+            "basics": ats_breakdown["basics"],
+            "data": ats_breakdown,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
+def get_bullet_rewrites_api(analysis_id: str):
+    """Return detected weak bullets and suggested rewrites for an analysis (#429)."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"error": "Analysis not found"}), 404
+
+    try:
+        from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
+        data = get_bullet_rewrites_for_analysis(analysis_record)
+        return jsonify(data), 200
+    except Exception as e:
+        logger.error(f"Error in bullet-rewrites API: {e}")
+        return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
+
 
 
 @app.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
@@ -3413,6 +4200,115 @@ def api_skill_evidence_mapping(analysis_id: str):
         "company_name": analysis_record.get("company_name", "General"),
         "skill_evidence": skill_evidence
     }), 200
+
+
+# ==============================================================================
+# ROLE-TARGETED SKILL GAP BENCHMARKING API (#495)
+# ==============================================================================
+
+@app.route("/api/skill-gap/roles", methods=["GET"])
+def api_get_skill_gap_roles():
+    """
+    Returns the list of all available job role benchmark profiles (#495).
+    Dynamically discovers JSON files in data/roles/.
+    """
+    try:
+        roles = get_available_roles()
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "roles": roles,
+            "count": len(roles),
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching skill gap roles: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/roles/<role_id>", methods=["GET"])
+def api_get_skill_gap_role_profile(role_id: str):
+    """
+    Returns profile details, required skills, nice-to-have skills, and suggested
+    topics for a specific job role (#495).
+    """
+    try:
+        profile = get_role_profile(role_id)
+        if not profile:
+            return jsonify({
+                "status": "error",
+                "success": False,
+                "error": f"Role '{role_id}' not found."
+            }), 404
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "role": profile
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error fetching role profile '{role_id}': {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/skill-gap/analyze", methods=["POST"])
+def api_analyze_skill_gap():
+    """
+    Analyzes candidate skills against a target job role profile (#495).
+    Accepts JSON body:
+      - role_id (or role): identifier of the role (e.g. 'software_developer')
+      - skills (or candidate_skills): list or string of candidate skills
+      - analysis_id: (optional) ID of existing analysis to load skills from
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        role_id = data.get("role_id") or data.get("role") or "software_developer"
+        candidate_skills = data.get("skills") or data.get("candidate_skills")
+
+        analysis_id = data.get("analysis_id")
+        if not candidate_skills and analysis_id:
+            analysis_record = get_analysis(analysis_id)
+            if analysis_record:
+                candidate_skills = analysis_record
+
+        result = analyze_role_skill_gap(candidate_skills, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_analyze_skill_gap: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@app.route("/api/analysis/<analysis_id>/role-skill-gap", methods=["GET"])
+def api_analysis_role_skill_gap(analysis_id: str):
+    """
+    Evaluates candidate skills from an existing analysis record against a selected target role (#495).
+    Query parameter: ?role=<role_id> (defaults to first available role or 'software_developer').
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    try:
+        available_roles = get_available_roles()
+        default_role = available_roles[0]["id"] if available_roles else "software_developer"
+        role_id = request.args.get("role") or request.args.get("role_id") or default_role
+
+        result = analyze_role_skill_gap(analysis_record, role_id)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "analysis_id": analysis_id,
+            "selected_role_id": role_id,
+            "available_roles": available_roles,
+            "data": result,
+            **result,
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error evaluating role skill gap for analysis {analysis_id}: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 # ==============================================================================
@@ -3848,6 +4744,15 @@ def interview(analysis_id: str) -> str:
                     })
                     q_idx += 1
 
+        # Ensure session contains at least 5 questions (#496)
+        flat_questions_list = live_interview_agent.ensure_minimum_session_questions(
+            flat_questions_list,
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+
         # Save new session into SQLite DB
         create_interview_session(
             interview_id=session_id,
@@ -3856,14 +4761,37 @@ def interview(analysis_id: str) -> str:
         )
         interview_session = get_interview_session(session_id)
 
+    # Ensure existing in-progress session has at least 5 questions
+    elif not interview_session.get("completed") and len(interview_session.get("questions", [])) < 5:
+        topped_up_questions = live_interview_agent.ensure_minimum_session_questions(
+            interview_session.get("questions", []),
+            round_type=active_round,
+            target_role=analysis_record.get("job_title", "Software Engineer"),
+            target_company=analysis_record.get("company_name", "General"),
+            min_count=5
+        )
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("UPDATE interviews SET questions_json = ? WHERE id = ?", (json.dumps(topped_up_questions), session_id))
+            conn.commit()
+        finally:
+            conn.close()
+        interview_session = get_interview_session(session_id)
+
     # Check session state status (#265)
     from utils.interview_session_service import ensure_interview_session_pause_table
     ensure_interview_session_pause_table()
     session_status = interview_session.get("status") or ("Completed" if interview_session.get("completed") else "In Progress")
 
+    session_summary = None
+    if interview_session and interview_session.get("completed") and interview_session.get("answers"):
+        session_summary = live_interview_agent.calculate_session_summary(interview_session["answers"])
+
     return render_template(
         "interview.html",
         interview=interview_session,
+        session_summary=session_summary,
         analysis_id=analysis_id,
         session_id=session_id,
         active_round=active_round,
@@ -4212,17 +5140,219 @@ def api_get_interview_breakdown(session_id: str):
         return jsonify({"status": "error", "message": "Failed to compute performance breakdown."}), 500
 
 
+# ============================================================================
+# INTERVIEW SESSION PAUSE & RESUME ENDPOINTS (#265)
+# ============================================================================
+
+@app.route("/api/interview/<session_id>/pause", methods=["POST"])
+def api_pause_interview_session(session_id: str):
+    """
+    Pauses an ongoing mock interview session, saving the current question,
+    unsubmitted draft answer, and progress status.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    draft_answer = payload.get("draft_answer", "").strip()
+    q_index = payload.get("question_index")
+
+    try:
+        from utils.interview_session_service import pause_interview_session
+        result = pause_interview_session(
+            session_id=session_id,
+            student_id=str(student_id),
+            draft_answer=draft_answer,
+            question_index=int(q_index) if q_index is not None else None
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session paused successfully.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error pausing interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to pause interview session."}), 500
+
+
+@app.route("/api/interview/<session_id>/resume", methods=["POST", "GET"])
+def api_resume_interview_session(session_id: str):
+    """
+    Resumes a paused mock interview session and returns stored progress.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+
+    try:
+        from utils.interview_session_service import resume_interview_session
+        result = resume_interview_session(
+            session_id=session_id,
+            student_id=str(student_id)
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Interview session resumed.",
+            "data": result
+        }), 200
+    except KeyError as ke:
+        return jsonify({"status": "error", "message": str(ke)}), 404
+    except PermissionError as pe:
+        return jsonify({"status": "error", "message": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error resuming interview session {session_id}: {e}")
+        return jsonify({"status": "error", "message": "Failed to resume interview session."}), 500
+
+
+@app.route("/api/interview/sessions", methods=["GET"])
+def api_list_interview_sessions():
+    """
+    Lists interview sessions for the logged-in student along with their status
+    ('In Progress', 'Paused', or 'Completed').
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    try:
+        from utils.interview_session_service import get_student_interview_sessions_with_status
+        sessions = get_student_interview_sessions_with_status(str(student_id))
+        return jsonify({
+            "status": "success",
+            "count": len(sessions),
+            "sessions": sessions
+        }), 200
+    except Exception as e:
+        logger.error(f"Error listing interview sessions: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch interview sessions."}), 500
+
+
+# ============================================================================
+# SUBJECT-BASED INTERVIEWS ENDPOINTS (#272)
+# ============================================================================
+
+@app.route("/api/interview/subjects", methods=["GET"])
+def api_get_interview_subjects():
+    """
+    Returns the catalog of technical subjects available for targeted interview practice
+    (Python, Java, SQL, DBMS, Operating Systems, Computer Networks).
+    """
+    from utils.subject_interview_service import get_subject_catalog
+    return jsonify({
+        "status": "success",
+        "subjects": get_subject_catalog()
+    }), 200
+
+
+@app.route("/api/interview/subject/generate", methods=["POST"])
+def api_generate_subject_interview_question():
+    """Generates a targeted mock interview question for a specific technical subject."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+
+    from utils.subject_interview_service import generate_subject_question
+    q_data = generate_subject_question(subject)
+    return jsonify({
+        "status": "success",
+        "data": q_data
+    }), 200
+
+
+@app.route("/api/interview/subject/evaluate", methods=["POST"])
+def api_evaluate_subject_interview_answer():
+    """Evaluates a student's answer against the technical subject rubric."""
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    subject = payload.get("subject", "python")
+    question = payload.get("question", "")
+    answer = payload.get("answer", "")
+
+    from utils.subject_interview_service import evaluate_subject_answer
+    eval_res = evaluate_subject_answer(subject, question, answer)
+    return jsonify({
+        "status": "success",
+        "evaluation": eval_res
+    }), 200
+
+
+@app.route("/api/interview/question/flag", methods=["POST"])
+def api_interview_question_flag():
+    """
+    Flag an unsuitable mock interview question (#327).
+    """
+    from utils.question_flag_service import flag_interview_question
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    session_id = payload.get("session_id") or payload.get("interview_id") or "mock-session"
+    question_index = payload.get("question_index", 0)
+    question_text = payload.get("question_text") or payload.get("question", "")
+    reason = payload.get("reason") or "Irrelevant to Target Role"
+    comment = payload.get("comment", "")
+
+    try:
+        result = flag_interview_question(
+            student_id=student_id,
+            session_id=str(session_id),
+            question_index=int(question_index),
+            question_text=str(question_text),
+            reason=str(reason),
+            comment=str(comment)
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except PermissionError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except Exception as e:
+        logger.error(f"Error recording question flag: {e}")
+        return jsonify({"success": False, "error": "Internal error flagging question."}), 500
+
+
+@app.route("/api/interview/question/flag-reasons", methods=["GET"])
+def api_interview_question_flag_reasons():
+    """
+    Return available question flag categories (#327).
+    """
+    from utils.question_flag_service import VALID_FLAG_REASONS
+    return jsonify({"success": True, "reasons": VALID_FLAG_REASONS}), 200
+
+
+
 @app.route("/interview/<analysis_id>/reset", methods=["POST"])
 def reset_interview_session(analysis_id: str):
     """
     Resets an active mock interview session back to question index 0 with empty answers,
-    enabling students to retake and practice rounds anew without losing the parent analysis.
+    enabling students to retake and practice rounds anew without losing the parent analysis (#496).
     """
     try:
         raw_round = request.args.get("round", "").lower()
-        session_id = f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else analysis_id
+        post_json = request.get_json(silent=True) or {}
+
+        session_id = (
+            request.args.get("session_id")
+            or post_json.get("session_id")
+            or (f"{analysis_id}_{raw_round}" if raw_round in ["hr", "technical", "behavioral"] else None)
+            or analysis_id
+        )
 
         session = get_interview_session(session_id)
+        if not session and session_id != analysis_id:
+            # Fall back to base analysis_id if round-specific session not found
+            session_id = analysis_id
+            session = get_interview_session(session_id)
+
         if not session:
             return jsonify({"success": False, "error": "Interview session not found"}), 404
 
@@ -4232,6 +5362,17 @@ def reset_interview_session(analysis_id: str):
             answers_list=[],
             completed=False,
         )
+
+        # Reset session status in state registry if table exists
+        try:
+            conn = get_db_connection()
+            c = conn.cursor()
+            c.execute("UPDATE interviews SET status = 'In Progress' WHERE id = ?", (session_id,))
+            c.execute("UPDATE interview_session_state SET status = 'In Progress', pause_timestamp = NULL WHERE session_id = ?", (session_id,))
+            conn.commit()
+            conn.close()
+        except Exception as e_st:
+            logger.debug(f"Could not reset session state status: {e_st}")
 
         return jsonify({
             "success": True,
@@ -5294,6 +6435,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -6446,7 +7594,7 @@ def notification_settings_view():
                 "warning",
             )
         else:
-            flash("Generated-output language preferences updated successfully!", "success")
+            flash("Email notification preferences updated successfully!", "success")
         return redirect(url_for("notification_settings_view", student_id=student_id))
 
     prefs = get_email_notification_preferences(student_id)
@@ -6496,6 +7644,258 @@ def api_send_interview_reminder():
     )
 
     return jsonify({"success": sent, "recipient": recipient_email}), (200 if sent else 500)
+
+
+# ---------------------------------------------------------------------------
+# Student Notification Preferences Management Endpoints (#260)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/notifications/preferences", methods=["GET"])
+def api_get_notification_preferences():
+    """Retrieve full notification preference configuration for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    try:
+        from utils.notification_preferences_manager import get_student_preferences
+        data = get_student_preferences(user_id)
+        return jsonify({
+            "success": True,
+            **data
+        }), 200
+    except Exception as e:
+        logger.error(f"Error fetching notification preferences: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/notifications/preferences", methods=["PUT"])
+def api_update_notification_preferences():
+    """Update notification preferences for the logged-in student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    preferences_list = payload.get("preferences")
+    if not isinstance(preferences_list, list):
+        return jsonify({"success": False, "error": "Payload must contain 'preferences' list"}), 400
+
+    try:
+        from utils.notification_preferences_manager import update_student_preferences
+        updated = update_student_preferences(user_id, preferences_list)
+        return jsonify({
+            "success": True,
+            "message": "Notification preferences updated successfully",
+            **updated
+        }), 200
+    except Exception as e:
+        logger.error(f"Error updating notification preferences: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/notifications/preferences/master-toggle", methods=["POST"])
+def api_toggle_master_notifications():
+    """Turn all notifications on or off simultaneously for the student."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    enabled = bool(payload.get("enabled", True))
+
+    try:
+        from utils.notification_preferences_manager import set_master_notification_toggle
+        res = set_master_notification_toggle(user_id, enabled)
+        return jsonify({
+            "success": True,
+            "message": f"All notifications {'enabled' if enabled else 'disabled'}",
+            **res
+        }), 200
+    except Exception as e:
+        logger.error(f"Error toggling master notifications: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/notification-preferences", methods=["GET"])
+def notification_preferences_view():
+    """Render notification preferences management page (#260)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        flash("Please log in to manage your notification preferences.", "warning")
+        return redirect(url_for("login"))
+
+    from utils.notification_preferences_manager import get_student_preferences
+    prefs = get_student_preferences(user_id)
+    return render_template("notification_preferences.html", preferences_data=prefs)
+
+
+# ---------------------------------------------------------
+# In-App Notification Center Endpoints (#418)
+# ---------------------------------------------------------
+@app.route("/api/notifications/unread-count", methods=["GET"])
+def api_get_unread_notification_count():
+    """
+    Returns unread in-app notification count for the active student.
+    """
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    count = in_app_notification_service.get_unread_count(student_id)
+    return jsonify({"success": True, "unread_count": count}), 200
+
+
+@app.route("/api/notifications", methods=["GET", "POST"])
+def api_in_app_notifications():
+    """
+    Retrieves or creates in-app notifications.
+    """
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        is_read_param = request.args.get("is_read")
+        is_read = None
+        if is_read_param is not None:
+            is_read = is_read_param.lower() in ("true", "1")
+        category = request.args.get("category")
+        limit = int(request.args.get("limit", 50))
+
+        items = in_app_notification_service.list_notifications(
+            student_id=student_id,
+            is_read=is_read,
+            category=category,
+            limit=limit
+        )
+        unread = in_app_notification_service.get_unread_count(student_id)
+        return jsonify({
+            "success": True,
+            "unread_count": unread,
+            "count": len(items),
+            "notifications": items
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("title", "New Alert")
+        message = payload.get("message", "")
+        category = payload.get("category", "system_alert")
+        priority = payload.get("priority", "normal")
+        action_url = payload.get("action_url")
+        target_student = student_id
+
+        if not message:
+            return jsonify({"success": False, "error": "message is required"}), 400
+
+        nid = in_app_notification_service.create_notification(
+            student_id=target_student,
+            title=title,
+            message=message,
+            category=category,
+            priority=priority,
+            action_url=action_url
+        )
+        return jsonify({"success": True, "notification_id": nid}), 201
+
+
+@app.route("/api/notifications/<int:nid>/read", methods=["POST"])
+def api_mark_notification_read(nid):
+    """Marks a single notification as read."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    success = in_app_notification_service.mark_as_read(student_id, nid)
+    return jsonify({"success": success}), 200 if success else 404
+
+
+@app.route("/api/notifications/mark-all-read", methods=["POST"])
+def api_mark_all_notifications_read():
+    """Marks all notifications as read for current student."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    count = in_app_notification_service.mark_all_as_read(student_id)
+    return jsonify({"success": True, "updated_count": count}), 200
+
+
+@app.route("/api/notifications/<int:nid>", methods=["DELETE"])
+def api_delete_in_app_notification(nid):
+    """Deletes an in-app notification."""
+    from utils.in_app_notification_service import in_app_notification_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    deleted = in_app_notification_service.delete_notification(student_id, nid)
+    return jsonify({"success": deleted}), 200 if deleted else 404
+
+
+# ---------------------------------------------------------
+# Notification Delivery History Endpoints (#419)
+# ---------------------------------------------------------
+@app.route("/api/notifications/delivery-history", methods=["GET"])
+def api_get_delivery_history():
+    """
+    Returns audit trail of dispatched notifications for the student.
+    """
+    from utils.delivery_history_service import delivery_history_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    channel = request.args.get("channel")
+    status = request.args.get("status")
+    limit = int(request.args.get("limit", 50))
+
+    history = delivery_history_service.list_delivery_history(
+        student_id=student_id,
+        channel=channel,
+        status=status,
+        limit=limit
+    )
+    metrics = delivery_history_service.get_delivery_metrics(student_id)
+
+    return jsonify({
+        "success": True,
+        "metrics": metrics,
+        "count": len(history),
+        "history": history
+    }), 200
+
+
+@app.route("/api/notifications/delivery-history", methods=["POST"])
+def api_log_delivery_attempt():
+    """
+    Records an outbound notification delivery attempt into the history log.
+    """
+    from utils.delivery_history_service import delivery_history_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    channel = payload.get("channel", "email")
+    recipient = payload.get("recipient", "student@example.com")
+    template_name = payload.get("template_name", "general_alert")
+    subject = payload.get("subject", "Campus Placement Alert")
+    status = payload.get("status", "DELIVERED")
+    error_summary = payload.get("error_summary")
+    latency_ms = int(payload.get("latency_ms", 120))
+
+    log_id = delivery_history_service.log_delivery(
+        student_id=student_id,
+        channel=channel,
+        recipient=recipient,
+        template_name=template_name,
+        subject=subject,
+        status=status,
+        error_summary=error_summary,
+        latency_ms=latency_ms
+    )
+
+    return jsonify({
+        "success": True,
+        "log_id": log_id,
+        "message": "Delivery logged successfully."
+    }), 201
+
+
 
 
 
@@ -7042,6 +8442,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -8099,6 +9506,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -10152,6 +11566,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -11236,6 +12657,13 @@ def compare_resumes_view():
 
         return render_template("resume_compare.html", comparison=comparison)
 
+    except (ValueError, ScannedPDFError) as ve:
+        logger.warning(f"Validation error comparing resume versions: {ve}")
+        err_msg = str(ve)
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("compare_resumes_view"))
     except Exception as exc:
         logger.error(f"Error comparing resume versions: {exc}")
         err_msg = f"Failed to compare resumes: {str(exc)}"
@@ -12112,7 +13540,8 @@ def api_application_detail_operations(app_id: str):
                 resume_snapshot["version"] if resume_snapshot
                 else (None if resume_link_supplied else existing.get("resume_version"))
             ),
-            job_description_snapshot=job_description or None
+            job_description_snapshot=job_description or None,
+            deadline_date=deadline_date
         )
         if updated:
             refreshed = get_job_application_by_id(app_id, student_id)
@@ -12199,6 +13628,35 @@ def api_delete_application(app_id: str):
     ).strip()
     deleted = delete_job_application(app_id=app_id, student_id=student_id)
     return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@app.route("/api/export/csv/<data_type>", methods=["GET"])
+def api_export_csv(data_type):
+    """
+    Export student placement preparation data to CSV (#274).
+    Supported types: applications, interviews, notes, coding.
+    """
+    from utils.csv_export_service import get_csv_export
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        csv_data, filename = get_csv_export(data_type, student_id)
+        response = Response(csv_data, mimetype="text/csv")
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error generating CSV export for {data_type}: {e}")
+        return jsonify({"success": False, "error": "Internal error generating CSV export."}), 500
+
+
+@app.route("/export", methods=["GET"])
+def export_dashboard_page():
+    """
+    Dashboard page to download preparation data CSV files (#274).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    return render_template("csv_export.html", student_id=student_id)
 
 
 @app.route("/applications/export", methods=["GET"])
@@ -12809,6 +14267,34 @@ def api_notes_categories():
         "category_counts": counts,
         "counts": counts
     }), 200
+
+
+@app.route("/api/user/search", methods=["GET"])
+def api_user_search():
+    """
+    Private search endpoint across all student saved records (#324).
+    """
+    from utils.saved_data_search_service import search_student_saved_data
+    student_id = flask_session.get("user_id") or "default_student"
+    query = request.args.get("q", "")
+    category = request.args.get("category", "all")
+    try:
+        limit = min(50, max(1, int(request.args.get("limit", 20))))
+    except (ValueError, TypeError):
+        limit = 20
+
+    data = search_student_saved_data(student_id=student_id, query=query, filter_category=category, limit=limit)
+    return jsonify(data), 200
+
+
+@app.route("/search", methods=["GET"])
+def search_page():
+    """
+    Search page UI for private student saved data (#324).
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    initial_query = request.args.get("q", "")
+    return render_template("search.html", student_id=student_id, initial_query=initial_query)
 
 
 @app.route("/history", methods=["GET"])
@@ -13611,6 +15097,258 @@ def company_profile_detail_endpoint(profile_id: str):
 # ============================================================================
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
+
+@app.route("/api/resume/detect-language", methods=["POST"])
+def api_detect_resume_language():
+    """
+    Analyzes resume text to determine primary language.
+    Provides non-blocking warnings if non-English content is detected.
+    """
+    from utils.resume_language_detector import resume_language_detector
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for language detection"
+        }), 400
+
+    result = resume_language_detector.detect_language(resume_text)
+    return jsonify({
+        "success": True,
+        "detection": result
+    }), 200
+
+
+@app.route("/api/resume/validate-sections", methods=["POST"])
+def api_validate_resume_sections():
+    """
+    Analyzes resume text to ensure core sections (Education, Skills,
+    Projects, Experience, Contact) are present, providing soft warnings.
+    """
+    from utils.resume_section_validator import resume_section_validator
+
+    payload = request.get_json(silent=True) or request.form
+    resume_text = payload.get("resume_text", "")
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "resume_text is required for section completeness validation"
+        }), 400
+
+    validation_result = resume_section_validator.validate_sections(resume_text)
+    return jsonify({
+        "success": True,
+        "completeness": validation_result
+    }), 200
+
+
+@app.route("/api/resume/check-duplicate", methods=["POST"])
+def api_check_duplicate_resume():
+    """
+    Checks if an uploaded resume file or text matches previous uploads.
+    Returns status without blocking the user.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if "resume" in request.files:
+        file = request.files["resume"]
+        file_bytes = file.read()
+        filename = file.filename or "resume.pdf"
+        extracted_text = request.form.get("extracted_text", "")
+    else:
+        payload = request.get_json(silent=True) or request.form
+        content = payload.get("content", "")
+        file_bytes = content.encode("utf-8")
+        filename = payload.get("filename", "resume.txt")
+        extracted_text = payload.get("extracted_text") or content
+
+    if not file_bytes:
+        return jsonify({"success": False, "error": "No resume file or content provided"}), 400
+
+    dup_status = duplicate_resume_service.check_for_duplicate(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=extracted_text
+    )
+
+    return jsonify({
+        "success": True,
+        "duplicate_check": dup_status
+    }), 200
+
+
+@app.route("/api/resume/record-fingerprint", methods=["POST"])
+def api_record_resume_fingerprint():
+    """
+    Records a resume fingerprint after successful processing or user confirmation.
+    """
+    from utils.duplicate_resume_service import duplicate_resume_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    content = payload.get("content", "")
+    filename = payload.get("filename", "resume.pdf")
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    file_bytes = content.encode("utf-8")
+    record_id = duplicate_resume_service.record_upload_fingerprint(
+        student_id=student_id,
+        file_bytes=file_bytes,
+        filename=filename,
+        extracted_text=content
+    )
+
+    return jsonify({
+        "success": True,
+        "record_id": record_id,
+        "message": "Resume fingerprint registered successfully."
+    }), 201
+
+
+@app.route("/api/analysis/version-metadata", methods=["GET", "POST"])
+def api_analysis_version_metadata():
+    """
+    Records or retrieves AI model name, version, and prompt version hash
+    for a placement evaluation run.
+    """
+    from utils.ai_versioning_service import ai_versioning_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        info = ai_versioning_service.get_analysis_version_info(analysis_id)
+        if not info:
+            return jsonify({"success": False, "error": "Version info not found"}), 404
+        return jsonify({"success": True, "metadata": info}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        row_id = ai_versioning_service.record_analysis_version(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            model_name=payload.get("model_name"),
+            model_version=payload.get("model_version"),
+            prompt_version=payload.get("prompt_version"),
+            raw_prompt_template=payload.get("raw_prompt_template"),
+            execution_mode=payload.get("execution_mode", "production")
+        )
+
+        metadata = ai_versioning_service.get_analysis_version_info(analysis_id)
+        return jsonify({
+            "success": True,
+            "record_id": row_id,
+            "metadata": metadata
+        }), 201
+
+
+@app.route("/api/analysis/reproducibility-summary", methods=["GET", "POST"])
+def api_analysis_reproducibility_summary():
+    """
+    Generates or retrieves reproducibility summaries, verifying inputs,
+    seeds, parameters, and model versions.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    if request.method == "GET":
+        analysis_id = request.args.get("analysis_id")
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and not _is_student_authorized(analysis_record):
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        summary = analysis_reproducibility_service.get_reproducibility_summary(analysis_id)
+        if not summary:
+            return jsonify({"success": False, "error": "Reproducibility summary not found"}), 404
+        return jsonify({"success": True, "reproducibility": summary}), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        analysis_id = payload.get("analysis_id")
+        resume_text = payload.get("resume_text", "")
+
+        if not analysis_id:
+            return jsonify({"success": False, "error": "analysis_id is required"}), 400
+        if not resume_text:
+            return jsonify({"success": False, "error": "resume_text is required"}), 400
+
+        student_id = flask_session.get("user_id") or payload.get("student_id") or "default_student"
+        summary = analysis_reproducibility_service.record_reproducibility_summary(
+            analysis_id=analysis_id,
+            student_id=student_id,
+            resume_text=resume_text,
+            job_description=payload.get("job_description"),
+            target_role=payload.get("target_role"),
+            model_name=payload.get("model_name", "gemini-1.5-flash"),
+            prompt_version=payload.get("prompt_version", "v2.1"),
+            temperature=float(payload.get("temperature", 0.2)),
+            seed=int(payload.get("seed", 42)),
+            scores=payload.get("scores")
+        )
+        return jsonify({
+            "success": True,
+            "reproducibility": summary
+        }), 201
+
+
+@app.route("/api/analysis/compare-reproducibility", methods=["POST"])
+def api_compare_analysis_reproducibility():
+    """
+    Compares two evaluation runs to check whether identical inputs and configs were used.
+    """
+    from utils.analysis_reproducibility_service import analysis_reproducibility_service
+
+    payload = request.get_json(silent=True) or request.form
+    id_a = payload.get("analysis_id_a")
+    id_b = payload.get("analysis_id_b")
+
+    if not id_a or not id_b:
+        return jsonify({"success": False, "error": "analysis_id_a and analysis_id_b are required"}), 400
+
+    comparison = analysis_reproducibility_service.compare_runs_reproducibility(id_a, id_b)
+    return jsonify({
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
+@app.route("/api/ai/disclaimer", methods=["GET"])
+def api_get_ai_disclaimer():
+    """
+    Returns standardized AI disclaimer text and HTML banners for
+    front-end modules (resume reviews, interview feedback, etc.).
+    """
+    from utils.ai_disclaimer_service import ai_disclaimer_service
+
+    category = request.args.get("category", "general_ai")
+    data = ai_disclaimer_service.get_disclaimer_data(category)
+    banner_html = ai_disclaimer_service.render_banner_html(category)
+    footnote_html = ai_disclaimer_service.render_footnote_html(category)
+
+    return jsonify({
+        "success": True,
+        "disclaimer": data,
+        "banner_html": banner_html,
+        "footnote_html": footnote_html
+    }), 200
+
 
 @app.route("/api/resume/scan-pii", methods=["POST"])
 def scan_resume_pii_endpoint():
@@ -14601,6 +16339,352 @@ def api_saved_job_description_item(saved_id):
 
 
 
+@app.route("/api/offers", methods=["GET", "POST"])
+def api_offers_list_create():
+    """
+    List and create private student job offers (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers, create_job_offer
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        offers = get_student_offers(student_id)
+        return jsonify({"success": True, "offers": offers}), 200
+
+    payload = request.get_json(silent=True) or request.form
+    try:
+        res = create_job_offer(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            role_title=payload.get("role_title", ""),
+            base_salary=float(payload.get("base_salary", 0)),
+            bonus=float(payload.get("bonus", 0)),
+            equity_annual=float(payload.get("equity_annual", 0)),
+            location=payload.get("location", "Remote"),
+            work_mode=payload.get("work_mode", "Hybrid"),
+            benefits_summary=payload.get("benefits_summary", ""),
+            deadline_date=payload.get("deadline_date"),
+            notes=payload.get("notes", "")
+        )
+        return jsonify(res), 201
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error creating job offer: {e}")
+        return jsonify({"success": False, "error": "Internal error creating offer."}), 500
+
+
+@app.route("/api/offers/compare", methods=["POST"])
+def api_offers_compare():
+    """
+    Compare selected private student job offers side-by-side (#330).
+    """
+    from utils.offer_comparison_service import compare_job_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+    offer_ids = payload.get("offer_ids") or []
+    if isinstance(offer_ids, str):
+        offer_ids = [o.strip() for o in offer_ids.split(",") if o.strip()]
+
+    try:
+        comparison = compare_job_offers(student_id, offer_ids)
+        return jsonify(comparison), 200
+    except (KeyError, ValueError) as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error comparing job offers: {e}")
+        return jsonify({"success": False, "error": "Internal error comparing offers."}), 500
+
+
+@app.route("/offers/compare", methods=["GET"])
+def offers_compare_page():
+    """
+    Render private job offers comparison view (#330).
+    """
+    from utils.offer_comparison_service import get_student_offers
+    student_id = flask_session.get("user_id") or "default_student"
+    offers = get_student_offers(student_id)
+    return render_template("offer_comparison.html", student_id=student_id, offers=offers)
+
+
+@app.route("/api/goals", methods=["GET", "POST"])
+def api_preparation_goals():
+    """
+    Creates or lists student target-date preparation plans and milestone metrics.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        goals = goal_planner_service.list_student_goals(student_id)
+        return jsonify({
+            "success": True,
+            "count": len(goals),
+            "goals": goals
+        }), 200
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form
+        title = payload.get("goal_title", "My Placement Goal")
+        role = payload.get("target_role", "Software Engineer")
+        target_date = payload.get("target_date")
+        target_coding = int(payload.get("target_coding_problems", 50))
+        target_mock = int(payload.get("target_mock_interviews", 5))
+        resume_ready = bool(payload.get("resume_completed", False))
+        notes = payload.get("notes")
+
+        if not target_date:
+            return jsonify({"success": False, "error": "target_date (YYYY-MM-DD) is required"}), 400
+
+        try:
+            goal_id = goal_planner_service.create_goal(
+                student_id=student_id,
+                goal_title=title,
+                target_role=role,
+                target_date_str=target_date,
+                target_coding_problems=target_coding,
+                target_mock_interviews=target_mock,
+                resume_completed=resume_ready,
+                notes=notes
+            )
+        except ValueError as ve:
+            return jsonify({"success": False, "error": f"Invalid date format: {str(ve)}"}), 400
+
+        return jsonify({
+            "success": True,
+            "goal_id": goal_id,
+            "message": "Preparation goal created successfully."
+        }), 201
+
+
+@app.route("/api/goals/<int:gid>/progress", methods=["PUT", "POST"])
+def api_update_goal_progress(gid):
+    """
+    Updates completion numbers for coding problems, mock interviews, or resume status.
+    """
+    from utils.goal_planner_service import goal_planner_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    completed_coding = payload.get("completed_coding_problems")
+    completed_interviews = payload.get("completed_mock_interviews")
+    resume_completed = payload.get("resume_completed")
+    status = payload.get("status")
+
+    updated = goal_planner_service.update_goal_progress(
+        student_id=student_id,
+        goal_id=gid,
+        completed_coding=int(completed_coding) if completed_coding is not None else None,
+        completed_interviews=int(completed_interviews) if completed_interviews is not None else None,
+        resume_completed=bool(resume_completed) if resume_completed is not None else None,
+        status=status
+    )
+
+    if not updated:
+        return jsonify({"success": False, "error": "Goal not found or no updates provided"}), 404
+
+    return jsonify({"success": True, "message": "Goal progress updated successfully."}), 200
+
+
+@app.route("/api/trash/items", methods=["GET"])
+def api_list_trash_items():
+    """
+    Lists soft-deleted items available for restore in the student's trash.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    items = restore_service.list_trash_items(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(items),
+        "items": items
+    }), 200
+
+
+@app.route("/api/trash/soft-delete", methods=["POST"])
+def api_soft_delete_item():
+    """
+    Soft-deletes an entity into the recycle bin with undo grace period.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    entity_type = payload.get("entity_type", "generic")
+    entity_id = payload.get("entity_id")
+    entity_title = payload.get("entity_title", "Untitled Item")
+    original_data = payload.get("original_data") or {}
+
+    if not entity_id:
+        return jsonify({"success": False, "error": "entity_id is required"}), 400
+
+    result = restore_service.soft_delete_item(
+        student_id=student_id,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        entity_title=entity_title,
+        original_data=original_data
+    )
+    return jsonify(result), 200
+
+
+@app.route("/api/trash/undo/<undo_token>", methods=["POST"])
+def api_undo_soft_deletion(undo_token):
+    """
+    Restores a soft-deleted item using its undo token.
+    """
+    from utils.restore_service import restore_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = restore_service.restore_item(student_id, undo_token)
+
+    if not restored.get("success"):
+        return jsonify(restored), 400
+
+    return jsonify(restored), 200
+
+
+@app.route("/api/recommendations/dismiss", methods=["POST"])
+def api_dismiss_recommendation():
+    """
+    Marks an AI recommendation as not relevant with a student-chosen reason.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    rec_id = payload.get("recommendation_id")
+    rec_title = payload.get("recommendation_title", "Untitled Recommendation")
+    rec_type = payload.get("recommendation_type", "skill_recommendation")
+    reason = payload.get("reason", "Not interested in this technology / domain")
+    custom_notes = payload.get("custom_notes")
+
+    if not rec_id:
+        return jsonify({"success": False, "error": "recommendation_id is required"}), 400
+
+    result = recommendation_dismissal_service.dismiss_recommendation(
+        student_id=student_id,
+        recommendation_id=rec_id,
+        recommendation_title=rec_title,
+        recommendation_type=rec_type,
+        reason=reason,
+        custom_notes=custom_notes
+    )
+
+    return jsonify(result), 200
+
+
+@app.route("/api/recommendations/dismissed", methods=["GET"])
+def api_get_dismissed_recommendations():
+    """
+    Retrieves all recommendations dismissed by the current student.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    dismissed = recommendation_dismissal_service.list_dismissed_recommendations(student_id)
+    return jsonify({
+        "success": True,
+        "count": len(dismissed),
+        "dismissed": dismissed
+    }), 200
+
+
+@app.route("/api/recommendations/undismiss/<rec_id>", methods=["POST", "DELETE"])
+def api_undismiss_recommendation(rec_id):
+    """
+    Restores a previously dismissed recommendation.
+    """
+    from utils.recommendation_dismissal_service import recommendation_dismissal_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    restored = recommendation_dismissal_service.undismiss_recommendation(student_id, rec_id)
+
+    if not restored:
+        return jsonify({"success": False, "error": "Dismissed recommendation not found"}), 404
+
+    return jsonify({
+        "success": True,
+        "message": f"Recommendation '{rec_id}' restored to active feed."
+    }), 200
+
+
+@app.route("/api/internships/saved", methods=["GET", "POST"])
+def api_internships_saved():
+    """
+    List and create saved internships for the logged-in student (#357).
+    """
+    from utils.saved_internships_service import get_saved_internships, save_internship
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "GET":
+        items = get_saved_internships(student_id)
+        return jsonify({"success": True, "saved_internships": items}), 200
+
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        res = save_internship(
+            student_id=student_id,
+            company_name=payload.get("company_name", ""),
+            title=payload.get("title", ""),
+            internship_id=payload.get("internship_id"),
+            location=payload.get("location", "Remote"),
+            stipend=payload.get("stipend"),
+            deadline=payload.get("deadline"),
+            url=payload.get("url"),
+            notes=payload.get("notes")
+        )
+        return jsonify(res), 201
+    except (ValueError, PermissionError) as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error saving internship: {e}")
+        return jsonify({"success": False, "error": "Internal error saving internship."}), 500
+
+
+@app.route("/api/internships/saved/<saved_id>", methods=["DELETE", "PUT"])
+def api_internships_saved_item(saved_id):
+    """
+    Delete or update personal note on a saved internship (#357).
+    """
+    from utils.saved_internships_service import remove_saved_internship, update_saved_internship_note
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "DELETE":
+        deleted = remove_saved_internship(student_id, saved_id)
+        if deleted:
+            return jsonify({"success": True, "message": "Saved internship removed."}), 200
+        return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    updated = update_saved_internship_note(student_id, saved_id, payload.get("notes", ""))
+    if updated:
+        return jsonify({"success": True, "message": "Note updated."}), 200
+    return jsonify({"success": False, "error": "Item not found or access denied."}), 404
+
+
+@app.route("/api/internships/saved/<saved_id>/convert", methods=["POST"])
+def api_internships_saved_convert(saved_id):
+    """
+    Converts a saved internship to an active tracked job application (#357).
+    """
+    from utils.saved_internships_service import convert_saved_internship_to_application
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        res = convert_saved_internship_to_application(student_id, saved_id)
+        return jsonify(res), 200
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error converting internship to application: {e}")
+        return jsonify({"success": False, "error": "Internal error converting internship."}), 500
+
+
 @app.route("/api/interview/compare", methods=["POST"])
 def api_interview_compare():
     """
@@ -14642,6 +16726,127 @@ def interview_compare_page():
 # ---------------------------------------------------------------------------
 # Calendar Timezone Handling Endpoints (#261)
 # ---------------------------------------------------------------------------
+
+@app.route("/api/user/security-activity", methods=["GET"])
+def api_user_security_activity():
+    """
+    Returns the user's security event history (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return jsonify({"success": True, "events": events}), 200
+
+
+@app.route("/security-activity", methods=["GET"])
+def security_activity_page():
+    """
+    Renders the account security activity log page (#407).
+    """
+    from utils.security_activity_service import get_user_security_activity
+    user_id = flask_session.get("user_id") or "default_student"
+    events = get_user_security_activity(user_id)
+    return render_template("security_activity.html", user_id=user_id, events=events)
+
+
+@app.route("/api/reports/share", methods=["POST"])
+def api_reports_share_create():
+    """
+    Creates an expiring, secure read-only report sharing link (#408).
+    """
+    from utils.shared_reports_service import create_shared_report_link
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form or {}
+
+    analysis_id = payload.get("analysis_id")
+    expiration = payload.get("expiration", "24h")
+
+    if not analysis_id:
+        return jsonify({"success": False, "error": "analysis_id is required."}), 400
+
+    try:
+        res = create_shared_report_link(analysis_id, student_id, expiration)
+        return jsonify(res), 201
+    except KeyError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error creating share link: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route("/api/reports/share/<share_id>/revoke", methods=["POST"])
+def api_reports_share_revoke(share_id):
+    """
+    Revokes an active report share link immediately (#408).
+    """
+    from utils.shared_reports_service import revoke_shared_link
+    student_id = flask_session.get("user_id") or "default_student"
+    success = revoke_shared_link(student_id, share_id)
+    if success:
+        return jsonify({"success": True, "message": "Share link revoked successfully."}), 200
+    return jsonify({"success": False, "error": "Share link not found or already revoked."}), 404
+
+
+@app.route("/shared/report/<token>", methods=["GET"])
+def view_shared_report(token):
+    """
+    Renders read-only placement report for a shared token (#408).
+    """
+    from utils.shared_reports_service import get_shared_report_by_token
+    valid, report, err = get_shared_report_by_token(token)
+    if not valid:
+        return render_template("shared_report_error.html", error_message=err), 404
+    return render_template("shared_report_view.html", report=report)
+
+
+@app.route("/api/reports/watermark", methods=["POST"])
+def api_apply_report_watermark():
+    """
+    Applies or previews a security watermark on reports and documents.
+    Supports both HTML and plain-text report formats.
+    """
+    from utils.report_watermark_service import report_watermark_service
+
+    data = request.get_json(silent=True) or request.form
+    content = data.get("content", "")
+    content_format = data.get("format", "html").lower()
+    doc_type = data.get("document_type", "Placement Preparation Report")
+    custom_notice = data.get("custom_notice")
+    student_id = data.get("student_id") or flask_session.get("user_id") or "STUDENT"
+    include_banner = data.get("include_banner", True)
+
+    if not content:
+        return jsonify({"success": False, "error": "content is required"}), 400
+
+    if content_format == "html":
+        watermarked = report_watermark_service.apply_watermark_to_html(
+            html_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice,
+            include_banner=bool(include_banner)
+        )
+    else:
+        watermarked = report_watermark_service.apply_watermark_to_plain_text(
+            text_content=content,
+            student_id=student_id,
+            document_type=doc_type,
+            custom_text=custom_notice
+        )
+
+    metadata = report_watermark_service.generate_watermark_metadata(
+        student_id=student_id,
+        document_type=doc_type,
+        custom_text=custom_notice
+    )
+
+    return jsonify({
+        "success": True,
+        "format": content_format,
+        "watermarked_content": watermarked,
+        "metadata": metadata
+    }), 200
+
 
 @app.route("/api/calendar/timezone", methods=["GET", "PUT"])
 def api_calendar_timezone():
@@ -15017,6 +17222,193 @@ def api_aptitude_weak_topics():
         "weak_topics": weak_topics
     }), 200
 
+
+# ---------------------------------------------------------------------------
+# Group Discussion Practice & AI Evaluation Endpoints (#427)
+# ---------------------------------------------------------------------------
+
+@app.route("/group-discussion", methods=["GET"])
+def group_discussion_view():
+    """
+    Renders the interactive Group Discussion Practice page (#427).
+    Allows students to browse curated campus GD topics across Current Affairs,
+    Technology, and Abstract categories, spin for random topics, write structured
+    contributions (opening, rebuttal, conclusion), and receive multi-criteria AI feedback.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    all_topics = load_gd_topics()
+    grouped_topics = get_topics_by_category()
+
+    # Pre-select topic if topic_id is provided in query params, else choose random
+    selected_topic_id = request.args.get("topic_id")
+    initial_topic = None
+    if selected_topic_id:
+        initial_topic = get_topic_by_id(selected_topic_id)
+    if not initial_topic and all_topics:
+        initial_topic = get_random_topic()
+
+    past_attempts = get_student_gd_attempts(student_id, limit=10)
+
+    return render_template(
+        "group_discussion.html",
+        topics=all_topics,
+        grouped_topics=grouped_topics,
+        initial_topic=initial_topic,
+        categories=VALID_CATEGORIES,
+        contribution_types=VALID_CONTRIBUTION_TYPES,
+        past_attempts=past_attempts,
+        student_id=student_id,
+        min_words=MIN_WORD_COUNT,
+        recommended_min_words=RECOMMENDED_MIN_WORDS,
+        recommended_max_words=RECOMMENDED_MAX_WORDS,
+    )
+
+
+@app.route("/api/group-discussion/topics", methods=["GET"])
+def api_get_gd_topics():
+    """Returns the full collection of group discussion topics (#427)."""
+    category = request.args.get("category")
+    if category:
+        all_topics = load_gd_topics()
+        filtered = [t for t in all_topics if t.get("category", "").lower() == category.lower()]
+        return jsonify({"status": "success", "count": len(filtered), "topics": filtered}), 200
+
+    grouped = get_topics_by_category()
+    all_topics = load_gd_topics()
+    return jsonify({
+        "status": "success",
+        "count": len(all_topics),
+        "topics": all_topics,
+        "grouped": grouped
+    }), 200
+
+
+@app.route("/api/group-discussion/random-topic", methods=["GET"])
+def api_random_gd_topic():
+    """Selects and returns a random group discussion topic, optionally filtered by category (#427)."""
+    category = request.args.get("category")
+    try:
+        topic = get_random_topic(category=category)
+        return jsonify({
+            "status": "success",
+            "topic": topic
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error picking random GD topic: {e}")
+        return jsonify({"status": "error", "message": "Failed to pick random GD topic."}), 500
+
+
+@app.route("/api/group-discussion/evaluate", methods=["POST"])
+def api_evaluate_gd_contribution():
+    """
+    Evaluates a student's group discussion submission and records the attempt (#427).
+    Rejects empty or short answers (<30 words) with clear error message.
+    Scores across Content, Structure, Balance, and Clarity, and suggests stronger opening and missed counterpoint.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    topic_title = payload.get("topic_title", "").strip()
+    topic_id = payload.get("topic_id", "").strip() or None
+    category = payload.get("category", "technology").strip().lower()
+    contribution_type = payload.get("contribution_type", "opening").strip().lower()
+    contribution_text = payload.get("contribution_text", "").strip()
+    topic_description = payload.get("topic_description", "").strip() or None
+
+    if not topic_title:
+        return jsonify({"status": "error", "message": "Topic title is required."}), 400
+
+    # Retrieve topic details if available for context
+    topic_angles = None
+    if topic_id:
+        topic_meta = get_topic_by_id(topic_id)
+        if topic_meta:
+            topic_description = topic_description or topic_meta.get("description")
+            topic_angles = topic_meta.get("key_angles")
+
+    try:
+        result = record_and_evaluate_gd_attempt(
+            student_id=student_id,
+            topic_title=topic_title,
+            category=category,
+            contribution_type=contribution_type,
+            contribution_text=contribution_text,
+            topic_id=topic_id,
+            topic_description=topic_description,
+            topic_angles=topic_angles
+        )
+        return jsonify({
+            "status": "success",
+            "data": result
+        }), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error evaluating group discussion contribution: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate contribution. Please try again."}), 500
+
+
+@app.route("/api/group-discussion/history", methods=["GET"])
+def api_get_gd_history():
+    """Retrieves previous group discussion attempts for the authenticated student (#427)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    limit = int(request.args.get("limit", 10))
+    attempts = get_student_gd_attempts(student_id, limit=limit)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(attempts),
+        "attempts": attempts
+    }), 200
+
+
+# ==============================================================================
+# CTC to In-Hand Salary & Offer Comparison Calculator (#428)
+# ==============================================================================
+
+@app.route("/ctc-calculator", methods=["GET"])
+def ctc_calculator_view():
+    """
+    Renders the CTC to In-Hand Salary and Multi-Offer Comparison Calculator (#428).
+    Loads configurable tax slabs, deductions, and assumptions from data/salary_calculator_assumptions.json.
+    """
+    from utils.ctc_calculator_service import load_calculator_assumptions
+    assumptions = load_calculator_assumptions()
+    return render_template("ctc_calculator.html", assumptions=assumptions)
+
+
+@app.route("/api/ctc-calculator/compare", methods=["POST"])
+def api_ctc_calculator_compare():
+    """
+    Validates salary components and returns comparative in-hand take-home metrics (#428).
+    Rejects negative amounts, invalid data types, and computes side-by-side breakdowns.
+    """
+    payload = request.get_json(silent=True) or {}
+    offers_data = payload.get("offers")
+
+    if not offers_data or not isinstance(offers_data, list):
+        return jsonify({
+            "success": False,
+            "error": "Offers list is required. Please provide up to three offer payloads."
+        }), 400
+
+    from utils.ctc_calculator_service import compare_offers
+    try:
+        comparison_result = compare_offers(offers_data)
+        return jsonify(comparison_result), 200
+    except ValueError as val_err:
+        return jsonify({
+            "success": False,
+            "error": str(val_err)
+        }), 400
+    except Exception as exc:
+        logger.error(f"Unexpected error in /api/ctc-calculator/compare: {exc}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to calculate salary offer comparison. Please review your inputs."
+        }), 500
 
 
 if __name__ == "__main__":

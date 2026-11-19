@@ -19,23 +19,194 @@
   <a href="#main-content" class="skip-link">Skip to main content</a>
 
   <!-- Navigation -->
-  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
-    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
-      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
-        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
-      </a>
-      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
-        <!-- Multilingual Language Selector (#214) -->
-        <div class="dropdown d-inline-block">
-          <button class="btn btn-sm btn-outline-secondary dropdown-toggle rounded-pill px-3 py-1 text-nowrap" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false" title="{{ _t('select_language', 'Select Language') }}">
-            <i class="fa-solid fa-globe me-1"></i> <span class="fw-medium">{{ locale_names.get(current_locale, current_locale.upper()) }}</span>
+  
+<!-- Redesigned Responsive Navigation -->
+<nav class="navbar navbar-expand-xl navbar-light bg-white border-bottom sticky-top py-2"
+  aria-label="Main navigation">
+  <div class="container">
+
+    <!-- Brand -->
+    <a class="navbar-brand navbar-brand-custom fw-bold fs-5" href="/">
+      <i class="fa-solid fa-graduation-cap text-primary me-1"></i>
+      AI Campus <span class="text-primary">Placement Agent</span>
+    </a>
+
+    <!-- Mobile Navigation Toggle -->
+    <button class="navbar-toggler shadow-none" type="button"
+      data-bs-toggle="collapse" data-bs-target="#mainNavbar"
+      aria-controls="mainNavbar" aria-expanded="false"
+      aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <!-- Navigation Content -->
+    <div class="collapse navbar-collapse" id="mainNavbar">
+
+      <!-- Main Navigation Groups -->
+      <ul class="navbar-nav me-auto ms-xl-3 my-3 my-xl-0 gap-xl-1">
+
+        <!-- Platform -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-layer-group me-1"></i> Platform
+          </a>
+          <ul class="dropdown-menu shadow-sm border-0">
+            <li><h6 class="dropdown-header">Resume & Profile</h6></li>
+            <li><a class="dropdown-item" href="/compare-resumes">
+              <i class="fa-solid fa-code-compare me-2 text-primary"></i>Compare Versions
+            </a></li>
+            <li><a class="dropdown-item" href="/github-analyzer">
+              <i class="fa-brands fa-github me-2"></i>GitHub Audit
+            </a></li>
+            <li><a class="dropdown-item" href="/linkedin-analyzer">
+              <i class="fa-brands fa-linkedin me-2 text-primary"></i>LinkedIn Analyzer
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><h6 class="dropdown-header">Opportunities</h6></li>
+            <li><a class="dropdown-item" href="/internships">
+              <i class="fa-solid fa-briefcase me-2 text-success"></i>Find Internships
+            </a></li>
+            <li><a class="dropdown-item" href="/companies">
+              <i class="fa-solid fa-building me-2"></i>Companies
+            </a></li>
+          </ul>
+        </li>
+
+        <!-- Preparation -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-book-open me-1"></i> Preparation
+          </a>
+          <ul class="dropdown-menu shadow-sm border-0">
+            <li><a class="dropdown-item" href="/aptitude">
+              <i class="fa-solid fa-stopwatch me-2 text-primary"></i>Aptitude Practice
+            </a></li>
+            <li><a class="dropdown-item" href="/coding-practice">
+              <i class="fa-solid fa-code me-2 text-primary"></i>Practice DSA
+            </a></li>
+            <li><a class="dropdown-item" href="/notes">
+              <i class="fa-solid fa-note-sticky me-2 text-warning"></i>Prep Notes
+            </a></li>
+            <li><a class="dropdown-item" href="/role-preparation">
+              <i class="fa-solid fa-user-gear me-2"></i>Role Preparation
+            </a></li>
+            <li><a class="dropdown-item" href="/skills-assessment">
+              <i class="fa-solid fa-award me-2 text-info"></i>Skills Assessment
+            </a></li>
+            <li><a class="dropdown-item" href="/streak">
+              <i class="fa-solid fa-fire me-2 text-danger"></i>Streak Tracker
+            </a></li>
+            <li><a class="dropdown-item" href="/company-checklist">
+              <i class="fa-solid fa-list-check me-2 text-success"></i>Company Checklist
+            </a></li>
+          </ul>
+        </li>
+
+        <!-- Applications -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-briefcase me-1"></i> Applications
+          </a>
+          <ul class="dropdown-menu shadow-sm border-0">
+            <li><a class="dropdown-item" href="/applications">
+              <i class="fa-solid fa-clipboard-list me-2 text-primary"></i>Application Tracker
+            </a></li>
+            <li><a class="dropdown-item" href="/interview-history">
+              <i class="fa-solid fa-chart-line me-2 text-success"></i>Interview History
+            </a></li>
+            <li><a class="dropdown-item" href="/interview-experiences">
+              <i class="fa-solid fa-building-user me-2"></i>Interview Experiences
+            </a></li>
+            <li><a class="dropdown-item" href="/calendar">
+              <i class="fa-regular fa-calendar-days me-2"></i>Calendar
+            </a></li>
+            <li><a class="dropdown-item" href="/coding-submissions">
+              <i class="fa-solid fa-laptop-code me-2"></i>Coding Submissions
+            </a></li>
+            <li><a class="dropdown-item" href="/leaderboard">
+              <i class="fa-solid fa-trophy me-2 text-warning"></i>Leaderboard
+            </a></li>
+          </ul>
+        </li>
+
+        <!-- History & Reports -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-folder-open me-1"></i> My Activity
+          </a>
+          <ul class="dropdown-menu dropdown-menu-xl-end shadow-sm border-0">
+            <li><a class="dropdown-item" href="/history">
+              <i class="fa-solid fa-clock-rotate-left me-2"></i>History
+            </a></li>
+            <li><a class="dropdown-item" href="/my-reports">
+              <i class="fa-solid fa-file-lines me-2 text-primary"></i>My Reports
+            </a></li>
+            <li><a class="dropdown-item" href="/download/preparation-summary">
+              <i class="fa-solid fa-file-pdf me-2 text-danger"></i>Preparation Summary
+            </a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+              <button class="dropdown-item" type="button"
+                data-bs-toggle="offcanvas"
+                data-bs-target="#offcanvasRecentAnalyses"
+                aria-controls="offcanvasRecentAnalyses"
+                id="btnOpenRecentAnalyses">
+                <i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>Recent Analyses
+              </button>
+            </li>
+          </ul>
+        </li>
+
+        <!-- More -->
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button"
+            data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fa-solid fa-ellipsis me-1"></i> More
+          </a>
+          <ul class="dropdown-menu dropdown-menu-xl-end shadow-sm border-0">
+            <li><a class="dropdown-item" href="/notification-settings">
+              <i class="fa-solid fa-bell me-2"></i>Notifications
+            </a></li>
+            <li><a class="dropdown-item" href="/feedback">
+              <i class="fa-solid fa-comment-dots me-2"></i>Feedback
+            </a></li>
+            <li><a class="dropdown-item" href="/admin/api-usage">
+              <i class="fa-solid fa-chart-pie me-2"></i>API Cost Monitor
+            </a></li>
+          </ul>
+        </li>
+
+      </ul>
+
+      <!-- Right Side Actions -->
+      <div class="d-flex flex-column flex-xl-row align-items-stretch align-items-xl-center gap-2 pb-3 pb-xl-0">
+
+        <!-- Language Selector -->
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary rounded-pill px-3 dropdown-toggle"
+            type="button" id="languageDropdown"
+            data-bs-toggle="dropdown" aria-expanded="false"
+            title="{{ _t('select_language', 'Select Language') }}">
+            <i class="fa-solid fa-globe me-1"></i>
+            {{ locale_names.get(current_locale, current_locale.upper()) }}
           </button>
-          <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="languageDropdown">
-            <li><h6 class="dropdown-header"><i class="fa-solid fa-language me-1"></i> {{ _t('select_language', 'Select Language') }}</h6></li>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm"
+            aria-labelledby="languageDropdown">
+            <li>
+              <h6 class="dropdown-header">
+                <i class="fa-solid fa-language me-1"></i>
+                {{ _t('select_language', 'Select Language') }}
+              </h6>
+            </li>
             {% for code, name in locale_names.items() %}
             <li>
-              <a class="dropdown-item d-flex align-items-center justify-content-between {% if code == current_locale %}active{% endif %}" href="{{ url_for('set_language', lang_code=code) }}">
-                <span>{{ name }}</span>
+              <a class="dropdown-item d-flex justify-content-between align-items-center {% if code == current_locale %}active{% endif %}"
+                href="{{ url_for('set_language', lang_code=code) }}">
+                {{ name }}
                 {% if code == current_locale %}
                 <i class="fa-solid fa-check small ms-2"></i>
                 {% endif %}
@@ -45,108 +216,67 @@
           </ul>
         </div>
 
-        {% if session.get('user_id') %}
-  <span class="text-primary fw-semibold">{{ _t('nav_greeting', 'Hi') }}, {{ session.get('user_name') }}</span>
-          <a href="{{ url_for('account_sessions') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">Active sessions</a>
-  <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-    <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">{{ _t('nav_logout', 'Logout') }}</button>
-  </form>
-{% else %}
-  <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">{{ _t('nav_login', 'Login') }}</a>
-  <a href="{{ url_for('register') }}" class="btn btn-primary btn-sm rounded-pill px-3">{{ _t('nav_register', 'Register') }}</a>
-  <a href="{{ url_for('demo_mode_view') }}" class="btn btn-outline-success btn-sm rounded-pill px-3" id="btnNavTrySampleResume" title="Try with a sample resume without logging in"><i class="fa-solid fa-flask-vial me-1"></i> Sample Demo</a>
-{% endif %}
-
-<button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap btn-open-walkthrough" id="btnOpenWalkthrough" data-bs-toggle="modal" data-bs-target="#userWalkthroughModal" title="First-time user walkthrough & feature tour">
-  <i class="fa-solid fa-compass me-1"></i> Tour
-</button>
-
-<a href="/aptitude" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-  <i class="fa-solid fa-stopwatch me-1"></i> Aptitude Practice
-</a>
-<a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Compare Versions</a>
-<a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">GitHub Audit</a>
-<a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Find Internships</a>
-<a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">Applications</a>
-<a href="/interview-history" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">Interview History</a>
-<a href="/linkedin-analyzer" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">LinkedIn Analyzer</a>
-<a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">Practice DSA</a>
-<a href="/notes" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap"><i class="fa-solid fa-note-sticky me-1"></i> Prep Notes</a>
-<a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">My Reports</a>
-        <a href="/compare-resumes" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare</span> Versions
-        <a href="/github-analyzer" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-brands fa-github me-1"></i> GitHub <span class="d-none d-sm-inline">Audit</span>
-        <a href="/internships" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-briefcase me-1"></i> <span class="d-none d-sm-inline">Find</span> Internships
-        <a href="/applications" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-clipboard-list me-1"></i> Applications
-        <a href="/interview-history" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-chart-line me-1"></i> Interview History
-        <a href="/linkedin-analyzer" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-brands fa-linkedin me-1"></i> LinkedIn Analyzer
-        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-code me-1"></i> Practice DSA
-        <a href="/history" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-clock-rotate-left me-1"></i> History
-        </a>
-        <a href="/role-preparation" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-user-gear me-1"></i> Role Prep
-        </a>
-        <a href="/streak" class="btn btn-outline-danger btn-sm rounded-pill px-3 py-1 text-nowrap" title="Daily Preparation Streak Tracker">
-          <i class="fa-solid fa-fire text-danger me-1"></i> Streak Tracker
-        </a>
-        <a href="/notes" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-note-sticky me-1 text-warning"></i> Prep Notes
-        </a>
-        <a href="/my-reports" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-folder-open me-1"></i> My Reports
-        </a>
-        <a href="/notification-settings" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-bell me-1"></i> Notifications
-        <a href="/interview-experiences" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-building-user me-1"></i> Experiences
-        <a href="/calendar" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-regular fa-calendar-days me-1"></i> Calendar
-        <a href="/company-checklist" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-list-check me-1"></i> Checklist
-        </a>
-        <a href="/companies" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-building me-1"></i> Companies
-        </a>
-        <a href="/coding-submissions" class="btn btn-outline-dark btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-laptop-code me-1"></i> Submissions
-        </a>
-        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
-        </a>
-        <a href="/skills-assessment" class="btn btn-outline-info btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-award me-1"></i> Skills Assessment
-        </a>
-        <a href="/admin/api-usage" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-chart-pie me-1"></i> API Cost Monitor
-        </a>
-        <a href="/feedback" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 text-nowrap">
-          <i class="fa-solid fa-comment-dots me-1"></i> Feedback
-        </a>
-        <a href="/download/preparation-summary" class="btn btn-outline-success btn-sm rounded-pill px-3 py-1 text-nowrap" title="Download placement preparation summary PDF">
-          <i class="fa-solid fa-file-pdf me-1"></i> Prep Summary
-        </a>
-        <button class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1 text-nowrap" data-bs-toggle="offcanvas"
-          data-bs-target="#offcanvasRecentAnalyses" aria-controls="offcanvasRecentAnalyses" id="btnOpenRecentAnalyses">
-          <i class="fa-solid fa-clock-rotate-left me-1"></i> <span class="d-none d-sm-inline">Recent</span> Analyses
+        <!-- Walkthrough -->
+        <button type="button"
+          class="btn btn-sm btn-outline-primary rounded-pill px-3 btn-open-walkthrough"
+          id="btnOpenWalkthrough"
+          data-bs-toggle="modal"
+          data-bs-target="#userWalkthroughModal"
+          title="First-time user walkthrough">
+          <i class="fa-solid fa-compass me-1"></i> Tour
         </button>
-        <span
-          class="badge bg-light text-primary border border-primary-subtle py-2 px-2 px-sm-3 rounded-pill d-none d-md-inline-block">Open
-          Source</span>
-        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme"
-          aria-label="Toggle theme mode">
+
+        <!-- Theme Toggle -->
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn"
+          type="button" title="Toggle theme" aria-label="Toggle theme mode">
           <i class="fa-solid fa-moon"></i>
         </button>
+
+        <!-- Authentication -->
+        {% if session.get('user_id') %}
+        <div class="d-flex flex-column flex-xl-row align-items-stretch align-items-xl-center gap-2">
+          <span class="text-primary fw-semibold small text-nowrap">
+            {{ _t('nav_greeting', 'Hi') }}, {{ session.get('user_name') }}
+          </span>
+          <a href="{{ url_for('account_sessions') }}"
+            class="btn btn-outline-primary btn-sm rounded-pill px-3 text-nowrap">
+            Active Sessions
+          </a>
+          <form method="POST" action="{{ url_for('logout') }}" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3">
+              {{ _t('nav_logout', 'Logout') }}
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <div class="d-flex flex-column flex-sm-row gap-2">
+          <a href="{{ url_for('login') }}"
+            class="btn btn-outline-primary btn-sm rounded-pill px-3">
+            {{ _t('nav_login', 'Login') }}
+          </a>
+          <a href="{{ url_for('register') }}"
+            class="btn btn-primary btn-sm rounded-pill px-3">
+            {{ _t('nav_register', 'Register') }}
+          </a>
+          <a href="{{ url_for('demo_mode_view') }}"
+            class="btn btn-outline-success btn-sm rounded-pill px-3"
+            id="btnNavTrySampleResume"
+            title="Try with a sample resume without logging in">
+            <i class="fa-solid fa-flask-vial me-1"></i> Sample Demo
+          </a>
+        </div>
+        {% endif %}
+
+        <span class="badge bg-light text-primary border border-primary-subtle py-2 px-3 rounded-pill d-none d-xl-inline-block">
+          Open Source
+        </span>
+
       </div>
     </div>
-  </nav>
+  </div>
+</nav>
+
 
   <!-- Main Content -->
   <main id="main-content" tabindex="-1">
@@ -280,6 +410,13 @@
               <!-- Resume Input Selector (Tabs) -->
               <div class="mb-4">
                 <label class="form-label fw-semibold text-secondary">1. Provide Resume</label>
+                <!-- Privacy Note Before Upload (#500) -->
+                <div class="alert alert-info py-2 px-3 mb-3 small d-flex align-items-center gap-2 rounded-3 border border-info-subtle" id="privacyNoteBeforeUpload" role="note">
+                  <i class="fa-solid fa-shield-halved text-primary fs-5 flex-shrink-0"></i>
+                  <div>
+                    <strong>Privacy Note:</strong> Phone numbers, emails, and street addresses are automatically redacted before sending text to AI models. Temporary uploaded files are deleted after analysis finishes or fails. Only your placement preparation results are saved to your account.
+                  </div>
+                </div>
                 <ul class="nav nav-pills nav-fill mb-2" id="resumeTab" role="tablist">
                   <li class="nav-item" role="presentation">
                     <button class="nav-link active py-2" id="pdf-tab" data-bs-toggle="pill" data-bs-target="#pdf-pane"
@@ -593,7 +730,7 @@
             <p class="text-secondary small mb-0">{{ _t('feature_interview_desc', 'Generates tailored interview questions and evaluates your answers in real time with scoring.') }}</p>
           </div>
         </div>
-              real time, grading your accuracy, communication, and confidence.</p>
+              real time, grading your accuracy, communication, and confidence.
           </div>
         </div>
 
@@ -828,6 +965,7 @@
       </div>
       <div>
         <a href="{{ url_for('privacy_policy') }}" class="text-secondary text-decoration-underline me-3">Privacy Notice</a>
+        <a href="{{ url_for('api_docs_ui') }}" class="text-secondary text-decoration-underline me-3"><i class="fa-solid fa-book-open me-1"></i>API Documentation</a>
         <a href="https://github.com/deepikagandla74/ai-campus-placement-agent" target="_blank" rel="noopener noreferrer" class="text-secondary text-decoration-underline">GitHub</a>
       </div>
     </div>

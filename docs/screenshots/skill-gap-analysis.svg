@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 640" width="100%" height="100%" style="background:#0f172a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <defs>
+    <filter id="shadow4" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Browser Chrome Window -->
+  <rect x="20" y="20" width="960" height="600" rx="12" fill="#1e293b" filter="url(#shadow4)"/>
+  
+  <!-- Header -->
+  <rect x="20" y="20" width="960" height="42" rx="12" fill="#0f172a"/>
+  <rect x="20" y="50" width="960" height="12" fill="#0f172a"/>
+  <circle cx="45" cy="41" r="6" fill="#ef4444"/>
+  <circle cx="65" cy="41" r="6" fill="#f59e0b"/>
+  <circle cx="85" cy="41" r="6" fill="#10b981"/>
+  <rect x="120" y="31" width="760" height="22" rx="6" fill="#1e293b"/>
+  <text x="390" y="46" fill="#94a3b8" font-size="11">https://campus-placement-agent.ai/skill-gap</text>
+
+  <!-- Header Card -->
+  <rect x="45" y="80" width="910" height="70" rx="10" fill="#334155" opacity="0.6"/>
+  <text x="70" y="112" fill="#f8fafc" font-size="18" font-weight="700">Skill Gap Remediation Matrix</text>
+  <text x="70" y="135" fill="#94a3b8" font-size="12">Identified 4 High-Priority Missing Skills for Target Role: <tspan fill="#38bdf8" font-weight="600">Google Software Engineer</tspan></text>
+
+  <!-- Table Container -->
+  <rect x="45" y="170" width="910" height="420" rx="10" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+
+  <!-- Table Header -->
+  <rect x="45" y="170" width="910" height="42" rx="10" fill="#1e293b"/>
+  <rect x="45" y="202" width="910" height="10" fill="#1e293b"/>
+  <text x="70" y="196" fill="#94a3b8" font-size="12" font-weight="700">MISSING SKILL</text>
+  <text x="250" y="196" fill="#94a3b8" font-size="12" font-weight="700">PRIORITY</text>
+  <text x="380" y="196" fill="#94a3b8" font-size="12" font-weight="700">EST. STUDY TIME</text>
+  <text x="540" y="196" fill="#94a3b8" font-size="12" font-weight="700">RECOMMENDED PROJECT / TOPIC</text>
+  <text x="830" y="196" fill="#94a3b8" font-size="12" font-weight="700">RESOURCE</text>
+
+  <!-- Row 1: Distributed Concurrency / Go -->
+  <line x1="45" y1="212" x2="955" y2="212" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="245" fill="#f8fafc" font-size="13" font-weight="600">Concurrency in Go / C++</text>
+  <rect x="250" y="230" width="80" height="22" rx="11" fill="#7f1d1d"/>
+  <text x="268" y="245" fill="#fca5a5" font-size="11" font-weight="700">CRITICAL</text>
+  <text x="380" y="245" fill="#e2e8f0" font-size="12">18 - 24 Hours</text>
+  <text x="540" y="245" fill="#cbd5e1" font-size="12">Build a concurrent rate-limiter using token bucket algorithm</text>
+  <rect x="830" y="230" width="90" height="24" rx="12" fill="#4f46e5"/>
+  <text x="850" y="246" fill="#ffffff" font-size="11" font-weight="600">View Guide</text>
+
+  <!-- Row 2: Kubernetes -->
+  <line x1="45" y1="275" x2="955" y2="275" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="308" fill="#f8fafc" font-size="13" font-weight="600">Kubernetes &amp; Helm</text>
+  <rect x="250" y="293" width="70" height="22" rx="11" fill="#78350f"/>
+  <text x="270" y="308" fill="#fde68a" font-size="11" font-weight="700">HIGH</text>
+  <text x="380" y="308" fill="#e2e8f0" font-size="12">12 - 16 Hours</text>
+  <text x="540" y="308" fill="#cbd5e1" font-size="12">Deploy multi-pod microservices with ConfigMaps and Ingress</text>
+  <rect x="830" y="293" width="90" height="24" rx="12" fill="#4f46e5"/>
+  <text x="850" y="309" fill="#ffffff" font-size="11" font-weight="600">View Guide</text>
+
+  <!-- Row 3: Redis Distributed Caching -->
+  <line x1="45" y1="338" x2="955" y2="338" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="371" fill="#f8fafc" font-size="13" font-weight="600">Redis Caching &amp; Pub/Sub</text>
+  <rect x="250" y="356" width="70" height="22" rx="11" fill="#78350f"/>
+  <text x="270" y="371" fill="#fde68a" font-size="11" font-weight="700">HIGH</text>
+  <text x="380" y="371" fill="#e2e8f0" font-size="12">8 - 12 Hours</text>
+  <text x="540" y="371" fill="#cbd5e1" font-size="12">Implement sliding-window rate limiting and session replication</text>
+  <rect x="830" y="356" width="90" height="24" rx="12" fill="#4f46e5"/>
+  <text x="850" y="372" fill="#ffffff" font-size="11" font-weight="600">View Guide</text>
+
+  <!-- Row 4: Observability & OpenTelemetry -->
+  <line x1="45" y1="401" x2="955" y2="401" stroke="#334155" stroke-width="1"/>
+  <text x="70" y="434" fill="#f8fafc" font-size="13" font-weight="600">OpenTelemetry &amp; Prometheus</text>
+  <rect x="250" y="419" width="80" height="22" rx="11" fill="#064e3b"/>
+  <text x="270" y="434" fill="#a7f3d0" font-size="11" font-weight="700">MEDIUM</text>
+  <text x="380" y="434" fill="#e2e8f0" font-size="12">6 - 8 Hours</text>
+  <text x="540" y="434" fill="#cbd5e1" font-size="12">Add distributed tracing headers and Prometheus metrics export</text>
+  <rect x="830" y="419" width="90" height="24" rx="12" fill="#4f46e5"/>
+  <text x="850" y="435" fill="#ffffff" font-size="11" font-weight="600">View Guide</text>
+
+  <!-- Bottom Summary Info -->
+  <line x1="45" y1="464" x2="955" y2="464" stroke="#334155" stroke-width="1"/>
+  <rect x="70" y="495" width="860" height="65" rx="8" fill="#1e293b"/>
+  <text x="90" y="525" fill="#38bdf8" font-size="13" font-weight="700">Estimated Total Gap Remediation Time: ~50 Hours</text>
+  <text x="90" y="546" fill="#94a3b8" font-size="12">Completing these 4 core topics is estimated to boost your ATS match percentage from 88% to 96% for Google SDE roles.</text>
+</svg>
