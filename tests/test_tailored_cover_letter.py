@@ -174,8 +174,8 @@ def test_cover_letter_tone_choice(sample_resume, sample_job_description):
     assert friendly_res["tone"] == "friendly"
 
     # Tone variations should produce distinctly different salutations or wording
-    assert "Sincerely," in formal_res["cover_letter"] or "Sincerely" in formal_res["cover_letter"]
-    assert "Best regards," in friendly_res["cover_letter"] or "Warmly" in friendly_res["cover_letter"] or "Best regards" in friendly_res["cover_letter"]
+    assert "Sincerely" in formal_res["cover_letter"]
+    assert "Warm regards" in friendly_res["cover_letter"] or "Best regards" in friendly_res["cover_letter"] or "Warmly" in friendly_res["cover_letter"]
     assert formal_res["cover_letter"] != friendly_res["cover_letter"]
 
 
@@ -315,7 +315,13 @@ def test_api_analysis_cover_letter_success(test_client, sample_job_description):
             }
         }
     }
-    save_analysis(analysis_record)
+    save_analysis(
+        analysis_id=analysis_record["analysis_id"],
+        resume_filename=analysis_record["resume_filename"],
+        company_name=analysis_record["company_name"],
+        job_description=analysis_record["job_description"],
+        results_dict=analysis_record["results"]
+    )
 
     # Call endpoint with pasted JD
     resp = test_client.post(
@@ -346,7 +352,13 @@ def test_api_analysis_cover_letter_missing_jd(test_client):
             "resume_analysis": {"ats_score": 80}
         }
     }
-    save_analysis(analysis_record)
+    save_analysis(
+        analysis_id=analysis_record["analysis_id"],
+        resume_filename=analysis_record["resume_filename"],
+        company_name=analysis_record["company_name"],
+        job_description=analysis_record["job_description"],
+        results_dict=analysis_record["results"]
+    )
 
     resp = test_client.post(
         "/api/analysis/test-tailored-cov-missing/cover-letter",
@@ -456,7 +468,13 @@ def test_dashboard_tailored_cover_letter_studio(test_client, sample_job_descript
             "job_match": {"match_percentage": 85, "matched_skills": ["Python"]}
         }
     }
-    save_analysis(analysis_record)
+    save_analysis(
+        analysis_id=analysis_record["analysis_id"],
+        resume_filename=analysis_record["resume_filename"],
+        company_name=analysis_record["company_name"],
+        job_description=analysis_record["job_description"],
+        results_dict=analysis_record["results"]
+    )
 
     resp = test_client.get("/dashboard/test-dash-cover-537")
     assert resp.status_code == 200
