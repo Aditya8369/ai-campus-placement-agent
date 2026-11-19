@@ -1060,22 +1060,108 @@ function initFormUpload() {
   const progressSubtitle = document.getElementById("progressSubtitle");
   const analysisProgressBar = document.getElementById("analysisProgressBar");
   const progressSpinner = document.getElementById("progressSpinner");
+  const progressSuccessIcon = document.getElementById("progressSuccessIcon");
+  const progressErrorIcon = document.getElementById("progressErrorIcon");
   const progressErrorAlert = document.getElementById("progressErrorAlert");
   const progressErrorMessage = document.getElementById("progressErrorMessage");
   const btnCloseProgressError = document.getElementById("btnCloseProgressError");
+  const btnRetryProgress = document.getElementById("btnRetryProgress");
+
+  let isSubmitting = false;
+
+  const setActionButtonsProcessing = (processing) => {
+    isSubmitting = processing;
+    const submitBtn = document.getElementById("btnSubmitAnalysis") || uploadForm.querySelector("button[type='submit']");
+    const clearBtn = document.getElementById("btnClearForm");
+    const reviewBtn = document.getElementById("btnReviewResumeDirect");
+    const sampleBtn = document.getElementById("btnTrySampleResume");
+    const heroSampleBtn = document.getElementById("btnHeroTrySampleResume");
+    const exploreBtn = document.getElementById("btnExploreCompany");
+    const formButtons = uploadForm.querySelectorAll("button, input[type='submit']");
+
+    formButtons.forEach((btn) => {
+      if (btn.id === "btnCloseProgressError" || btn.id === "btnRetryProgress") return;
+      if (processing) {
+        btn.setAttribute("disabled", "true");
+        btn.classList.add("disabled");
+      } else {
+        btn.removeAttribute("disabled");
+        btn.classList.remove("disabled");
+      }
+    });
+
+    [sampleBtn, heroSampleBtn].forEach((btn) => {
+      if (!btn) return;
+      if (processing) {
+        btn.classList.add("disabled");
+        btn.setAttribute("aria-disabled", "true");
+        btn.style.pointerEvents = "none";
+      } else {
+        btn.classList.remove("disabled");
+        btn.removeAttribute("aria-disabled");
+        btn.style.pointerEvents = "";
+      }
+    });
+
+    if (submitBtn) {
+      const icon = submitBtn.querySelector("i") || submitBtn.querySelector("#submitBtnIcon");
+      const span = submitBtn.querySelector("span") || submitBtn.querySelector("#submitBtnSpan");
+      if (processing) {
+        if (!submitBtn.hasAttribute("data-original-html")) {
+          submitBtn.setAttribute("data-original-html", submitBtn.innerHTML);
+        }
+        if (icon) icon.className = "spinner-border spinner-border-sm me-2";
+        if (span) span.textContent = "Processing Analysis...";
+      } else {
+        const origHtml = submitBtn.getAttribute("data-original-html");
+        if (origHtml) {
+          submitBtn.innerHTML = origHtml;
+          submitBtn.removeAttribute("data-original-html");
+        } else {
+          if (icon) icon.className = "fa-solid fa-wand-magic-sparkles me-2";
+          if (span) span.textContent = "Analyze Readiness";
+        }
+      }
+    }
+  };
 
   if (btnCloseProgressError) {
     btnCloseProgressError.addEventListener("click", () => {
-      if (progressOverlay) progressOverlay.classList.add("d-none");
+      if (progressOverlay) {
+        progressOverlay.classList.add("d-none");
+        progressOverlay.removeAttribute("data-state");
+      }
       if (progressSpinner) progressSpinner.classList.remove("d-none");
+      if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+      if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
       if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      setActionButtonsProcessing(false);
+    });
+  }
+
+  if (btnRetryProgress) {
+    btnRetryProgress.addEventListener("click", () => {
+      if (progressOverlay) {
+        progressOverlay.classList.add("d-none");
+        progressOverlay.removeAttribute("data-state");
+      }
+      if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
+      setActionButtonsProcessing(false);
+      // Trigger submission retry
+      if (uploadForm) {
+        const submitEvent = new Event("submit", { cancelable: true, bubbles: true });
+        uploadForm.dispatchEvent(submitEvent);
+      }
     });
   }
 
   const stepOrder = ["step1", "step2", "step3", "step4", "step5", "step6"];
 
   function resetProgressPanel() {
+    if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
+    if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+    if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
     if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
     if (progressTitle) progressTitle.textContent = "Coordinating AI Agents";
     if (progressSubtitle) progressSubtitle.textContent = "Orchestrating multi-agent analysis in progress...";
@@ -1084,7 +1170,7 @@ function initFormUpload() {
     if (analysisProgressBar) {
       analysisProgressBar.style.width = "5%";
       analysisProgressBar.setAttribute("aria-valuenow", "5");
-      analysisProgressBar.classList.add("progress-bar-animated");
+      analysisProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated bg-primary";
     }
 
     stepOrder.forEach((stepId, idx) => {
@@ -1307,6 +1393,8 @@ function initFormUpload() {
   const btnReviewResumeDirect = document.getElementById("btnReviewResumeDirect");
   if (btnReviewResumeDirect) {
     btnReviewResumeDirect.addEventListener("click", () => {
+      if (isSubmitting) return;
+
       const textInput = document.getElementById("resumeTextInput");
       const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
       const hasText = textInput && textInput.value.trim().length > 0;
@@ -1323,6 +1411,7 @@ function initFormUpload() {
         return;
       }
 
+      setActionButtonsProcessing(true);
       const reviewSwitch = document.getElementById("reviewStepSwitch");
       if (reviewSwitch) reviewSwitch.checked = true;
       uploadForm.action = "/resume/review";
@@ -1333,6 +1422,12 @@ function initFormUpload() {
   // Intercept form submit to launch async pipeline & stream milestones via EventSource
   uploadForm.addEventListener("submit", (e) => {
     e.preventDefault();
+
+    // Prevent duplicate submissions if user clicks twice
+    if (isSubmitting) {
+      console.warn("Analysis submission already in progress. Ignoring duplicate click.");
+      return false;
+    }
 
     const textInput = document.getElementById("resumeTextInput");
     const hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
@@ -1351,6 +1446,9 @@ function initFormUpload() {
       return;
     }
 
+    // Lock submission state and disable action buttons
+    setActionButtonsProcessing(true);
+
     // Check if user selected the Resume Review & Correction step
     const reviewStepSwitch = document.getElementById("reviewStepSwitch");
     if (reviewStepSwitch && reviewStepSwitch.checked) {
@@ -1363,6 +1461,7 @@ function initFormUpload() {
     if (batchModeSwitch && batchModeSwitch.checked) {
       const selectedChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
       if (selectedChecks.length === 0) {
+        setActionButtonsProcessing(false);
         alert("Please select at least one company to compare.");
         return;
       }
@@ -1387,7 +1486,13 @@ function initFormUpload() {
           if (!response.ok || !data.success) {
             throw new Error(data.error || "Batch comparison failed.");
           }
-          if (analysisProgressBar) analysisProgressBar.style.width = "100%";
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
           if (progressTitle) progressTitle.textContent = "Comparison Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
           setTimeout(() => {
@@ -1442,13 +1547,16 @@ function initFormUpload() {
             if (ind) ind.innerHTML = "✓";
           } else if (idx === currentIdx) {
             el.className = "progress-step active";
+            if (ind) ind.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="width: 12px; height: 12px;"></span>';
           } else {
             el.className = "progress-step text-muted";
+            if (ind) ind.textContent = String(idx + 1);
           }
         });
       }
 
       if (status === "completed" || step === "completed") {
+        if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
         stepOrder.forEach((sId) => {
           const el = document.getElementById(sId);
           if (el) {
@@ -1458,8 +1566,14 @@ function initFormUpload() {
           }
         });
 
+        if (progressSpinner) progressSpinner.classList.add("d-none");
+        if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+        if (progressErrorIcon) progressErrorIcon.classList.add("d-none");
+
         if (analysisProgressBar) {
           analysisProgressBar.style.width = "100%";
+          analysisProgressBar.setAttribute("aria-valuenow", "100");
+          analysisProgressBar.className = "progress-bar bg-success";
           analysisProgressBar.classList.remove("progress-bar-animated");
         }
         if (progressTitle) progressTitle.textContent = "Analysis Complete!";
@@ -1481,12 +1595,32 @@ function initFormUpload() {
           eventSource.close();
           eventSource = null;
         }
-        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.");
+        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.", step);
       }
     }
 
-    function showPipelineError(errMsg) {
+    function showPipelineError(errMsg, failedStepId) {
+      if (progressOverlay) progressOverlay.setAttribute("data-state", "error");
       if (progressSpinner) progressSpinner.classList.add("d-none");
+      if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
+      if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+      if (progressTitle) progressTitle.textContent = "Analysis Could Not Complete";
+      if (progressSubtitle) progressSubtitle.textContent = "An error occurred during multi-agent analysis.";
+
+      if (analysisProgressBar) {
+        analysisProgressBar.className = "progress-bar bg-danger";
+        analysisProgressBar.classList.remove("progress-bar-animated");
+      }
+
+      if (failedStepId) {
+        const errStep = document.getElementById(failedStepId);
+        if (errStep) {
+          errStep.className = "progress-step error";
+          const ind = errStep.querySelector(".step-indicator");
+          if (ind) ind.innerHTML = "!";
+        }
+      }
+
       const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
       if (progressAnnouncer) progressAnnouncer.textContent = `Analysis error: ${errMsg}`;
       if (progressErrorAlert && progressErrorMessage) {
@@ -1496,6 +1630,7 @@ function initFormUpload() {
         alert(errMsg);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
+      setActionButtonsProcessing(false);
     }
 
     const formData = new FormData(uploadForm);
@@ -1508,6 +1643,22 @@ function initFormUpload() {
         const data = await response.json();
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initiate background analysis.");
+        }
+
+        if (data.cached && data.redirect_url) {
+          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
+          if (analysisProgressBar) {
+            analysisProgressBar.style.width = "100%";
+            analysisProgressBar.className = "progress-bar bg-success";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+          if (progressTitle) progressTitle.textContent = "Analysis Complete!";
+          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
+          setTimeout(() => {
+            window.location.href = data.redirect_url;
+          }, 400);
+          return;
         }
 
         const streamUrl = data.stream_url;
@@ -2746,7 +2897,6 @@ function initMockInterview() {
       timeTakenSeconds = speechSeconds || (answerTypingStartTime ? Math.max(1, Math.round((Date.now() - answerTypingStartTime) / 1000)) : 30);
     }
 
-    const questionIndex = parseInt(chatForm.getAttribute("data-question-index"));
     const analysisId = chatForm.getAttribute("data-analysis-id");
 
     // Compute final speech and non-verbal telemetry metrics
