@@ -180,6 +180,7 @@
             <label class="list-group-item d-flex align-items-start px-0 py-2 border-0 bg-transparent cursor-pointer">
               <input class="form-check-input me-3 mt-1 task-checkbox" type="checkbox"
                      data-cat="{{ category }}" data-task-id="{{ task.id }}"
+                     aria-label="Mark task completed: {{ task.task|escape }}"
                      {% if task.completed %}checked{% endif %}>
               <span class="text-secondary {{ 'text-decoration-line-through opacity-50' if task.completed else '' }}">
                 {{ task.task }}

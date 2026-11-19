@@ -28,6 +28,43 @@ logger = logging.getLogger(__name__)
 VALID_HIRING_TIERS = {"Tier 1", "Tier 2", "Tier 3", "Startup", "MNC", "Enterprise"}
 
 
+def ensure_company_profile_suggestions_table(conn: sqlite3.Connection) -> None:
+    """Creates the company_profile_suggestions table and indices if they do not exist (#450)."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS company_profile_suggestions (
+            id TEXT PRIMARY KEY,
+            company_name TEXT NOT NULL,
+            suggestion_type TEXT NOT NULL DEFAULT 'new',
+            target_company_id TEXT,
+            existing_company_name TEXT,
+            industry TEXT,
+            website_url TEXT,
+            careers_url TEXT,
+            hiring_tier TEXT,
+            hiring_workflow_json TEXT DEFAULT '[]',
+            primary_tech_stack_json TEXT DEFAULT '[]',
+            typical_ctc_range TEXT,
+            headquarters TEXT,
+            overview TEXT,
+            notes TEXT,
+            submitter_name TEXT DEFAULT 'Anonymous Student',
+            submitter_email TEXT,
+            submitter_id TEXT DEFAULT 'default_student',
+            status TEXT NOT NULL DEFAULT 'pending',
+            moderator_notes TEXT,
+            moderated_by TEXT,
+            moderated_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_sugg_status ON company_profile_suggestions(status, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_sugg_name ON company_profile_suggestions(company_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_comp_sugg_submitter ON company_profile_suggestions(submitter_id, created_at DESC)")
+    conn.commit()
+
+
 def ensure_company_profiles_table(conn: sqlite3.Connection) -> None:
     """Creates the company_profiles table and corresponding indices if they do not exist."""
     cursor = conn.cursor()
@@ -66,6 +103,7 @@ def ensure_company_profiles_table(conn: sqlite3.Connection) -> None:
     if "last_updated" not in existing_cols:
         cursor.execute("ALTER TABLE company_profiles ADD COLUMN last_updated TEXT")
 
+    ensure_company_profile_suggestions_table(conn)
     conn.commit()
 
 
@@ -656,4 +694,369 @@ def enrich_company_hiring_guide(company_name: str, raw_details: Optional[Dict[st
     d["general_suggestions"] = general_suggestions
 
     return d
+
+
+# ============================================================================
+# USER COMPANY PROFILE SUGGESTION & REVIEW SYSTEM (#450)
+# ============================================================================
+
+def _normalize_string_list(data: Any) -> List[str]:
+    """Helper to parse a list, comma-separated, or newline-separated string into List[str]."""
+    if not data:
+        return []
+    if isinstance(data, list):
+        return [str(item).strip() for item in data if str(item).strip()]
+    if isinstance(data, str):
+        # Support both comma-separated and newline-separated inputs
+        raw_items = [line for line in data.replace("\r", "\n").split("\n")]
+        results = []
+        for line in raw_items:
+            for part in line.split(","):
+                cleaned = part.strip()
+                if cleaned and cleaned not in results:
+                    results.append(cleaned)
+        return results
+    return []
+
+
+def create_company_suggestion(
+    company_name: str,
+    suggestion_type: str = "new",
+    target_company_id: Optional[str] = None,
+    existing_company_name: Optional[str] = None,
+    industry: Optional[str] = None,
+    website_url: Optional[str] = None,
+    careers_url: Optional[str] = None,
+    hiring_tier: Optional[str] = None,
+    hiring_workflow: Optional[Any] = None,
+    primary_tech_stack: Optional[Any] = None,
+    typical_ctc_range: Optional[str] = None,
+    headquarters: Optional[str] = None,
+    overview: Optional[str] = None,
+    notes: Optional[str] = None,
+    submitter_name: Optional[str] = None,
+    submitter_email: Optional[str] = None,
+    submitter_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Submits a user suggestion for a new company profile or an update to an existing profile (#450).
+    Suggestions are initially unverified (status='pending') and must be reviewed by maintainers.
+    """
+    name = (company_name or "").strip()
+    if not name:
+        raise ValueError("Company name is required.")
+
+    stype = str(suggestion_type or "new").strip().lower()
+    if stype not in ("new", "update"):
+        stype = "new"
+
+    # For update suggestions, verify target company context
+    target_id = (target_company_id or "").strip() or None
+    existing_name = (existing_company_name or "").strip() or None
+
+    if stype == "update":
+        if target_id:
+            existing = get_company_profile_by_id(target_id)
+            if existing:
+                existing_name = existing.get("company_name", existing_name)
+        elif existing_name:
+            existing = get_company_profile_by_name(existing_name)
+            if existing:
+                target_id = existing.get("id")
+
+    workflow_list = _normalize_string_list(hiring_workflow)
+    tech_stack_list = _normalize_string_list(primary_tech_stack)
+
+    # Sanitize tier
+    tier = (hiring_tier or "Tier 1").strip()
+    if tier not in VALID_HIRING_TIERS and tier:
+        tier = tier if len(tier) <= 50 else "Tier 1"
+
+    suggestion_id = str(uuid.uuid4())
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO company_profile_suggestions (
+                id, company_name, suggestion_type, target_company_id, existing_company_name,
+                industry, website_url, careers_url, hiring_tier, hiring_workflow_json,
+                primary_tech_stack_json, typical_ctc_range, headquarters, overview, notes,
+                submitter_name, submitter_email, submitter_id, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+        """, (
+            suggestion_id,
+            name,
+            stype,
+            target_id,
+            existing_name,
+            (industry or "Technology").strip(),
+            (website_url or "").strip() or None,
+            (careers_url or "").strip() or None,
+            tier or "Tier 1",
+            json.dumps(workflow_list),
+            json.dumps(tech_stack_list),
+            (typical_ctc_range or "").strip() or None,
+            (headquarters or "").strip() or None,
+            (overview or "").strip() or None,
+            (notes or "").strip() or None,
+            (submitter_name or "Anonymous Student").strip() or "Anonymous Student",
+            (submitter_email or "").strip() or None,
+            (submitter_id or "default_student").strip() or "default_student",
+            now_iso,
+            now_iso,
+        ))
+        conn.commit()
+
+    logger.info(f"Recorded company profile suggestion '{suggestion_id}' ({stype}) for '{name}'")
+    return get_company_suggestion_by_id(suggestion_id) or {}
+
+
+def get_company_suggestion_by_id(suggestion_id: str) -> Optional[Dict[str, Any]]:
+    """Fetches a company suggestion by ID, attaching verified target profile data if it is an update request."""
+    if not suggestion_id:
+        return None
+
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM company_profile_suggestions WHERE id = ?", (suggestion_id.strip(),))
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        d = dict(row)
+        try:
+            d["hiring_workflow"] = json.loads(d.get("hiring_workflow_json") or "[]")
+        except Exception:
+            d["hiring_workflow"] = []
+        try:
+            d["primary_tech_stack"] = json.loads(d.get("primary_tech_stack_json") or "[]")
+        except Exception:
+            d["primary_tech_stack"] = []
+
+        # If update request, attach current verified company data for side-by-side comparison
+        target_id = d.get("target_company_id")
+        existing_name = d.get("existing_company_name") or d.get("company_name")
+        verified_profile = None
+        if target_id:
+            verified_profile = get_company_profile_by_id(target_id)
+        elif existing_name and d.get("suggestion_type") == "update":
+            verified_profile = get_company_profile_by_name(existing_name)
+        d["current_verified_profile"] = verified_profile
+
+        return d
+
+
+def list_company_suggestions(
+    status: Optional[str] = None,
+    suggestion_type: Optional[str] = None,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
+    """
+    Lists company suggestions for maintainers/reviewers (#450).
+    Allows filtering by status ('pending', 'approved', 'rejected', or 'all') and suggestion_type ('new', 'update').
+    """
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+
+        conditions = []
+        params: List[Any] = []
+
+        if status and status.lower() not in ("all", "any"):
+            conditions.append("LOWER(status) = LOWER(?)")
+            params.append(status.strip())
+
+        if suggestion_type and suggestion_type.lower() not in ("all", "any"):
+            conditions.append("LOWER(suggestion_type) = LOWER(?)")
+            params.append(suggestion_type.strip())
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = f"SELECT * FROM company_profile_suggestions {where_clause} ORDER BY created_at DESC LIMIT ?"
+        params.append(max(int(limit), 1))
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["hiring_workflow"] = json.loads(d.get("hiring_workflow_json") or "[]")
+            except Exception:
+                d["hiring_workflow"] = []
+            try:
+                d["primary_tech_stack"] = json.loads(d.get("primary_tech_stack_json") or "[]")
+            except Exception:
+                d["primary_tech_stack"] = []
+
+            # If update request, link existing company profile
+            if d.get("suggestion_type") == "update":
+                t_id = d.get("target_company_id")
+                e_name = d.get("existing_company_name") or d.get("company_name")
+                if t_id:
+                    d["current_verified_profile"] = get_company_profile_by_id(t_id)
+                elif e_name:
+                    d["current_verified_profile"] = get_company_profile_by_name(e_name)
+                else:
+                    d["current_verified_profile"] = None
+            else:
+                d["current_verified_profile"] = None
+
+            results.append(d)
+
+        return results
+
+
+def approve_company_suggestion(
+    suggestion_id: str,
+    moderator_notes: str = "",
+    moderated_by: str = "admin"
+) -> Dict[str, Any]:
+    """
+    Approves a company suggestion and applies it to the verified company directory (#450).
+    - If new: creates the company profile or updates if already existing.
+    - If update: updates the target company profile with the suggested fields.
+    - Marks suggestion as 'approved' with moderator audit notes.
+    """
+    suggestion = get_company_suggestion_by_id(suggestion_id)
+    if not suggestion:
+        raise ValueError(f"Suggestion '{suggestion_id}' not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Apply to company_profiles
+    if suggestion.get("suggestion_type") == "new":
+        comp_name = suggestion["company_name"].strip()
+        existing = get_company_profile_by_name(comp_name)
+        if existing:
+            # Update existing profile
+            update_company_profile(existing["id"], {
+                "industry": suggestion.get("industry") or existing.get("industry"),
+                "website_url": suggestion.get("website_url") or existing.get("website_url"),
+                "careers_url": suggestion.get("careers_url") or existing.get("careers_url"),
+                "overview": suggestion.get("overview") or existing.get("overview"),
+                "hiring_tier": suggestion.get("hiring_tier") or existing.get("hiring_tier"),
+                "hiring_workflow": suggestion.get("hiring_workflow") or existing.get("hiring_workflow"),
+                "primary_tech_stack": suggestion.get("primary_tech_stack") or existing.get("primary_tech_stack"),
+                "typical_ctc_range": suggestion.get("typical_ctc_range") or existing.get("typical_ctc_range"),
+                "headquarters": suggestion.get("headquarters") or existing.get("headquarters"),
+            })
+        else:
+            # Insert brand new verified company profile
+            create_company_profile(
+                company_name=comp_name,
+                industry=suggestion.get("industry") or "Technology",
+                website_url=suggestion.get("website_url"),
+                careers_url=suggestion.get("careers_url"),
+                overview=suggestion.get("overview") or f"{comp_name} campus recruitment hiring profile.",
+                hiring_tier=suggestion.get("hiring_tier") or "Tier 1",
+                hiring_workflow=suggestion.get("hiring_workflow") or [],
+                primary_tech_stack=suggestion.get("primary_tech_stack") or [],
+                typical_ctc_range=suggestion.get("typical_ctc_range"),
+                headquarters=suggestion.get("headquarters")
+            )
+    else:
+        # Update request
+        target_id = suggestion.get("target_company_id")
+        target_name = suggestion.get("existing_company_name") or suggestion.get("company_name")
+        target_profile = None
+        if target_id:
+            target_profile = get_company_profile_by_id(target_id)
+        if not target_profile and target_name:
+            target_profile = get_company_profile_by_name(target_name)
+
+        if target_profile:
+            updates = {}
+            for field in ["industry", "website_url", "careers_url", "overview", "hiring_tier",
+                          "typical_ctc_range", "headquarters"]:
+                if suggestion.get(field):
+                    updates[field] = suggestion[field]
+            if suggestion.get("hiring_workflow"):
+                updates["hiring_workflow"] = suggestion["hiring_workflow"]
+            if suggestion.get("primary_tech_stack"):
+                updates["primary_tech_stack"] = suggestion["primary_tech_stack"]
+
+            if updates:
+                update_company_profile(target_profile["id"], updates)
+
+    # Update suggestion status
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE company_profile_suggestions
+            SET status = 'approved',
+                moderator_notes = ?,
+                moderated_by = ?,
+                moderated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            moderator_notes.strip() if moderator_notes else "Approved by maintainer",
+            moderated_by,
+            now_iso,
+            now_iso,
+            suggestion_id
+        ))
+        conn.commit()
+
+    logger.info(f"Approved company profile suggestion '{suggestion_id}' by {moderated_by}")
+    return get_company_suggestion_by_id(suggestion_id) or {}
+
+
+def reject_company_suggestion(
+    suggestion_id: str,
+    moderator_notes: str = "",
+    moderated_by: str = "admin"
+) -> Dict[str, Any]:
+    """Rejects a company suggestion with moderator explanation (#450)."""
+    suggestion = get_company_suggestion_by_id(suggestion_id)
+    if not suggestion:
+        raise ValueError(f"Suggestion '{suggestion_id}' not found.")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE company_profile_suggestions
+            SET status = 'rejected',
+                moderator_notes = ?,
+                moderated_by = ?,
+                moderated_at = ?,
+                updated_at = ?
+            WHERE id = ?
+        """, (
+            moderator_notes.strip() if moderator_notes else "Rejected by maintainer",
+            moderated_by,
+            now_iso,
+            now_iso,
+            suggestion_id
+        ))
+        conn.commit()
+
+    logger.info(f"Rejected company profile suggestion '{suggestion_id}' by {moderated_by}")
+    return get_company_suggestion_by_id(suggestion_id) or {}
+
+
+def get_suggestion_stats() -> Dict[str, int]:
+    """Returns aggregated counts of pending, approved, and rejected suggestions (#450)."""
+    with get_db_connection() as conn:
+        ensure_company_profile_suggestions_table(conn)
+        cursor = conn.cursor()
+        cursor.execute("SELECT status, COUNT(*) FROM company_profile_suggestions GROUP BY status")
+        counts = {str(r[0]).lower(): int(r[1]) for r in cursor.fetchall()}
+        pending = counts.get("pending", 0)
+        approved = counts.get("approved", 0)
+        rejected = counts.get("rejected", 0)
+        return {
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected,
+            "total": pending + approved + rejected,
+        }
+
 
