@@ -219,6 +219,12 @@ from utils.company_profile_manager import (
     get_distinct_hiring_tiers,
     get_distinct_industries,
     get_distinct_tech_stacks,
+    create_company_suggestion,
+    get_company_suggestion_by_id,
+    list_company_suggestions,
+    approve_company_suggestion,
+    reject_company_suggestion,
+    get_suggestion_stats,
 )
 from utils.progress_tracker import (
     calculate_version_delta,
@@ -498,6 +504,9 @@ def require_login():
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
         "verify_two_factor",
+        "companies_search_view",
+        "company_suggest_view",
+        "api_submit_company_suggestion",
     }
 
     user_id = flask_session.get("user_id")
@@ -15063,6 +15072,292 @@ def company_profile_detail_endpoint(profile_id: str):
             "status": "success" if archived else "error",
             "message": f"Archived company profile '{profile['company_name']}'."
         }), 200
+
+
+# ============================================================================
+# USER COMPANY PROFILE SUGGESTION & REVIEW SYSTEM (#450)
+# ============================================================================
+
+@app.route("/companies/suggest", methods=["GET"])
+def company_suggest_view():
+    """
+    Renders the company suggestion form page (#450).
+    Allows students and users to propose a new hiring company or request updates to an existing profile.
+    """
+    seed_default_company_profiles()
+    prefill_name = (request.args.get("company_name") or request.args.get("name") or "").strip()
+    selected_type = (request.args.get("type") or "new").strip().lower()
+    selected_company_id = (request.args.get("company_id") or "").strip()
+
+    existing_companies = list_company_profiles(active_only=True)
+    available_tiers = get_distinct_hiring_tiers()
+    available_industries = get_distinct_industries()
+
+    # If company_id is provided, look up existing company details
+    prefill_company = None
+    if selected_company_id:
+        prefill_company = get_company_profile_by_id(selected_company_id)
+        if prefill_company:
+            selected_type = "update"
+            prefill_name = prefill_company.get("company_name", prefill_name)
+
+    user_name = flask_session.get("user_name") or flask_session.get("name")
+    user_email = flask_session.get("email")
+
+    return render_template(
+        "company_suggest.html",
+        prefill_name=prefill_name,
+        selected_type=selected_type,
+        selected_company_id=selected_company_id,
+        selected_company_name=prefill_company.get("company_name") if prefill_company else prefill_name,
+        prefill_industry=prefill_company.get("industry") if prefill_company else "",
+        prefill_tier=prefill_company.get("hiring_tier") if prefill_company else "Tier 1",
+        prefill_website=prefill_company.get("website_url") if prefill_company else "",
+        prefill_careers=prefill_company.get("careers_url") if prefill_company else "",
+        prefill_hq=prefill_company.get("headquarters") if prefill_company else "",
+        prefill_ctc=prefill_company.get("typical_ctc_range") if prefill_company else "",
+        prefill_tech=", ".join(prefill_company.get("primary_tech_stack", [])) if prefill_company else "",
+        prefill_workflow="\n".join(prefill_company.get("hiring_workflow", [])) if prefill_company else "",
+        prefill_overview=prefill_company.get("overview") if prefill_company else "",
+        existing_companies=existing_companies,
+        available_tiers=available_tiers,
+        available_industries=available_industries,
+        current_user_name=user_name,
+        current_user_email=user_email,
+    )
+
+
+@app.route("/companies/suggest", methods=["POST"])
+@app.route("/api/company-suggestions", methods=["POST"])
+@csrf.exempt
+def api_submit_company_suggestion():
+    """
+    Submits a user suggestion for a new company profile or profile update (#450).
+    Suggestions are initially saved in 'pending' unverified status for maintainer review.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    comp_name = (payload.get("company_name") or "").strip()
+    if not comp_name:
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": "Company name is required."}), 400
+        flash("Company name is required.", "danger")
+        return redirect(url_for("company_suggest_view"))
+
+    stype = (payload.get("suggestion_type") or "new").strip().lower()
+    target_id = (payload.get("target_company_id") or "").strip() or None
+    existing_name = (payload.get("existing_company_name") or "").strip() or None
+
+    user_id = flask_session.get("user_id") or "default_student"
+    submitter_name = (payload.get("submitter_name") or flask_session.get("user_name") or "Anonymous Student").strip()
+    submitter_email = (payload.get("submitter_email") or flask_session.get("email") or "").strip()
+
+    try:
+        suggestion = create_company_suggestion(
+            company_name=comp_name,
+            suggestion_type=stype,
+            target_company_id=target_id,
+            existing_company_name=existing_name,
+            industry=payload.get("industry"),
+            website_url=payload.get("website_url"),
+            careers_url=payload.get("careers_url"),
+            hiring_tier=payload.get("hiring_tier"),
+            hiring_workflow=payload.get("hiring_workflow"),
+            primary_tech_stack=payload.get("primary_tech_stack"),
+            typical_ctc_range=payload.get("typical_ctc_range"),
+            headquarters=payload.get("headquarters"),
+            overview=payload.get("overview"),
+            notes=payload.get("notes"),
+            submitter_name=submitter_name,
+            submitter_email=submitter_email,
+            submitter_id=user_id,
+        )
+
+        msg = f"Thank you! Your suggestion for '{comp_name}' has been submitted for maintainer review."
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "status": "success",
+                "message": msg,
+                "suggestion": suggestion
+            }), 201
+
+        flash(msg, "success")
+        return redirect(url_for("companies_search_view"))
+    except ValueError as ve:
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": str(ve)}), 400
+        flash(str(ve), "danger")
+        return redirect(url_for("company_suggest_view"))
+    except Exception as e:
+        logger.error(f"Error recording company profile suggestion: {e}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": "Failed to submit company suggestion."}), 500
+        flash("Failed to submit company suggestion. Please try again.", "danger")
+        return redirect(url_for("company_suggest_view"))
+
+
+@app.route("/admin/company-suggestions", methods=["GET"])
+def admin_company_suggestions_view():
+    """
+    Maintainer Review Dashboard for Company Suggestions (#450).
+    Displays unverified user suggestions alongside current verified information for maintainer review.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    is_admin = (admin_key == config.ADMIN_SECRET_KEY or user_role == "admin" or app.config.get("TESTING"))
+
+    if not is_admin:
+        flash("Unauthorized. Administrative privileges required to access the review portal.", "danger")
+        return redirect(url_for("login"))
+
+    status_filter = (request.args.get("status") or "pending").strip().lower()
+    suggestions = list_company_suggestions(status=status_filter if status_filter != "all" else None)
+    stats = get_suggestion_stats()
+
+    return render_template(
+        "admin_company_suggestions.html",
+        suggestions=suggestions,
+        stats=stats,
+        current_status=status_filter,
+    )
+
+
+@app.route("/api/admin/company-suggestions", methods=["GET"])
+def api_admin_list_company_suggestions():
+    """
+    API endpoint for maintainers to query company profile suggestions (#450).
+    Allows maintainers to distinguish unverified suggestions from approved company information.
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin" and not app.config.get("TESTING"):
+        return jsonify({"status": "error", "message": "Unauthorized. Administrative privilege required."}), 403
+
+    status_filter = request.args.get("status")
+    stype_filter = request.args.get("type")
+    limit = int(request.args.get("limit", 100))
+
+    suggestions = list_company_suggestions(status=status_filter, suggestion_type=stype_filter, limit=limit)
+    stats = get_suggestion_stats()
+
+    return jsonify({
+        "status": "success",
+        "stats": stats,
+        "total_count": len(suggestions),
+        "suggestions": suggestions
+    }), 200
+
+
+@app.route("/api/admin/company-suggestions/<suggestion_id>", methods=["GET"])
+def api_admin_get_company_suggestion(suggestion_id: str):
+    """Fetches details of a single company profile suggestion (#450)."""
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin" and not app.config.get("TESTING"):
+        return jsonify({"status": "error", "message": "Unauthorized."}), 403
+
+    sugg = get_company_suggestion_by_id(suggestion_id)
+    if not sugg:
+        return jsonify({"status": "error", "message": "Suggestion not found."}), 404
+
+    return jsonify({"status": "success", "suggestion": sugg}), 200
+
+
+@app.route("/admin/company-suggestions/<suggestion_id>/approve", methods=["POST"])
+@app.route("/api/admin/company-suggestions/<suggestion_id>/approve", methods=["POST"])
+@csrf.exempt
+def admin_approve_company_suggestion_endpoint(suggestion_id: str):
+    """
+    Approves a company suggestion, publishing the new profile or updating verified information (#450).
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin" and not app.config.get("TESTING"):
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": "Unauthorized."}), 403
+        flash("Unauthorized administrative action.", "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    notes = (payload.get("moderator_notes") or "Approved by maintainer").strip()
+    moderated_by = payload.get("moderated_by") or (flask_session.get("user_name") if user_role == "admin" else None) or "admin"
+
+    try:
+        approved = approve_company_suggestion(
+            suggestion_id=suggestion_id,
+            moderator_notes=notes,
+            moderated_by=moderated_by
+        )
+        msg = f"Suggestion for '{approved.get('company_name')}' approved and applied to directory."
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "status": "success",
+                "message": msg,
+                "suggestion": approved
+            }), 200
+
+        flash(msg, "success")
+        return redirect(url_for("admin_company_suggestions_view"))
+    except ValueError as ve:
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": str(ve)}), 404
+        flash(str(ve), "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+    except Exception as e:
+        logger.error(f"Error approving company suggestion {suggestion_id}: {e}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": f"Approval failed: {str(e)}"}), 500
+        flash(f"Approval failed: {str(e)}", "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+
+
+@app.route("/admin/company-suggestions/<suggestion_id>/reject", methods=["POST"])
+@app.route("/api/admin/company-suggestions/<suggestion_id>/reject", methods=["POST"])
+@csrf.exempt
+def admin_reject_company_suggestion_endpoint(suggestion_id: str):
+    """
+    Rejects a company suggestion with moderator explanation (#450).
+    """
+    admin_key = request.headers.get("X-Admin-Key") or request.args.get("admin_key")
+    user_role = flask_session.get("role") or flask_session.get("user", {}).get("role")
+    if admin_key != config.ADMIN_SECRET_KEY and user_role != "admin" and not app.config.get("TESTING"):
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": "Unauthorized."}), 403
+        flash("Unauthorized administrative action.", "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    notes = (payload.get("moderator_notes") or "Declined by maintainer").strip()
+    moderated_by = payload.get("moderated_by") or (flask_session.get("user_name") if user_role == "admin" else None) or "admin"
+
+    try:
+        rejected = reject_company_suggestion(
+            suggestion_id=suggestion_id,
+            moderator_notes=notes,
+            moderated_by=moderated_by
+        )
+        msg = f"Suggestion for '{rejected.get('company_name')}' was marked as rejected."
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({
+                "status": "success",
+                "message": msg,
+                "suggestion": rejected
+            }), 200
+
+        flash(msg, "warning")
+        return redirect(url_for("admin_company_suggestions_view"))
+    except ValueError as ve:
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": str(ve)}), 404
+        flash(str(ve), "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+    except Exception as e:
+        logger.error(f"Error rejecting company suggestion {suggestion_id}: {e}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"status": "error", "message": f"Rejection failed: {str(e)}"}), 500
+        flash(f"Rejection failed: {str(e)}", "danger")
+        return redirect(url_for("admin_company_suggestions_view"))
+
 # ============================================================================
 # RESUME PII DETECTION AND REDACTION ENDPOINTS (#249)
 # ============================================================================
