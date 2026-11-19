@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Tailored Cover Letter Generator - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        {% if analysis_id %}
+        <a href="/dashboard/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-arrow-left me-1"></i> Dashboard
+        </a>
+        {% endif %}
+        <a href="/leaderboard" class="btn btn-outline-warning btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-trophy me-1"></i> Leaderboard
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container py-4 py-md-5">
+    <!-- Header -->
+    <div class="row align-items-center mb-4">
+      <div class="col-md-8">
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-file-contract text-primary me-2"></i>Tailored Cover Letter Generator
+        </h2>
+        <p class="text-muted mb-0">Generate a concise 3 to 4 paragraph cover letter grounded strictly in your real resume and tailored to any job description.</p>
+      </div>
+      <div class="col-md-4 text-md-end mt-3 mt-md-0">
+        <span class="badge bg-success-subtle text-success border border-success-subtle p-2 px-3 rounded-pill">
+          <i class="fa-solid fa-shield-halved me-1"></i> Zero Hallucinated Claims
+        </span>
+      </div>
+    </div>
+
+    <!-- Helpful Warning Alert for Missing Job Description -->
+    <div id="standaloneJdWarning" class="alert alert-warning alert-dismissible fade show d-none rounded-4 mb-4" role="alert">
+      <i class="fa-solid fa-triangle-exclamation me-2"></i>
+      <strong>Job description required:</strong> Please paste the target job description to generate a tailored cover letter.
+      <button type="button" class="btn-close" aria-label="Close" onclick="this.parentElement.classList.add('d-none')"></button>
+    </div>
+
+    <!-- Main Workspace Grid -->
+    <div class="row g-4">
+      <!-- Left Column: Inputs (Resume, Job Description, Company, Tone) -->
+      <div class="col-lg-5 col-12">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
+          <h5 class="fw-bold mb-3"><i class="fa-solid fa-sliders text-primary me-2"></i>Application Inputs</h5>
+
+          <!-- Target Job Description (Required) -->
+          <div class="mb-3">
+            <label for="standaloneJdInput" class="form-label fw-semibold small text-dark">
+              Target Job Description <span class="text-danger">*</span>
+            </label>
+            <textarea id="standaloneJdInput" class="form-control rounded-3 p-3 small" rows="6" placeholder="Paste the target job description or requirements here..."></textarea>
+            <div class="form-text small text-muted">The generator aligns your verified skills with requirements in this description.</div>
+          </div>
+
+          <!-- Optional Company Name -->
+          <div class="mb-3">
+            <label for="standaloneCompanyInput" class="form-label fw-semibold small text-dark">
+              Company Name <span class="text-muted small fw-normal">(Optional)</span>
+            </label>
+            <div class="input-group">
+              <span class="input-group-text bg-white"><i class="fa-solid fa-building text-primary"></i></span>
+              <input type="text" id="standaloneCompanyInput" class="form-control rounded-end-3" value="{{ company_name|default('') }}" placeholder="e.g. Google, Stripe, Microsoft">
+            </div>
+          </div>
+
+          <!-- Tone Selector: Formal vs Friendly -->
+          <div class="mb-3">
+            <label class="form-label fw-semibold small text-dark d-block">Tone Choice</label>
+            <div class="btn-group w-100" role="group" id="standaloneToneGroup" aria-label="Cover Letter Tone Selector">
+              <button type="button" class="btn btn-primary active standalone-tone-btn" data-tone="formal" id="toneFormalBtn">
+                <i class="fa-solid fa-briefcase me-1"></i> Formal
+              </button>
+              <button type="button" class="btn btn-outline-secondary standalone-tone-btn" data-tone="friendly" id="toneFriendlyBtn">
+                <i class="fa-solid fa-face-smile me-1"></i> Friendly
+              </button>
+            </div>
+          </div>
+
+          <!-- Resume Text -->
+          <div class="mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label for="standaloneResumeInput" class="form-label fw-semibold small text-dark mb-0">
+                Your Resume Text <span class="text-danger">*</span>
+              </label>
+              {% if analysis_id %}
+              <span class="badge bg-light text-muted border rounded-pill small">Loaded from Analysis</span>
+              {% endif %}
+            </div>
+            <textarea id="standaloneResumeInput" class="form-control rounded-3 p-3 small font-monospace" rows="6" placeholder="Paste your resume text here (skills, education, projects, experience)...">{{ resume_text|default('') }}</textarea>
+            <div class="form-text small text-muted">Only skills and projects present in this text will be included.</div>
+          </div>
+
+          <!-- Action Button -->
+          <button type="button" class="btn btn-primary rounded-pill w-100 py-2 fw-semibold" id="btnStandaloneGenerate" data-analysis-id="{{ analysis_id|default('') }}">
+            <span class="spinner-border spinner-border-sm me-1 d-none" id="standaloneSpinner" role="status" aria-hidden="true"></span>
+            <i class="fa-solid fa-wand-magic-sparkles me-1" id="standaloneIcon"></i> Generate Tailored Letter
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Column: Output (Editable Text Area, Stats, Copy, Download) -->
+      <div class="col-lg-7 col-12">
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100 d-flex flex-column">
+          <!-- Output Header -->
+          <div class="d-flex justify-content-between align-items-center mb-3 border-bottom pb-2 flex-wrap gap-2">
+            <div>
+              <h5 class="fw-bold mb-0"><i class="fa-solid fa-envelope-open-text text-primary me-2"></i>Tailored Letter Draft</h5>
+              <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small mt-1" id="standaloneToneBadge">Tone: Formal</span>
+            </div>
+            <span class="badge bg-light text-muted border rounded-pill small" id="standaloneStatsBadge">
+              <span id="standaloneParaCount">4</span> paragraphs &bull; <span id="standaloneWordCount">0</span> words
+            </span>
+          </div>
+
+          <!-- Editable Text Area -->
+          <div class="flex-grow-1 mb-3">
+            <textarea id="standaloneLetterEditor" class="form-control rounded-4 p-3 bg-white text-dark small lh-lg h-100" rows="14" style="min-height: 320px; resize: vertical; line-height: 1.7;" placeholder="Your tailored 3 to 4 paragraph cover letter will appear here. Paste a job description and click 'Generate Tailored Letter'..."></textarea>
+          </div>
+
+          <!-- Actions Bar: Copy & Download -->
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top">
+            <div class="d-flex gap-2 flex-wrap">
+              <button type="button" class="btn btn-outline-primary rounded-pill px-3" id="btnStandaloneCopy">
+                <i class="fa-regular fa-copy me-1"></i> Copy Letter
+              </button>
+              <button type="button" class="btn btn-outline-success rounded-pill px-3" id="btnStandaloneDocx">
+                <i class="fa-solid fa-file-word me-1"></i> Download .docx
+              </button>
+              <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnStandaloneTxt">
+                <i class="fa-solid fa-file-lines me-1"></i> Download .txt
+              </button>
+            </div>
+            <button type="button" class="btn btn-sm btn-custom-outline rounded-pill px-3" id="btnStandaloneRegenerate">
+              <i class="fa-solid fa-rotate me-1"></i> Regenerate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+
+</html>

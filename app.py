@@ -4002,6 +4002,92 @@ def api_get_analysis_linkedin_suggestions(analysis_id: str):
     analysis_record = get_analysis(analysis_id)
     if not analysis_record or not _is_student_authorized(analysis_record):
         return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+# TAILORED COVER LETTER GENERATOR & DOWNLOAD API (#537)
+# ==============================================================================
+
+@app.route("/cover-letter", methods=["GET"])
+@app.route("/cover-letter/<analysis_id>", methods=["GET"])
+def cover_letter_view(analysis_id: str = None):
+    """
+    Renders the dedicated Tailored Cover Letter Generator page (#537).
+    Allows students to generate 3-4 paragraph letters tailored to a pasted job description,
+    choose between formal and friendly tones, edit the letter, and copy/download it.
+    """
+    resume_text = ""
+    company_name = ""
+    target_role = "Software Engineer"
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if analysis_record and _is_student_authorized(analysis_record):
+            results = analysis_record.get("results") or {}
+            resume_text = (
+                analysis_record.get("resume_text")
+                or results.get("extracted_resume_text")
+                or results.get("resume_text")
+                or ""
+            )
+            company_name = analysis_record.get("company_name", "") or ""
+            target_role = analysis_record.get("target_role", "Software Engineer") or "Software Engineer"
+
+    return render_template(
+        "cover_letter.html",
+        resume_text=resume_text,
+        company_name=company_name,
+        target_role=target_role,
+        analysis_id=analysis_id or ""
+    )
+
+
+@app.route("/api/cover-letter/generate", methods=["POST"])
+def api_generate_tailored_cover_letter():
+    """
+    Direct API endpoint to generate a tailored 3-to-4 paragraph cover letter from
+    a resume, pasted job description, and optional company name (#537).
+    """
+    payload = request.get_json(silent=True) or {}
+    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (payload.get("company_name") or request.form.get("company_name") or "").strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    if not resume_text:
+        return jsonify({
+            "success": False,
+            "error": "Resume text is missing. Please provide your resume to tailor the cover letter.",
+            "missing_field": "resume_text"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=resume_text,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/analysis/<analysis_id>/cover-letter", methods=["POST"])
+def api_analysis_tailored_cover_letter(analysis_id: str):
+    """
+    Generates a tailored 3-to-4 paragraph cover letter for a saved placement analysis (#537).
+    Loads the candidate's resume, takes the pasted job description, optional company name, and tone.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({
+            "success": False,
+            "error": "Analysis not found or unauthorized."
+        }), 404
 
     results = analysis_record.get("results") or {}
     raw_resume = (
@@ -4054,6 +4140,79 @@ def api_generate_linkedin_suggestions():
         "success": True,
         "suggestions": suggestions
     }), 200
+    payload = request.get_json(silent=True) or {}
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (
+        payload.get("company_name")
+        or request.form.get("company_name")
+        or analysis_record.get("company_name")
+        or ""
+    ).strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=raw_resume,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/cover-letter/download", methods=["POST"])
+def api_download_cover_letter():
+    """
+    Downloads an edited cover letter as a formatted .docx or .txt file (#537).
+    """
+    payload = request.get_json(silent=True) or {}
+    content = (payload.get("content") or payload.get("cover_letter") or request.form.get("content") or request.form.get("cover_letter") or "").strip()
+    file_format = (payload.get("format") or request.form.get("format") or "docx").strip().lower()
+    company_name = (payload.get("company_name") or request.form.get("company_name") or "Company").strip()
+    candidate_name = (payload.get("candidate_name") or request.form.get("candidate_name") or "Candidate").strip()
+    role_title = (payload.get("role_title") or request.form.get("role_title") or "Software Engineer").strip()
+
+    if not content:
+        return jsonify({
+            "success": False,
+            "error": "Cannot download empty cover letter content."
+        }), 400
+
+    safe_comp = re.sub(r"[^\w\-]", "_", company_name)
+    if file_format == "txt":
+        txt_out = outreach_agent.export_cover_letter_txt(
+            cover_letter_text=content,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title
+        )
+        return send_file(
+            io.BytesIO(txt_out.encode("utf-8")),
+            mimetype="text/plain",
+            as_attachment=True,
+            download_name=f"Cover_Letter_{safe_comp}.txt"
+        )
+    else:  # default docx
+        docx_bytes = outreach_agent.export_cover_letter_docx(
+            cover_letter_text=content,
+            candidate_name=candidate_name,
+            company_name=company_name,
+            role_title=role_title
+        )
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=f"Cover_Letter_{safe_comp}.docx"
+        )
 
 
 # ==============================================================================

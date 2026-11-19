@@ -116,6 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSelfIntroductionStudio();
   initLinkedInSuggestions();
   initInterviewDraftLogoutCleanup();
+  initTailoredCoverLetterStudio();
 });
 
 /**
