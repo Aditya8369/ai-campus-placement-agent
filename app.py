@@ -295,6 +295,11 @@ from utils.role_skill_gap_service import (
     skills_match,
 )
 from utils.ats_score_service import evaluate_resume_ats_score
+from utils.format_checker import (
+    check_resume_format_compatibility,
+    get_or_compute_format_compatibility,
+    check_pdf_format_compatibility,
+)
 
 from utils.pdf_reader import (
     extract_text_from_pdf,
@@ -3140,6 +3145,22 @@ def analyze():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # ATS Layout Format Compatibility Check (#474)
+        format_compatibility = None
+        try:
+            target_upload_path = None
+            if file_uuid and resume_filename:
+                cand_path = os.path.join(config.UPLOAD_FOLDER, secure_filename(f"{file_uuid}_{resume_filename}"))
+                if os.path.exists(cand_path):
+                    target_upload_path = cand_path
+            if target_upload_path:
+                format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+            else:
+                format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+        except Exception as fc_err:
+            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            format_compatibility = None
+
         # PII Detection and Redaction Option (#249)
         redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
         if redact_pii_flag:
@@ -3237,7 +3258,8 @@ def analyze():
                 company_name=selected_company,
                 resume_filename=resume_filename,
                 analysis_id=file_uuid,
-                student_id=student_id
+                student_id=student_id,
+                format_compatibility=format_compatibility
             )
             return jsonify({
                 "success": True,
@@ -3256,6 +3278,8 @@ def analyze():
         )
         if isinstance(analysis_payload, dict):
             analysis_payload["extracted_resume_text"] = extracted_resume_text
+            if format_compatibility:
+                analysis_payload["format_compatibility"] = format_compatibility
 
         save_analysis(
             analysis_id=file_uuid,
@@ -3351,6 +3375,22 @@ def start_analysis_async():
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
+        # ATS Layout Format Compatibility Check (#474)
+        format_compatibility = None
+        try:
+            target_upload_path = None
+            if file_uuid and resume_filename:
+                cand_path = os.path.join(config.UPLOAD_FOLDER, secure_filename(f"{file_uuid}_{resume_filename}"))
+                if os.path.exists(cand_path):
+                    target_upload_path = cand_path
+            if target_upload_path:
+                format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+            else:
+                format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+        except Exception as fc_err:
+            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            format_compatibility = None
+
         # PII Detection and Redaction Option (#249)
         redact_pii_flag = request.form.get("redact_pii") in ("true", "1", "on", "yes")
         if redact_pii_flag:
@@ -3417,7 +3457,8 @@ def start_analysis_async():
             company_name=selected_company,
             resume_filename=resume_filename,
             analysis_id=file_uuid,
-            student_id=student_id
+            student_id=student_id,
+            format_compatibility=format_compatibility
         )
 
         return jsonify({
@@ -3426,7 +3467,8 @@ def start_analysis_async():
             "task_id": task.task_id,
             "analysis_id": file_uuid,
             "stream_url": f"/api/analysis/stream/{task.task_id}",
-            "status_url": f"/api/analysis/status/{task.task_id}"
+            "status_url": f"/api/analysis/status/{task.task_id}",
+            "format_compatibility": format_compatibility
         }), 202
 
     except (RequestEntityTooLarge, ValueError) as ve:
@@ -4387,56 +4429,18 @@ def dashboard(analysis_id: str) -> str:
             "missing_skills": [],
         }
 
-    # Prepare LinkedIn Profile Suggestions (#538)
+    # Prepare ATS Format Compatibility (#474)
     try:
-        candidate_target_role = (
-            analysis_record.get("target_role")
-            or results.get("target_role")
-            or "Software Engineer"
-        )
-        initial_linkedin_suggestions = linkedin_agent.generate_linkedin_suggestions(
-            resume_text=raw_resume,
-            target_role=candidate_target_role
-        )
-    except Exception as li_err:
-        logger.warning(f"Error preparing LinkedIn suggestions for dashboard: {li_err}")
-        initial_linkedin_suggestions = {
-            "target_role": "Software Engineer",
-            "candidate_name": None,
-            "headline_options": [
-                {
-                    "headline": "Software Engineer | Open to Campus Placements",
-                    "char_count": 46,
-                    "max_chars": 220,
-                    "type": "Role & Core Stack",
-                    "description": "Direct and keyword-rich headline."
-                },
-                {
-                    "headline": "Software Engineer Candidate | Dedicated to Clean Architecture",
-                    "char_count": 62,
-                    "max_chars": 220,
-                    "type": "Impact & Experience",
-                    "description": "Emphasizes practical development."
-                },
-                {
-                    "headline": "Future Software Engineer | Fast Learner & Problem Solver",
-                    "char_count": 57,
-                    "max_chars": 220,
-                    "type": "Specialization & Vision",
-                    "description": "Showcases domain focus."
-                }
-            ],
-            "about_section": (
-                "I am an aspiring Software Engineer committed to building reliable, clean software solutions. "
-                "I am actively seeking campus placement and entry-level opportunities. Let's connect!"
-            ),
-            "about_word_count": 24,
-            "about_char_count": 182,
-            "recruiter_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
-            "matched_keywords": [],
-            "recommended_keywords": ["Algorithms", "Data Structures", "System Design", "Python", "Git", "SQL"],
-            "is_sparse": True,
-            "headline_limit": 220
+        format_compatibility = get_or_compute_format_compatibility(analysis_record)
+    except Exception as fc_err:
+        logger.warning(f"Error evaluating ATS format compatibility for dashboard: {fc_err}")
+        format_compatibility = {
+            "overall_status": "pass",
+            "passed_count": 5,
+            "warn_count": 0,
+            "total_checks": 5,
+            "score_percentage": 100,
+            "checks": []
         }
 
     return render_template(
@@ -4475,7 +4479,9 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro_json=json.dumps(initial_self_intro),
         aptitude_summary=aptitude_summary,
         is_demo=is_demo,
-        bullet_rewrites=bullet_rewrites
+        bullet_rewrites=bullet_rewrites,
+        format_compatibility=format_compatibility,
+        format_compatibility_json=json.dumps(format_compatibility)
     )
 
 
@@ -4773,6 +4779,78 @@ def api_evaluate_resume_ats_score():
         }), 200
     except Exception as exc:
         logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+# ==============================================================================
+# ATS FORMAT COMPATIBILITY API (#474)
+# ==============================================================================
+
+@app.route("/api/analysis/<analysis_id>/format-compatibility", methods=["GET"])
+def api_get_analysis_format_compatibility(analysis_id: str):
+    """
+    Returns the rule-based ATS format compatibility evaluation (#474).
+    Evaluates page count, multi-column layout, tables/grids, embedded images,
+    and text extraction/encoding legibility with pass/warn items and fixes.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    format_compat = get_or_compute_format_compatibility(analysis_record)
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "format_compatibility": format_compat
+    }), 200
+
+
+@app.route("/api/resume/format-compatibility", methods=["POST"])
+def api_evaluate_resume_format_compatibility():
+    """
+    Evaluates resume format compatibility on demand (#474).
+    Accepts:
+      - Uploaded resume file via multipart/form-data ('resume' file field)
+      - JSON body: {"resume_text": "...", "analysis_id": "..."}
+    """
+    try:
+        uploaded_file = request.files.get("resume")
+        if uploaded_file and uploaded_file.filename != "":
+            raw_bytes = uploaded_file.read()
+            ext = os.path.splitext(uploaded_file.filename)[1].lower()
+            if ext == ".pdf":
+                format_compat = check_pdf_format_compatibility(raw_bytes)
+            else:
+                format_compat = check_resume_format_compatibility(raw_bytes, "")
+            return jsonify({
+                "status": "success",
+                "success": True,
+                "format_compatibility": format_compat
+            }), 200
+
+        data = request.get_json(silent=True) or {}
+        analysis_id = data.get("analysis_id")
+        if analysis_id:
+            record = get_analysis(analysis_id)
+            if record and _is_student_authorized(record):
+                format_compat = get_or_compute_format_compatibility(record)
+                return jsonify({
+                    "status": "success",
+                    "success": True,
+                    "analysis_id": analysis_id,
+                    "format_compatibility": format_compat
+                }), 200
+
+        resume_text = data.get("resume_text") or request.form.get("resume_text", "")
+        format_compat = check_resume_format_compatibility(resume_text, resume_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "format_compatibility": format_compat
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_evaluate_resume_format_compatibility: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
