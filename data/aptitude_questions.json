@@ -1,0 +1,484 @@
+[
+  {
+    "id": "quant_01",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Time and Work",
+    "difficulty": "medium",
+    "question": "A can complete a project in 12 days, while B can complete the same project in 18 days. If they work together for 4 days, what fraction of the total project remains incomplete?",
+    "options": [
+      "1/3",
+      "4/9",
+      "5/9",
+      "2/3"
+    ],
+    "answer": "4/9",
+    "explanation": "A's 1-day work = 1/12. B's 1-day work = 1/18. Combined 1-day work = 1/12 + 1/18 = 5/36. In 4 days, work completed = 4 * (5/36) = 5/9. Remaining work = 1 - 5/9 = 4/9."
+  },
+  {
+    "id": "quant_02",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Profit and Loss",
+    "difficulty": "medium",
+    "question": "A retailer sells an article at a profit of 20%. If he had bought it for 10% less and sold it for $18 less, he would have gained 25%. What was the original cost price of the article?",
+    "options": [
+      "$200",
+      "$240",
+      "$280",
+      "$320"
+    ],
+    "answer": "$240",
+    "explanation": "Let original Cost Price = CP. Original Selling Price = 1.20 * CP. Reduced Cost Price = 0.90 * CP. New Selling Price = 1.20 * CP - 18. New Profit is 25%: (1.20 * CP - 18) = 1.25 * (0.90 * CP) = 1.125 * CP. Thus, 1.20 * CP - 1.125 * CP = 18 => 0.075 * CP = 18 => CP = $240."
+  },
+  {
+    "id": "quant_03",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Percentages",
+    "difficulty": "easy",
+    "question": "In an engineering examination, 65% of students passed in Mathematics, 70% passed in Physics, and 50% passed in both subjects. If 45 students failed in both subjects, what is the total number of students who appeared for the exam?",
+    "options": [
+      "250",
+      "300",
+      "350",
+      "400"
+    ],
+    "answer": "300",
+    "explanation": "Percentage passing at least one subject = 65% + 70% - 50% = 85%. Percentage failing both subjects = 100% - 85% = 15%. Given 15% corresponds to 45 students: Total students = 45 / 0.15 = 300."
+  },
+  {
+    "id": "quant_04",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Time Speed and Distance",
+    "difficulty": "medium",
+    "question": "A train traveling at a constant speed of 72 km/h crosses a 250-meter long bridge in 26 seconds. What is the length of the train?",
+    "options": [
+      "220 meters",
+      "250 meters",
+      "270 meters",
+      "300 meters"
+    ],
+    "answer": "270 meters",
+    "explanation": "Convert speed: 72 km/h = 72 * (5/18) = 20 m/s. Total distance covered in 26 seconds = 20 * 26 = 520 meters. Total distance = Train Length + Bridge Length => Train Length = 520 - 250 = 270 meters."
+  },
+  {
+    "id": "quant_05",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Ratio and Proportion",
+    "difficulty": "easy",
+    "question": "The ratio of monthly incomes of two software engineers, Rohan and Priya, is 4:5 and the ratio of their monthly expenditures is 3:4. If both save $600 each month, what is Rohan's monthly income?",
+    "options": [
+      "$1,800",
+      "$2,000",
+      "$2,400",
+      "$3,000"
+    ],
+    "answer": "$2,400",
+    "explanation": "Let incomes be 4x and 5x. Expenditures are (4x - 600) and (5x - 600). Ratio: (4x - 600) / (5x - 600) = 3/4 => 16x - 2400 = 15x - 1800 => x = 600. Rohan's income = 4 * 600 = $2,400."
+  },
+  {
+    "id": "quant_06",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Simple and Compound Interest",
+    "difficulty": "medium",
+    "question": "A principal invested under annual compound interest amounts to $4,840 in 2 years and $5,324 in 3 years. What is the annual interest rate?",
+    "options": [
+      "8%",
+      "10%",
+      "12%",
+      "15%"
+    ],
+    "answer": "10%",
+    "explanation": "Interest accrued in the 3rd year alone = $5,324 - $4,840 = $484. Annual rate = ($484 / $4,840) * 100 = 10%."
+  },
+  {
+    "id": "quant_07",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Permutations and Combinations",
+    "difficulty": "medium",
+    "question": "In how many distinct ways can the letters of the word 'CAMPUS' be arranged such that all the vowels always remain together?",
+    "options": [
+      "120",
+      "240",
+      "360",
+      "720"
+    ],
+    "answer": "240",
+    "explanation": "'CAMPUS' has 6 letters: 2 vowels (A, U) and 4 consonants (C, M, P, S). Treat the vowels (AU) as a single unit, yielding 5 units to arrange: 5! = 120 ways. The 2 vowels inside the unit can be arranged in 2! = 2 ways. Total arrangements = 120 * 2 = 240."
+  },
+  {
+    "id": "quant_08",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Probability",
+    "difficulty": "medium",
+    "question": "Two unbiased six-sided dice are rolled simultaneously. What is the probability that the sum of the numbers appearing on both dice is a prime number?",
+    "options": [
+      "5/12",
+      "7/18",
+      "1/2",
+      "13/36"
+    ],
+    "answer": "5/12",
+    "explanation": "Total outcomes = 36. Prime sums possible: 2, 3, 5, 7, 11. Sum 2: (1,1) [1]. Sum 3: (1,2), (2,1) [2]. Sum 5: (1,4), (2,3), (3,2), (4,1) [4]. Sum 7: (1,6), (2,5), (3,4), (4,3), (5,2), (6,1) [6]. Sum 11: (5,6), (6,5) [2]. Total favorable = 1 + 2 + 4 + 6 + 2 = 15. Probability = 15/36 = 5/12."
+  },
+  {
+    "id": "quant_09",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Averages",
+    "difficulty": "easy",
+    "question": "The average age of a dev team of 8 engineers is 28 years. When a new senior tech lead joins, the average age of the team increases by 2 years. What is the age of the new senior tech lead?",
+    "options": [
+      "42 years",
+      "44 years",
+      "46 years",
+      "48 years"
+    ],
+    "answer": "46 years",
+    "explanation": "Total age of 8 engineers = 8 * 28 = 224. New average for 9 people = 30. Total age for 9 people = 9 * 30 = 270. Age of tech lead = 270 - 224 = 46 years."
+  },
+  {
+    "id": "quant_10",
+    "category": "quantitative",
+    "category_label": "Quantitative Aptitude",
+    "topic": "Pipes and Cisterns",
+    "difficulty": "medium",
+    "question": "Pipe A can fill a reservoir in 10 hours and Pipe B in 15 hours. Pipe C can empty the full reservoir in 30 hours. If all three pipes are opened simultaneously, how long will it take to fill the reservoir completely?",
+    "options": [
+      "6 hours",
+      "7.5 hours",
+      "8 hours",
+      "9 hours"
+    ],
+    "answer": "7.5 hours",
+    "explanation": "Net work per hour = (1/10) + (1/15) - (1/30) = (3 + 2 - 1) / 30 = 4/30 = 2/15. Time required to fill the reservoir = 15 / 2 = 7.5 hours (7 hours 30 minutes)."
+  },
+
+  {
+    "id": "logical_01",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Syllogisms",
+    "difficulty": "medium",
+    "question": "Statements: All microservices are services. Some services are scalable.\nConclusions:\nI. Some microservices are scalable.\nII. Some services are microservices.",
+    "options": [
+      "Only conclusion I follows",
+      "Only conclusion II follows",
+      "Both conclusions follow",
+      "Neither conclusion follows"
+    ],
+    "answer": "Only conclusion II follows",
+    "explanation": "'All microservices are services' implies its converse: 'Some services are microservices' (Conclusion II is valid). The predicate 'scalable' only overlaps with some services and does not necessarily intersect with the subset of microservices (Conclusion I is invalid)."
+  },
+  {
+    "id": "logical_02",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Blood Relations",
+    "difficulty": "easy",
+    "question": "Pointing to a photograph of a young man, Sneha said, 'His mother is the only daughter of my maternal grandfather.' How is Sneha related to the man in the photograph?",
+    "options": [
+      "Sister",
+      "Mother",
+      "Daughter",
+      "Aunt"
+    ],
+    "answer": "Sister",
+    "explanation": "The only daughter of Sneha's maternal grandfather is Sneha's mother. The young man's mother is Sneha's mother. Therefore, Sneha is the young man's sister."
+  },
+  {
+    "id": "logical_03",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Series Completion",
+    "difficulty": "easy",
+    "question": "Identify the next term in the alphanumeric sequence: B2D, D4F, F8H, H16J, ?",
+    "options": [
+      "J24L",
+      "J32L",
+      "K32L",
+      "J32M"
+    ],
+    "answer": "J32L",
+    "explanation": "First letter: B (+2) -> D (+2) -> F (+2) -> H (+2) -> J. Number: 2 (*2) -> 4 (*2) -> 8 (*2) -> 16 (*2) -> 32. Last letter: D (+2) -> F (+2) -> H (+2) -> J (+2) -> L. Result = J32L."
+  },
+  {
+    "id": "logical_04",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Coding and Decoding",
+    "difficulty": "medium",
+    "question": "In a specific coding scheme, 'NETWORK' is coded as 'OGUXQTM' (+1, +2 alternating). How will 'GATEWAY' be coded under the exact same pattern?",
+    "options": [
+      "HCUGXCZ",
+      "HCUGYCZ",
+      "HBVFXCZ",
+      "HCUGXDA"
+    ],
+    "answer": "HCUGXCZ",
+    "explanation": "Alternating +1, +2 shift: G(+1)=H, A(+2)=C, T(+1)=U, E(+2)=G, W(+1)=X, A(+2)=C, Y(+1)=Z. Result = HCUGXCZ."
+  },
+  {
+    "id": "logical_05",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Direction Sense",
+    "difficulty": "medium",
+    "question": "Arjun walks 15 meters North from his office, turns right and walks 20 meters. He then turns right and walks 15 meters. Finally, he turns left and walks 10 meters. How far and in which direction is he now relative to his starting office?",
+    "options": [
+      "25 meters East",
+      "30 meters East",
+      "30 meters West",
+      "35 meters North"
+    ],
+    "answer": "30 meters East",
+    "explanation": "Starting at (0, 0): North 15m -> (0, 15). Right (East) 20m -> (20, 15). Right (South) 15m -> (20, 0). Left (East) 10m -> (30, 0). He is exactly 30 meters East of his starting office."
+  },
+  {
+    "id": "logical_06",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Seating Arrangement",
+    "difficulty": "hard",
+    "question": "Five developers—P, Q, R, S, and T—are seated in a single row facing North. R is seated between P and T. Q is immediately to the right of T. S is at the extreme left end of the row. Who occupies the exact middle position?",
+    "options": [
+      "P",
+      "Q",
+      "R",
+      "T"
+    ],
+    "answer": "R",
+    "explanation": "S is at extreme left (position 1). Q is to the immediate right of T (consecutive T-Q at positions 4 and 5). Since R is between P and T, the ordering must be S (1) - P (2) - R (3) - T (4) - Q (5). The middle position (3) is occupied by R."
+  },
+  {
+    "id": "logical_07",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Clocks and Angles",
+    "difficulty": "easy",
+    "question": "What is the acute angle formed between the hour hand and the minute hand of a standard analog clock at 3:40?",
+    "options": [
+      "120 degrees",
+      "130 degrees",
+      "140 degrees",
+      "150 degrees"
+    ],
+    "answer": "130 degrees",
+    "explanation": "Angle formula = |30*H - (11/2)*M|. For H=3, M=40: |30*3 - (11/2)*40| = |90 - 220| = |-130| = 130 degrees."
+  },
+  {
+    "id": "logical_08",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Data Sufficiency",
+    "difficulty": "hard",
+    "question": "Is integer x an even number?\nStatement (1): x is divisible by 6.\nStatement (2): x + 3 is an odd number.",
+    "options": [
+      "Statement (1) ALONE is sufficient, but Statement (2) alone is not sufficient",
+      "Statement (2) ALONE is sufficient, but Statement (1) alone is not sufficient",
+      "EACH statement ALONE is sufficient",
+      "BOTH statements TOGETHER are not sufficient"
+    ],
+    "answer": "EACH statement ALONE is sufficient",
+    "explanation": "From (1): Any multiple of 6 is divisible by 2, so x must be even (sufficient). From (2): If (x + 3) is odd, then x must be even because odd minus odd equals even (sufficient). Therefore, each statement alone is sufficient."
+  },
+  {
+    "id": "logical_09",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Critical Reasoning",
+    "difficulty": "medium",
+    "question": "Statement: Should university technical examinations be transitioned completely to open-book format?\nArgument I: Yes, because real software engineering jobs allow unrestricted access to online documentation to solve problems.\nArgument II: No, because students will not memorize fundamental formulas.",
+    "options": [
+      "Only Argument I is strong",
+      "Only Argument II is strong",
+      "Both Argument I and II are strong",
+      "Neither Argument I nor II is strong"
+    ],
+    "answer": "Only Argument I is strong",
+    "explanation": "Argument I is strong because it aligns testing methodology with actual workplace skill demands. Argument II is weak because memorizing rote formulas does not equate to deep conceptual understanding."
+  },
+  {
+    "id": "logical_10",
+    "category": "logical_reasoning",
+    "category_label": "Logical Reasoning",
+    "topic": "Venn Diagrams",
+    "difficulty": "easy",
+    "question": "Which of the following representations best illustrates the logical relationship between: Engineers, Programmers, and Musicians?",
+    "options": [
+      "Programmers are a subset of Engineers, separate from Musicians",
+      "Three intersecting circles overlapping in pairs and in the center",
+      "Three disjoint circles with zero overlap",
+      "Musicians completely encapsulate both Engineers and Programmers"
+    ],
+    "answer": "Three intersecting circles overlapping in pairs and in the center",
+    "explanation": "An individual can be an engineer, a programmer, and a musician simultaneously, or belong to any combination of two, or only one. Thus, three overlapping intersecting circles accurately depicts the relation."
+  },
+
+  {
+    "id": "verbal_01",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Spotting Errors",
+    "difficulty": "medium",
+    "question": "Identify the section of the sentence containing a grammatical flaw:\n'Neither the project manager (A) / nor the lead developers (B) / was aware of the database outage (C) / during the midnight deployment. (D)'",
+    "options": [
+      "Part A",
+      "Part B",
+      "Part C",
+      "Part D"
+    ],
+    "answer": "Part C",
+    "explanation": "With correlative conjunctions 'neither... nor', the verb must agree with the nearer subject. 'The lead developers' is plural, requiring 'were aware' rather than 'was aware'."
+  },
+  {
+    "id": "verbal_02",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Synonyms",
+    "difficulty": "easy",
+    "question": "Choose the word most nearly SYNONYMOUS in meaning to 'EPHEMERAL':",
+    "options": [
+      "Enduring",
+      "Transient",
+      "Pervasive",
+      "Substantial"
+    ],
+    "answer": "Transient",
+    "explanation": "'Ephemeral' means lasting for a very brief duration. 'Transient' directly shares this meaning."
+  },
+  {
+    "id": "verbal_03",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Antonyms",
+    "difficulty": "easy",
+    "question": "Choose the word most nearly OPPOSITE in meaning to 'METICULOUS':",
+    "options": [
+      "Scrupulous",
+      "Careless",
+      "Diligent",
+      "Pragmatic"
+    ],
+    "answer": "Careless",
+    "explanation": "'Meticulous' describes extreme care and fastidious attention to detail. Its direct antonym is 'Careless'."
+  },
+  {
+    "id": "verbal_04",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Para Jumbles",
+    "difficulty": "hard",
+    "question": "Arrange the sentences into a logically coherent paragraph:\nP: This continuous feedback loop accelerates release velocity while catching defects early.\nQ: Continuous Integration (CI) has become a non-negotiable pillar of modern engineering teams.\nR: Once automated test suites pass, changes are automatically merged into the trunk.\nS: Every code commit triggers an isolated containerized build and execution pipeline.",
+    "options": [
+      "Q-S-R-P",
+      "Q-R-S-P",
+      "S-R-Q-P",
+      "Q-P-S-R"
+    ],
+    "answer": "Q-S-R-P",
+    "explanation": "Q introduces the primary subject (CI). S details the triggering event (every code commit). R describes the successful completion condition (tests pass and code merges). P provides the culminating business impact (feedback loop accelerates release velocity)."
+  },
+  {
+    "id": "verbal_05",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Reading Comprehension",
+    "difficulty": "medium",
+    "question": "Excerpt: 'Decentralized consensus systems guarantee ledger integrity without a central clearing entity. However, consensus throughput frequently trades off against cryptographic security and node decentralization—a constraint termed the blockchain trilemma. To scale transaction volume, layer-2 rollups execute compute off-chain while anchoring final settlement onto the underlying base layer.'\n\nQuestion: According to the passage, how do layer-2 rollups improve throughput?",
+    "options": [
+      "By eliminating cryptographic security checks",
+      "By performing compute off-chain and anchoring settlement to the base layer",
+      "By appointing a centralized clearing bank",
+      "By restricting the number of participant nodes"
+    ],
+    "answer": "By performing compute off-chain and anchoring settlement to the base layer",
+    "explanation": "The passage explicitly mentions: 'layer-2 rollups execute compute off-chain while anchoring final settlement onto the underlying base layer'."
+  },
+  {
+    "id": "verbal_06",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Idioms and Phrases",
+    "difficulty": "easy",
+    "question": "What is the true meaning of the idiom 'to burn the candle at both ends'?",
+    "options": [
+      "To spend financial savings recklessly",
+      "To work exhaustingly hard from early morning until late at night",
+      "To provoke needless interpersonal hostility",
+      "To attempt conflicting objectives simultaneously"
+    ],
+    "answer": "To work exhaustingly hard from early morning until late at night",
+    "explanation": "The idiom means to exhaust one's physical and mental resources by working long, grueling hours without adequate rest."
+  },
+  {
+    "id": "verbal_07",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Sentence Completion",
+    "difficulty": "medium",
+    "question": "Select the word that best completes the sentence logically:\n'The principal architect provided a _____ explanation of the distributed deadlock, leaving no doubt regarding how the circular wait occurred.'",
+    "options": [
+      "lucid",
+      "convoluted",
+      "superficial",
+      "sporadic"
+    ],
+    "answer": "lucid",
+    "explanation": "'Lucid' means clear, easily understood, and completely free from obscurity, which directly fits 'leaving no doubt'."
+  },
+  {
+    "id": "verbal_08",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Analogies",
+    "difficulty": "medium",
+    "question": "Select the pair that shares the exact same relationship as:\nCOMPILER : CODE",
+    "options": [
+      "Filter : Water",
+      "Blueprint : Building",
+      "Translator : Speech",
+      "Engine : Fuel"
+    ],
+    "answer": "Translator : Speech",
+    "explanation": "A compiler converts programming code from one linguistic representation to another executable form. A translator converts speech from one spoken language into another."
+  },
+  {
+    "id": "verbal_09",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "One Word Substitution",
+    "difficulty": "easy",
+    "question": "A person who is excessively preoccupied with minor rules, pedantic details, and bookish dogma is best termed a:",
+    "options": [
+      "Pedant",
+      "Altruist",
+      "Polyglot",
+      "Stoic"
+    ],
+    "answer": "Pedant",
+    "explanation": "A 'pedant' is an individual ostentatiously concerned with minor academic formalities and minute book details."
+  },
+  {
+    "id": "verbal_10",
+    "category": "verbal_ability",
+    "category_label": "Verbal Ability",
+    "topic": "Sentence Improvement",
+    "difficulty": "hard",
+    "question": "Choose the most grammatically correct replacement for the phrase in quotes:\n'If the production cluster \"would have had\" automated horizontal scaling, the service outage would have been averted.'",
+    "options": [
+      "had had",
+      "would have",
+      "has had",
+      "No correction needed"
+    ],
+    "answer": "had had",
+    "explanation": "In past hypothetical third conditionals, the condition clause requires past perfect ('had had') while the outcome clause takes 'would have + past participle'."
+  }
+]
