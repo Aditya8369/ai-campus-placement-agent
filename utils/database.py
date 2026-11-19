@@ -608,7 +608,27 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_hash ON analysis_cache(input_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_expires ON analysis_cache(expires_at)")
 
-        # Table 18: Store group discussion practice attempts & AI evaluations (#427)
+        # Table 18: Store timed aptitude practice attempts & topic scores (#426)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS aptitude_attempts (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                test_category TEXT NOT NULL,
+                total_questions INTEGER NOT NULL,
+                correct_count INTEGER NOT NULL,
+                score_percentage REAL NOT NULL,
+                time_taken_seconds INTEGER NOT NULL,
+                time_limit_seconds INTEGER NOT NULL,
+                timed_out INTEGER NOT NULL DEFAULT 0,
+                topic_accuracy_json TEXT NOT NULL,
+                weak_topics_json TEXT NOT NULL,
+                results_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_aptitude_student ON aptitude_attempts (student_id, created_at DESC)")
+
+        # Table 19: Store group discussion practice attempts & AI evaluations (#427)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gd_practice_attempts (
                 id TEXT PRIMARY KEY,
@@ -6443,6 +6463,67 @@ def get_student_top_skill_gaps_for_company(
 
 
 # ==============================================================================
+# Aptitude Practice Storage & Weak Area Analytics (#426)
+# ==============================================================================
+
+def save_aptitude_attempt(
+    student_id: str,
+    test_category: str,
+    total_questions: int,
+    correct_count: int,
+    score_percentage: float,
+    time_taken_seconds: int,
+    time_limit_seconds: int,
+    timed_out: bool,
+    topic_accuracy_json: str,
+    weak_topics_json: str,
+    results_json: str,
+    attempt_id: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Persists a timed aptitude practice attempt and per-topic accuracy scores into SQLite.
+    Returns the saved record as a dictionary.
+    """
+    attempt_uuid = attempt_id or str(uuid.uuid4())
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO aptitude_attempts (
+                id, student_id, test_category, total_questions, correct_count,
+                score_percentage, time_taken_seconds, time_limit_seconds, timed_out,
+                topic_accuracy_json, weak_topics_json, results_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                attempt_uuid,
+                student_id,
+                test_category,
+                total_questions,
+                correct_count,
+                round(float(score_percentage), 2),
+                int(time_taken_seconds),
+                int(time_limit_seconds),
+                1 if timed_out else 0,
+                topic_accuracy_json,
+                weak_topics_json,
+                results_json
+            )
+        )
+        conn.commit()
+
+        cursor.execute("SELECT * FROM aptitude_attempts WHERE id = ?", (attempt_uuid,))
+        row = cursor.fetchone()
+        return dict(row) if row else {"id": attempt_uuid, "student_id": student_id}
+    except Exception as e:
+        logger.error(f"Failed to persist aptitude practice attempt for student {student_id}: {e}")
+        raise e
+    finally:
+        conn.close()
+
+
+# ==============================================================================
 # Group Discussion Practice Storage & Progress Tracking (#427)
 # ==============================================================================
 
@@ -6512,6 +6593,89 @@ def save_gd_attempt(
         conn.close()
 
 
+def get_student_aptitude_attempts(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """
+    Retrieves the most recent aptitude practice attempts for a student,
+    ordered chronologically descending (newest first).
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT * FROM aptitude_attempts
+            WHERE student_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (student_id, max(1, limit))
+        )
+        rows = cursor.fetchall()
+        result = []
+        for r in rows:
+            item = dict(r)
+            if item.get("topic_accuracy_json"):
+                try:
+                    item["topic_accuracy"] = json.loads(item["topic_accuracy_json"])
+                except Exception:
+                    item["topic_accuracy"] = {}
+            if item.get("weak_topics_json"):
+                try:
+                    item["weak_topics"] = json.loads(item["weak_topics_json"])
+                except Exception:
+                    item["weak_topics"] = []
+            if item.get("results_json"):
+                try:
+                    item["results"] = json.loads(item["results_json"])
+                except Exception:
+                    item["results"] = {}
+            result.append(item)
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching aptitude attempts for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_aptitude_attempt_by_id(attempt_id: str, student_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """
+    Retrieves a single aptitude attempt record by its ID, optionally enforcing student ownership.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if student_id:
+            cursor.execute("SELECT * FROM aptitude_attempts WHERE id = ? AND student_id = ?", (attempt_id, student_id))
+        else:
+            cursor.execute("SELECT * FROM aptitude_attempts WHERE id = ?", (attempt_id,))
+        row = cursor.fetchone()
+        if not row:
+            return None
+        item = dict(row)
+        if item.get("topic_accuracy_json"):
+            try:
+                item["topic_accuracy"] = json.loads(item["topic_accuracy_json"])
+            except Exception:
+                item["topic_accuracy"] = {}
+        if item.get("weak_topics_json"):
+            try:
+                item["weak_topics"] = json.loads(item["weak_topics_json"])
+            except Exception:
+                item["weak_topics"] = []
+        if item.get("results_json"):
+            try:
+                item["results"] = json.loads(item["results_json"])
+            except Exception:
+                item["results"] = {}
+        return item
+    except Exception as e:
+        logger.error(f"Error retrieving aptitude attempt {attempt_id}: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def get_student_gd_attempts(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     """
     Retrieves the most recent group discussion attempts for a specific student,
@@ -6571,6 +6735,94 @@ def get_gd_attempt_by_id(attempt_id: str, student_id: Optional[str] = None) -> O
     except Exception as e:
         logger.error(f"Error retrieving GD attempt {attempt_id}: {e}")
         return None
+    finally:
+        conn.close()
+
+
+def get_student_weak_aptitude_topics(student_id: str, threshold: float = 60.0) -> List[Dict[str, Any]]:
+    """
+    Analyzes historical attempts of a student across all aptitude tests,
+    aggregating total questions and correct answers per topic.
+    Returns topics where accuracy is strictly below the threshold (<60.0%), sorted by lowest accuracy first.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT topic_accuracy_json FROM aptitude_attempts
+            WHERE student_id = ?
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            (student_id,)
+        )
+        rows = cursor.fetchall()
+        if not rows:
+            return []
+
+        topic_stats: Dict[str, Dict[str, Any]] = {}
+        for r in rows:
+            raw_acc = r["topic_accuracy_json"]
+            if not raw_acc:
+                continue
+            try:
+                parsed = json.loads(raw_acc)
+            except Exception:
+                continue
+
+            for topic_name, stats in parsed.items():
+                if topic_name not in topic_stats:
+                    topic_stats[topic_name] = {
+                        "topic": topic_name,
+                        "category": stats.get("category", "general"),
+                        "total": 0,
+                        "correct": 0
+                    }
+                topic_stats[topic_name]["total"] += int(stats.get("total", 0))
+                topic_stats[topic_name]["correct"] += int(stats.get("correct", 0))
+
+        weak_topics = []
+        for topic_name, stats in topic_stats.items():
+            tot = stats["total"]
+            corr = stats["correct"]
+            if tot > 0:
+                acc = round((corr / tot) * 100.0, 1)
+                if acc < threshold:
+                    weak_topics.append({
+                        "topic": topic_name,
+                        "category": stats["category"],
+                        "total_questions": tot,
+                        "correct_answers": corr,
+                        "accuracy_percentage": acc,
+                        "recommendation": f"Accuracy in {topic_name} is {acc}%. Targeted practice recommended before campus drives."
+                    })
+
+        # Sort by lowest accuracy first, then total questions attempted
+        weak_topics.sort(key=lambda x: (x["accuracy_percentage"], -x["total_questions"]))
+        return weak_topics
+    except Exception as e:
+        logger.error(f"Error computing weak aptitude topics for student {student_id}: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def delete_student_aptitude_attempts(student_id: str) -> int:
+    """
+    Deletes all aptitude practice attempts for a student (primarily used in tests and privacy erasure).
+    Returns count of deleted rows.
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM aptitude_attempts WHERE student_id = ?", (student_id,))
+        deleted = cursor.rowcount
+        conn.commit()
+        return deleted
+    except Exception as e:
+        logger.error(f"Error clearing aptitude practice attempts for student {student_id}: {e}")
+        return 0
     finally:
         conn.close()
 

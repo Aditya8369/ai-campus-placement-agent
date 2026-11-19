@@ -161,9 +161,21 @@ from utils.database import (
     calculate_gemini_call_cost,
     get_user_leaderboard_opt_in,
     set_user_leaderboard_opt_in,
+    save_aptitude_attempt,
+    get_student_aptitude_attempts,
+    get_aptitude_attempt_by_id,
+    get_student_weak_aptitude_topics,
     save_gd_attempt,
     get_student_gd_attempts,
     get_gd_attempt_by_id,
+)
+from utils.aptitude_service import (
+    load_aptitude_questions,
+    generate_aptitude_test_set,
+    evaluate_aptitude_submission,
+    record_and_evaluate_aptitude_test,
+    get_student_aptitude_summary,
+    VALID_CATEGORIES as APTITUDE_CATEGORIES,
 )
 from utils.group_discussion_service import (
     load_gd_topics,
@@ -532,6 +544,11 @@ def require_login():
         "api_demo_sample_resume",
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
+        "aptitude_view",
+        "api_aptitude_start",
+        "api_aptitude_submit",
+        "api_aptitude_history",
+        "api_aptitude_weak_topics",
         "verify_two_factor",
         "openapi_json",
         "api_docs_ui",
@@ -4152,6 +4169,19 @@ def dashboard(analysis_id: str) -> str:
             "total_keywords": 0,
         }
 
+    # Prepare Aptitude Readiness & Weak Topics Summary (#426)
+    try:
+        aptitude_summary = get_student_aptitude_summary(student_id)
+    except Exception as apt_err:
+        logger.warning(f"Error preparing aptitude summary for dashboard: {apt_err}")
+        aptitude_summary = {
+            "has_attempts": False,
+            "total_attempts": 0,
+            "average_score": 0.0,
+            "weak_topics": [],
+            "recent_score": None
+        }
+
     # Prepare Weak Bullet Point Rewrites (#429)
     try:
         from utils.bullet_rewriter import get_bullet_rewrites_for_analysis
@@ -4274,8 +4304,7 @@ def dashboard(analysis_id: str) -> str:
         comparison_json=json.dumps(comparison),
         initial_self_intro=initial_self_intro,
         initial_self_intro_json=json.dumps(initial_self_intro),
-        initial_linkedin_suggestions=initial_linkedin_suggestions,
-        initial_linkedin_suggestions_json=json.dumps(initial_linkedin_suggestions),
+        aptitude_summary=aptitude_summary,
         is_demo=is_demo,
         bullet_rewrites=bullet_rewrites
     )
@@ -18093,6 +18122,125 @@ def api_user_storage_quota():
 
 
 # ---------------------------------------------------------------------------
+# Timed Aptitude Practice Endpoints (#426)
+# ---------------------------------------------------------------------------
+
+@app.route("/aptitude", methods=["GET"])
+def aptitude_view():
+    """
+    Renders the interactive Timed Aptitude Practice & Assessment page (#426).
+    Supports Quantitative Aptitude, Logical Reasoning, and Verbal Ability tests
+    with timed countdowns, auto-submit on timeout, and per-topic diagnostics.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    summary = get_student_aptitude_summary(student_id)
+    recent_attempts = get_student_aptitude_attempts(student_id, limit=10)
+    weak_topics = get_student_weak_aptitude_topics(student_id)
+
+    return render_template(
+        "aptitude.html",
+        categories=APTITUDE_CATEGORIES,
+        summary=summary,
+        recent_attempts=recent_attempts,
+        weak_topics=weak_topics,
+        student_id=student_id
+    )
+
+
+@app.route("/api/aptitude/start", methods=["POST"])
+def api_aptitude_start():
+    """
+    Starts a timed aptitude practice set (#426).
+    Sanitizes questions by omitting answers and explanations from the student payload.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    category = payload.get("category", "all")
+    num_questions = int(payload.get("num_questions", 10))
+    time_limit = payload.get("time_limit_seconds")
+    time_limit_seconds = int(time_limit) if time_limit is not None else None
+
+    try:
+        test_data = generate_aptitude_test_set(
+            category=category,
+            num_questions=max(3, min(30, num_questions)),
+            time_limit_seconds=time_limit_seconds
+        )
+        return jsonify({
+            "status": "success",
+            "data": test_data
+        }), 200
+    except Exception as e:
+        logger.error(f"Error starting aptitude test set: {e}")
+        return jsonify({"status": "error", "message": "Failed to start aptitude test set."}), 500
+
+
+@app.route("/api/aptitude/submit", methods=["POST"])
+def api_aptitude_submit():
+    """
+    Evaluates a completed or timed-out aptitude test submission (#426).
+    Computes overall score, per-topic accuracy, per-category breakdown,
+    identifies weak topics, and persists the attempt for the authenticated student.
+    """
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    question_ids = payload.get("question_ids") or []
+    answers = payload.get("answers") or {}
+    time_taken_seconds = int(payload.get("time_taken_seconds", 0))
+    time_limit_seconds = int(payload.get("time_limit_seconds", 600))
+    timed_out = bool(payload.get("timed_out", False))
+    test_category = payload.get("test_category", "all")
+
+    if not question_ids:
+        return jsonify({"status": "error", "message": "Field 'question_ids' is required."}), 400
+
+    try:
+        result = record_and_evaluate_aptitude_test(
+            student_id=student_id,
+            question_ids=question_ids,
+            answers=answers,
+            time_taken_seconds=time_taken_seconds,
+            time_limit_seconds=time_limit_seconds,
+            timed_out=timed_out,
+            test_category=test_category
+        )
+        return jsonify({
+            "status": "success",
+            "data": result
+        }), 200
+    except Exception as e:
+        logger.error(f"Error evaluating aptitude submission: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate aptitude test submission."}), 500
+
+
+@app.route("/api/aptitude/history", methods=["GET"])
+def api_aptitude_history():
+    """Retrieves chronological aptitude practice attempts for the student (#426)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    limit = int(request.args.get("limit", 10))
+    attempts = get_student_aptitude_attempts(student_id, limit=limit)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(attempts),
+        "attempts": attempts
+    }), 200
+
+
+@app.route("/api/aptitude/weak-topics", methods=["GET"])
+def api_aptitude_weak_topics():
+    """Retrieves aggregated weak aptitude topics (<60% accuracy) for targeted revision (#426)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    weak_topics = get_student_weak_aptitude_topics(student_id)
+    return jsonify({
+        "status": "success",
+        "student_id": student_id,
+        "count": len(weak_topics),
+        "weak_topics": weak_topics
+    }), 200
+
+
+# ---------------------------------------------------------------------------
 # Group Discussion Practice & AI Evaluation Endpoints (#427)
 # ---------------------------------------------------------------------------
 
@@ -18232,6 +18380,52 @@ def api_get_gd_history():
         "attempts": attempts
     }), 200
 
+
+# ==============================================================================
+# CTC to In-Hand Salary & Offer Comparison Calculator (#428)
+# ==============================================================================
+
+@app.route("/ctc-calculator", methods=["GET"])
+def ctc_calculator_view():
+    """
+    Renders the CTC to In-Hand Salary and Multi-Offer Comparison Calculator (#428).
+    Loads configurable tax slabs, deductions, and assumptions from data/salary_calculator_assumptions.json.
+    """
+    from utils.ctc_calculator_service import load_calculator_assumptions
+    assumptions = load_calculator_assumptions()
+    return render_template("ctc_calculator.html", assumptions=assumptions)
+
+
+@app.route("/api/ctc-calculator/compare", methods=["POST"])
+def api_ctc_calculator_compare():
+    """
+    Validates salary components and returns comparative in-hand take-home metrics (#428).
+    Rejects negative amounts, invalid data types, and computes side-by-side breakdowns.
+    """
+    payload = request.get_json(silent=True) or {}
+    offers_data = payload.get("offers")
+
+    if not offers_data or not isinstance(offers_data, list):
+        return jsonify({
+            "success": False,
+            "error": "Offers list is required. Please provide up to three offer payloads."
+        }), 400
+
+    from utils.ctc_calculator_service import compare_offers
+    try:
+        comparison_result = compare_offers(offers_data)
+        return jsonify(comparison_result), 200
+    except ValueError as val_err:
+        return jsonify({
+            "success": False,
+            "error": str(val_err)
+        }), 400
+    except Exception as exc:
+        logger.error(f"Unexpected error in /api/ctc-calculator/compare: {exc}")
+        return jsonify({
+            "success": False,
+            "error": "Failed to calculate salary offer comparison. Please review your inputs."
+        }), 500
 
 
 # Initialize API versioning (/api/v1/...) with legacy alias support & RFC 8594 headers (#445)
