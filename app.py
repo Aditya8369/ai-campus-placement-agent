@@ -1253,6 +1253,7 @@ def api_session_logout():
         "message": "Logged out successfully."
     })
     resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.set_cookie("interview_drafts_cleared", "1", max_age=60, path="/")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     return resp
@@ -1273,6 +1274,7 @@ def logout():
         flash("You have been logged out.", "success")
         resp = make_response(redirect(url_for("index")))
     resp.delete_cookie(app.config.get("SESSION_COOKIE_NAME", "session"))
+    resp.set_cookie("interview_drafts_cleared", "1", max_age=60, path="/")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     resp.headers["Pragma"] = "no-cache"
     resp.headers["Expires"] = "0"

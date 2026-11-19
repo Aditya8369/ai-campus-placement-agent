@@ -114,7 +114,50 @@ document.addEventListener("DOMContentLoaded", () => {
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
+  initInterviewDraftLogoutCleanup();
 });
+
+/**
+ * Clear all interview draft answers from browser storage (#475).
+ * Used upon user logout, session end, or account reset.
+ */
+function clearAllInterviewDrafts() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("interview_draft_")) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
+  } catch (err) {
+    console.warn("Unable to clear interview drafts from localStorage:", err);
+  }
+}
+window.clearAllInterviewDrafts = clearAllInterviewDrafts;
+
+function initInterviewDraftLogoutCleanup() {
+  if (document.cookie.includes("interview_drafts_cleared=1")) {
+    clearAllInterviewDrafts();
+    document.cookie = "interview_drafts_cleared=; Max-Age=0; path=/;";
+  }
+  document.addEventListener("click", (e) => {
+    const logoutTarget = e.target.closest('a[href*="/logout"], form[action*="/logout"] button, #logoutLink, .btn-logout, [data-action="logout"]');
+    if (logoutTarget) {
+      clearAllInterviewDrafts();
+    }
+  });
+  document.addEventListener("submit", (e) => {
+    const formAction = e.target.getAttribute("action") || "";
+    if (formAction.includes("/logout")) {
+      clearAllInterviewDrafts();
+    }
+  });
+  if (window.location.pathname.includes("/logout") || window.location.pathname.includes("/login")) {
+    clearAllInterviewDrafts();
+  }
+}
 
 /**
  * Resolves preferred color scheme based on stored user choice,
@@ -1535,7 +1578,15 @@ function initCircularProgress() {
  */
 function initMockInterview() {
   const chatForm = document.getElementById("chatForm");
-  if (!chatForm) return;
+  if (!chatForm) {
+    if (document.getElementById("btnResetSession") || document.getElementById("inlineStrengthsWeaknessesCard")) {
+      clearAllInterviewDrafts();
+    }
+    return;
+  }
+
+  const analysisId = chatForm.getAttribute("data-analysis-id") || "";
+  const sessionId = chatForm.getAttribute("data-session-id") || analysisId;
 
   const chatContainer = document.getElementById("chatContainer");
   const answerInput = document.getElementById("answerInput");
@@ -2275,6 +2326,9 @@ function initMockInterview() {
       });
       const res = await resp.json();
       if (res.success) {
+        if (typeof clearAllDraftsForThisSession === "function") {
+          clearAllDraftsForThisSession();
+        }
         window.location.reload();
       } else {
         alert(res.error || "Failed to reset interview session.");
@@ -2441,6 +2495,7 @@ function initMockInterview() {
           const currentVal = answerInput.value.trim();
           answerInput.value = currentVal ? `${currentVal} ${textToInsert}` : textToInsert;
           triggerWordCounter(answerInput);
+          if (typeof saveCurrentDraft === "function") saveCurrentDraft();
           liveInterimText.innerText = "";
           finalTranscript = "";
           updateTranscriptWordCount("");
@@ -2469,7 +2524,7 @@ function initMockInterview() {
   }
 
   // -------------------------------------------------------------
-  // 3. Live Word Counter & Keyboard Shortcuts
+  // 3. Live Word Counter, Keyboard Shortcuts & Draft Autosave (#475)
   // -------------------------------------------------------------
   function triggerWordCounter(inputEl) {
     const wordCountBadge = document.getElementById("wordCountBadge");
@@ -2484,16 +2539,170 @@ function initMockInterview() {
     }
   }
 
+  const draftStatusBadge = document.getElementById("draftStatusBadge");
+  let draftIndicatorTimer = null;
+  let lastSavedDraftText = "";
+  let draftDebounceTimer = null;
+
+  function showDraftIndicator(message, persistent = false) {
+    if (!draftStatusBadge) return;
+    if (draftIndicatorTimer) {
+      clearTimeout(draftIndicatorTimer);
+      draftIndicatorTimer = null;
+    }
+    const isRestored = message.toLowerCase().includes("restored");
+    const icon = isRestored
+      ? '<i class="fa-solid fa-clock-rotate-left text-success me-1"></i>'
+      : '<i class="fa-regular fa-floppy-disk text-primary me-1"></i>';
+    draftStatusBadge.innerHTML = `${icon}<span>${message}</span>`;
+    draftStatusBadge.classList.remove("d-none");
+    if (!persistent) {
+      draftIndicatorTimer = setTimeout(() => {
+        draftStatusBadge.classList.add("d-none");
+      }, 3000);
+    }
+  }
+
+  function hideDraftIndicator() {
+    if (!draftStatusBadge) return;
+    if (draftIndicatorTimer) {
+      clearTimeout(draftIndicatorTimer);
+      draftIndicatorTimer = null;
+    }
+    draftStatusBadge.classList.add("d-none");
+  }
+
+  function getDraftStorageKey(qIndex) {
+    const q = (typeof qIndex !== "undefined" && qIndex !== null)
+      ? qIndex
+      : parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || analysisId || "";
+    return `interview_draft_${targetSession}_${q}`;
+  }
+
+  function saveCurrentDraft() {
+    if (!answerInput) return;
+    const currentText = answerInput.value;
+    const currentQ = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+
+    if (currentText && currentText.trim().length > 0) {
+      if (currentText !== lastSavedDraftText) {
+        try {
+          localStorage.setItem(key, currentText);
+          lastSavedDraftText = currentText;
+          showDraftIndicator("Draft saved");
+        } catch (err) {
+          console.warn("Unable to save interview draft to localStorage:", err);
+        }
+      }
+    } else {
+      if (lastSavedDraftText) {
+        try {
+          localStorage.removeItem(key);
+        } catch (e) {}
+        lastSavedDraftText = "";
+        hideDraftIndicator();
+      }
+    }
+  }
+
+  function restoreCurrentDraft() {
+    if (!answerInput) return;
+    const currentQ = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || "";
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+
+    try {
+      let saved = localStorage.getItem(key);
+      if (!saved && altAnalysisId && altAnalysisId !== targetSession) {
+        saved = localStorage.getItem(`interview_draft_${altAnalysisId}_${currentQ}`);
+      }
+
+      if (saved && saved.trim().length > 0) {
+        if (!answerInput.value || !answerInput.value.trim()) {
+          answerInput.value = saved;
+          lastSavedDraftText = saved;
+          triggerWordCounter(answerInput);
+          updateLiveSpeechTelemetry(answerInput.value);
+          showDraftIndicator("Draft restored", true);
+        }
+      }
+    } catch (err) {
+      console.warn("Unable to restore interview draft from localStorage:", err);
+    }
+  }
+
+  function clearDraftForQuestion(qIndex) {
+    const currentQ = (typeof qIndex !== "undefined" && qIndex !== null)
+      ? qIndex
+      : parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    const key = getDraftStorageKey(currentQ);
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+    try {
+      localStorage.removeItem(key);
+      if (altAnalysisId) {
+        localStorage.removeItem(`interview_draft_${altAnalysisId}_${currentQ}`);
+      }
+    } catch (e) {}
+    lastSavedDraftText = "";
+    hideDraftIndicator();
+  }
+
+  function clearAllDraftsForThisSession() {
+    const targetSession = chatForm.getAttribute("data-session-id") || chatForm.getAttribute("data-analysis-id") || sessionId || "";
+    const altAnalysisId = chatForm.getAttribute("data-analysis-id") || analysisId || "";
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("interview_draft_")) {
+          if (!targetSession && !altAnalysisId) {
+            keysToRemove.push(k);
+          } else if ((targetSession && k.includes(`_${targetSession}_`)) || (altAnalysisId && k.includes(`_${altAnalysisId}_`))) {
+            keysToRemove.push(k);
+          }
+        }
+      }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch (e) {}
+    lastSavedDraftText = "";
+    hideDraftIndicator();
+  }
+
+  // Restore unsent draft on page initialization (#475)
+  restoreCurrentDraft();
+
   if (answerInput) {
     answerInput.addEventListener("input", () => {
       triggerWordCounter(answerInput);
       updateLiveSpeechTelemetry(answerInput.value);
+
+      // Hide restored indicator once user resumes typing
+      if (draftStatusBadge && draftStatusBadge.innerText.includes("restored")) {
+        hideDraftIndicator();
+      }
+
+      // Debounced autosave (1.2 seconds after typing pause)
+      if (draftDebounceTimer) clearTimeout(draftDebounceTimer);
+      draftDebounceTimer = setTimeout(saveCurrentDraft, 1200);
     });
 
+    // Periodic draft autosave every 2.5 seconds (#475)
+    const draftAutosaveInterval = setInterval(saveCurrentDraft, 2500);
+
+    // Persist draft immediately before accidental page unload or reload
+    window.addEventListener("beforeunload", saveCurrentDraft);
+
+    // Ctrl/Cmd + Enter submits only when the answer is not empty (#475)
     answerInput.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
-        chatForm.requestSubmit();
+        const trimmed = (answerInput.value || "").trim();
+        if (trimmed.length > 0) {
+          chatForm.requestSubmit();
+        }
       }
     });
   }
@@ -2510,6 +2719,10 @@ function initMockInterview() {
         return;
       }
     }
+
+    // Clear draft for this question upon submission (#475)
+    const questionIndex = parseInt(chatForm.getAttribute("data-question-index") || "0", 10);
+    clearDraftForQuestion(questionIndex);
 
     // Stop active speech recognition or TTS
     if (recognition && isRecording) {
@@ -2744,6 +2957,7 @@ function initMockInterview() {
 
       if (result.completed) {
         stopQuestionTimer();
+        clearAllDraftsForThisSession();
         if (interviewTimerBar) {
           interviewTimerBar.classList.add("d-none");
         }
@@ -2803,6 +3017,7 @@ function initMockInterview() {
           chatForm.setAttribute("data-question-index", nextQ.index);
           chatForm.setAttribute("data-question-type", nextQ.type || "Technical");
           resetInputs();
+          restoreCurrentDraft();
 
           // Start timer for next question if timed mode is enabled (#431)
           if (isTimedMode) {
