@@ -126,71 +126,24 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
 - **Variable naming**: Use descriptive, meaningful names
 - **Error handling**: Include proper error handling and logging
 
-## Contributing Company Interview Preparation Guides
+### Route Organization & Where to Add New Routes (#553)
 
-We welcome community contributions to expand and update our company-specific interview preparation guides!
+The application has been refactored from a monolithic `app.py` into modular Flask Blueprints grouped by feature area inside the `routes/` package. **`app.py` is a thin entry point** exporting `app = create_app()` and should not have new routes added to it directly.
 
-### How It Works
+When adding or modifying routes, place them in the corresponding Blueprint module:
 
-1. All company interview guides are stored in a single contributor-maintained JSON file: [`data/company_interview_prep.json`](data/company_interview_prep.json).
-2. A contribution template with example structure is provided at [`data/company_contribution_template.json`](data/company_contribution_template.json).
-3. **No code changes are required** — adding or updating a company in `data/company_interview_prep.json` immediately populates the company selector in the interview simulator and serves tips via the API.
-4. If a student targets a company not yet in the data file, the system automatically falls back to general preparation tips.
+- **`routes/auth.py`**: Authentication, login/logout, registration, two-factor auth (2FA), session lifecycle, password recovery.
+- **`routes/analysis.py`**: Resume uploads, ATS evaluation, resume diff/comparisons, dashboards, role skill gaps.
+- **`routes/interview.py`**: Mock interviews, speech & STAR evaluation, aptitude practice, group discussions, and interview preparation notes.
+- **`routes/coding_practice.py`**: Coding problems, sandbox execution, problem bookmarks, submission tracking.
+- **`routes/tracker.py`**: Job application tracking pipelines, placement milestones, calendar deadlines, and reminder preferences.
+- **`routes/jobs.py`**: Job recommendations, company profiles, internship feeds, GitHub/LinkedIn profile analyzers.
+- **`routes/reports.py`**: PDF reports, certificates, skills gap downloads, watermarking, and read-only report sharing.
+- **`routes/admin.py`**: Administrative AI metrics, Gemini usage tracking, database backups, and moderation queue.
+- **`routes/api.py`**: Shared/utility endpoints (health checks, system status, i18n translations, walkthroughs).
+- **`routes/common.py`**: Shared constants (`APPLICATION_STAGES`, `WALKTHROUGH_STEPS_CATALOG`, caches), agent instances, and helper functions.
 
-### Guide Schema Requirements
-
-Every company entry must contain the following fields:
-
-| Field | Type | Description |
-|---|---|---|
-| `company_name` | `string` | Display name of the company (e.g. `"Google"`, `"Amazon"`). |
-| `typical_rounds` | `list[string]` | Step-by-step recruitment stages (e.g. Online Assessment, Tech 1, Tech 2, HR). |
-| `commonly_tested_topics` | `list[string]` | Key topics frequently asked (e.g. Dynamic Programming, Trees, System Design, SQL). |
-| `preparation_tips` | `list[string]` | Actionable advice and strategic suggestions for students. |
-| `last_updated` | `string (YYYY-MM-DD)` | Date of the latest verification or update (e.g. `"2026-11-18"`). |
-| `community_contributed` | `boolean` | Set to `true` to indicate community contribution. |
-
-### Example Entry
-
-```json
-{
-  "Stripe": {
-    "company_name": "Stripe",
-    "typical_rounds": [
-      "Round 1: Online Technical Assessment (Practical Coding / Bug Investigation)",
-      "Round 2: Technical Phone Screen (API Integration or Data Structures)",
-      "Round 3: Onsite Practical Coding (Working in a real codebase)",
-      "Round 4: System Architecture & Design",
-      "Round 5: Cultural Alignment & Teamwork"
-    ],
-    "commonly_tested_topics": [
-      "API Design & HTTP Protocol",
-      "Real-world Refactoring & Debugging",
-      "Data Structures & Algorithmic Analysis",
-      "System Scalability & Reliability",
-      "Clean Code & Error Handling"
-    ],
-    "preparation_tips": [
-      "Stripe tests practical development skills — be comfortable writing and reading real code.",
-      "Get familiar with reading documentation and writing clean API calls.",
-      "Explain your thought process continuously during coding rounds.",
-      "Emphasize reliability, edge cases, and user experience in architectural questions."
-    ],
-    "last_updated": "2026-11-18",
-    "community_contributed": true
-  }
-}
-```
-
-### Steps to Submit
-
-1. Copy the structure from `data/company_contribution_template.json`.
-2. Add your new company key to `data/company_interview_prep.json` (or update an existing entry with recent insights and an updated `last_updated` date).
-3. Run the test suite:
-   ```bash
-   pytest tests/test_company_interview_prep.py
-   ```
-4. Submit a Pull Request titled `feat(data): add interview prep guide for <Company Name>`.
+Use the Blueprint decorator for your area (e.g. `@interview_bp.route("/path")` rather than `@app.route(...)`). URL endpoints remain backwards-compatible across templates and tests with automatic alias mapping.
 
 ## Pull Request Process
 
