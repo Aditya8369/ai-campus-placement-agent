@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a73e8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="AI Campus">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Student Placement Readiness Dashboard - AI Campus Placement Agent</title>
   <!-- Bootstrap 5 CSS -->
@@ -4193,6 +4199,17 @@
         });
       }
     });
+  </script>
+  <!-- PWA Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .catch(function(err) {
+            console.warn('ServiceWorker registration error:', err);
+          });
+      });
+    }
   </script>
 </body>
 </html>
