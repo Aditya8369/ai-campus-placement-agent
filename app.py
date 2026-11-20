@@ -4527,6 +4527,55 @@ def api_analysis_tailored_cover_letter(analysis_id: str):
         or ""
     )
 
+    payload = request.get_json(silent=True) or {}
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (
+        payload.get("company_name")
+        or request.form.get("company_name")
+        or analysis_record.get("company_name")
+        or ""
+    ).strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=raw_resume,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])
+def api_analysis_linkedin_suggestions(analysis_id: str):
+    """
+    Generates personalized LinkedIn profile suggestions from an existing analysis (#538).
+    Extracts candidate resume text and target role from the saved analysis record.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({
+            "success": False,
+            "error": "Analysis not found or unauthorized."
+        }), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
     # Allow overriding target_role from query param or request JSON/form
     target_role = (
         request.args.get("target_role")
@@ -4570,32 +4619,6 @@ def api_generate_linkedin_suggestions():
         "success": True,
         "suggestions": suggestions
     }), 200
-    payload = request.get_json(silent=True) or {}
-    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
-    company_name = (
-        payload.get("company_name")
-        or request.form.get("company_name")
-        or analysis_record.get("company_name")
-        or ""
-    ).strip()
-    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
-
-    if not job_description:
-        return jsonify({
-            "success": False,
-            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
-            "missing_field": "job_description"
-        }), 400
-
-    result = outreach_agent.generate_tailored_cover_letter(
-        resume_text=raw_resume,
-        job_description=job_description,
-        company_name=company_name,
-        tone=tone
-    )
-
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
 
 
 @app.route("/api/cover-letter/download", methods=["POST"])
