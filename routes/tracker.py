@@ -1524,3 +1524,62 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# DAILY PLACEMENT PREPARATION DASHBOARD ROUTES (#512)
+# =====================================================================
+
+@tracker_bp.route("/daily-prep", methods=["GET"])
+def daily_prep_view():
+    """Renders the Daily Placement Preparation Hub ('Today' view) (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    dashboard_data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return render_template("daily_prep_dashboard.html", data=dashboard_data)
+
+
+@tracker_bp.route("/api/daily-prep/dashboard", methods=["GET"])
+def api_get_daily_prep_dashboard():
+    """Retrieves JSON representation of today's prep tasks and deadlines (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return jsonify({"status": "success", "dashboard": data}), 200
+
+
+@tracker_bp.route("/api/daily-prep/tasks/<int:task_id>/toggle", methods=["POST"])
+def api_toggle_daily_task(task_id):
+    """Toggles task completion status (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    try:
+        updated = DailyPrepDashboardService.toggle_task(student_id, task_id)
+        return jsonify({"status": "success", "task": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/daily-prep/tasks", methods=["POST"])
+def api_add_custom_daily_task():
+    """Adds a custom task for today (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    title = payload.get("title")
+    if not title:
+        return jsonify({"status": "error", "message": "Task title is required"}), 400
+
+    task = DailyPrepDashboardService.add_custom_daily_task(
+        user_id=student_id,
+        title=title,
+        task_type=payload.get("task_type", "custom")
+    )
+    return jsonify({"status": "success", "task": task}), 201
+
+
+
