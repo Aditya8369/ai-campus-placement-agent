@@ -1,3 +1,4 @@
+import os
 import pytest
 import re
 import uuid
@@ -74,8 +75,12 @@ def test_accessibility_contrast_styles():
 
 def test_accessibility_javascript_module():
     """Verify initAccessibility registers modal focus trap, Escape key handler, ARIA sync, and live announcers."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    mod_paths = ["static/js/modules/common.js", "static/js/modules/interview.js", "static/js/modules/analysis.js"]
+    if all(os.path.exists(p) for p in mod_paths):
+        js = "\n".join(open(p, "r", encoding="utf-8").read() for p in mod_paths)
+    else:
+        with open("static/js/script.js", "r", encoding="utf-8") as f:
+            js = f.read()
 
     assert "function initAccessibility()" in js or "initAccessibility" in js
     assert "show.bs.modal" in js
@@ -281,7 +286,7 @@ def test_history_template_accessibility(client):
 
     assert 'aria-label="Main navigation"' in html
     assert 'id="main-content"' in html
-    assert 'script.js' in html
+    assert 'common.js' in html or 'script.js' in html
 
 
 def test_accessibility_non_color_score_indicators():
@@ -422,7 +427,8 @@ def test_accessibility_keyboard_upload_announcer():
     assert 'role="status"' in index_html
     assert 'aria-live="polite"' in index_html
 
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    js_path = "static/js/modules/analysis.js" if os.path.exists("static/js/modules/analysis.js") else "static/js/script.js"
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
     assert 'fileSelectionAnnouncer' in js
     assert 'Resume file selection cleared.' in js

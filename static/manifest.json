@@ -1,0 +1,68 @@
+{
+  "name": "AI Campus Placement Agent",
+  "short_name": "AI Campus",
+  "description": "AI-powered campus placement preparation, ATS resume evaluation, mock interviews, and career roadmap guidance.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#1a73e8",
+  "lang": "en",
+  "categories": [
+    "education",
+    "productivity",
+    "business"
+  ],
+  "icons": [
+    {
+      "src": "/static/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Resume Evaluation",
+      "short_name": "Resume ATS",
+      "url": "/#analysisForm",
+      "description": "Evaluate your resume against job descriptions."
+    },
+    {
+      "name": "Group Discussion",
+      "short_name": "GD Practice",
+      "url": "/group-discussion",
+      "description": "Practice group discussion opening and rebuttal arguments."
+    },
+    {
+      "name": "Companies Directory",
+      "short_name": "Companies",
+      "url": "/companies",
+      "description": "Explore campus placement recruiter profiles and checklists."
+    }
+  ]
+}

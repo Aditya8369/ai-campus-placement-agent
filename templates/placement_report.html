@@ -220,6 +220,8 @@
       </p>
       <nav class="actions" aria-label="Report actions">
         <a class="button" href="{{ url_for('download_pdf_report', analysis_id=report_data.analysis_id) }}">Download PDF report</a>
+        <a class="button secondary" href="{{ url_for('download_markdown_report', analysis_id=report_data.analysis_id) }}" id="btnDownloadMarkdownReport">Download Markdown</a>
+        <a class="button secondary" href="{{ url_for('download_json_report', analysis_id=report_data.analysis_id) }}" id="btnDownloadJsonReport">Download JSON</a>
         <a class="button secondary" href="{{ url_for('dashboard', analysis_id=report_data.analysis_id) }}">Return to analysis dashboard</a>
       </nav>
       <dl class="metrics" aria-label="Placement scores">

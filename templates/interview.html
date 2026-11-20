@@ -779,6 +779,126 @@
           </a>
         </div>
 
+        <!-- Company-Specific Interview Preparation Card (#541) -->
+        <div class="card glass-card p-4 border-0 mb-4" id="companyPrepCard">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0">
+              <i class="fa-solid fa-building-user text-primary me-2"></i> Company Prep Guide
+            </h5>
+            <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill py-1 px-2 small fw-semibold" id="companyPrepCommunityBadge" title="Maintained by community contributors">
+              <i class="fa-solid fa-users me-1"></i> Community-Contributed
+            </span>
+          </div>
+
+          <!-- Company Selector -->
+          <div class="mb-3">
+            <label for="companyPrepSelector" class="form-label small fw-semibold text-secondary mb-1">
+              Select Target Company:
+            </label>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-light border-end-0 rounded-start-pill">
+                <i class="fa-solid fa-briefcase text-primary"></i>
+              </span>
+              <select class="form-select form-select-sm rounded-end-pill border-start-0" id="companyPrepSelector" aria-label="Select target company for preparation tips">
+                {% for comp in available_prep_companies|default(['General', 'Google', 'Amazon', 'Microsoft', 'TCS', 'Infosys', 'Accenture', 'Capgemini', 'Adobe', 'Wipro', 'Cognizant', 'Meta']) %}
+                  <option value="{{ comp }}" {% if (company_prep and company_prep.company_name|lower == comp|lower) or (not company_prep and comp|lower == company_name|default('General')|lower) %}selected{% endif %}>
+                    {{ comp }}
+                  </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <!-- Metadata & Freshness -->
+          <div class="d-flex justify-content-between align-items-center mb-3 small flex-wrap gap-1">
+            <span class="text-secondary">
+              <i class="fa-regular fa-calendar-check text-primary me-1"></i> Last updated:
+              <strong id="companyPrepLastUpdated" class="text-dark">{{ company_prep.last_updated if (company_prep and company_prep.last_updated) else '2026-11-18' }}</strong>
+            </span>
+            <span id="companyPrepFallbackBadge" class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2 py-1 small {% if not (company_prep and company_prep.is_fallback) %}d-none{% endif %}">
+              <i class="fa-solid fa-circle-info me-1 text-warning"></i> General Fallback
+            </span>
+          </div>
+
+          <!-- Fallback Alert Box -->
+          <div id="companyPrepFallbackAlert" class="alert alert-warning py-2 px-3 small rounded-3 mb-3 {% if not (company_prep and company_prep.is_fallback) %}d-none{% endif %}" role="alert">
+            <i class="fa-solid fa-circle-exclamation me-1"></i> No dedicated guide for <strong id="companyPrepFallbackTarget">{{ company_prep.requested_company if (company_prep and company_prep.requested_company) else company_name|default('this company') }}</strong> yet. Showing general campus placement tips.
+          </div>
+
+          <!-- Typical Hiring Rounds -->
+          <div class="mb-3">
+            <h6 class="fw-bold small text-dark mb-2 d-flex align-items-center">
+              <i class="fa-solid fa-layer-group text-primary me-2"></i> Typical Hiring Rounds
+            </h6>
+            <ol class="list-group list-group-numbered list-group-flush rounded-3 border-0 bg-light p-2 mb-3" id="companyPrepRoundsList">
+              {% if company_prep and company_prep.typical_rounds %}
+                {% for round in company_prep.typical_rounds %}
+                  <li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">
+                    {{ round }}
+                  </li>
+                {% endfor %}
+              {% else %}
+                <li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">Round 1: Online Assessment</li>
+                <li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">Round 2: Technical Interview 1</li>
+                <li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">Round 3: Technical Interview 2</li>
+                <li class="list-group-item bg-transparent border-0 py-1 px-2 small text-secondary">Round 4: HR Round</li>
+              {% endif %}
+            </ol>
+          </div>
+
+          <!-- Commonly Tested Topics -->
+          <div class="mb-3">
+            <h6 class="fw-bold small text-dark mb-2 d-flex align-items-center">
+              <i class="fa-solid fa-tags text-primary me-2"></i> Commonly Tested Topics
+            </h6>
+            <div class="d-flex flex-wrap gap-1 mb-3" id="companyPrepTopicsList">
+              {% if company_prep and company_prep.commonly_tested_topics %}
+                {% for topic in company_prep.commonly_tested_topics %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 small fw-normal">
+                    {{ topic }}
+                  </span>
+                {% endfor %}
+              {% else %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 small fw-normal">Data Structures &amp; Algorithms</span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 small fw-normal">Object-Oriented Programming</span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill py-1 px-2 small fw-normal">Database Management &amp; SQL</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <!-- Preparation Tips -->
+          <div class="mb-3">
+            <h6 class="fw-bold small text-dark mb-2 d-flex align-items-center">
+              <i class="fa-solid fa-lightbulb text-warning me-2"></i> Preparation Tips
+            </h6>
+            <ul class="list-unstyled mb-2" id="companyPrepTipsList">
+              {% if company_prep and company_prep.preparation_tips %}
+                {% for tip in company_prep.preparation_tips %}
+                  <li class="small text-secondary mb-2 d-flex align-items-start">
+                    <i class="fa-solid fa-circle-check text-success me-2 mt-1 flex-shrink-0"></i>
+                    <span>{{ tip }}</span>
+                  </li>
+                {% endfor %}
+              {% else %}
+                <li class="small text-secondary mb-2 d-flex align-items-start">
+                  <i class="fa-solid fa-circle-check text-success me-2 mt-1 flex-shrink-0"></i>
+                  <span>Clarify constraints and requirements before coding.</span>
+                </li>
+              {% endif %}
+            </ul>
+          </div>
+
+          <!-- Contributor Invitation Footer -->
+          <div class="border-top pt-2 mt-2 text-center">
+            <small class="text-muted d-block">
+              Know this company's latest process?
+              <a href="https://github.com/deepikagandla74/ai-campus-placement-agent/blob/main/CONTRIBUTING.md#contributing-company-interview-preparation-guides" target="_blank" rel="noopener noreferrer" class="text-primary text-decoration-none fw-semibold">
+                <i class="fa-solid fa-code-pull-request me-1"></i>Contribute an update
+              </a>
+            </small>
+          </div>
+        </div>
+
         <!-- Latest response evaluation card -->
         {% set last_eval = interview.answers[-1].evaluation if interview.answers else None %}
         <div class="card glass-card p-4 border-0 {% if not last_eval %}d-none{% endif %}" id="evaluationPanel">
@@ -1283,7 +1403,9 @@
   <!-- Monaco Editor AMD Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
   <!-- Custom JS -->
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/interview.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/bookmarks.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
 </body>

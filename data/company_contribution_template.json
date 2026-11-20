@@ -1,0 +1,26 @@
+{
+  "$schema_description": "Contribution template for adding or updating company interview preparation guides in data/company_interview_prep.json",
+  "company_name": "ExampleCorp",
+  "typical_rounds": [
+    "Round 1: Online Assessment (Coding + Quantitative/Logical Aptitude)",
+    "Round 2: Technical Interview 1 (Data Structures, Algorithms & Core CS)",
+    "Round 3: Technical Interview 2 (System Design, Resume Projects & Live Debugging)",
+    "Round 4: HR & Cultural Fit Interview (Behavioral, Leadership & Alignment)"
+  ],
+  "commonly_tested_topics": [
+    "Data Structures & Algorithms (Trees, Graphs, Dynamic Programming)",
+    "Object-Oriented Programming (OOP Principles & Design Patterns)",
+    "Database Management Systems (DBMS, Indexing & SQL Queries)",
+    "Operating Systems (Processes, Threads, Memory Management)",
+    "System Design & Scalability Fundamentals"
+  ],
+  "preparation_tips": [
+    "Articulate your problem-solving thoughts aloud before jumping into code.",
+    "State time and space complexity upfront for both brute-force and optimal approaches.",
+    "Be prepared to explain trade-offs and architectural decisions in your resume projects.",
+    "Use the STAR (Situation, Task, Action, Result) method for all behavioral questions.",
+    "Prepare thoughtful questions about the company's tech stack and engineering culture."
+  ],
+  "last_updated": "2026-11-18",
+  "community_contributed": true
+}

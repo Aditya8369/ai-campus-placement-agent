@@ -369,9 +369,11 @@ def test_interview_template_contains_timed_mode_elements():
 
 
 def test_script_js_contains_timed_mode_logic():
-    """Verify script.js has the countdown timer, 15s warning color change, autoSubmitAnswer, and aria-live."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    """Verify script.js / interview.js has the countdown timer, 15s warning color change, autoSubmitAnswer, and aria-live."""
+    js_path = Path("static/js/modules/interview.js")
+    if not js_path.exists():
+        js_path = Path("static/js/script.js")
+    js = js_path.read_text(encoding="utf-8")
 
     assert "function startQuestionTimer" in js
     assert "function stopQuestionTimer" in js

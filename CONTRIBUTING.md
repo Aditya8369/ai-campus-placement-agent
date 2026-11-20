@@ -8,6 +8,7 @@ Thank you for your interest in contributing to the AI Campus Placement Agent! We
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Contributing Guidelines](#contributing-guidelines)
+- [Contributing Company Interview Preparation Guides](#contributing-company-interview-preparation-guides)
 - [Pull Request Process](#pull-request-process)
 - [Reporting Issues](#reporting-issues)
 
