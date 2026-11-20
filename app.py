@@ -21,6 +21,7 @@ from flask import (
     flash,
     jsonify,
     send_file,
+    send_from_directory,
     Response,
     make_response,
     session as flask_session,
@@ -1158,6 +1159,43 @@ def health_check():
     }), http_status
 
 
+@app.route("/manifest.json", methods=["GET"], endpoint="manifest")
+def manifest():
+    """Serve the Web App Manifest for PWA installability (#471)."""
+    manifest_path = os.path.join(app.root_path, "static", "manifest.json")
+    if not os.path.exists(manifest_path):
+        return jsonify({"error": "manifest_not_found"}), 404
+    response = send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "manifest.json",
+        mimetype="application/manifest+json"
+    )
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@app.route("/sw.js", methods=["GET"], endpoint="service_worker")
+def service_worker():
+    """Serve the Service Worker script with root scope permissions (#471)."""
+    sw_path = os.path.join(app.root_path, "static", "sw.js")
+    if not os.path.exists(sw_path):
+        return jsonify({"error": "service_worker_not_found"}), 404
+    response = send_from_directory(
+        os.path.join(app.root_path, "static"),
+        "sw.js",
+        mimetype="application/javascript"
+    )
+    response.headers["Service-Worker-Allowed"] = "/"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
+@app.route("/offline", methods=["GET"], endpoint="offline")
+def offline():
+    """Serve the friendly offline fallback page when disconnected (#471)."""
+    return render_template("offline.html")
+
+
 @app.route("/status", methods=["GET"], endpoint="system_status_page")
 def system_status_page():
     """
@@ -1193,8 +1231,6 @@ def api_system_status():
     from utils.status_service import get_system_status
     status_data, http_code = get_system_status()
     return jsonify(status_data), http_code
-
-
 @app.route("/set-language/<lang_code>", methods=["GET"], endpoint="set_language")
 def set_language(lang_code):
     """Set the active UI locale for the current session."""
