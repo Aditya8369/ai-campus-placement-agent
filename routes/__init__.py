@@ -39,11 +39,11 @@ from utils.logger_config import (
 )
 from utils.migrations import run_database_migrations, get_migration_status
 from utils.database import (
-    init_db,
     get_active_auth_session,
     touch_auth_session,
     create_auth_session,
 )
+from db.migrations import init_db as initialize_database
 from utils.deadline_reminders import send_upcoming_deadline_reminders
 from utils.i18n import (
     get_translation,
@@ -105,6 +105,8 @@ def create_app(config_override=None) -> Flask:
 
     if config_override:
         app.config.update(config_override)
+
+    initialize_database(config.DATABASE_PATH)
 
     # Initialize CSRF protection extension (#300)
     csrf.init_app(app)

@@ -54,6 +54,19 @@ def test_simulated_vercel_environment_app_init():
     assert app_instance is not None
 
 
+def test_fresh_database_initializes_schema_for_homepage(monkeypatch, tmp_path):
+    """Verify app startup creates the schema needed by the landing page."""
+    import config
+    from routes import create_app
+
+    monkeypatch.setattr(config, "DATABASE_PATH", tmp_path / "fresh.db")
+    app = create_app({"TESTING": True})
+
+    response = app.test_client().get("/")
+
+    assert response.status_code == 200
+
+
 def test_public_routes_respond_with_200():
     """Verify all critical public routes respond with HTTP 200 and expected content."""
     from app import app
