@@ -4394,22 +4394,25 @@ def dashboard(analysis_id: str) -> str:
             "checks": []
         }
 
-    # Prepare Recommended Next Best Action (#558)
+    # Prepare Skill Impact Simulation (#557)
     try:
-        from utils.next_action_rules import get_recommended_action_card_data
-        recommended_action = get_recommended_action_card_data(
-            student_id=student_id,
-            analysis_record=analysis_record,
-            force_show=(request.args.get("show_action") in ("1", "true", "yes"))
-        )
-    except Exception as ra_err:
-        logger.warning(f"Error preparing recommended action card for dashboard: {ra_err}")
-        recommended_action = {
-            "is_dismissed": False,
-            "dismissed_until": None,
-            "primary": None,
-            "alternatives": [],
-            "student_id": student_id,
+        from utils.skill_impact_simulator import get_skill_simulation_data
+        skill_simulation = get_skill_simulation_data(analysis_record)
+    except Exception as sim_err:
+        logger.warning(f"Error preparing skill simulation for dashboard: {sim_err}")
+        skill_simulation = {
+            "original_percentage": int((analysis_record.get("results") or {}).get("job_match", {}).get("match_percentage", 0)),
+            "simulated_percentage": int((analysis_record.get("results") or {}).get("job_match", {}).get("match_percentage", 0)),
+            "percentage_change": 0,
+            "percentage_change_str": "0%",
+            "ticked_skills": [],
+            "ticked_count": 0,
+            "total_missing_count": 0,
+            "remaining_missing_count": 0,
+            "ranked_skills": [],
+            "best_next_skill": None,
+            "has_missing_skills": False,
+            "disclaimer": "This is an estimated projection based on identified competencies.",
         }
 
     return render_template(
@@ -4453,52 +4456,10 @@ def dashboard(analysis_id: str) -> str:
         bullet_rewrites=bullet_rewrites,
         format_compatibility=format_compatibility,
         format_compatibility_json=json.dumps(format_compatibility),
-        recommended_action=recommended_action,
         initial_linkedin_suggestions={},
         initial_linkedin_suggestions_json="{}",
-    )
-
-
-# ==============================================================================
-# RECOMMENDED NEXT ACTION DISMISSAL & API (#558)
-# ==============================================================================
-
-@app.route("/dashboard/<analysis_id>/dismiss-action", methods=["POST"])
-def dismiss_recommended_action_view(analysis_id: str):
-    """Dismisses the recommended next action suggestion card for 24 hours (#558)."""
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-        flash("Unauthorized or analysis report not found.", "error")
-        return redirect(url_for("index"))
-
-    student_id = analysis_record.get("student_id") or flask_session.get("user_id") or "default_student"
-    action_id = request.form.get("action_id", "").strip()
-
-    from utils.next_action_rules import dismiss_action_card
-    dismiss_action_card(student_id=student_id, hours=24, action_id=action_id)
-    flash("Recommended action suggestion hidden for 24 hours.", "info")
-    return redirect(url_for("dashboard", analysis_id=analysis_id))
-
-
-@app.route("/api/recommended-action", methods=["GET"])
-def api_get_recommended_action():
-    """Returns the recommended next action for the current student (#558)."""
-    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
-    if not student_id:
-        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
-            student_id = "default_student"
-        else:
-            return jsonify({"success": False, "error": "Authentication required."}), 401
-
-    force_show = request.args.get("force_show", "").strip().lower() in ("1", "true", "yes")
-    analysis_id = request.args.get("analysis_id")
-    analysis_record = get_analysis(analysis_id) if analysis_id else None
-
-    from utils.next_action_rules import get_recommended_action_card_data
-    card_data = get_recommended_action_card_data(
-        student_id=student_id,
-        analysis_record=analysis_record,
-        force_show=force_show
+        skill_simulation=skill_simulation,
+        skill_simulation_json=json.dumps(skill_simulation)
     )
     return jsonify({"success": True, "data": card_data}), 200
 
@@ -4539,6 +4500,44 @@ def api_undismiss_recommended_action():
     from utils.next_action_rules import undismiss_action_card
     undismiss_action_card(student_id=student_id)
     return jsonify({"success": True, "message": "Dismissal cleared."}), 200
+
+
+# ==============================================================================
+# SKILL IMPACT SIMULATOR API (#557)
+# ==============================================================================
+
+@app.route("/api/skill-gap/simulate", methods=["POST"])
+def api_simulate_skill_gap_impact():
+    """Simulates job match percentage improvements when missing skills are assumed learned (#557)."""
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    analysis_id = payload.get("analysis_id")
+    raw_ticked = payload.get("ticked_skills") or []
+    if isinstance(raw_ticked, str):
+        ticked_skills = [s.strip() for s in raw_ticked.split(",") if s.strip()]
+    elif isinstance(raw_ticked, list):
+        ticked_skills = [str(s).strip() for s in raw_ticked if str(s).strip()]
+    else:
+        ticked_skills = []
+
+    from utils.skill_impact_simulator import get_skill_simulation_data, simulate_job_match
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({"success": False, "error": "Analysis not found."}), 404
+        data = get_skill_simulation_data(analysis_record, ticked_skills=ticked_skills)
+    else:
+        matched_skills = payload.get("matched_skills") or []
+        missing_skills = payload.get("missing_skills") or []
+        orig_pct = payload.get("original_percentage")
+        data = simulate_job_match(
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            ticked_skills=ticked_skills,
+            original_percentage=orig_pct
+        )
+
+    return jsonify({"success": True, "data": data}), 200
 
 
 # ==============================================================================

@@ -2690,6 +2690,93 @@
           </div>
         </div>
       {% endif %}
+      <!-- 'What If I Learn This Skill?' Impact Simulator (#557) -->
+      {% if skill_simulation and skill_simulation.has_missing_skills %}
+      <div class="card border-0 rounded-4 shadow-sm p-3 p-md-4 mb-4" id="skillSimulatorCard" 
+           style="background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%); border: 1px solid #dbeafe !important;"
+           data-simulation-data='{{ (skill_simulation_json if skill_simulation_json is defined else skill_simulation|tojson)|safe }}'
+           role="region" aria-label="What if I learn this skill simulator">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-primary rounded-pill px-3 py-1 fw-semibold">
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i> 'What if I learn this skill?' Simulator
+              </span>
+              {% if skill_simulation.best_next_skill %}
+              <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2 py-1 small fw-semibold" id="bestNextSkillBadge">
+                <i class="fa-solid fa-star text-warning me-1"></i> Best Next: <strong>{{ skill_simulation.best_next_skill.skill }}</strong> ({{ skill_simulation.best_next_skill.individual_gain_str }})
+              </span>
+              {% endif %}
+            </div>
+            <p class="text-muted small mb-0 mt-1">
+              Tick missing skills below ("assume I learn these") to see immediate projected match percentage improvements.
+            </p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" id="btnSimulatorSelectAll">
+              <i class="fa-solid fa-check-double me-1"></i> Select All
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnSimulatorClear">
+              <i class="fa-solid fa-rotate-left me-1"></i> Clear
+            </button>
+          </div>
+        </div>
+
+        <!-- Before / After Score Comparison Bar -->
+        <div class="row align-items-center g-3 mb-3 p-3 bg-white rounded-3 border">
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Baseline Match</small>
+            <span class="fw-bold fs-5 text-secondary" id="simOriginalScore">{{ skill_simulation.original_percentage }}%</span>
+          </div>
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Projected Match</small>
+            <span class="fw-bold fs-4 text-primary" id="simProjectedScore">{{ skill_simulation.simulated_percentage }}%</span>
+          </div>
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Estimated Boost</small>
+            <span class="badge bg-success-subtle text-success fs-6 fw-bold px-3 py-1 rounded-pill" id="simDeltaBadge">
+              {{ skill_simulation.percentage_change_str }}
+            </span>
+          </div>
+          <div class="col-6 col-sm-3 text-center">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Skills Ticked</small>
+            <span class="fw-bold fs-5 text-dark" id="simTickedCount">{{ skill_simulation.ticked_count }} / {{ skill_simulation.total_missing_count }}</span>
+          </div>
+          <div class="col-12 mt-2">
+            <div class="progress" style="height: 10px;" role="progressbar" aria-label="Projected match percentage" aria-valuenow="{{ skill_simulation.simulated_percentage }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar bg-secondary opacity-50" style="width: {{ skill_simulation.original_percentage }}%;" title="Original: {{ skill_simulation.original_percentage }}%"></div>
+              <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="simProgressBarBoost" style="width: {{ skill_simulation.percentage_change }}%;" title="Simulated Boost: {{ skill_simulation.percentage_change_str }}"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ranked Missing Skills Checkbox Grid -->
+        <div class="d-flex flex-wrap gap-2 mb-2" id="simSkillsGrid">
+          {% for r in skill_simulation.ranked_skills %}
+          <label class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 d-flex align-items-center gap-2 sim-skill-pill {% if r.is_ticked %}active{% endif %}" 
+                 style="cursor: pointer;" for="sim_skill_{{ loop.index }}" data-skill="{{ r.skill }}">
+            <input type="checkbox" class="form-check-input m-0 sim-skill-checkbox" id="sim_skill_{{ loop.index }}" value="{{ r.skill }}" {% if r.is_ticked %}checked{% endif %}>
+            <span class="fw-semibold">{{ r.skill }}</span>
+            <span class="badge bg-success text-white rounded-pill small px-2 py-0" title="Projected individual boost if learned">
+              {{ r.individual_gain_str }}
+            </span>
+            {% if r.is_best_next %}
+            <span class="badge bg-warning text-dark rounded-pill small px-1 py-0" title="Rank #1 Highest impact skill">
+              <i class="fa-solid fa-crown"></i>
+            </span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="d-flex align-items-center gap-1 text-muted small mt-2">
+          <i class="fa-solid fa-circle-info text-primary"></i>
+          <span class="fst-italic" id="simDisclaimerText">{{ skill_simulation.disclaimer }}</span>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="table-responsive">
         <table class="table table-hover align-middle" id="skillGapTable">
           <thead class="table-light">
@@ -2707,12 +2794,18 @@
             {% for gap in active_gaps %}
               <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority|default('Medium') }}">
                 <td>
-                  <b class="text-primary">{{ gap.skill }}</b>
-                  {% if gap.is_required %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>
-                  {% elif gap.type %}
-                    <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">{{ gap.type }}</span>
-                  {% endif %}
+                  <div class="d-flex align-items-center gap-2">
+                    <input type="checkbox" class="form-check-input table-skill-checkbox flex-shrink-0 m-0" data-skill="{{ gap.skill }}" aria-label="Assume I learn {{ gap.skill }}" title="Tick to assume learned and simulate match boost">
+                    <div>
+                      <b class="text-primary">{{ gap.skill }}</b>
+                      {% if gap.is_required %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>
+                      {% elif gap.type %}
+                        <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">{{ gap.type }}</span>
+                      {% endif %}
+                      <span class="table-skill-impact-badge ms-1" data-skill="{{ gap.skill }}"></span>
+                    </div>
+                  </div>
                 </td>
                 <td><span class="badge bg-light text-dark border">{{ gap.importance|default('High') }}</span></td>
                 <td>{{ gap.learning_time|default('2-3 weeks') }}</td>
