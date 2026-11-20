@@ -410,6 +410,9 @@ from utils.logger_config import (
     clear_sensitive_texts,
 )
 
+# Optional Sentry Error Monitoring & Privacy-Preserving Observability (#562)
+from utils.sentry_integration import init_sentry
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -434,6 +437,28 @@ csrf.init_app(app)
 app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+
+# Initialize Sentry error monitoring with privacy data scrubbing (#562)
+init_sentry(app=app)
+
+
+def create_app(config_override: Optional[Dict[str, Any]] = None) -> Flask:
+    """
+    Application factory for AI Campus Placement Agent (#562).
+    Initializes optional Sentry error monitoring when SENTRY_DSN is configured,
+    applies configuration overrides, and returns the Flask application instance.
+    """
+    if config_override:
+        app.config.update(config_override)
+
+    dsn = (
+        app.config.get("SENTRY_DSN")
+        if app.config.get("SENTRY_DSN") is not None
+        else os.getenv("SENTRY_DSN", getattr(config, "SENTRY_DSN", None))
+    )
+    init_sentry(app=app, dsn=dsn)
+    return app
+
 
 
 def _session_client_label() -> str:
@@ -925,7 +950,11 @@ def internal_server_error(error):
     """
     from utils.prompt_security import redact_sensitive_information
     from utils.error_reference_service import record_application_error
+    from utils.sentry_integration import capture_exception
     from flask import g
+
+    if error and isinstance(error, Exception):
+        capture_exception(error)
 
     req_id = getattr(g, "request_id", None)
     user_id = flask_session.get("user_id")

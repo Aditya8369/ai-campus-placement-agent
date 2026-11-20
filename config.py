@@ -142,9 +142,11 @@ ANALYSIS_CACHE_ENABLED = os.getenv("ANALYSIS_CACHE_ENABLED", "true").lower() in 
 ANALYSIS_CACHE_TTL_HOURS = int(os.getenv("ANALYSIS_CACHE_TTL_HOURS", "24"))
 ANALYSIS_CACHE_EXPIRY_SECONDS = int(os.getenv("ANALYSIS_CACHE_EXPIRY_SECONDS", str(ANALYSIS_CACHE_TTL_HOURS * 3600)))
 
-# Saved Job Descriptions Library Configurations (#560)
-MAX_SAVED_JOB_DESCRIPTIONS_PER_USER = int(os.getenv("MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", "25"))
-MAX_SAVED_JOB_DESCRIPTION_CHARS = int(os.getenv("MAX_SAVED_JOB_DESCRIPTION_CHARS", "15000"))
+# Optional Sentry Error Monitoring & Privacy-Preserving Observability (#562)
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", os.getenv("FLASK_ENV", "production")).strip()
+SENTRY_RELEASE = os.getenv("SENTRY_RELEASE", f"ai-campus-placement-agent@{__version__}").strip()
+SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 
 
 

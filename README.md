@@ -111,6 +111,7 @@ The system is engineered as a modular, decoupled pipeline designed for efficienc
 13. **Timed Aptitude Practice Module**: Prepare for online campus recruitment screening tests with timed practice sets (`/aptitude`). Features a curated, original question bank (`data/aptitude_questions.json`) spanning **Quantitative Aptitude**, **Logical Reasoning**, and **Verbal Ability**. Supports full 15-minute comprehensive tests and 10-minute sectional drills, visible countdown timers with accessible time warnings, automatic submission upon timeout, and complete scorecards featuring per-topic accuracy, step-by-step mathematical/logical explanations, and weak topic identification (<60% accuracy) displayed on the student dashboard.
 14. **Campus Group Discussion (GD) Practice & AI Feedback Coach**: Master high-stakes campus placement GD rounds with an interactive practice module (`/group-discussion`). Access curated topics across **Current Affairs**, **Technology**, and **Abstract** categories, spin for random topics, write 150–250 word contributions (Opening Statement, Rebuttal, or Conclusion), and receive comprehensive multi-criteria AI feedback scoring **Content**, **Structure**, **Balance**, and **Clarity** (0–100 each). Includes high-impact alternative opening statements, key missed counter-points / blind spots, concrete strengths and improvement areas, resilient deterministic fallback evaluation, and longitudinal practice history tracking in SQLite.
 15. **CTC to In-Hand Salary & Offer Comparison Calculator**: Demystifies multi-component campus placement offers by breaking down headline CTC figures into guaranteed monthly take-home pay. Evaluates fixed pay, variable incentives, joining bonuses, and employer PF across up to three offers side-by-side. Deductions are calculated using a clearly labeled, configurable assumption set stored in `data/salary_calculator_assumptions.json` (EPF @ 12% of basic, professional tax @ ₹200/mo, standard deduction of ₹75,000, and New Tax Regime slabs with Section 87A rebate and 4% cess). Highlights the Highest Monthly In-Hand Pay and Highest Guaranteed Pay to prevent students from being misled by inflated variable bonuses, rejects negative/invalid inputs, and includes a prominent disclaimer that calculations are estimates and not certified tax advice.
+16. **Privacy-Preserving Error Monitoring & Personal Data Scrubbing (Sentry) (#562)**: Optional production error monitoring initialized via `SENTRY_DSN` in the application factory. Rigorous `before_send` and `before_breadcrumb` scrubbing rules ensure candidate resumes, job descriptions, student emails, phone numbers, cookies, and authorization credentials are never transmitted to external error trackers, tagging events strictly with release version, route, and request ID only.
 
 ---
 
@@ -355,6 +356,46 @@ pytest -v
 flake8 .
 black --check .
 ```
+
+---
+
+### Optional Error Monitoring (Sentry) & Personal Data Scrubbing (#562)
+
+To detect unhandled production errors (e.g., AI model rate limit timeouts, PDF parsing errors) without relying solely on manual log inspection, the platform includes optional Sentry integration initialized within the application factory (`create_app()`).
+
+Monitoring is **strictly opt-in** and completely disabled unless `SENTRY_DSN` is configured.
+
+#### Setup & Configuration
+
+Add your project DSN to `.env`:
+```env
+# Optional Sentry Error Monitoring (#562)
+SENTRY_DSN=https://your-public-key@sentry.io/your-project-id
+SENTRY_ENVIRONMENT=production
+SENTRY_RELEASE=ai-campus-placement-agent@1.0.0
+SENTRY_TRACES_SAMPLE_RATE=0.0
+```
+
+#### Privacy & Personal Data Scrubbing Rules
+
+To uphold strict student privacy guarantees, Sentry's `before_send` and `before_breadcrumb` pipelines scrub all candidate and credential data before any event is transmitted:
+
+##### Exactly What is NOT Sent (Scrubbed)
+* **Request bodies & Form Data**: Raw HTTP request payloads, form data, multipart uploads, uploaded resume text, and job descriptions are stripped (`request.data` is completely removed).
+* **Cookies & Session Tokens**: HTTP cookies (`session`, `auth_session_token`, etc.) are stripped (`request.cookies` is completely removed).
+* **Authorization Headers**: Sensitive HTTP headers (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Auth-Token`, `X-API-Key`, `X-CSRF-Token`) are stripped from `request.headers`.
+* **Personal Identifiable Information (PII)**: All candidate emails and phone numbers appearing in query strings, exception messages, breadcrumb messages, or extra contexts are redacted to `[REDACTED_EMAIL]` and `[REDACTED_PHONE]`.
+* **Sensitive Context Fields**: Any dictionary keys matching `resume`, `job_description`, `jd`, `email`, `phone`, `password`, `secret`, `token`, `credential`, `ssn`, `transcript`, or `bio` are replaced with `[SCRUBBED]`.
+* **User Identity Context**: The Sentry `user` object is removed entirely to prevent linking exceptions to student accounts.
+
+##### Exactly What IS Sent
+* **Release Version**: Tagged as `release` (e.g. `ai-campus-placement-agent@1.0.0`).
+* **Route / URL Rule**: Tagged as `route` (e.g. `/analyze`, `/interview`, `/api/aptitude/submit`).
+* **Request Correlation ID**: Tagged as `request_id` (matching the `X-Request-ID` HTTP header for log correlation).
+* **Sanitized Exception & Stack Trace**: Python exception class, sanitized traceback, file names, line numbers, and error message with emails/phones redacted.
+* **HTTP Metadata**: Request method (`GET`, `POST`), endpoint URL path, and coarse user agent (browser/OS).
+
+When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inactive, makes zero network requests, and introduces zero performance overhead.
 
 ---
 
