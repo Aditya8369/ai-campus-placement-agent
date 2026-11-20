@@ -3958,6 +3958,31 @@ def api_confirm_resume_analysis():
                 pass
 
 
+@app.route("/dashboard")
+def dashboard_latest():
+    """
+    Renders or redirects to the dashboard (#477).
+    If the user has an existing analysis report, redirects to their latest dashboard;
+    otherwise redirects to the home page to start a new analysis.
+    """
+    student_id = (
+        flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    )
+    try:
+        from utils.database import get_recent_analyses
+        analyses = get_recent_analyses(student_id)
+        if analyses and len(analyses) > 0:
+            latest_id = analyses[0].get("id") or analyses[0].get("analysis_id")
+            if latest_id:
+                return redirect(url_for("dashboard", analysis_id=latest_id))
+    except Exception as e:
+        logger.warning(f"Error fetching latest analysis for dashboard redirect: {e}")
+    return redirect(url_for("index"))
+
+
 @app.route("/dashboard/<analysis_id>")
 def dashboard(analysis_id: str) -> str:
     """
@@ -8701,6 +8726,7 @@ def delete_analysis_action(analysis_id: str):
 # Role-Based Preparation Mode Routes (#154)
 # ==============================================================================
 
+@app.route("/api/role-prep/roles")
 def api_role_prep_roles():
     """
     Returns the list of supported placement roles with descriptions and icons.
@@ -8711,6 +8737,7 @@ def api_role_prep_roles():
     }), 200
 
 
+@app.route("/api/role-prep/<analysis_id>", methods=["GET", "POST"])
 def api_role_prep_for_analysis(analysis_id: str):
     """
     Generates role-based preparation curriculum and recommendations for a student analysis.
@@ -8745,6 +8772,7 @@ def api_role_prep_for_analysis(analysis_id: str):
     return jsonify(prep_data), 200
 
 
+@app.route("/api/role-prep/<analysis_id>/recommendations")
 def api_all_career_recommendations(analysis_id: str):
     """
     Returns AI recommendation explanations across all supported career roles (#295).
@@ -8769,6 +8797,7 @@ def api_all_career_recommendations(analysis_id: str):
     return jsonify(recommendations), 200
 
 
+@app.route("/api/role-prep/generate", methods=["POST"])
 def api_role_prep_generate():
     """
     Ad-hoc role preparation generation supporting custom skills, gaps, and roles.
@@ -8792,6 +8821,7 @@ def api_role_prep_generate():
     return jsonify(prep_data), 200
 
 
+@app.route("/role-preparation", methods=["GET", "POST"])
 def role_preparation_view():
     """
     Role-Based Preparation Mode View (#154).
@@ -19258,6 +19288,156 @@ def api_ctc_calculator_compare():
             "success": False,
             "error": "Failed to calculate salary offer comparison. Please review your inputs."
         }), 500
+
+
+# ==============================================================================
+# Daily Preparation Streak Tracker Routes (#236)
+# ==============================================================================
+
+@app.route("/streak", methods=["GET"])
+def streak_tracker_view():
+    """
+    Renders the Daily Preparation Streak Tracker page (#236).
+    Displays current streak, longest streak, active days, interactive monthly calendar,
+    consistency milestones, and recent preparation activity audit log.
+    """
+    from utils.database import (
+        get_student_streak,
+        get_streak_calendar,
+        get_recent_preparation_activities,
+    )
+
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    try:
+        req_year = int(request.args.get("year", 0))
+    except (ValueError, TypeError):
+        req_year = None
+
+    try:
+        req_month = int(request.args.get("month", 0))
+    except (ValueError, TypeError):
+        req_month = None
+
+    streak_data = get_student_streak(student_id)
+    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
+    recent_activities = get_recent_preparation_activities(student_id, limit=15)
+
+    informative_message = (
+        "You haven't started your preparation streak yet! Complete a meaningful activity "
+        "— like analyzing your resume, practicing DSA problems, completing a company checklist item, "
+        "or taking a mock interview — to ignite your streak today."
+    ) if not streak_data.get("has_started") else None
+
+    milestones = [
+        {"days": 3, "name": "3-Day Spark", "icon": "fa-bolt", "unlocked": streak_data["longest_streak"] >= 3},
+        {"days": 7, "name": "7-Day Flame", "icon": "fa-fire", "unlocked": streak_data["longest_streak"] >= 7},
+        {"days": 14, "name": "14-Day Torch", "icon": "fa-fire-flame-curved", "unlocked": streak_data["longest_streak"] >= 14},
+        {"days": 30, "name": "30-Day Firestorm", "icon": "fa-crown", "unlocked": streak_data["longest_streak"] >= 30},
+    ]
+
+    return render_template(
+        "streak.html",
+        streak=streak_data,
+        calendar=calendar_data,
+        recent_activities=recent_activities,
+        student_id=student_id,
+        informative_message=informative_message,
+        milestones=milestones
+    )
+
+
+@app.route("/api/streak", methods=["GET"])
+def api_get_student_streak():
+    """
+    JSON API returning student preparation streak statistics and status (#236).
+    """
+    from utils.database import get_student_streak
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    streak_data = get_student_streak(student_id)
+    return jsonify({
+        "success": True,
+        "streak": streak_data,
+        "message": "Streak retrieved successfully"
+    }), 200
+
+
+@app.route("/api/streak/calendar", methods=["GET"])
+def api_get_streak_calendar():
+    """
+    JSON API returning the monthly preparation calendar matrix (#236).
+    """
+    from utils.database import get_streak_calendar
+    student_id = (
+        request.args.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    try:
+        req_year = int(request.args.get("year", 0))
+    except (ValueError, TypeError):
+        req_year = None
+
+    try:
+        req_month = int(request.args.get("month", 0))
+    except (ValueError, TypeError):
+        req_month = None
+
+    calendar_data = get_streak_calendar(student_id, year=req_year, month=req_month)
+    return jsonify({
+        "success": True,
+        "calendar": calendar_data
+    }), 200
+
+
+@app.route("/api/streak/record-activity", methods=["POST"])
+def api_record_preparation_activity():
+    """
+    REST API endpoint allowing candidates to log meaningful preparation activity (#236).
+    Enforces same-day idempotency to prevent streak inflation.
+    """
+    from utils.database import record_preparation_activity
+    payload = request.get_json(silent=True) or request.form
+    student_id = (
+        payload.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    activity_type = (payload.get("activity_type") or "general_practice").strip()
+    metadata = payload.get("metadata") or {}
+    activity_date = payload.get("activity_date")
+
+    updated_streak = record_preparation_activity(
+        student_id=student_id,
+        activity_type=activity_type,
+        metadata=metadata,
+        activity_date=activity_date
+    )
+
+    return jsonify({
+        "success": True,
+        "message": f"Activity '{activity_type}' recorded successfully",
+        "streak": updated_streak
+    }), 200
 
 
 # Initialize API versioning (/api/v1/...) with legacy alias support & RFC 8594 headers (#445)

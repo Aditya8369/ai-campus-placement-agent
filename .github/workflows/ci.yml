@@ -39,6 +39,10 @@ jobs:
         run: |
           python utils/deployment_check.py
 
+      - name: Verify Route Contract & Frontend URLs
+        run: |
+          python utils/route_contract.py
+
   lint:
     name: Code Linting & Style Enforcement
     runs-on: ubuntu-latest
