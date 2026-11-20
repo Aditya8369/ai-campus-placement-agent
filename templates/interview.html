@@ -1283,7 +1283,9 @@
   <!-- Monaco Editor AMD Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
   <!-- Custom JS -->
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/interview.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/bookmarks.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
 </body>
