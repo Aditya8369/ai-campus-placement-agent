@@ -180,7 +180,7 @@
 
       {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
         <div style="position: relative; height: 260px; width: 100%;">
-          <canvas id="dailyMetricsChart" aria-label="Daily AI call volume and latency chart"></canvas>
+          <canvas id="dailyMetricsChart" role="img" aria-label="Daily AI call volume and latency chart"></canvas>
         </div>
       {% else %}
         <div class="p-5 text-center text-muted bg-light rounded-4" id="emptyMetricsChartBanner">

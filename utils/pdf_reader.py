@@ -14,6 +14,11 @@ from typing import List, Optional, Tuple, Union, Dict, Any
 from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError
 import config
+from utils.format_checker import (
+    check_pdf_format_compatibility,
+    check_resume_format_compatibility,
+    get_or_compute_format_compatibility,
+)
 
 try:
     import docx
@@ -742,3 +747,12 @@ def extract_text_from_file(file_path: str, standardize: bool = True) -> str:
         if standardized_text:
             return standardized_text
     return raw_text
+
+
+def check_pdf_format(file_path: str) -> Dict[str, Any]:
+    """
+    Format check in the PDF reading step (Issue #474).
+    Reports: number of pages, estimated multi-column layout, presence of tables,
+    embedded images, and text extraction legibility.
+    """
+    return check_pdf_format_compatibility(file_path)

@@ -26,12 +26,30 @@ import json
 import zipfile
 import io
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Generator
 from datetime import datetime, timezone
 
 from utils.database import get_db_connection
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_record(data: Any) -> Any:
+    """
+    Recursively removes any fields containing passwords, tokens, hashes,
+    or internal session security credentials to guarantee strict privacy.
+    """
+    if isinstance(data, dict):
+        clean = {}
+        for k, v in data.items():
+            k_lower = str(k).lower()
+            if any(s in k_lower for s in ("password", "token", "secret", "salt", "hash", "credential")):
+                continue
+            clean[k] = _sanitize_record(v)
+        return clean
+    elif isinstance(data, list):
+        return [_sanitize_record(item) for item in data]
+    return data
 
 
 def build_student_data_export_manifest(student_id: str) -> Dict[str, Any]:
@@ -148,7 +166,31 @@ def build_student_data_export_manifest(student_id: str) -> Dict[str, Any]:
         """, (sid,))
         calendar_events = [dict(r) for r in cursor.fetchall()]
 
-        return {
+        # 8. Analysis Annotations & Private Notes (#469)
+        annotations = []
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_annotations'")
+        if cursor.fetchone():
+            cursor.execute("""
+                SELECT id, analysis_id, annotation_type, section, content, created_at, updated_at
+                FROM analysis_annotations
+                WHERE student_id = ?
+                ORDER BY updated_at DESC
+            """, (sid,))
+            annotations = [dict(r) for r in cursor.fetchall()]
+
+        # 9. Bookmarked Interview Practice Questions (#469)
+        interview_bookmarks = []
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bookmarked_interview_questions'")
+        if cursor.fetchone():
+            cursor.execute("""
+                SELECT id, question_id, question_text, category, company_name, notes, is_practiced, practice_answer, created_at
+                FROM bookmarked_interview_questions
+                WHERE student_id = ?
+                ORDER BY created_at DESC
+            """, (sid,))
+            interview_bookmarks = [dict(r) for r in cursor.fetchall()]
+
+        raw_manifest = {
             "metadata": {
                 "export_version": "1.0.0",
                 "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -164,16 +206,34 @@ def build_student_data_export_manifest(student_id: str) -> Dict[str, Any]:
             "preparation_notes": notes,
             "mock_interviews": interviews,
             "coding_bookmarks": bookmarks,
+            "interview_bookmarks": interview_bookmarks,
+            "analysis_annotations": annotations,
             "calendar_events": calendar_events,
             "summary_counts": {
                 "analyses_count": len(analyses),
                 "job_applications_count": len(job_apps),
                 "notes_count": len(notes),
                 "interviews_count": len(interviews),
-                "bookmarks_count": len(bookmarks),
-                "calendar_events_count": len(calendar_events)
+                "bookmarks_count": len(bookmarks) + len(interview_bookmarks),
+                "calendar_events_count": len(calendar_events),
+                "annotations_count": len(annotations)
             }
         }
+
+        # Apply strict credential and token stripping
+        return _sanitize_record(raw_manifest)
+
+
+def stream_student_data_json_chunks(student_id: str) -> Generator[str, None, None]:
+    """
+    Generates and streams the candidate's personal data JSON export in chunks on-demand.
+    Uses json.JSONEncoder.iterencode to stream chunks progressively without writing to disk.
+    Prevents socket timeouts on large histories and enforces zero server storage.
+    """
+    manifest = build_student_data_export_manifest(student_id)
+    encoder = json.JSONEncoder(indent=2, ensure_ascii=False)
+    for chunk in encoder.iterencode(manifest):
+        yield chunk
 
 
 def generate_student_data_zip_package(student_id: str) -> io.BytesIO:
@@ -198,6 +258,10 @@ def generate_student_data_zip_package(student_id: str) -> io.BytesIO:
         zf.writestr("preparation_notes.json", json.dumps(manifest["preparation_notes"], indent=2))
         zf.writestr("mock_interviews.json", json.dumps(manifest["mock_interviews"], indent=2))
         zf.writestr("coding_bookmarks.json", json.dumps(manifest["coding_bookmarks"], indent=2))
+        if manifest.get("interview_bookmarks"):
+            zf.writestr("interview_bookmarks.json", json.dumps(manifest["interview_bookmarks"], indent=2))
+        if manifest.get("analysis_annotations"):
+            zf.writestr("analysis_annotations.json", json.dumps(manifest["analysis_annotations"], indent=2))
         zf.writestr("calendar_events.json", json.dumps(manifest["calendar_events"], indent=2))
 
         # 3. Human-readable Markdown summary
@@ -220,7 +284,7 @@ def generate_student_data_zip_package(student_id: str) -> io.BytesIO:
 
 ## 🔒 Security & Privacy Notice
 All sensitive authentication credentials, including passwords, secret hashes, and session keys,
-have been permanently excluded from this archive.
+have been permanently excluded from this archive. Generated on demand and never retained on the server.
 """
         zf.writestr("README.md", summary_md)
 

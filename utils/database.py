@@ -317,6 +317,21 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_jd_student_updated ON saved_job_descriptions (student_id, updated_at DESC)")
 
+        # Table 13c: Store student weak topic statuses (#559)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_weak_topic_statuses (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                topic_key TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                notes TEXT DEFAULT '',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, topic_key)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_student_weak_topic_statuses ON student_weak_topic_statuses (student_id, topic_key)")
+
         # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
@@ -608,7 +623,27 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_hash ON analysis_cache(input_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analysis_cache_expires ON analysis_cache(expires_at)")
 
-        # Table 18: Store group discussion practice attempts & AI evaluations (#427)
+        # Table 18: Store timed aptitude practice attempts & topic scores (#426)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS aptitude_attempts (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                test_category TEXT NOT NULL,
+                total_questions INTEGER NOT NULL,
+                correct_count INTEGER NOT NULL,
+                score_percentage REAL NOT NULL,
+                time_taken_seconds INTEGER NOT NULL,
+                time_limit_seconds INTEGER NOT NULL,
+                timed_out INTEGER NOT NULL DEFAULT 0,
+                topic_accuracy_json TEXT NOT NULL,
+                weak_topics_json TEXT NOT NULL,
+                results_json TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_aptitude_student ON aptitude_attempts (student_id, created_at DESC)")
+
+        # Table 19: Store group discussion practice attempts & AI evaluations (#427)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS gd_practice_attempts (
                 id TEXT PRIMARY KEY,
@@ -2550,20 +2585,31 @@ def touch_auth_session(session_id: str, user_id: str) -> None:
         conn.close()
 
 
-def get_active_auth_sessions(user_id: str, timeout_seconds: int) -> List[Dict[str, Any]]:
+def get_active_auth_sessions(user_id: str, timeout_seconds: Optional[int] = None) -> List[Dict[str, Any]]:
     """List non-revoked sessions active within the configured inactivity window."""
-    cutoff = time.time() - max(int(timeout_seconds), 1)
     conn = get_db_connection()
     try:
-        rows = conn.execute(
-            """
-            SELECT id, client_label, created_at, last_seen_at
-            FROM auth_sessions
-            WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
-            ORDER BY last_seen_at DESC
-            """,
-            (user_id, cutoff),
-        ).fetchall()
+        if timeout_seconds is not None and timeout_seconds > 0:
+            cutoff = time.time() - timeout_seconds
+            rows = conn.execute(
+                """
+                SELECT id, client_label, created_at, last_seen_at
+                FROM auth_sessions
+                WHERE user_id = ? AND revoked_at IS NULL AND last_seen_at >= ?
+                ORDER BY last_seen_at DESC
+                """,
+                (user_id, cutoff),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT id, client_label, created_at, last_seen_at
+                FROM auth_sessions
+                WHERE user_id = ? AND revoked_at IS NULL
+                ORDER BY last_seen_at DESC
+                """,
+                (user_id,),
+            ).fetchall()
         return [dict(row) for row in rows]
     finally:
         conn.close()
@@ -2601,6 +2647,62 @@ def revoke_other_auth_sessions(user_id: str, current_session_id: str) -> int:
         )
         conn.commit()
         return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def revoke_all_auth_sessions(user_id: str) -> int:
+    """Revoke every active session for a user (#473)."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.execute(
+            """
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+            """,
+            (time.time(), user_id),
+        )
+        conn.commit()
+        return cursor.rowcount
+    finally:
+        conn.close()
+
+
+def change_user_password(user_id: str, new_password_hash: str, keep_session_id: Optional[str] = None) -> bool:
+    """
+    Updates user password and revokes all other (or all) active sessions (#473).
+    If keep_session_id is provided, keeps that session active and revokes all other sessions.
+    If keep_session_id is None, revokes all sessions for the user.
+    """
+    now = time.time()
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_password_hash, user_id))
+        if cursor.rowcount == 0:
+            return False
+
+        if keep_session_id:
+            cursor.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = ?
+                WHERE user_id = ? AND id != ? AND revoked_at IS NULL
+                """,
+                (now, user_id, keep_session_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE auth_sessions
+                SET revoked_at = ?
+                WHERE user_id = ? AND revoked_at IS NULL
+                """,
+                (now, user_id),
+            )
+        conn.commit()
+        return True
     finally:
         conn.close()
 
@@ -4816,19 +4918,44 @@ def is_user_email_verified(user_id: str) -> bool:
         conn.close()
 
 
+def count_saved_job_descriptions(student_id: str) -> int:
+    """Returns the total number of saved job descriptions owned by the specified student."""
+    conn = get_db_connection()
+    try:
+        effective_student_id = (student_id or "").strip()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?",
+            (effective_student_id,)
+        ).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
 def create_saved_job_description(
     student_id: str,
     company_name: str,
     role_title: str,
-    source: str,
-    description: str,
+    source: str = "",
+    description: str = "",
     notes: str = ""
 ) -> Dict[str, Any]:
-    """Creates a private saved job description for the specified student."""
+    """Creates a private saved job description for the specified student, enforcing the per-user limit."""
     conn = get_db_connection()
     try:
-        saved_id = f"saved-jd-{uuid.uuid4().hex[:12]}"
         effective_student_id = (student_id or "").strip()
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?",
+            (effective_student_id,)
+        ).fetchone()
+        current_count = count_row[0] if count_row else 0
+        max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+        if current_count >= max_limit:
+            raise ValueError(
+                f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one."
+            )
+
+        saved_id = f"saved-jd-{uuid.uuid4().hex[:12]}"
         values = (
             saved_id,
             effective_student_id,
@@ -4849,6 +4976,9 @@ def create_saved_job_description(
             (saved_id, effective_student_id)
         ).fetchone()
         return dict(row) if row else {}
+    except ValueError:
+        conn.rollback()
+        raise
     except Exception:
         conn.rollback()
         logger.exception("Error creating saved job description")
@@ -4890,13 +5020,47 @@ def get_saved_job_description_by_id(
         conn.close()
 
 
+def rename_saved_job_description(
+    saved_id: str,
+    student_id: str,
+    role_title: str,
+    company_name: Optional[str] = None
+) -> bool:
+    """Renames the title (and optionally company) of a saved job description owned by the student."""
+    conn = get_db_connection()
+    try:
+        clean_title = (role_title or "").strip()
+        if not clean_title:
+            return False
+        if company_name is not None and company_name.strip():
+            cursor = conn.execute("""
+                UPDATE saved_job_descriptions
+                SET role_title = ?, company_name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND student_id = ?
+            """, (clean_title, company_name.strip(), (saved_id or "").strip(), (student_id or "").strip()))
+        else:
+            cursor = conn.execute("""
+                UPDATE saved_job_descriptions
+                SET role_title = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND student_id = ?
+            """, (clean_title, (saved_id or "").strip(), (student_id or "").strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception:
+        conn.rollback()
+        logger.exception("Error renaming saved job description %s", saved_id)
+        return False
+    finally:
+        conn.close()
+
+
 def update_saved_job_description(
     saved_id: str,
     student_id: str,
     company_name: str,
     role_title: str,
-    source: str,
-    description: str,
+    source: str = "",
+    description: str = "",
     notes: str = ""
 ) -> bool:
     """Updates a saved job description after checking student ownership."""
@@ -4997,6 +5161,10 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         summary["tables"]["saved_job_descriptions"] = cursor.fetchone()[0]
 
+        # Count in weak topic statuses (#559)
+        cursor.execute("SELECT COUNT(*) FROM student_weak_topic_statuses WHERE student_id = ?", (student_id,))
+        summary["tables"]["student_weak_topic_statuses"] = cursor.fetchone()[0]
+
         # Count in users
         cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
         summary["tables"]["users"] = cursor.fetchone()[0]
@@ -5078,6 +5246,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         # 12b. Delete saved job descriptions
         cursor.execute("DELETE FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         deleted_counts["saved_job_descriptions"] = cursor.rowcount
+
+        # 12c. Delete student weak topic statuses (#559)
+        cursor.execute("DELETE FROM student_weak_topic_statuses WHERE student_id = ?", (student_id,))
+        deleted_counts["student_weak_topic_statuses"] = cursor.rowcount
 
         # 13. Delete student profile if exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
@@ -5394,6 +5566,13 @@ def reset_user_password(
             WHERE user_id = ? AND used_at IS NULL
         """, (now, user_id))
 
+        # Invalidate all active sessions for this user on password reset (#473)
+        conn.execute("""
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
+        """, (now, user_id))
+
         conn.commit()
         return True
 
@@ -5540,6 +5719,13 @@ def reset_user_password(
             UPDATE password_reset_tokens
             SET used_at = ?
             WHERE user_id = ? AND used_at IS NULL
+        """, (now, user_id))
+
+        # Invalidate all active sessions for this user on password reset (#473)
+        conn.execute("""
+            UPDATE auth_sessions
+            SET revoked_at = ?
+            WHERE user_id = ? AND revoked_at IS NULL
         """, (now, user_id))
 
         conn.commit()
@@ -6277,238 +6463,383 @@ from utils.ai_metrics import (
     calculate_p95,
 )
 
+# Migration Runner and Registry
+from db.migrations import (
+    MIGRATIONS,
+    ensure_migration_table,
+    get_applied_migrations,
+    init_db,
+    run_migrations,
+)
 
-def get_student_top_skill_gaps_for_company(
-    student_id: str,
-    company_name: str,
-    limit: int = 3
-) -> List[str]:
-    """
-    Retrieves the top identified skill gaps for a student targeted at a company (#433).
-    First checks analyses targeting this specific company, falling back to the student's
-    latest general analysis if company-specific analysis is not available.
-    Returns an empty list gracefully if the student has no analysis record.
-    """
-    if not student_id:
-        return []
+# Domain Repositories
+from db.analyses import (
+    create_analysis_annotation,
+    delete_analysis,
+    delete_analysis_annotation,
+    export_analysis_section_feedback_csv,
+    get_analyses_history,
+    get_analysis,
+    get_analysis_annotation,
+    get_analysis_annotations,
+    get_analysis_section_feedback,
+    get_analysis_section_feedback_summary,
+    get_batch_comparison,
+    get_previous_analysis,
+    get_previous_analysis_for_target,
+    get_recent_analyses,
+    get_student_versions,
+    get_student_versions_for_target,
+    save_analysis,
+    save_analysis_section_feedback,
+    save_batch_comparison,
+    update_analysis_annotation,
+)
 
-    effective_student_id = str(student_id).strip()
-    norm_comp = (company_name or "").strip()
+from db.coding_practice import (
+    calculate_profile_completion,
+    delete_skill_self_assessment,
+    delete_student_aptitude_attempts,
+    get_aptitude_attempt_by_id,
+    get_coding_bookmarks,
+    get_coding_submissions,
+    get_default_technical_skills_catalog,
+    get_student_aptitude_attempts,
+    get_student_profile,
+    get_student_skill_self_assessments,
+    get_student_weak_aptitude_topics,
+    is_coding_bookmarked,
+    remove_coding_bookmark,
+    save_aptitude_attempt,
+    save_coding_bookmark,
+    save_coding_submission,
+    save_skill_self_assessment,
+    save_student_profile,
+)
 
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        target_analysis = None
+from db.cohorts import (
+    _seed_cohort_benchmarks,
+    get_cohort_benchmark_by_analysis_id,
+    get_cohort_benchmarks,
+    get_cohort_stats,
+    get_student_top_skill_gaps_for_company,
+    get_user_leaderboard_opt_in,
+    get_user_placement_history,
+    record_or_update_cohort_benchmark,
+    set_user_leaderboard_opt_in,
+)
 
-        # 1. Look for company-specific analysis first
-        if norm_comp:
-            cursor.execute("""
-                SELECT id, results_json FROM analyses
-                WHERE student_id = ? AND LOWER(company_name) = LOWER(?)
-                ORDER BY created_at DESC, version_number DESC
-                LIMIT 1
-            """, (effective_student_id, norm_comp))
-            row = cursor.fetchone()
-            if row:
-                target_analysis = row
+from db.interviews import (
+    bookmark_interview_question,
+    create_interview_session,
+    create_preparation_note,
+    delete_preparation_note,
+    delete_student_gd_attempts,
+    get_gd_attempt_by_id,
+    get_interview_bookmark_by_id,
+    get_interview_bookmark_practice_stats,
+    get_interview_bookmarks,
+    get_interview_experiences,
+    get_interview_session,
+    get_note_category_counts,
+    get_preparation_note_by_id,
+    get_preparation_notes,
+    get_student_gd_attempts,
+    get_student_interview_history,
+    get_student_interview_performance_analytics,
+    is_interview_bookmarked,
+    remove_interview_bookmark,
+    report_interview_experience,
+    reset_interview_bookmarks_practice,
+    save_gd_attempt,
+    save_interview_bookmark,
+    save_interview_experience,
+    save_interview_session,
+    update_interview_bookmark_practice,
+    update_interview_session,
+    update_preparation_note,
+)
 
-        # 2. Fall back to the student's most recent analysis if no company-specific record
-        if not target_analysis:
-            cursor.execute("""
-                SELECT id, results_json FROM analyses
-                WHERE student_id = ?
-                ORDER BY created_at DESC, version_number DESC
-                LIMIT 1
-            """, (effective_student_id,))
-            row = cursor.fetchone()
-            if row:
-                target_analysis = row
+from db.reports import (
+    create_secure_share_link,
+    create_shared_report,
+    get_active_shares_for_analysis,
+    get_secure_shared_report,
+    get_shared_report,
+    get_shared_report_views,
+    list_student_secure_shares,
+    record_shared_report_view,
+    revoke_secure_share_link,
+    revoke_shared_report,
+)
 
-        if not target_analysis:
-            return []
+from db.streaks import (
+    _recalculate_student_streak,
+    get_recent_preparation_activities,
+    get_streak_calendar,
+    get_student_preparation_summary_data,
+    get_student_streak,
+    record_preparation_activity,
+)
 
-        raw_json = target_analysis["results_json"]
-        if not raw_json:
-            return []
+from db.system import (
+    COST_PER_CANDIDATE_TOKEN,
+    COST_PER_PROMPT_TOKEN,
+    calculate_gemini_call_cost,
+    create_database_backup,
+    get_feedback_metrics_summary,
+    get_gemini_usage_summary,
+    get_user_feedback_list,
+    log_gemini_api_call,
+    restore_database_backup,
+    submit_user_feedback,
+    verify_database_integrity,
+)
 
-        parsed = json.loads(raw_json) if isinstance(raw_json, str) else (raw_json or {})
-        results = parsed.get("results") or parsed
+from db.users import (
+    change_user_password,
+    create_auth_session,
+    create_password_reset_token,
+    create_user,
+    delete_user_account_and_personal_data,
+    disable_user_two_factor,
+    enable_user_two_factor,
+    generate_email_verification_token,
+    get_active_auth_session,
+    get_active_auth_sessions,
+    get_email_notification_preferences,
+    get_user_by_email,
+    get_user_by_id,
+    get_user_data_export_manifest,
+    get_user_two_factor_status,
+    get_valid_password_reset_token,
+    invalidate_password_reset_token,
+    is_user_email_verified,
+    reset_user_password,
+    revoke_all_auth_sessions,
+    revoke_auth_session,
+    revoke_other_auth_sessions,
+    touch_auth_session,
+    update_email_notification_preferences,
+    update_user_backup_codes,
+    verify_user_email_token,
+)
 
-        # Extract skill gaps from skill_gap list or job_match.missing_skills
-        gaps: List[str] = []
-        raw_skill_gaps = results.get("skill_gap") or []
-        for g in raw_skill_gaps:
-            if isinstance(g, dict):
-                skill_name = g.get("skill") or g.get("missing_skill") or g.get("name")
-            else:
-                skill_name = str(g)
-            if skill_name and str(skill_name).strip() and str(skill_name).strip() not in gaps:
-                gaps.append(str(skill_name).strip())
+from db.tracker import (
+    clear_recently_viewed_jobs,
+    create_saved_job_description,
+    delete_calendar_event,
+    delete_job_application,
+    delete_job_contact,
+    delete_saved_job_description,
+    export_job_applications_csv,
+    export_job_applications_json,
+    export_job_applications_markdown,
+    get_application_funnel_analytics,
+    get_application_stage_counts,
+    get_calendar_events,
+    get_company_checklist,
+    get_default_company_checklist,
+    get_job_application_by_id,
+    get_job_applications,
+    get_job_applications_export_summary,
+    get_job_contacts,
+    get_recently_viewed_jobs,
+    get_saved_job_description_by_id,
+    get_saved_job_descriptions,
+    record_viewed_job,
+    remove_recently_viewed_job,
+    reset_company_checklist,
+    save_calendar_event,
+    save_company_checklist,
+    save_job_application,
+    save_job_contact,
+    update_calendar_event,
+    update_job_application,
+    update_job_application_status,
+    update_saved_job_description,
+)
 
-        if not gaps:
-            job_match = results.get("job_match") or {}
-            missing_skills = job_match.get("missing_skills") or []
-            for ms in missing_skills:
-                ms_clean = str(ms).strip()
-                if ms_clean and ms_clean not in gaps:
-                    gaps.append(ms_clean)
+logger = logging.getLogger(__name__)
 
-        return gaps[:limit]
-    except Exception as e:
-        logger.warning(f"Error fetching top skill gaps for student {student_id} and company {company_name}: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-# ==============================================================================
-# Group Discussion Practice Storage & Progress Tracking (#427)
-# ==============================================================================
-
-def save_gd_attempt(
-    student_id: str,
-    topic_title: str,
-    category: str,
-    contribution_type: str,
-    contribution_text: str,
-    word_count: int,
-    overall_score: int,
-    content_score: int,
-    structure_score: int,
-    balance_score: int,
-    clarity_score: int,
-    stronger_opening: str,
-    missed_counterpoint: str,
-    feedback_json: str,
-    topic_id: Optional[str] = None,
-    attempt_id: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Persists a group discussion practice submission and evaluation into SQLite.
-    Returns the saved record as a dictionary.
-    """
-    attempt_uuid = attempt_id or str(uuid.uuid4())
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO gd_practice_attempts (
-                id, student_id, topic_id, topic_title, category,
-                contribution_type, contribution_text, word_count,
-                overall_score, content_score, structure_score, balance_score, clarity_score,
-                stronger_opening, missed_counterpoint, feedback_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                attempt_uuid,
-                student_id,
-                topic_id,
-                topic_title,
-                category,
-                contribution_type,
-                contribution_text,
-                word_count,
-                overall_score,
-                content_score,
-                structure_score,
-                balance_score,
-                clarity_score,
-                stronger_opening,
-                missed_counterpoint,
-                feedback_json
-            )
-        )
-        conn.commit()
-
-        cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_uuid,))
-        row = cursor.fetchone()
-        return dict(row) if row else {"id": attempt_uuid, "student_id": student_id}
-    except Exception as e:
-        logger.error(f"Failed to persist GD practice attempt for student {student_id}: {e}")
-        raise e
-    finally:
-        conn.close()
-
-
-def get_student_gd_attempts(student_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-    """
-    Retrieves the most recent group discussion attempts for a specific student,
-    ordered chronologically descending (newest first).
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT * FROM gd_practice_attempts
-            WHERE student_id = ?
-            ORDER BY created_at DESC
-            LIMIT ?
-            """,
-            (student_id, max(1, limit))
-        )
-        rows = cursor.fetchall()
-        result = []
-        for r in rows:
-            item = dict(r)
-            if item.get("feedback_json"):
-                try:
-                    item["feedback"] = json.loads(item["feedback_json"])
-                except Exception:
-                    item["feedback"] = {}
-            result.append(item)
-        return result
-    except Exception as e:
-        logger.error(f"Error fetching GD practice attempts for student {student_id}: {e}")
-        return []
-    finally:
-        conn.close()
-
-
-def get_gd_attempt_by_id(attempt_id: str, student_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
-    """
-    Retrieves a single GD attempt record by its ID, optionally enforcing student ownership.
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        if student_id:
-            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ? AND student_id = ?", (attempt_id, student_id))
-        else:
-            cursor.execute("SELECT * FROM gd_practice_attempts WHERE id = ?", (attempt_id,))
-        row = cursor.fetchone()
-        if not row:
-            return None
-        item = dict(row)
-        if item.get("feedback_json"):
-            try:
-                item["feedback"] = json.loads(item["feedback_json"])
-            except Exception:
-                item["feedback"] = {}
-        return item
-    except Exception as e:
-        logger.error(f"Error retrieving GD attempt {attempt_id}: {e}")
-        return None
-    finally:
-        conn.close()
-
-
-def delete_student_gd_attempts(student_id: str) -> int:
-    """
-    Deletes all GD practice attempts for a student (primarily used in tests and privacy erasure).
-    Returns count of deleted rows.
-    """
-    conn = get_db_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM gd_practice_attempts WHERE student_id = ?", (student_id,))
-        deleted = cursor.rowcount
-        conn.commit()
-        return deleted
-    except Exception as e:
-        logger.error(f"Error clearing GD practice attempts for student {student_id}: {e}")
-        return 0
-    finally:
-        conn.close()
-
+__all__ = [
+    # Connection & migrations
+    "create_connection",
+    "get_connection",
+    "transaction",
+    "get_db_connection",
+    "MIGRATIONS",
+    "init_db",
+    "run_migrations",
+    "ensure_migration_table",
+    "get_applied_migrations",
+    # Analyses
+    "save_analysis",
+    "get_analysis",
+    "get_student_versions",
+    "get_previous_analysis",
+    "get_previous_analysis_for_target",
+    "get_student_versions_for_target",
+    "get_recent_analyses",
+    "delete_analysis",
+    "get_analyses_history",
+    "save_batch_comparison",
+    "get_batch_comparison",
+    "create_analysis_annotation",
+    "get_analysis_annotations",
+    "get_analysis_annotation",
+    "update_analysis_annotation",
+    "delete_analysis_annotation",
+    "save_analysis_section_feedback",
+    "get_analysis_section_feedback",
+    "get_analysis_section_feedback_summary",
+    "export_analysis_section_feedback_csv",
+    # Interviews
+    "save_interview_session",
+    "create_interview_session",
+    "get_interview_session",
+    "update_interview_session",
+    "get_student_interview_history",
+    "get_student_interview_performance_analytics",
+    "save_interview_bookmark",
+    "bookmark_interview_question",
+    "remove_interview_bookmark",
+    "get_interview_bookmarks",
+    "get_interview_bookmark_by_id",
+    "update_interview_bookmark_practice",
+    "reset_interview_bookmarks_practice",
+    "get_interview_bookmark_practice_stats",
+    "is_interview_bookmarked",
+    "save_interview_experience",
+    "get_interview_experiences",
+    "report_interview_experience",
+    "create_preparation_note",
+    "get_preparation_notes",
+    "get_preparation_note_by_id",
+    "update_preparation_note",
+    "delete_preparation_note",
+    "get_note_category_counts",
+    "save_gd_attempt",
+    "get_student_gd_attempts",
+    "get_gd_attempt_by_id",
+    "delete_student_gd_attempts",
+    # Tracker
+    "save_job_application",
+    "get_job_applications",
+    "delete_job_application",
+    "update_job_application_status",
+    "get_job_application_by_id",
+    "update_job_application",
+    "get_application_stage_counts",
+    "get_application_funnel_analytics",
+    "export_job_applications_csv",
+    "export_job_applications_json",
+    "export_job_applications_markdown",
+    "get_job_applications_export_summary",
+    "save_calendar_event",
+    "get_calendar_events",
+    "update_calendar_event",
+    "delete_calendar_event",
+    "get_default_company_checklist",
+    "get_company_checklist",
+    "save_company_checklist",
+    "reset_company_checklist",
+    "record_viewed_job",
+    "get_recently_viewed_jobs",
+    "remove_recently_viewed_job",
+    "clear_recently_viewed_jobs",
+    "create_saved_job_description",
+    "get_saved_job_descriptions",
+    "get_saved_job_description_by_id",
+    "update_saved_job_description",
+    "delete_saved_job_description",
+    "save_job_contact",
+    "get_job_contacts",
+    "delete_job_contact",
+    # Coding Practice
+    "save_coding_submission",
+    "get_coding_submissions",
+    "save_skill_self_assessment",
+    "get_student_skill_self_assessments",
+    "delete_skill_self_assessment",
+    "get_default_technical_skills_catalog",
+    "save_student_profile",
+    "get_student_profile",
+    "calculate_profile_completion",
+    "save_coding_bookmark",
+    "remove_coding_bookmark",
+    "get_coding_bookmarks",
+    "is_coding_bookmarked",
+    "save_aptitude_attempt",
+    "get_student_aptitude_attempts",
+    "get_aptitude_attempt_by_id",
+    "get_student_weak_aptitude_topics",
+    "delete_student_aptitude_attempts",
+    # Users & Auth
+    "create_user",
+    "get_user_by_email",
+    "create_auth_session",
+    "get_active_auth_session",
+    "touch_auth_session",
+    "get_active_auth_sessions",
+    "revoke_auth_session",
+    "revoke_other_auth_sessions",
+    "revoke_all_auth_sessions",
+    "change_user_password",
+    "get_user_by_id",
+    "enable_user_two_factor",
+    "disable_user_two_factor",
+    "update_user_backup_codes",
+    "get_user_two_factor_status",
+    "get_email_notification_preferences",
+    "update_email_notification_preferences",
+    "generate_email_verification_token",
+    "verify_user_email_token",
+    "is_user_email_verified",
+    "create_password_reset_token",
+    "get_valid_password_reset_token",
+    "reset_user_password",
+    "invalidate_password_reset_token",
+    "get_user_data_export_manifest",
+    "delete_user_account_and_personal_data",
+    # Reports
+    "create_shared_report",
+    "get_shared_report",
+    "record_shared_report_view",
+    "get_active_shares_for_analysis",
+    "revoke_shared_report",
+    "get_shared_report_views",
+    "create_secure_share_link",
+    "get_secure_shared_report",
+    "revoke_secure_share_link",
+    "list_student_secure_shares",
+    # Streaks
+    "record_preparation_activity",
+    "_recalculate_student_streak",
+    "get_student_streak",
+    "get_streak_calendar",
+    "get_recent_preparation_activities",
+    "get_student_preparation_summary_data",
+    # Cohorts
+    "_seed_cohort_benchmarks",
+    "get_user_leaderboard_opt_in",
+    "set_user_leaderboard_opt_in",
+    "record_or_update_cohort_benchmark",
+    "get_cohort_benchmark_by_analysis_id",
+    "get_cohort_benchmarks",
+    "get_cohort_stats",
+    "get_user_placement_history",
+    "get_student_top_skill_gaps_for_company",
+    # System
+    "create_database_backup",
+    "verify_database_integrity",
+    "restore_database_backup",
+    "calculate_gemini_call_cost",
+    "log_gemini_api_call",
+    "get_gemini_usage_summary",
+    "submit_user_feedback",
+    "get_user_feedback_list",
+    "get_feedback_metrics_summary",
+    "COST_PER_PROMPT_TOKEN",
+    "COST_PER_CANDIDATE_TOKEN",
+]

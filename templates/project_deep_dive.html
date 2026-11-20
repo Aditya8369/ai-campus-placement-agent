@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Project Deep-Dive Practice - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary me-2"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/interview/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-3" title="Practice General Mock Interview">
+          <i class="fa-solid fa-comments me-1"></i> General Mock Interview
+        </a>
+        <a href="/dashboard/{{ analysis_id }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Return to Dashboard">
+          <i class="fa-solid fa-gauge me-1"></i> Dashboard
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5 fade-in" id="main-content" tabindex="-1" data-analysis-id="{{ analysis_id }}" data-company-name="{{ company_name|default('Placement', true) }}">
+    
+    <!-- Top Header & Breadcrumb -->
+    <div class="d-flex justify-content-between align-items-center mb-4 p-3 bg-light rounded-4 border flex-wrap gap-2">
+      <div>
+        <nav aria-label="breadcrumb">
+          <ol class="breadcrumb mb-1 small">
+            <li class="breadcrumb-item"><a href="/dashboard/{{ analysis_id }}" class="text-decoration-none">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="/interview/{{ analysis_id }}" class="text-decoration-none">Mock Interview</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Project Deep-Dive</li>
+          </ol>
+        </nav>
+        <h4 class="fw-bold mb-0 text-dark">
+          <i class="fa-solid fa-diagram-project text-primary me-2"></i> Project Defense Deep-Dive
+        </h4>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-white text-dark border rounded-pill px-3 py-2 small shadow-xs">
+          <i class="fa-solid fa-building text-primary me-1"></i> Target: {{ company_name|default('Placement', true) }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Hidden Raw Projects JSON Data Store -->
+    <div id="projectsDataStore" class="d-none" data-projects='{{ projects_json|safe }}'></div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW A: Project Selection View -->
+    <!-- ===================================================================== -->
+    <div id="projectSelectionView" class="mb-5">
+      <div class="row justify-content-center">
+        <div class="col-lg-10">
+          <div class="text-center mb-4">
+            <h5 class="fw-bold text-dark">Select a Project from Your Resume</h5>
+            <p class="text-secondary small max-w-700 mx-auto">
+              Interviewers spend significant time in technical rounds challenging projects listed on your resume ("Why did you choose this database?", "What was the hardest bug?").
+              Choose a project below to defend your architectural choices, debugging, testing, and trade-offs.
+            </p>
+          </div>
+
+          {% if projects and projects|length > 0 %}
+            <div class="row g-3" id="projectsCardGrid">
+              {% for p in projects %}
+                <div class="col-md-6">
+                  <div class="card glass-card h-100 p-4 border rounded-4 shadow-xs project-card d-flex flex-column justify-content-between position-relative {% if p.is_thin %}border-warning-subtle bg-warning-subtle-10{% endif %}">
+                    <div>
+                      <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                        <h5 class="fw-bold text-dark mb-0">{{ p.title }}</h5>
+                        {% if p.is_thin %}
+                          <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill small flex-shrink-0" title="Project description is brief">
+                            <i class="fa-solid fa-triangle-exclamation me-1 text-warning"></i> Brief Detail
+                          </span>
+                        {% else %}
+                          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small flex-shrink-0">
+                            <i class="fa-solid fa-circle-check me-1"></i> Verified
+                          </span>
+                        {% endif %}
+                      </div>
+
+                      {% if p.tech_stack %}
+                        <div class="mb-2">
+                          <span class="small fw-semibold text-secondary me-1"><i class="fa-solid fa-code me-1"></i> Tech Stack:</span>
+                          {% for t in p.tech_stack.split(',') %}
+                            {% if t.strip() %}
+                              <span class="badge bg-light text-dark border rounded-pill small me-1 mb-1">{{ t.strip() }}</span>
+                            {% endif %}
+                          {% endfor %}
+                        </div>
+                      {% endif %}
+
+                      <p class="text-secondary small mb-3 lh-base">
+                        {{ p.short_description or p.description or 'No description text recorded on resume.' }}
+                      </p>
+
+                      {% if p.is_thin %}
+                        <div class="alert alert-warning py-2 px-3 small rounded-3 mb-3">
+                          <i class="fa-solid fa-circle-info me-1"></i>
+                          {{ p.thin_reason or 'This description has few technical details. We recommend supplementing detail before starting.' }}
+                        </div>
+                      {% endif %}
+                    </div>
+
+                    <div class="pt-3 border-top d-flex justify-content-between align-items-center flex-wrap gap-2 mt-auto">
+                      <span class="small text-muted">{{ p.word_count }} words</span>
+                      {% if p.is_thin %}
+                        <button type="button" class="btn btn-sm btn-outline-warning rounded-pill px-3 btn-select-thin-project" data-project-id="{{ p.id }}">
+                          <i class="fa-solid fa-pen-to-square me-1"></i> Add Details &amp; Practice
+                        </button>
+                      {% else %}
+                        <button type="button" class="btn btn-sm btn-primary rounded-pill px-4 btn-select-project" data-project-id="{{ p.id }}">
+                          <i class="fa-solid fa-play me-1"></i> Practice Deep-Dive
+                        </button>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <!-- EMPTY STATE: No projects found in resume -->
+            <div class="card glass-card p-5 text-center my-4 border rounded-4 shadow-sm" id="noProjectsEmptyState">
+              <div class="mb-3">
+                <span class="p-4 bg-light rounded-circle d-inline-flex align-items-center justify-content-center text-secondary">
+                  <i class="fa-solid fa-folder-open fs-1 text-muted"></i>
+                </span>
+              </div>
+              <h4 class="fw-bold text-dark mb-2">No Projects Detected in Resume</h4>
+              <p class="text-secondary small max-w-600 mx-auto mb-4">
+                We could not detect any structured project entries in your analysed resume.
+                Campus technical rounds heavily emphasize project defense ("Why this tech stack?", "What was the most challenging bug?").
+                Update your resume with project titles, technologies, and implementation descriptions, or enter a project manually below.
+              </p>
+              <div class="d-flex justify-content-center gap-2 flex-wrap">
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnOpenCustomProjectModal">
+                  <i class="fa-solid fa-plus me-1"></i> Enter Custom Project to Practice
+                </button>
+                <a href="/interview/{{ analysis_id }}" class="btn btn-outline-secondary rounded-pill px-4">
+                  <i class="fa-solid fa-comments me-1"></i> Practice General Mock Interview
+                </a>
+              </div>
+            </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- VIEW B: Active Project Deep-Dive Interview Simulator -->
+    <!-- ===================================================================== -->
+    <div id="projectDeepDiveSimulatorView" class="d-none">
+      <div class="row g-4">
+        <!-- Main Chat / Q&A Simulator (8 columns) -->
+        <div class="col-lg-8">
+          <div class="card glass-card p-4 border rounded-4 shadow-sm">
+            
+            <!-- Active Project Banner & Switcher -->
+            <div class="p-3 bg-light rounded-3 border mb-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <div>
+                <span class="small text-uppercase fw-bold text-primary tracking-wide d-block">Active Project Under Defense:</span>
+                <h5 class="fw-bold text-dark mb-0" id="activeProjectTitle">Project Title</h5>
+                <span class="small text-muted" id="activeProjectTechStack">Tech Stack</span>
+              </div>
+              <div class="d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnToggleProjectContext" title="View resume description">
+                  <i class="fa-solid fa-circle-info me-1"></i> Project Context
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnChangeProject" title="Select different project">
+                  <i class="fa-solid fa-rotate-left me-1"></i> Change Project
+                </button>
+              </div>
+            </div>
+
+            <!-- Collapsible Project Context Drawer -->
+            <div id="projectContextDrawer" class="collapse mb-3">
+              <div class="p-3 bg-white border rounded-3 small">
+                <h6 class="fw-bold text-dark mb-1"><i class="fa-solid fa-file-lines text-primary me-1"></i> Stated Resume Description:</h6>
+                <p class="text-secondary mb-0 lh-base" id="activeProjectDescription">Project description text...</p>
+              </div>
+            </div>
+
+            <!-- Progress Tracker Bar -->
+            <div class="mb-4">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="small fw-semibold text-secondary" id="questionProgressText">Question 1 of 5</span>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 small" id="activeCategoryBadge">
+                  Design Choices
+                </span>
+              </div>
+              <div class="progress" style="height: 6px;" role="progressbar" aria-label="Project deep-dive question progress" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="progressBar" style="width: 20%;"></div>
+              </div>
+            </div>
+
+            <!-- Active Question Card -->
+            <div class="card p-4 border bg-white rounded-3 shadow-xs mb-4">
+              <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                <span class="small fw-bold text-dark">
+                  <i class="fa-solid fa-circle-question text-primary me-1"></i> Interviewer Question:
+                </span>
+                <button type="button" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2" id="btnTtsQuestion" title="Read question aloud">
+                  <i class="fa-solid fa-volume-high me-1"></i> Listen
+                </button>
+              </div>
+              <div class="fs-6 fw-semibold text-dark lh-base" id="activeQuestionText">
+                Loading follow-up question grounded in your project...
+              </div>
+            </div>
+
+            <!-- Answer Evaluation History Card (Appears after answer submitted) -->
+            <div id="answerEvaluationCard" class="card border rounded-3 p-4 mb-4 bg-light shadow-xs d-none">
+              <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <span class="fw-bold text-dark"><i class="fa-solid fa-clipboard-check text-success me-1"></i> Answer Evaluation:</span>
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 fw-bold fs-6" id="evalOverallScoreBadge">
+                  85 / 100
+                </span>
+              </div>
+
+              <!-- 3 Core Metrics -->
+              <div class="row g-2 mb-3 text-center">
+                <div class="col-4">
+                  <div class="bg-white p-2 rounded-2 border">
+                    <span class="d-block small text-muted">Clarity</span>
+                    <span class="fw-bold fs-6" id="evalClarityScore">85%</span>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="bg-white p-2 rounded-2 border">
+                    <span class="d-block small text-muted">Technical Depth</span>
+                    <span class="fw-bold fs-6" id="evalDepthScore">80%</span>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="bg-white p-2 rounded-2 border">
+                    <span class="d-block small text-muted">Consistency</span>
+                    <span class="fw-bold fs-6" id="evalConsistencyScore">90%</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- One Improvement Tip (Mandatory Feature Requirement) -->
+              <div class="alert alert-warning border border-warning-subtle rounded-3 p-3 mb-3 d-flex align-items-start gap-2 text-dark">
+                <i class="fa-solid fa-lightbulb text-warning fs-5 mt-1 flex-shrink-0"></i>
+                <div>
+                  <strong class="d-block mb-1">One Improvement Tip:</strong>
+                  <span id="evalTipText" class="small lh-base">Tip details here...</span>
+                </div>
+              </div>
+
+              <!-- Feedback Body -->
+              <div class="small text-secondary mb-3 lh-base" id="evalFeedbackText">
+                Evaluative feedback details...
+              </div>
+
+              <div class="text-end">
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnNextQuestion">
+                  Next Question <i class="fa-solid fa-arrow-right ms-1"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Answer Submission Form -->
+            <form id="projectAnswerForm" class="mt-2">
+              <div class="mb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <label for="projectAnswerInput" class="form-label small fw-bold text-dark mb-0">
+                    Your Technical Defense:
+                  </label>
+                  <span class="small text-muted" id="answerWordCount">0 words</span>
+                </div>
+                <textarea 
+                  class="form-control rounded-3 p-3" 
+                  id="projectAnswerInput" 
+                  rows="4" 
+                  placeholder="Defend your architectural choice, explain your debugging steps, or describe your testing strategy with concrete details..." 
+                  required
+                ></textarea>
+                <div class="d-flex justify-content-between align-items-center mt-1">
+                  <span class="small text-muted fst-italic">Press Ctrl/Cmd + Enter to submit. Ground your response in your real project work.</span>
+                </div>
+              </div>
+
+              <div class="d-flex justify-content-end gap-2 mt-3">
+                <button type="submit" class="btn btn-primary rounded-pill px-4" id="btnSubmitProjectAnswer">
+                  <i class="fa-solid fa-paper-plane me-1"></i> Submit Answer
+                </button>
+              </div>
+            </form>
+
+          </div>
+        </div>
+
+        <!-- Right Side Panel: Project Deep-Dive Rubric & Guide (4 columns) -->
+        <div class="col-lg-4">
+          <div class="card glass-card p-4 border rounded-4 shadow-sm mb-4">
+            <h6 class="fw-bold text-dark mb-3"><i class="fa-solid fa-graduation-cap text-primary me-2"></i>Defense Rubric</h6>
+            <div class="small text-secondary mb-3 lh-base">
+              Campus recruiters evaluate projects to verify authorship and problem-solving authenticity.
+            </div>
+            
+            <div class="d-flex flex-column gap-3">
+              <div class="p-2 bg-light rounded-3 border">
+                <span class="fw-semibold text-dark d-block small mb-1"><i class="fa-solid fa-layer-group text-primary me-1"></i> 1. Design Choices</span>
+                <span class="small text-muted">Why did you pick this database/framework instead of alternatives? What constraints guided your choice?</span>
+              </div>
+              <div class="p-2 bg-light rounded-3 border">
+                <span class="fw-semibold text-dark d-block small mb-1"><i class="fa-solid fa-bug text-danger me-1"></i> 2. Challenges &amp; Bugs</span>
+                <span class="small text-muted">What was the hardest bug, concurrency race condition, or performance hurdle, and how did you diagnose it?</span>
+              </div>
+              <div class="p-2 bg-light rounded-3 border">
+                <span class="fw-semibold text-dark d-block small mb-1"><i class="fa-solid fa-vial text-info me-1"></i> 3. Testing &amp; Verification</span>
+                <span class="small text-muted">How did you validate edge cases, prevent regressions, and verify input sanitization?</span>
+              </div>
+              <div class="p-2 bg-light rounded-3 border">
+                <span class="fw-semibold text-dark d-block small mb-1"><i class="fa-solid fa-arrow-trend-up text-success me-1"></i> 4. Retrospective &amp; Improvements</span>
+                <span class="small text-muted">What architectural flaw would you redesign today with more time or budget?</span>
+              </div>
+              <div class="p-2 bg-light rounded-3 border">
+                <span class="fw-semibold text-dark d-block small mb-1"><i class="fa-solid fa-scale-balanced text-warning me-1"></i> 5. Technical Trade-offs</span>
+                <span class="small text-muted">How did you balance latency vs simplicity, speed vs storage, or ease vs extensibility?</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL 1: Thin Project / Add Details Modal -->
+    <!-- ===================================================================== -->
+    <div class="modal fade" id="thinProjectModal" tabindex="-1" aria-labelledby="thinProjectModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 shadow">
+          <div class="modal-header border-bottom pb-2">
+            <h5 class="modal-title fw-bold text-dark" id="thinProjectModalLabel">
+              <i class="fa-solid fa-pen-to-square text-primary me-2"></i> Add Detail to Project
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <p class="text-secondary small mb-3">
+              The project description on your resume is brief. To generate realistic, grounded interview questions without hallucinating outside tools, add a few implementation sentences below:
+            </p>
+            <div class="mb-3">
+              <label for="modalProjectTitle" class="form-label small fw-bold text-dark">Project Title:</label>
+              <input type="text" class="form-control rounded-3" id="modalProjectTitle" readonly>
+            </div>
+            <div class="mb-3">
+              <label for="modalProjectTech" class="form-label small fw-bold text-dark">Technologies / Tech Stack:</label>
+              <input type="text" class="form-control rounded-3" id="modalProjectTech" placeholder="e.g. FastAPI, PostgreSQL, Redis, Docker">
+            </div>
+            <div class="mb-3">
+              <label for="modalProjectAdditionalDetails" class="form-label small fw-bold text-dark">Key Implementation Details (Architecture, Challenges, Testing):</label>
+              <textarea class="form-control rounded-3" id="modalProjectAdditionalDetails" rows="4" placeholder="e.g. Engineered REST microservices with Redis caching for 50ms latency. Handled token expiration bugs and tested endpoints with pytest..."></textarea>
+            </div>
+          </div>
+          <div class="modal-footer border-top pt-2">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary rounded-pill px-4" id="btnConfirmStartWithDetails">
+              <i class="fa-solid fa-play me-1"></i> Start Practice
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL 2: Custom Project Modal (When no projects detected) -->
+    <!-- ===================================================================== -->
+    <div class="modal fade" id="customProjectModal" tabindex="-1" aria-labelledby="customProjectModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 shadow">
+          <div class="modal-header border-bottom pb-2">
+            <h5 class="modal-title fw-bold text-dark" id="customProjectModalLabel">
+              <i class="fa-solid fa-folder-plus text-primary me-2"></i> Enter Custom Project
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label for="customProjectTitle" class="form-label small fw-bold text-dark">Project Title:</label>
+              <input type="text" class="form-control rounded-3" id="customProjectTitle" placeholder="e.g. E-Commerce Microservices Platform" required>
+            </div>
+            <div class="mb-3">
+              <label for="customProjectTech" class="form-label small fw-bold text-dark">Technologies / Tech Stack:</label>
+              <input type="text" class="form-control rounded-3" id="customProjectTech" placeholder="e.g. React, Node.js, MongoDB, Docker" required>
+            </div>
+            <div class="mb-3">
+              <label for="customProjectDesc" class="form-label small fw-bold text-dark">Short Description / Implementation Details:</label>
+              <textarea class="form-control rounded-3" id="customProjectDesc" rows="4" placeholder="Describe the purpose, architecture, and features of your project..." required></textarea>
+            </div>
+          </div>
+          <div class="modal-footer border-top pt-2">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSaveCustomProject">
+              <i class="fa-solid fa-play me-1"></i> Begin Practice
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL 3: Session Completion Summary Modal -->
+    <!-- ===================================================================== -->
+    <div class="modal fade" id="deepDiveSummaryModal" tabindex="-1" aria-labelledby="deepDiveSummaryModalLabel" aria-hidden="true" data-bs-backdrop="static">
+      <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 rounded-4 shadow-lg">
+          <div class="modal-header border-bottom pb-2 bg-light">
+            <h5 class="modal-title fw-bold text-dark" id="deepDiveSummaryModalLabel">
+              <i class="fa-solid fa-award text-success me-2"></i> Project Defense Completed
+            </h5>
+          </div>
+          <div class="modal-body p-4">
+            <div class="text-center mb-4">
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-4 py-2 fs-6 fw-bold mb-2" id="summaryReadinessBadge">
+                Project Defense Ready
+              </span>
+              <h3 class="fw-bold text-dark mb-1" id="summaryOverallScore">88% Overall Score</h3>
+              <p class="text-secondary small">You successfully defended your project across design choices, bugs, testing, and trade-offs.</p>
+            </div>
+
+            <div class="row g-3 mb-4 text-center">
+              <div class="col-4">
+                <div class="p-3 bg-light rounded-3 border">
+                  <span class="d-block small text-muted">Average Clarity</span>
+                  <span class="fw-bold fs-5 text-dark" id="summaryAvgClarity">85%</span>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="p-3 bg-light rounded-3 border">
+                  <span class="d-block small text-muted">Technical Depth</span>
+                  <span class="fw-bold fs-5 text-dark" id="summaryAvgDepth">82%</span>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="p-3 bg-light rounded-3 border">
+                  <span class="d-block small text-muted">Consistency</span>
+                  <span class="fw-bold fs-5 text-dark" id="summaryAvgConsistency">90%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Priority Improvement Tips Collected Across Round -->
+            <div class="card border rounded-3 p-3 bg-white">
+              <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-list-check text-primary me-2"></i>Key Improvement Tips from this Session:</h6>
+              <ul class="small text-secondary ps-3 mb-0" id="summaryTipsList">
+                <!-- Populated dynamically -->
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer border-top pt-2">
+            <button type="button" class="btn btn-outline-secondary rounded-pill px-4" id="btnRestartAnotherProject">
+              <i class="fa-solid fa-rotate-left me-1"></i> Practice Another Project
+            </button>
+            <a href="/interview/{{ analysis_id }}" class="btn btn-outline-primary rounded-pill px-4">
+              <i class="fa-solid fa-comments me-1"></i> General Mock Interview
+            </a>
+            <a href="/dashboard/{{ analysis_id }}" class="btn btn-primary rounded-pill px-4">
+              <i class="fa-solid fa-gauge me-1"></i> Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Global Toast Notification -->
+  <div id="copyToastContainer" class="copy-toast-container" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-4 mt-auto">
+    <div class="container text-center text-secondary small">
+      © 2026 AI Campus Placement Agent. Built by Deepika Gandla.
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Custom JS -->
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/project_deep_dive.js') }}"></script>
+</body>
+</html>

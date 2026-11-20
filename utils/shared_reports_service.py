@@ -1,26 +1,36 @@
 """
-Secure Report-Sharing Link with Expiration and Revocation Service (#408).
+Secure Report-Sharing Link with Expiration, Revocation, and Redaction Service (#408, #468).
 
-Enables students to generate safe, read-only public sharing links for mentors
-or career counselors:
+Enables students to generate safe, read-only public sharing links for mentors,
+seniors, or placement officers:
 - Cryptographically secure unguessable tokens (secrets.token_urlsafe).
-- Configurable expiration periods (e.g. 1 hour, 24 hours, 7 days, 30 days).
+- Configurable expiration periods (24 hours, 7 days, etc.).
 - Immediate manual revocation capability by the owner.
+- Deep PII redaction: automatically redacts candidate email, phone, physical address,
+  and personal profile links from the shared view.
+- Tracks views (view count and last viewed timestamp).
 - Read-only shared view: strictly renders the placement report and hides account controls,
-  other private analyses, resumes, and personal identity credentials.
+  other private analyses, resumes, personal identity credentials, and edit/delete/download actions.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 import secrets
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from utils.database import get_db_connection
+from utils.pii_redactor import redact_pii
 
 logger = logging.getLogger(__name__)
+
+class SharePermissionError(KeyError, PermissionError):
+    """Raised when a user lacks permission to access, create, or revoke a shared report."""
+    pass
+
 
 ALLOWED_EXPIRATION_HOURS = {
     "1h": 1,
@@ -30,8 +40,33 @@ ALLOWED_EXPIRATION_HOURS = {
 }
 
 
+def _deep_redact_pii(data: Any) -> Any:
+    """
+    Recursively redacts PII (emails, phone numbers, addresses, personal links)
+    and removes student account identifiers from arbitrary nested structures.
+    """
+    if isinstance(data, str):
+        return redact_pii(data, enabled=True)
+    elif isinstance(data, dict):
+        sensitive_keys = {
+            "student_id", "user_id", "email", "phone", "contact",
+            "personal_info", "account", "password", "auth_session_id",
+            "candidate_email", "candidate_phone", "candidate_address"
+        }
+        sanitized = {}
+        for k, v in data.items():
+            if str(k).lower() in sensitive_keys:
+                continue
+            sanitized[k] = _deep_redact_pii(v)
+        return sanitized
+    elif isinstance(data, list):
+        return [_deep_redact_pii(item) for item in data]
+    else:
+        return data
+
+
 def init_shared_links_table():
-    """Initializes the secure report sharing table if missing."""
+    """Initializes the secure report sharing table if missing and ensures schema migrations."""
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
@@ -46,10 +81,16 @@ def init_shared_links_table():
                 view_count INTEGER DEFAULT 0,
                 expires_at TIMESTAMP NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                revoked_at TIMESTAMP
+                revoked_at TIMESTAMP,
+                last_viewed_at TIMESTAMP
             )
             """
         )
+        # Migrate table schema if last_viewed_at is missing from an existing database
+        cursor.execute("PRAGMA table_info(secure_shared_reports)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "last_viewed_at" not in columns:
+            cursor.execute("ALTER TABLE secure_shared_reports ADD COLUMN last_viewed_at TIMESTAMP")
         conn.commit()
     finally:
         conn.close()
@@ -62,12 +103,14 @@ def create_shared_report_link(
 ) -> Dict[str, Any]:
     """
     Creates an expiring, revocable share link for a specific analysis owned by student_id.
+    Enforces analysis ownership: only the owner can create a share link.
     """
     if not analysis_id or not student_id:
         raise ValueError("Analysis ID and Student ID are required.")
 
     hours = ALLOWED_EXPIRATION_HOURS.get(expiration_choice, 24)
-    expires_at = dt.datetime.utcnow() + dt.timedelta(hours=hours)
+    now_utc = dt.datetime.now(dt.timezone.utc)
+    expires_at = now_utc + dt.timedelta(hours=hours)
     token = secrets.token_urlsafe(32)
     link_id = f"shr-{uuid.uuid4().hex[:12]}"
 
@@ -77,12 +120,16 @@ def create_shared_report_link(
         cursor = conn.cursor()
         # Verify ownership
         cursor.execute(
-            "SELECT id, company_name, resume_filename FROM analyses WHERE id = ? AND student_id = ?",
-            (analysis_id, student_id)
+            "SELECT id, student_id, company_name, resume_filename FROM analyses WHERE id = ?",
+            (analysis_id,)
         )
         analysis_row = cursor.fetchone()
         if not analysis_row:
-            raise KeyError("Analysis not found or you do not have permission to share it.")
+            raise KeyError("Analysis not found.")
+        
+        row_dict = dict(analysis_row)
+        if row_dict.get("student_id") != student_id:
+            raise SharePermissionError("You do not have permission to share this analysis.")
 
         cursor.execute(
             """
@@ -111,6 +158,7 @@ def get_shared_report_by_token(token: str) -> Tuple[bool, Optional[Dict[str, Any
     """
     Validates share token and returns the analysis data for read-only view.
     Checks revocation status and expiration timestamp.
+    Applies deep PII redaction and updates view count & last_viewed_at.
     """
     if not token:
         return False, None, "Invalid share token."
@@ -139,34 +187,42 @@ def get_shared_report_by_token(token: str) -> Tuple[bool, Optional[Dict[str, Any
         # Expiration check
         exp_str = rec["expires_at"]
         try:
-            exp_time = dt.datetime.strptime(exp_str, "%Y-%m-%d %H:%M:%S")
-            if dt.datetime.utcnow() > exp_time:
+            exp_time = dt.datetime.strptime(exp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=dt.timezone.utc)
+            now_utc = dt.datetime.now(dt.timezone.utc)
+            if now_utc > exp_time:
                 return False, None, "This sharing link has expired."
         except Exception:
             pass
 
-        # Increment view count
+        # Record view: increment count and update last_viewed_at
+        now_str = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        new_view_count = (rec.get("view_count") or 0) + 1
         cursor.execute(
-            "UPDATE secure_shared_reports SET view_count = view_count + 1 WHERE id = ?",
-            (rec["id"],)
+            "UPDATE secure_shared_reports SET view_count = ?, last_viewed_at = ? WHERE id = ?",
+            (new_view_count, now_str, rec["id"])
         )
         conn.commit()
 
         # Sanitize data for read-only mentor view
-        import json
         results = {}
         try:
             results = json.loads(rec["results_json"] or "{}")
         except Exception:
             pass
 
+        # Apply deep PII redaction to company name, job description, and nested results
+        redacted_company = redact_pii(rec.get("company_name") or "", enabled=True)
+        redacted_jd = redact_pii(rec.get("job_description") or "", enabled=True)
+        redacted_results = _deep_redact_pii(results)
+
         sanitized_report = {
             "analysis_id": rec["analysis_id"],
-            "company_name": rec["company_name"],
-            "job_description": rec["job_description"],
-            "results": results,
+            "company_name": redacted_company,
+            "job_description": redacted_jd,
+            "results": redacted_results,
             "created_at": rec["analysis_date"],
-            "view_count": rec["view_count"] + 1,
+            "view_count": new_view_count,
+            "last_viewed_at": now_str,
             "expires_at": rec["expires_at"]
         }
         return True, sanitized_report, None
@@ -177,11 +233,27 @@ def get_shared_report_by_token(token: str) -> Tuple[bool, Optional[Dict[str, Any
 def revoke_shared_link(student_id: str, share_id_or_token: str) -> bool:
     """
     Allows the owner to immediately revoke a sharing link.
+    Enforces ownership: only the student who created the link can revoke it.
     """
     init_shared_links_table()
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT student_id, is_active FROM secure_shared_reports
+            WHERE id = ? OR token = ?
+            """,
+            (share_id_or_token, share_id_or_token)
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        row_dict = dict(row)
+        if row_dict.get("student_id") != student_id:
+            raise SharePermissionError("You do not have permission to revoke this share link.")
+
         cursor.execute(
             """
             UPDATE secure_shared_reports
@@ -196,23 +268,40 @@ def revoke_shared_link(student_id: str, share_id_or_token: str) -> bool:
         conn.close()
 
 
-def list_user_active_shares(student_id: str) -> List[Dict[str, Any]]:
-    """Lists all active share links generated by a student."""
+def list_user_active_shares(student_id: str, analysis_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Lists share links generated by a student, optionally filtered by analysis_id."""
     init_shared_links_table()
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT s.*, a.company_name
-            FROM secure_shared_reports s
-            JOIN analyses a ON s.analysis_id = a.id
-            WHERE s.student_id = ?
-            ORDER BY s.created_at DESC
-            """,
-            (student_id,)
-        )
+        if analysis_id:
+            cursor.execute(
+                """
+                SELECT s.*, a.company_name
+                FROM secure_shared_reports s
+                JOIN analyses a ON s.analysis_id = a.id
+                WHERE s.student_id = ? AND s.analysis_id = ?
+                ORDER BY s.created_at DESC
+                """,
+                (student_id, analysis_id)
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT s.*, a.company_name
+                FROM secure_shared_reports s
+                JOIN analyses a ON s.analysis_id = a.id
+                WHERE s.student_id = ?
+                ORDER BY s.created_at DESC
+                """,
+                (student_id,)
+            )
         rows = cursor.fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            d["share_url"] = f"/shared/report/{d['token']}"
+            result.append(d)
+        return result
     finally:
         conn.close()

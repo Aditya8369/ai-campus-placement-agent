@@ -110,61 +110,61 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Full Name *</label>
-                  <input type="text" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="e.g. Alex Johnson">
+                  <label for="profileFullName" class="form-label small fw-semibold">Full Name *</label>
+                  <input type="text" id="profileFullName" name="full_name" class="form-control" value="{{ profile.full_name or '' }}" placeholder="e.g. Alex Johnson">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Email Address *</label>
-                  <input type="email" name="email" class="form-control" value="{{ profile.email or '' }}" placeholder="alex@university.edu">
-                </div>
-              </div>
-
-              <div class="row g-3 mb-3">
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Phone Number</label>
-                  <input type="tel" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Department / Major</label>
-                  <input type="text" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">
+                  <label for="profileEmail" class="form-label small fw-semibold">Email Address *</label>
+                  <input type="email" id="profileEmail" name="email" class="form-control" value="{{ profile.email or '' }}" placeholder="alex@university.edu">
                 </div>
               </div>
 
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Graduation Year</label>
-                  <input type="number" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
+                  <label for="profilePhone" class="form-label small fw-semibold">Phone Number</label>
+                  <input type="tel" id="profilePhone" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Cumulative CGPA</label>
-                  <input type="number" step="0.01" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                  <label for="profileDepartment" class="form-label small fw-semibold">Department / Major</label>
+                  <input type="text" id="profileDepartment" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">
                 </div>
               </div>
 
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Target Placement Role</label>
-                  <input type="text" name="target_role" class="form-control" value="{{ profile.target_role or '' }}" placeholder="Software Development Engineer">
+                  <label for="profileGradYear" class="form-label small fw-semibold">Graduation Year</label>
+                  <input type="number" id="profileGradYear" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">Target / Dream Company</label>
-                  <input type="text" name="target_company" class="form-control" value="{{ profile.target_company or '' }}" placeholder="Google, Microsoft, Amazon">
+                  <label for="profileCgpa" class="form-label small fw-semibold">Cumulative CGPA</label>
+                  <input type="number" step="0.01" id="profileCgpa" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                </div>
+              </div>
+
+              <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                  <label for="profileTargetRole" class="form-label small fw-semibold">Target Placement Role</label>
+                  <input type="text" id="profileTargetRole" name="target_role" class="form-control" value="{{ profile.target_role or '' }}" placeholder="Software Development Engineer">
+                </div>
+                <div class="col-md-6">
+                  <label for="profileTargetCompany" class="form-label small fw-semibold">Target / Dream Company</label>
+                  <input type="text" id="profileTargetCompany" name="target_company" class="form-control" value="{{ profile.target_company or '' }}" placeholder="Google, Microsoft, Amazon">
                 </div>
               </div>
 
               <div class="mb-3">
-                <label class="form-label small fw-semibold">Key Technical Skills (Comma-separated, at least 3)</label>
-                <input type="text" name="skills" class="form-control" value="{{ skills_csv }}" placeholder="Python, SQL, React, Docker">
+                <label for="profileSkills" class="form-label small fw-semibold">Key Technical Skills (Comma-separated, at least 3)</label>
+                <input type="text" id="profileSkills" name="skills" class="form-control" value="{{ skills_csv }}" placeholder="Python, SQL, React, Docker">
               </div>
 
               <div class="row g-3 mb-4">
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">LinkedIn Profile URL</label>
-                  <input type="url" name="linkedin_url" class="form-control" value="{{ profile.linkedin_url or '' }}" placeholder="https://linkedin.com/in/username">
+                  <label for="profileLinkedinUrl" class="form-label small fw-semibold">LinkedIn Profile URL</label>
+                  <input type="url" id="profileLinkedinUrl" name="linkedin_url" class="form-control" value="{{ profile.linkedin_url or '' }}" placeholder="https://linkedin.com/in/username">
                 </div>
                 <div class="col-md-6">
-                  <label class="form-label small fw-semibold">GitHub Profile URL</label>
-                  <input type="url" name="github_url" class="form-control" value="{{ profile.github_url or '' }}" placeholder="https://github.com/username">
+                  <label for="profileGithubUrl" class="form-label small fw-semibold">GitHub Profile URL</label>
+                  <input type="url" id="profileGithubUrl" name="github_url" class="form-control" value="{{ profile.github_url or '' }}" placeholder="https://github.com/username">
                 </div>
               </div>
 
@@ -216,6 +216,150 @@
             </ul>
           </div>
         </div>
+
+        <!-- Download My Data & Privacy Card (#469) -->
+        <div class="card border-0 shadow-sm mb-4">
+          <div class="card-header bg-white py-3 border-bottom d-flex align-items-center justify-content-between">
+            <h5 class="card-title fw-bold mb-0">
+              <i class="fa-solid fa-file-arrow-down text-primary me-2"></i>Download My Data
+            </h5>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle small">Portability</span>
+          </div>
+          <div class="card-body">
+            <p class="text-secondary small mb-3">
+              Download all your personal platform records, including your profile, resume analyses, mock interview transcripts, job application tracker entries, and preparation notes. Generated on demand and streamed directly without storing on the server.
+            </p>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+              <a href="{{ url_for('api_student_data_export_download', format='json') }}" class="btn btn-primary btn-sm rounded-pill px-3" id="btnDownloadDataJson" download>
+                <i class="fa-solid fa-file-code me-1"></i> Download as JSON
+              </a>
+              <a href="{{ url_for('api_student_data_export_download', format='zip') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnDownloadDataZip" download>
+                <i class="fa-solid fa-file-zipper me-1"></i> Download as ZIP
+              </a>
+            </div>
+            <div class="pt-2 border-top">
+              <small class="text-muted d-block mb-1">
+                <i class="fa-solid fa-shield-halved text-success me-1"></i> Passwords, hashes, and session tokens are strictly excluded.
+              </small>
+              <small class="d-flex justify-content-between mt-2">
+                <a href="{{ url_for('privacy_policy') }}" class="text-decoration-underline text-secondary">
+                  <i class="fa-solid fa-user-shield me-1"></i> Privacy Notice
+                </a>
+                <a href="{{ url_for('delete_account') }}" class="text-danger text-decoration-none">
+                  <i class="fa-solid fa-trash-can me-1"></i> Delete Account
+                </a>
+              </small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Sessions Section (#473) -->
+    <div class="card border-0 shadow-sm mb-4 bg-white" id="activeSessionsSection">
+      <div class="card-header bg-white py-3 border-bottom d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <h5 class="card-title fw-bold text-dark mb-0">
+            <i class="fa-solid fa-laptop text-primary me-2"></i>Active Sessions
+          </h5>
+          <p class="text-muted small mb-0">
+            Manage devices where your account is currently signed in. Sign out of unrecognized or shared lab devices.
+          </p>
+        </div>
+        {% if sessions and sessions|length > 1 %}
+          <form method="post" action="{{ url_for('revoke_other_account_sessions') }}" class="m-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="/profile">
+            <button type="submit" class="btn btn-warning btn-sm rounded-pill px-3" id="btnSignOutAllOtherDevices">
+              <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Sign out of all other devices
+            </button>
+          </form>
+        {% endif %}
+      </div>
+      <div class="card-body p-0">
+        {% if sessions %}
+          <div class="table-responsive">
+            <table class="table align-middle table-hover mb-0" id="activeSessionsTable">
+              <thead class="table-light">
+                <tr>
+                  <th scope="col" class="ps-3">Device / Browser</th>
+                  <th scope="col">Started</th>
+                  <th scope="col">Last Active</th>
+                  <th scope="col" class="text-end pe-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for s in sessions %}
+                  <tr class="{{ 'table-primary-subtle' if s.is_current else '' }}">
+                    <td class="ps-3">
+                      <div class="d-flex align-items-center">
+                        <i class="fa-solid {{ 'fa-mobile-screen' if 'iOS' in s.client_label or 'Android' in s.client_label else 'fa-desktop' }} text-secondary me-2 fs-5"></i>
+                        <div>
+                          <span class="fw-semibold text-dark">{{ s.client_label }}</span>
+                          {% if s.is_current %}
+                            <span class="badge bg-primary text-white rounded-pill ms-2 small">Current session</span>
+                          {% endif %}
+                        </div>
+                      </div>
+                    </td>
+                    <td class="small text-secondary">{{ s.created_display }}</td>
+                    <td class="small text-secondary">{{ s.last_seen_display }}</td>
+                    <td class="text-end pe-3">
+                      <form method="post" action="{{ url_for('revoke_account_session') }}" class="d-inline m-0">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="session_id" value="{{ s.id }}">
+                        <input type="hidden" name="next" value="/profile">
+                        <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3" title="Sign out of this session">
+                          <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Sign out
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="fa-solid fa-shield-halved fs-3 mb-2 text-secondary"></i>
+            <p class="mb-0">No active sessions found.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Security & Password Management Section (#473) -->
+    <div class="card border-0 shadow-sm mb-4 bg-white" id="passwordManagementSection">
+      <div class="card-header bg-white py-3 border-bottom">
+        <h5 class="card-title fw-bold text-dark mb-0">
+          <i class="fa-solid fa-shield-halved text-primary me-2"></i>Security & Password
+        </h5>
+        <p class="text-muted small mb-0">
+          Updating your password will automatically sign out all other active sessions across devices.
+        </p>
+      </div>
+      <div class="card-body p-4">
+        <form action="{{ url_for('account_change_password') }}" method="POST" class="row g-3">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="/profile">
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Current Password *</label>
+            <input type="password" name="current_password" class="form-control" placeholder="Current password" required autocomplete="current-password">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">New Password * (Min. 8 characters)</label>
+            <input type="password" name="new_password" class="form-control" placeholder="New password" required minlength="8" autocomplete="new-password">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Confirm New Password *</label>
+            <input type="password" name="confirm_password" class="form-control" placeholder="Confirm new password" required minlength="8" autocomplete="new-password">
+          </div>
+          <div class="col-12 mt-3">
+            <button type="submit" class="btn btn-outline-primary rounded-pill px-4">
+              <i class="fa-solid fa-key me-1"></i> Change Password & Sign Out Other Devices
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   </div>

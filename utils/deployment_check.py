@@ -116,6 +116,8 @@ def check_public_routes(app_instance) -> Tuple[bool, List[Dict[str, Any]]]:
         ("/login", "Login", "Authentication login page"),
         ("/register", "Create Account", "Student registration page"),
         ("/privacy", "Privacy Notice", "Privacy policy page"),
+        ("/status", "System Status", "Public services status dashboard"),
+        ("/api/status", "status", "Public service status API"),
         ("/forgot-password", "Forgot Password", "Password recovery page"),
         ("/api/company/Google", "Google", "Company hiring guide profile API"),
     ]
