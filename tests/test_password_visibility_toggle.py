@@ -81,9 +81,11 @@ def test_delete_account_page_renders_password_toggle(client):
 
 
 def test_javascript_defines_init_password_toggle():
-    """Verify static/js/script.js implements and registers initPasswordToggle."""
-    js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "script.js"
-    assert js_path.exists(), "script.js not found"
+    """Verify static/js/script.js or auth.js implements and registers initPasswordToggle."""
+    js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "modules" / "auth.js"
+    if not js_path.exists():
+        js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "script.js"
+    assert js_path.exists(), "auth.js or script.js not found"
     js_content = js_path.read_text(encoding="utf-8")
 
     assert "initPasswordToggle()" in js_content

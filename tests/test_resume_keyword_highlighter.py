@@ -311,9 +311,11 @@ def test_dashboard_renders_keyword_highlight_section(test_app_client):
 
 
 def test_script_js_contains_highlighter_toggle():
-    """Verify script.js binds the toggle switch for keyword highlights."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    """Verify script.js / dashboard.js binds the toggle switch for keyword highlights."""
+    js_path = Path("static/js/modules/dashboard.js")
+    if not js_path.exists():
+        js_path = Path("static/js/script.js")
+    js = js_path.read_text(encoding="utf-8")
 
     assert "initResumeKeywordHighlighter" in js
     assert "toggleKeywordHighlights" in js

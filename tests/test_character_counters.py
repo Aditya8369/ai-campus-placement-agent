@@ -2,6 +2,7 @@
 Unit tests for real-time character counters and input limit warnings (#132).
 """
 
+import os
 from app import app
 
 
@@ -26,8 +27,11 @@ def test_index_page_contains_character_counters():
 
 
 def test_script_js_contains_counter_initialization():
-    """Verify script.js exports initCharacterCounters and updates on paste/input."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    """Verify script.js / analysis.js exports initCharacterCounters and updates on paste/input."""
+    js_path = os.path.join("static", "js", "modules", "analysis.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
     assert "initCharacterCounters" in js

@@ -74,10 +74,17 @@ def test_interview_template_contains_draft_and_shortcut_elements():
 # 2. Client-Side JavaScript Logic Verification
 # ==============================================================================
 
+def _get_interview_js_content():
+    p_int = Path("static/js/modules/interview.js")
+    p_com = Path("static/js/modules/common.js")
+    if p_int.exists() and p_com.exists():
+        return p_int.read_text(encoding="utf-8") + "\n" + p_com.read_text(encoding="utf-8")
+    return Path("static/js/script.js").read_text(encoding="utf-8")
+
+
 def test_script_js_contains_draft_autosave_functions():
     """Verify script.js defines draft storage key generation, saving, restoring, and clearing."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    js = _get_interview_js_content()
 
     assert "function getDraftStorageKey" in js
     assert "function saveCurrentDraft" in js
@@ -90,8 +97,7 @@ def test_script_js_contains_draft_autosave_functions():
 
 def test_script_js_autosave_triggers_and_timing():
     """Verify autosave occurs on typing input, periodic timer (every 2.5s), and beforeunload."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    js = _get_interview_js_content()
 
     # Debounced input listener
     assert "saveCurrentDraft" in js
@@ -106,8 +112,7 @@ def test_script_js_autosave_triggers_and_timing():
 
 def test_script_js_ctrl_cmd_enter_submits_only_when_non_empty():
     """Verify Ctrl/Cmd + Enter shortcut checks that answerInput is non-empty before submitting."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    js = _get_interview_js_content()
 
     # Keydown listener on answerInput
     assert 'answerInput.addEventListener("keydown"' in js
@@ -126,8 +131,7 @@ def test_script_js_ctrl_cmd_enter_submits_only_when_non_empty():
 
 def test_script_js_drafts_never_sent_to_server_prematurely():
     """Verify saveCurrentDraft writes strictly to browser storage (localStorage) and never makes fetch/POST calls."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    js = _get_interview_js_content()
 
     # Extract saveCurrentDraft function body
     save_match = re.search(
@@ -144,8 +148,7 @@ def test_script_js_drafts_never_sent_to_server_prematurely():
 
 def test_script_js_draft_clearing_lifecycle():
     """Verify draft is cleared on submission, session completion, restart, and user logout."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
-        js = f.read()
+    js = _get_interview_js_content()
 
     # Cleared for the active question on form submission
     assert "clearDraftForQuestion" in js
