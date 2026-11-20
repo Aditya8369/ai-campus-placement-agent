@@ -264,6 +264,12 @@ from utils.progress_tracker import (
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
+from utils.analysis_export_service import (
+    export_analysis_to_json,
+    export_analysis_to_markdown,
+    build_analysis_export_payload,
+    get_export_filename,
+)
 from utils.resume_info_extractor import (
     extract_resume_information,
     validate_reviewed_information,
@@ -4389,6 +4395,8 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro_json=json.dumps(initial_self_intro),
         aptitude_summary=aptitude_summary,
         is_demo=is_demo,
+        initial_linkedin_suggestions={},
+        initial_linkedin_suggestions_json="{}",
         bullet_rewrites=bullet_rewrites,
         format_compatibility=format_compatibility,
         format_compatibility_json=json.dumps(format_compatibility)
@@ -4504,6 +4512,55 @@ def api_analysis_tailored_cover_letter(analysis_id: str):
         or ""
     )
 
+    payload = request.get_json(silent=True) or {}
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (
+        payload.get("company_name")
+        or request.form.get("company_name")
+        or analysis_record.get("company_name")
+        or ""
+    ).strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=raw_resume,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])
+def api_analysis_linkedin_suggestions(analysis_id: str):
+    """
+    Generates personalized LinkedIn profile suggestions from an existing analysis (#538).
+    Extracts candidate resume text and target role from the saved analysis record.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({
+            "success": False,
+            "error": "Analysis not found or unauthorized."
+        }), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
     # Allow overriding target_role from query param or request JSON/form
     target_role = (
         request.args.get("target_role")
@@ -4547,32 +4604,6 @@ def api_generate_linkedin_suggestions():
         "success": True,
         "suggestions": suggestions
     }), 200
-    payload = request.get_json(silent=True) or {}
-    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
-    company_name = (
-        payload.get("company_name")
-        or request.form.get("company_name")
-        or analysis_record.get("company_name")
-        or ""
-    ).strip()
-    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
-
-    if not job_description:
-        return jsonify({
-            "success": False,
-            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
-            "missing_field": "job_description"
-        }), 400
-
-    result = outreach_agent.generate_tailored_cover_letter(
-        resume_text=raw_resume,
-        job_description=job_description,
-        company_name=company_name,
-        tone=tone
-    )
-
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
 
 
 @app.route("/api/cover-letter/download", methods=["POST"])
@@ -13028,8 +13059,15 @@ def download_certificate_pdf(analysis_id: str):
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
+    Supports ?format=markdown and ?format=json query parameters (#534).
     """
     try:
+        req_format = request.args.get("format", "").lower().strip()
+        if req_format in ("md", "markdown"):
+            return download_markdown_report(analysis_id)
+        if req_format in ("json",):
+            return download_json_report(analysis_id)
+
         analysis_record = get_analysis(analysis_id)
         if not analysis_record or not _is_student_authorized(analysis_record):
             flash("Cannot generate PDF. Placement record not found.", "error")
@@ -13067,6 +13105,103 @@ def download_pdf_report(analysis_id: str):
         logger.error(f"Failed to generate and serve PDF report: {str(e)}")
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/download/<analysis_id>/markdown")
+@app.route("/download/markdown/<analysis_id>")
+def download_markdown_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a structured Markdown (.md) document (#534).
+    Preserves all unicode and non-English text verbatim.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate Markdown report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        markdown_content = export_analysis_to_markdown(analysis_record)
+        filename = get_export_filename(analysis_record, "md")
+
+        return Response(
+            markdown_content.encode("utf-8"),
+            mimetype="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/markdown; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve Markdown report: {str(e)}")
+        flash(f"Error compiling Markdown report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/download/<analysis_id>/json")
+@app.route("/download/json/<analysis_id>")
+def download_json_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a structured JSON document (#534).
+    Preserves all unicode, special characters, and non-English text without ASCII escaping.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate JSON report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        json_content = export_analysis_to_json(analysis_record)
+        filename = get_export_filename(analysis_record, "json")
+
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve JSON report: {str(e)}")
+        flash(f"Error compiling JSON report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/api/analysis/<analysis_id>/export", methods=["GET"])
+def api_export_analysis(analysis_id: str):
+    """
+    REST API endpoint for exporting placement analysis as JSON or Markdown (#534).
+    Supports format=json (default), format=markdown, or download=true query parameter.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    export_format = request.args.get("format", "json").lower().strip()
+    as_attachment = request.args.get("download", "false").lower() in ("true", "1", "yes")
+
+    if export_format in ("md", "markdown"):
+        markdown_content = export_analysis_to_markdown(analysis_record)
+        filename = get_export_filename(analysis_record, "md")
+        headers = {"Content-Type": "text/markdown; charset=utf-8"}
+        if as_attachment:
+            headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return Response(markdown_content.encode("utf-8"), mimetype="text/markdown; charset=utf-8", headers=headers)
+
+    payload = build_analysis_export_payload(analysis_record)
+    if as_attachment:
+        filename = get_export_filename(analysis_record, "json")
+        json_content = json.dumps(payload, indent=2, ensure_ascii=False)
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+
+    return jsonify({"success": True, "analysis": payload}), 200
 
 
 @app.route("/report/<analysis_id>")

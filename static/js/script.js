@@ -1227,8 +1227,8 @@ function initFormUpload() {
   const batchModeSwitch = document.getElementById("batchModeSwitch");
   const singleCompanyContainer = document.getElementById("singleCompanyContainer");
   const batchCompanyContainer = document.getElementById("batchCompanyContainer");
-  const submitBtnSpan = uploadForm.querySelector("button[type='submit'] span");
-  const submitBtnIcon = uploadForm.querySelector("button[type='submit'] i");
+  const batchSubmitSpan = submitBtnSpan || uploadForm.querySelector("button[type='submit'] span");
+  const batchSubmitIcon = submitBtnIcon || uploadForm.querySelector("button[type='submit'] i");
 
   if (batchModeSwitch) {
     batchModeSwitch.addEventListener("change", () => {
@@ -1236,13 +1236,13 @@ function initFormUpload() {
       if (isBatch) {
         if (singleCompanyContainer) singleCompanyContainer.classList.add("d-none");
         if (batchCompanyContainer) batchCompanyContainer.classList.remove("d-none");
-        if (submitBtnSpan) submitBtnSpan.textContent = "Compare Companies & Offer Matrix";
-        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-chart-pie me-2";
+        if (batchSubmitSpan) batchSubmitSpan.textContent = "Compare Companies & Offer Matrix";
+        if (batchSubmitIcon) batchSubmitIcon.className = "fa-solid fa-chart-pie me-2";
       } else {
         if (singleCompanyContainer) singleCompanyContainer.classList.remove("d-none");
         if (batchCompanyContainer) batchCompanyContainer.classList.add("d-none");
-        if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
-        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+        if (batchSubmitSpan) batchSubmitSpan.textContent = "Analyze Readiness";
+        if (batchSubmitIcon) batchSubmitIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
       }
     });
   }
