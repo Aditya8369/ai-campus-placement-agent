@@ -74,8 +74,10 @@ def test_all_primary_templates_contain_theme_toggle_button():
 
 
 def test_script_js_theme_toggle_and_persistence_logic():
-    """Verify script.js checks localStorage, prefers-color-scheme, and sets data-bs-theme."""
-    js_path = Path("static/js/script.js")
+    """Verify script.js / theme.js checks localStorage, prefers-color-scheme, and sets data-bs-theme."""
+    js_path = Path("static/js/modules/theme.js")
+    if not js_path.exists():
+        js_path = Path("static/js/script.js")
     assert js_path.exists()
     js = js_path.read_text(encoding="utf-8")
 
