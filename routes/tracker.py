@@ -1524,3 +1524,86 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# APPLICATION STAGE HISTORY & FILTERS ROUTES (#517)
+# =====================================================================
+
+@tracker_bp.route("/tracker/stage-history", methods=["GET"])
+def application_stage_filters_view():
+    """Renders application stage history timeline with filters (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    company = request.args.get("company")
+    stage = request.args.get("stage")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    stagnant_only = request.args.get("stagnant_only") == "true"
+
+    result = ApplicationStageFilterService.filter_stage_history(
+        user_id=student_id,
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date,
+        stagnant_only=stagnant_only
+    )
+
+    return render_template(
+        "application_stage_filters.html",
+        result=result,
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date
+    )
+
+
+@tracker_bp.route("/api/stage-history/filter", methods=["GET"])
+def api_filter_stage_history():
+    """Returns filtered application stage history in JSON format (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    company = request.args.get("company")
+    stage = request.args.get("stage")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    stagnant_only = request.args.get("stagnant_only") == "true"
+
+    result = ApplicationStageFilterService.filter_stage_history(
+        user_id=student_id,
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date,
+        stagnant_only=stagnant_only
+    )
+    return jsonify({"status": "success", "result": result}), 200
+
+
+@tracker_bp.route("/api/stage-history/transition", methods=["POST"])
+def api_record_stage_transition():
+    """Logs a new application stage transition (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    app_id = payload.get("application_id")
+    to_stage = payload.get("to_stage")
+    if not app_id or not to_stage:
+        return jsonify({"status": "error", "message": "application_id and to_stage are required"}), 400
+
+    record = ApplicationStageFilterService.record_stage_transition(
+        user_id=student_id,
+        application_id=int(app_id),
+        company_name=payload.get("company_name", "Company"),
+        job_title=payload.get("job_title", "Software Engineer"),
+        to_stage=to_stage,
+        from_stage=payload.get("from_stage"),
+        notes=payload.get("notes", "")
+    )
+    return jsonify({"status": "success", "record": record}), 201
+
+
+
