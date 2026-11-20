@@ -4903,19 +4903,44 @@ def is_user_email_verified(user_id: str) -> bool:
         conn.close()
 
 
+def count_saved_job_descriptions(student_id: str) -> int:
+    """Returns the total number of saved job descriptions owned by the specified student."""
+    conn = get_db_connection()
+    try:
+        effective_student_id = (student_id or "").strip()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?",
+            (effective_student_id,)
+        ).fetchone()
+        return row[0] if row else 0
+    finally:
+        conn.close()
+
+
 def create_saved_job_description(
     student_id: str,
     company_name: str,
     role_title: str,
-    source: str,
-    description: str,
+    source: str = "",
+    description: str = "",
     notes: str = ""
 ) -> Dict[str, Any]:
-    """Creates a private saved job description for the specified student."""
+    """Creates a private saved job description for the specified student, enforcing the per-user limit."""
     conn = get_db_connection()
     try:
-        saved_id = f"saved-jd-{uuid.uuid4().hex[:12]}"
         effective_student_id = (student_id or "").strip()
+        count_row = conn.execute(
+            "SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?",
+            (effective_student_id,)
+        ).fetchone()
+        current_count = count_row[0] if count_row else 0
+        max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+        if current_count >= max_limit:
+            raise ValueError(
+                f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one."
+            )
+
+        saved_id = f"saved-jd-{uuid.uuid4().hex[:12]}"
         values = (
             saved_id,
             effective_student_id,
@@ -4936,6 +4961,9 @@ def create_saved_job_description(
             (saved_id, effective_student_id)
         ).fetchone()
         return dict(row) if row else {}
+    except ValueError:
+        conn.rollback()
+        raise
     except Exception:
         conn.rollback()
         logger.exception("Error creating saved job description")
@@ -4977,13 +5005,47 @@ def get_saved_job_description_by_id(
         conn.close()
 
 
+def rename_saved_job_description(
+    saved_id: str,
+    student_id: str,
+    role_title: str,
+    company_name: Optional[str] = None
+) -> bool:
+    """Renames the title (and optionally company) of a saved job description owned by the student."""
+    conn = get_db_connection()
+    try:
+        clean_title = (role_title or "").strip()
+        if not clean_title:
+            return False
+        if company_name is not None and company_name.strip():
+            cursor = conn.execute("""
+                UPDATE saved_job_descriptions
+                SET role_title = ?, company_name = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND student_id = ?
+            """, (clean_title, company_name.strip(), (saved_id or "").strip(), (student_id or "").strip()))
+        else:
+            cursor = conn.execute("""
+                UPDATE saved_job_descriptions
+                SET role_title = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND student_id = ?
+            """, (clean_title, (saved_id or "").strip(), (student_id or "").strip()))
+        conn.commit()
+        return cursor.rowcount > 0
+    except Exception:
+        conn.rollback()
+        logger.exception("Error renaming saved job description %s", saved_id)
+        return False
+    finally:
+        conn.close()
+
+
 def update_saved_job_description(
     saved_id: str,
     student_id: str,
     company_name: str,
     role_title: str,
-    source: str,
-    description: str,
+    source: str = "",
+    description: str = "",
     notes: str = ""
 ) -> bool:
     """Updates a saved job description after checking student ownership."""

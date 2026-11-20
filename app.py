@@ -151,6 +151,8 @@ from utils.database import (
     get_saved_job_description_by_id,
     update_saved_job_description,
     delete_saved_job_description,
+    count_saved_job_descriptions,
+    rename_saved_job_description,
     create_password_reset_token,
     get_valid_password_reset_token,
     reset_user_password,
@@ -17371,7 +17373,7 @@ def api_reset_interview_practice():
 
 
 # ============================================================================
-# Saved Job Description Library
+# Saved Job Description Library (#560)
 # ============================================================================
 
 def _require_authenticated_student():
@@ -17388,16 +17390,27 @@ def _require_authenticated_student():
 def _saved_job_description_fields(payload):
     """Extracts and validates the fields shared by page and API submissions."""
     values = {
-        "company_name": (payload.get("company_name") or "").strip(),
-        "role_title": (payload.get("role_title") or "").strip(),
-        "source": (payload.get("source") or "").strip(),
-        "description": (payload.get("description") or "").strip(),
+        "company_name": (payload.get("company_name") or payload.get("company") or "").strip(),
+        "role_title": (payload.get("role_title") or payload.get("title") or "").strip(),
+        "source": (payload.get("source") or payload.get("link") or "").strip(),
+        "description": (payload.get("description") or payload.get("text") or payload.get("job_description") or "").strip(),
         "notes": (payload.get("notes") or "").strip(),
     }
-    if not values["company_name"] or not values["role_title"] or not values["source"] or not values["description"]:
-        return None, "Company, role title, source, and job description are required."
-    if len(values["description"]) > 15000:
-        return None, "Job descriptions must be 15,000 characters or fewer."
+    if not values["role_title"]:
+        return None, "Job title is required."
+    if len(values["role_title"]) > 150:
+        return None, "Job title must be 150 characters or fewer."
+    if not values["company_name"]:
+        return None, "Company name is required."
+    if len(values["company_name"]) > 150:
+        return None, "Company name must be 150 characters or fewer."
+    if not values["description"]:
+        return None, "Job description text is required."
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
+    if len(values["description"]) > max_chars:
+        return None, f"Job descriptions must be {max_chars:,} characters or fewer."
+    if len(values["source"]) > 1000:
+        return None, "Source link must be 1,000 characters or fewer."
     if len(values["notes"]) > 5000:
         return None, "Notes must be 5,000 characters or fewer."
     return values, None
@@ -17409,18 +17422,34 @@ def saved_job_descriptions_view():
     if auth_response:
         return auth_response
 
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
+
     if request.method == "POST":
+        current_count = count_saved_job_descriptions(student_id)
+        if current_count >= max_limit:
+            flash(
+                f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one.",
+                "danger"
+            )
+            return redirect(url_for("saved_job_descriptions_view"))
+
         fields, error = _saved_job_description_fields(request.form)
         if error:
             flash(error, "danger")
         else:
-            create_saved_job_description(student_id=student_id, **fields)
-            flash("Job description saved to your private library.", "success")
-            return redirect(url_for("saved_job_descriptions_view"))
+            try:
+                create_saved_job_description(student_id=student_id, **fields)
+                flash("Job description saved to your private library.", "success")
+                return redirect(url_for("saved_job_descriptions_view"))
+            except ValueError as ve:
+                flash(str(ve), "danger")
 
     return render_template(
         "saved_job_descriptions.html",
         saved_job_descriptions=get_saved_job_descriptions(student_id),
+        max_limit=max_limit,
+        max_chars=max_chars,
         editing=None
     )
 
@@ -17434,6 +17463,9 @@ def edit_saved_job_description_view(saved_id):
     if not saved:
         flash("Saved job description not found or access denied.", "danger")
         return redirect(url_for("saved_job_descriptions_view"))
+
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
 
     if request.method == "POST":
         fields, error = _saved_job_description_fields(request.form)
@@ -17450,8 +17482,39 @@ def edit_saved_job_description_view(saved_id):
     return render_template(
         "saved_job_descriptions.html",
         saved_job_descriptions=get_saved_job_descriptions(student_id),
+        max_limit=max_limit,
+        max_chars=max_chars,
         editing=saved
     )
+
+
+@app.route("/saved-job-descriptions/<saved_id>/rename", methods=["POST"])
+def rename_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        flash("Saved job description not found or access denied.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+
+    new_title = (request.form.get("role_title") or request.form.get("title") or "").strip()
+    new_company = (request.form.get("company_name") or request.form.get("company") or "").strip()
+    if not new_title:
+        flash("Job title is required to rename.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+    if len(new_title) > 150:
+        flash("Job title must be 150 characters or fewer.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+    if new_company and len(new_company) > 150:
+        flash("Company name must be 150 characters or fewer.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+
+    if rename_saved_job_description(saved_id, student_id, new_title, new_company if new_company else None):
+        flash("Job description renamed successfully.", "success")
+    else:
+        flash("Could not rename saved job description.", "danger")
+    return redirect(url_for("saved_job_descriptions_view"))
 
 
 @app.route("/saved-job-descriptions/<saved_id>/delete", methods=["POST"])
@@ -17472,16 +17535,33 @@ def api_saved_job_descriptions():
     if auth_response:
         return auth_response
 
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+
     if request.method == "GET":
         descriptions = get_saved_job_descriptions(student_id)
-        return jsonify({"success": True, "saved_job_descriptions": descriptions}), 200
+        return jsonify({
+            "success": True,
+            "saved_job_descriptions": descriptions,
+            "count": len(descriptions),
+            "max_limit": max_limit
+        }), 200
+
+    current_count = count_saved_job_descriptions(student_id)
+    if current_count >= max_limit:
+        return jsonify({
+            "success": False,
+            "error": f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one."
+        }), 400
 
     payload = request.get_json(silent=True) or request.form
     fields, error = _saved_job_description_fields(payload)
     if error:
         return jsonify({"success": False, "error": error}), 400
-    saved = create_saved_job_description(student_id=student_id, **fields)
-    return jsonify({"success": True, "saved_job_description": saved}), 201
+    try:
+        saved = create_saved_job_description(student_id=student_id, **fields)
+        return jsonify({"success": True, "saved_job_description": saved}), 201
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
 
 
 @app.route("/api/saved-job-descriptions/<saved_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
@@ -17500,12 +17580,52 @@ def api_saved_job_description_item(saved_id):
         return jsonify({"success": deleted, "message": "Saved job description deleted." if deleted else "Delete failed."}), 200 if deleted else 500
 
     payload = request.get_json(silent=True) or request.form
-    fields, error = _saved_job_description_fields(payload)
+    new_company = payload.get("company_name") or payload.get("company") or saved.get("company_name", "")
+    new_title = payload.get("role_title") or payload.get("title") or saved.get("role_title", "")
+    new_source = payload.get("source") if "source" in payload else (payload.get("link") if "link" in payload else saved.get("source", ""))
+    new_desc = payload.get("description") if "description" in payload else (payload.get("text") if "text" in payload else (payload.get("job_description") if "job_description" in payload else saved.get("description", "")))
+    new_notes = payload.get("notes") if "notes" in payload else saved.get("notes", "")
+
+    fields, error = _saved_job_description_fields({
+        "company_name": new_company,
+        "role_title": new_title,
+        "source": new_source,
+        "description": new_desc,
+        "notes": new_notes,
+    })
     if error:
         return jsonify({"success": False, "error": error}), 400
     updated = update_saved_job_description(saved_id, student_id, **fields)
     if not updated:
         return jsonify({"success": False, "error": "Saved job description could not be updated."}), 500
+    return jsonify({
+        "success": True,
+        "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
+    }), 200
+
+
+@app.route("/api/saved-job-descriptions/<saved_id>/rename", methods=["POST", "PATCH"])
+def api_rename_saved_job_description(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        return jsonify({"success": False, "error": "Saved job description not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form
+    new_title = (payload.get("role_title") or payload.get("title") or "").strip()
+    new_company = (payload.get("company_name") or payload.get("company") or "").strip()
+    if not new_title:
+        return jsonify({"success": False, "error": "Job title is required to rename."}), 400
+    if len(new_title) > 150:
+        return jsonify({"success": False, "error": "Job title must be 150 characters or fewer."}), 400
+    if new_company and len(new_company) > 150:
+        return jsonify({"success": False, "error": "Company name must be 150 characters or fewer."}), 400
+
+    success = rename_saved_job_description(saved_id, student_id, new_title, new_company if new_company else None)
+    if not success:
+        return jsonify({"success": False, "error": "Could not rename saved job description."}), 500
     return jsonify({
         "success": True,
         "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
