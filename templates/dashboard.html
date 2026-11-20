@@ -56,6 +56,9 @@
           <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare with</span> Previous
         </a>
         {% endif %}
+        <a href="{{ url_for('session_resume_compare_view') }}" class="btn btn-outline-success btn-sm rounded-pill px-2 px-sm-3" id="btnNavSessionCompare" title="Test revised resume in this session">
+          <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Test</span> Revision
+        </a>
         {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or session.get('is_demo_mode') %}
         <span class="badge bg-warning text-dark border rounded-pill px-3 py-2 small fw-semibold" id="navDemoBadge">
           <i class="fa-solid fa-flask-vial me-1"></i> Demo Mode
@@ -1006,6 +1009,9 @@
               <i class="fa-solid fa-code-compare me-1"></i> Side-by-Side Diff
             </button>
           {% endif %}
+          <a href="{{ url_for('session_resume_compare_view') }}" class="btn btn-sm btn-outline-success rounded-pill px-3" id="btnTestNewRevisionInSession" title="Upload a revised version to test changes in this session">
+            <i class="fa-solid fa-cloud-arrow-up me-1"></i> Test Revision In-Session
+          </a>
         </div>
       </div>
 
