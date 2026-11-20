@@ -2665,3 +2665,62 @@ def api_get_gd_history():
 preparation_notes_view = interview_notes_view
 api_preparation_notes = api_notes_collection
 api_preparation_note_item = api_note_operations
+
+
+# =====================================================================
+# VOICE RECORDING MOCK INTERVIEW ROUTES (#510)
+# =====================================================================
+
+@interview_bp.route("/api/interview/voice/submit", methods=["POST"])
+def api_submit_voice_interview():
+    """
+    Submits voice interview audio metadata and editable transcript (#510).
+    Computes words per minute, speaking duration, and filler word diagnostics.
+    """
+    from utils.voice_interview_service import VoiceInterviewService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    session_id = payload.get("session_id", "default_session")
+    question_id = payload.get("question_id", "q1")
+    question_text = payload.get("question_text", "Interview question")
+    raw_transcript = payload.get("raw_transcript", "")
+    edited_transcript = payload.get("edited_transcript", raw_transcript)
+    duration_seconds = float(payload.get("duration_seconds", 0.0))
+    audio_format = payload.get("audio_format", "webm")
+
+    try:
+        result = VoiceInterviewService.process_voice_submission(
+            user_id=student_id,
+            session_id=session_id,
+            question_id=question_id,
+            question_text=question_text,
+            duration_seconds=duration_seconds,
+            raw_transcript=raw_transcript,
+            edited_transcript=edited_transcript,
+            audio_format=audio_format
+        )
+        return jsonify({"status": "success", "voice_analysis": result}), 201
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error in voice interview submission: {e}")
+        return jsonify({"status": "error", "message": "Failed to process voice submission."}), 500
+
+
+@interview_bp.route("/api/interview/voice/<session_id>/summary", methods=["GET"])
+def api_get_voice_session_summary(session_id):
+    """Retrieves speaking pace and delivery analytics for a session (#510)."""
+    from utils.voice_interview_service import VoiceInterviewService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    summary = VoiceInterviewService.get_delivery_summary(student_id, session_id)
+    records = VoiceInterviewService.get_session_voice_records(student_id, session_id)
+
+    return jsonify({
+        "status": "success",
+        "session_id": session_id,
+        "summary": summary,
+        "records": records
+    }), 200
+
