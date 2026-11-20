@@ -2,6 +2,7 @@
 Unit tests for empty states across dashboard, recent analyses drawer, and tables (#130).
 """
 
+import os
 from app import app
 
 
@@ -18,8 +19,11 @@ def test_dashboard_empty_states_rendered():
 
 
 def test_script_js_recent_analyses_empty_state():
-    """Verify script.js renders a styled empty state card when no past analyses exist."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    """Verify script.js / common.js renders a styled empty state card when no past analyses exist."""
+    js_path = os.path.join("static", "js", "modules", "common.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
     assert "initRecentAnalysesDrawer" in js
