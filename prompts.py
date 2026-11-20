@@ -692,3 +692,48 @@ Return a single JSON object strictly matching this schema:
 }}
 Ensure the output is valid JSON only.
 """
+
+
+# ==============================================================================
+# Bullet Rewriter Prompts (#429)
+# ==============================================================================
+
+BULLET_REWRITE_SYSTEM_INSTRUCTION = """
+You are an expert technical resume coach and hiring manager.
+Your task is to rewrite weak, passive, or unquantified resume bullet points from a student's resume into high-impact, professional statements using the XYZ formula:
+Accomplished [X] (Action Verb + Task) as measured by [Y] (Measurable Result) by doing [Z] (Methodology / Tech Stack).
+
+CRITICAL REQUIREMENTS:
+1. NEVER INVENT METRICS, NUMBERS, OR PERCENTAGES.
+   Do NOT invent statistics like '38%', '15,000 users', '$50,000', or '3x' if they were not in the candidate's original bullet.
+   Instead, you MUST use standard bracketed placeholders where the candidate must plug in real numbers, e.g.:
+   - [X%] for percentage improvements, reductions, or growth
+   - [number]+ for counts, scale, users, or transactions
+   - [X ms] for latency / performance gains
+   - [Y hours] or [Z weeks] for time savings
+   - [$amount] for monetary savings or revenue
+2. PRESERVE ORIGINAL FACTS: Do not invent responsibilities or technologies the candidate never worked on. Retain the core task.
+3. OPEN WITH STRONG ACTION VERBS: Start each rewrite with a strong past-tense power verb (e.g., Engineered, Architected, Spearheaded, Optimized, Streamlined, Automated, Implemented).
+4. OUTPUT FORMAT: Respond ONLY with a valid JSON object matching the requested schema. No markdown formatting, preamble, or commentary.
+"""
+
+BULLET_REWRITE_USER_PROMPT_TEMPLATE = """
+Rewrite the following weak resume bullet points for a student targeting {target_role} at {company_name}.
+
+Weak Bullets to Rewrite:
+{bullets_json}
+
+Return a single JSON object matching this schema:
+{{
+  "rewrites": [
+    {{
+      "original_bullet": "exact original bullet point text",
+      "action_verb": "Power action verb used",
+      "task": "Core technical task and tools preserved from original",
+      "measurable_result": "Measurable outcome using placeholders (e.g., 'reducing query latency by [X%] and supporting [number]+ concurrent users')",
+      "suggested_rewrite": "Complete polished bullet point starting with action verb, task, and measurable result with placeholders."
+    }}
+  ]
+}}
+Ensure the output is valid JSON only.
+"""

@@ -6,7 +6,7 @@ including request schemas, query parameters, multipart form uploads, response mo
 authentication mechanisms (session cookies, CSRF tokens), and HTTP error statuses.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 OPENAPI_SPEC: Dict[str, Any] = {
     "openapi": "3.0.3",
@@ -30,11 +30,19 @@ OPENAPI_SPEC: Dict[str, Any] = {
     },
     "servers": [
         {
+            "url": "/api/v1",
+            "description": "API v1 Production Server (Recommended)"
+        },
+        {
             "url": "/",
-            "description": "Current Application Server"
+            "description": "Application Root Server (supports /api/v1/... and legacy /api/...)"
         }
     ],
     "tags": [
+        {
+            "name": "API Versioning & Discovery",
+            "description": "Query active, supported, and deprecated API versions, sunset schedules, and migration resources."
+        },
         {
             "name": "Placement Analysis",
             "description": "Resume ATS evaluation, skill gap extraction, async pipeline tasks, and batch company comparison."
@@ -65,6 +73,51 @@ OPENAPI_SPEC: Dict[str, Any] = {
         }
     ],
     "paths": {
+        "/api/v1/version": {
+            "get": {
+                "tags": ["API Versioning & Discovery"],
+                "summary": "Get API Version and Compatibility Status",
+                "description": (
+                    "Retrieves current, supported, and deprecated API versions, sunset schedules, "
+                    "and migration guide links (#445)."
+                ),
+                "operationId": "getApiVersionV1",
+                "responses": {
+                    "200": {
+                        "description": "API version and deprecation policy details.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiVersionResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/version": {
+            "get": {
+                "tags": ["API Versioning & Discovery"],
+                "summary": "Get API Version (Legacy Endpoint)",
+                "description": (
+                    "Legacy unversioned endpoint returning API version information with Deprecation and Sunset headers."
+                ),
+                "operationId": "getApiVersionLegacy",
+                "responses": {
+                    "200": {
+                        "description": "API version and deprecation policy details.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiVersionResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/analysis/start": {
             "post": {
                 "tags": ["Placement Analysis"],
@@ -1159,6 +1212,36 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
+        "/api/status": {
+            "get": {
+                "tags": ["System & Utilities"],
+                "summary": "Public Application Services Operational Status",
+                "description": "Reports real-time operational status (operational, degraded, unavailable) for Application, Database, and AI Integration without exposing credentials.",
+                "operationId": "getPublicServiceStatus",
+                "responses": {
+                    "200": {
+                        "description": "Services are operational or degraded with safe fallbacks.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    },
+                    "503": {
+                        "description": "Critical service outage (e.g. database down).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PublicServiceStatusResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/walkthrough": {
             "get": {
                 "tags": ["System & Utilities"],
@@ -1660,6 +1743,39 @@ OPENAPI_SPEC: Dict[str, Any] = {
                     "recommended_next_step": {"type": "object"},
                     "steps": {"type": "array", "items": {"type": "object"}}
                 }
+            },
+            "ApiVersionResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "example": "success"},
+                    "current_version": {"type": "string", "example": "v1"},
+                    "default_version": {"type": "string", "example": "v1"},
+                    "supported_versions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "example": ["v1"]
+                    },
+                    "deprecated_versions": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "example": ["legacy (unversioned /api/...)"]
+                    },
+                    "sunset_date": {"type": "string", "example": "2030-01-01"},
+                    "sunset_date_rfc": {"type": "string", "example": "Wed, 01 Jan 2030 00:00:00 GMT"},
+                    "documentation_url": {"type": "string", "example": "/api/v1/docs"},
+                    "openapi_url": {"type": "string", "example": "/api/v1/openapi.json"},
+                    "migration_guide": {"type": "string", "example": "/docs/api-versioning"},
+                    "policy": {
+                        "type": "object",
+                        "properties": {
+                            "strategy": {"type": "string"},
+                            "backwards_compatibility": {"type": "string"},
+                            "deprecation_header": {"type": "string"},
+                            "sunset_header": {"type": "string"},
+                            "link_header_rel": {"type": "string"}
+                        }
+                    }
+                }
             }
         }
     }
@@ -1670,3 +1786,16 @@ def get_openapi_spec() -> Dict[str, Any]:
     """Returns the full OpenAPI 3.0.3 specification dictionary."""
     import copy
     return copy.deepcopy(OPENAPI_SPEC)
+
+
+def export_openapi_json(output_path: Optional[str] = None) -> str:
+    """Exports the OpenAPI specification to a formatted JSON file."""
+    import json
+    from pathlib import Path
+    import config
+
+    target_path = Path(output_path) if output_path else config.BASE_DIR / "docs" / "openapi.json"
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(target_path, "w", encoding="utf-8") as f:
+        json.dump(get_openapi_spec(), f, indent=2)
+    return str(target_path)

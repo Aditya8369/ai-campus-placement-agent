@@ -86,6 +86,9 @@
             <i class="fa-solid fa-book-open me-1"></i> Preparation
           </a>
           <ul class="dropdown-menu shadow-sm border-0">
+            <li><a class="dropdown-item" href="/aptitude">
+              <i class="fa-solid fa-stopwatch me-2 text-primary"></i>Aptitude Practice
+            </a></li>
             <li><a class="dropdown-item" href="/coding-practice">
               <i class="fa-solid fa-code me-2 text-primary"></i>Practice DSA
             </a></li>
@@ -461,6 +464,9 @@
                       </span>
                     </div>
 
+                    <!-- Live Announcer for Resume Selection -->
+                    <div id="fileSelectionAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
                     <!-- Enhanced Resume File Preview Card (#133) -->
                     <div id="resumePreviewCard" class="card border rounded-3 p-3 mt-3 d-none shadow-sm bg-body">
                       <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -733,9 +739,6 @@
             <p class="text-secondary small mb-0">{{ _t('feature_interview_desc', 'Generates tailored interview questions and evaluates your answers in real time with scoring.') }}</p>
           </div>
         </div>
-              real time, grading your accuracy, communication, and confidence.
-          </div>
-        </div>
 
         <div class="col-md-4">
           <div class="card h-100 border-0 bg-light p-4 rounded-4">
@@ -754,56 +757,68 @@
   <!-- Agent Progress Panel Overlay (Hidden by Default) -->
   <div id="progressOverlay" class="progress-overlay d-none" role="region" aria-label="Analysis processing status">
     <div id="progressLiveAnnouncer" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
-    <div class="progress-panel glass-card text-center p-5">
-      <div id="progressSpinner" class="spinner-border text-primary mb-4" role="status"
-        style="width: 3rem; height: 3rem;">
-        <span class="visually-hidden">Loading analysis...</span>
+    <div class="progress-panel glass-card text-center p-4 p-sm-5" id="progressPanel">
+      <div id="progressStatusIconContainer" class="mb-3">
+        <div id="progressSpinner" class="spinner-border text-primary" role="status"
+          style="width: 3rem; height: 3rem;">
+          <span class="visually-hidden">Loading analysis...</span>
+        </div>
+        <i id="progressSuccessIcon" class="fa-solid fa-circle-check text-success fa-3x d-none" aria-hidden="true"></i>
+        <i id="progressErrorIcon" class="fa-solid fa-circle-exclamation text-danger fa-3x d-none" aria-hidden="true"></i>
       </div>
-      <h3 class="fw-bold text-dark" id="progressTitle">Coordinating AI Agents</h3>
-      <p class="text-secondary" id="progressSubtitle">Orchestrating multi-agent analysis in progress...</p>
+      <h3 class="fw-bold text-dark fs-4 fs-sm-3" id="progressTitle">Coordinating AI Agents</h3>
+      <p class="text-secondary small mb-3" id="progressSubtitle">Orchestrating multi-agent analysis in progress...</p>
 
       <!-- Live Progress Bar -->
-      <div class="progress mb-4" style="height: 8px; border-radius: 4px;">
+      <div class="progress mb-4" style="height: 10px; border-radius: 6px;">
         <div id="analysisProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-primary"
           role="progressbar" style="width: 5%;" aria-valuenow="5" aria-valuemin="0" aria-valuemax="100"></div>
       </div>
 
       <!-- Live Stream Error Alert -->
-      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3">
-        <i class="fa-solid fa-triangle-exclamation me-2"></i>
-        <span id="progressErrorMessage"></span>
-        <div class="mt-2 text-end">
-          <button type="button" class="btn btn-sm btn-outline-danger" id="btnCloseProgressError">Close & Retry</button>
+      <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3" role="alert">
+        <div class="d-flex align-items-center mb-1">
+          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
+          <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+        </div>
+        <div id="progressErrorMessage" class="small mb-3"></div>
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-sm btn-danger text-white rounded-pill px-3" id="btnRetryAnalysis">
+            <i class="fa-solid fa-rotate-right me-1"></i> Retry
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnCloseProgressError">
+            Dismiss
+          </button>
         </div>
       </div>
 
-      <ul class="progress-steps-list text-start">
+      <ul class="progress-steps-list text-start" id="analysisProgressStepsList">
         <li class="progress-step text-muted" id="step1">
           <div class="step-indicator">1</div>
-          <span>Resume Text Extracted Successfully</span>
+          <span class="step-name">Reading resume</span>
         </li>
         <li class="progress-step text-muted" id="step2">
           <div class="step-indicator">2</div>
-          <span>Resume Agent Analyzing ATS compatibility</span>
+          <span class="step-name">Checking format</span>
         </li>
         <li class="progress-step text-muted" id="step3">
           <div class="step-indicator">3</div>
-          <span>Job Match Agent running description checks</span>
+          <span class="step-name">Matching job description</span>
         </li>
         <li class="progress-step text-muted" id="step4">
           <div class="step-indicator">4</div>
-          <span>Skill Gap Agent mapping course metrics</span>
+          <span class="step-name">Finding skill gaps</span>
         </li>
         <li class="progress-step text-muted" id="step5">
           <div class="step-indicator">5</div>
-          <span>Roadmap Agent planning 6-week syllabus</span>
+          <span class="step-name">Building roadmap</span>
         </li>
         <li class="progress-step text-muted" id="step6">
           <div class="step-indicator">6</div>
-          <span>Final Placement Analysis compiling</span>
+          <span class="step-name">Preparing interview questions</span>
         </li>
       </ul>
-      <p class="text-muted small" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
+      <p class="text-muted small mb-0" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
     </div>
   </div>
 
@@ -968,6 +983,7 @@
       </div>
       <div>
         <a href="{{ url_for('privacy_policy') }}" class="text-secondary text-decoration-underline me-3">Privacy Notice</a>
+        <a href="{{ url_for('system_status_page') }}" class="text-secondary text-decoration-underline me-3"><i class="fa-solid fa-heart-pulse me-1"></i>System Status</a>
         <a href="{{ url_for('api_docs_ui') }}" class="text-secondary text-decoration-underline me-3"><i class="fa-solid fa-book-open me-1"></i>API Documentation</a>
         <a href="https://github.com/deepikagandla74/ai-campus-placement-agent" target="_blank" rel="noopener noreferrer" class="text-secondary text-decoration-underline">GitHub</a>
       </div>
