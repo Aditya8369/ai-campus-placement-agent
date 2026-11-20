@@ -111,7 +111,7 @@ The system is engineered as a modular, decoupled pipeline designed for efficienc
 13. **Timed Aptitude Practice Module**: Prepare for online campus recruitment screening tests with timed practice sets (`/aptitude`). Features a curated, original question bank (`data/aptitude_questions.json`) spanning **Quantitative Aptitude**, **Logical Reasoning**, and **Verbal Ability**. Supports full 15-minute comprehensive tests and 10-minute sectional drills, visible countdown timers with accessible time warnings, automatic submission upon timeout, and complete scorecards featuring per-topic accuracy, step-by-step mathematical/logical explanations, and weak topic identification (<60% accuracy) displayed on the student dashboard.
 14. **Campus Group Discussion (GD) Practice & AI Feedback Coach**: Master high-stakes campus placement GD rounds with an interactive practice module (`/group-discussion`). Access curated topics across **Current Affairs**, **Technology**, and **Abstract** categories, spin for random topics, write 150–250 word contributions (Opening Statement, Rebuttal, or Conclusion), and receive comprehensive multi-criteria AI feedback scoring **Content**, **Structure**, **Balance**, and **Clarity** (0–100 each). Includes high-impact alternative opening statements, key missed counter-points / blind spots, concrete strengths and improvement areas, resilient deterministic fallback evaluation, and longitudinal practice history tracking in SQLite.
 15. **CTC to In-Hand Salary & Offer Comparison Calculator**: Demystifies multi-component campus placement offers by breaking down headline CTC figures into guaranteed monthly take-home pay. Evaluates fixed pay, variable incentives, joining bonuses, and employer PF across up to three offers side-by-side. Deductions are calculated using a clearly labeled, configurable assumption set stored in `data/salary_calculator_assumptions.json` (EPF @ 12% of basic, professional tax @ ₹200/mo, standard deduction of ₹75,000, and New Tax Regime slabs with Section 87A rebate and 4% cess). Highlights the Highest Monthly In-Hand Pay and Highest Guaranteed Pay to prevent students from being misled by inflated variable bonuses, rejects negative/invalid inputs, and includes a prominent disclaimer that calculations are estimates and not certified tax advice.
-16. **Installable Progressive Web App (PWA) & Offline Fallback Protection (#471)**: Install the application directly to mobile and desktop home screens via a compliant Web App Manifest (`/manifest.json`), launching in full standalone display mode. A dedicated Service Worker (`/sw.js`) precaches static styling, client-side scripts, typography, and icons, seamlessly serving a friendly offline fallback page (`/offline`) whenever campus Wi-Fi or mobile data drops. To protect student privacy, personal dashboard evaluations, resumes, reports, interviews, and API endpoints are never stored in the service worker cache. Fully compliant with Google Lighthouse PWA installability criteria.
+16. **ATS-Friendly Resume Template Gallery & In-Memory Exporter (#561)**: Generate clean, single-column, ATS-certified resumes directly from the student's reviewed information (`/resume/templates`). Offers 3 tailored templates: **Classic** (traditional serif with balanced margins for corporate/finance), **Compact** (tighter modern layout fitting rich experience on 1 page), and **Project-Focused** (emphasizes technical stacks, GitHub projects, and system design for freshers). Features interactive in-browser preview, optional section toggling (Summary, Education, Skills, Experience, Projects, Certifications) without leaving empty gaps, XML entity escaping, and streaming on-demand DOCX and PDF generation with zero disk retention.
 
 ---
 
@@ -173,6 +173,18 @@ Detailed breakdown of identified skill gaps, detailing importance priority, esti
 ### 5. CTC to In-Hand Salary & Offer Comparison Calculator
 Transparent financial planning tool demystifying campus CTC offers by calculating monthly take-home pay, EPF contributions, and tax deductions with side-by-side offer comparison.
 ![CTC to In-Hand Salary Calculator](docs/screenshots/ctc-salary-calculator.svg)
+
+---
+
+### 6. ATS-Friendly Resume Template Gallery & Exporter (#561)
+Clean, single-column resume builder generating compliant DOCX and PDF files filled directly with the student's verified profile data.
+- **3 Purpose-Built Templates**:
+  - **Classic**: Traditional serif typography (Times New Roman), formal headings, and balanced margins ideal for traditional corporate and financial firms.
+  - **Compact**: 1-page modern condensed layout (Calibri) with tighter spacing to fit extensive internship and project experience without overflowing.
+  - **Project-Focused**: Emphasizes technical stacks, GitHub project achievements, and system design immediately after skills, optimized for technical campus screening rounds.
+- **Pure Single-Column Flow**: Zero tables, columns, text boxes, or embedded images that break recruitment parser text streams.
+- **Live Preview & Section Selection**: Toggle optional sections (Summary, Education, Skills, Experience, Projects, Certifications) without empty blank gaps.
+- **On-the-Fly Streaming**: Compiled in-memory via `python-docx` and `ReportLab` without saving generated student resumes on disk.
 
 ---
 
