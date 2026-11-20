@@ -124,12 +124,14 @@ def test_register_template_dom_elements():
 
     # External assets
     assert "font-awesome" in content.lower()
-    assert "script.js" in content
+    assert "script.js" in content or "auth.js" in content
 
 
 def test_script_js_security_and_toggle():
-    """Verify static/js/script.js implements real-time handling and does not persist passwords."""
-    js_path = os.path.join("static", "js", "script.js")
+    """Verify static/js/script.js or auth.js implements real-time handling and does not persist passwords."""
+    js_path = os.path.join("static", "js", "modules", "auth.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
     assert os.path.exists(js_path)
 
     with open(js_path, "r", encoding="utf-8") as f:

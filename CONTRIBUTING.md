@@ -125,6 +125,17 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
 - **Variable naming**: Use descriptive, meaningful names
 - **Error handling**: Include proper error handling and logging
 
+### Frontend JavaScript Architecture (ES Modules)
+
+Client-side behavior in `static/js/` is split into domain modules under `static/js/modules/` loaded via `<script type="module">`:
+- **`modules/utils.js`**: Shared utilities including CSRF token helpers (`getCsrfToken`), custom `apiFetch`, safe HTML escaping (`escapeHtml`), clipboard copying (`copyToClipboard`), and floating toast notifications (`showToast`).
+- **`modules/theme.js`**: Theme resolution, dark/light toggle (`initThemeToggle`), and system preference sync.
+- **`modules/common.js`**: Reusable global UI widgets (back-to-top, accessibility traps/skip links, session timeout modal, recent analyses drawer, interview draft cleanup).
+- **Feature modules**: Domain-specific modules (`analysis.js`, `dashboard.js`, `interview.js`, `bookmarks.js`, `tracker.js`, `streaks.js`, `auth.js`, `self_intro.js`, `project_deep_dive.js`, `cover_letter.js`).
+- **Template loading**: Each HTML template loads only the module(s) it needs via `<script type="module" src="{{ url_for('static', filename='js/modules/<feature>.js') }}"></script>`.
+- **Encapsulation**: Avoid defining global variables on `window`; share logic explicitly using ES module `import` and `export` statements.
+- **`static/js/script.js`**: Serves as a small backwards-compatible bootstrap facade.
+
 ## Pull Request Process
 
 1. **Update Documentation**: If your changes affect functionality, update the README or relevant documentation

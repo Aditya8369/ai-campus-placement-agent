@@ -1,91 +1,97 @@
-// Frontend interactions - AI Campus Placement Agent
+/**
+ * Frontend Bootstrap (static/js/script.js)
+ * =========================================
+ * Application bootstrap and backwards-compatibility module.
+ * Modular feature code has been extracted to static/js/modules/:
+ * - utils.js: CSRF helpers, escaping, toasts, clipboard helpers
+ * - theme.js: Dark/light mode theme management
+ * - common.js: Shared UI widgets (back-to-top, accessibility, session timeout, drawer)
+ * - analysis.js: Resume upload, character counters, progress pipeline
+ * - dashboard.js: Visualizations, skill gaps, roadmaps, walkthrough
+ * - interview.js: Mock interview simulator, voice coach, timers, drafts
+ * - bookmarks.js: Coding and interview question bookmarks
+ * - tracker.js: Company explorer and checklists
+ * - streaks.js: Preparation streaks and activity tracking
+ * - auth.js: Password toggle and strength meter
+ * - self_intro.js: Self-introduction pitch studio
+ * - project_deep_dive.js: Architecture defense simulator
+ * - cover_letter.js: Tailored cover letter studio
+ */
 
-// Early theme resolution to prevent flash of unstyled content (FOUC) (#158)
-try {
-  const initialTheme = (function () {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark" || stored === "light") return stored;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  })();
-  document.documentElement.setAttribute("data-bs-theme", initialTheme);
-} catch (e) {
-  // Graceful fallback
+import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
+import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
+import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
+import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
+import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
+import { initMockInterview } from "./modules/interview.js";
+import { initCodingBookmarks, initInterviewBookmarks } from "./modules/bookmarks.js";
+import { initCompanyExplorer } from "./modules/tracker.js";
+import { initStreakTracker } from "./modules/streaks.js";
+import { initPasswordToggle, initPasswordStrengthIndicator } from "./modules/auth.js";
+import { initSelfIntroductionStudio } from "./modules/self_intro.js";
+import { initProjectDeepDive } from "./modules/project_deep_dive.js";
+import { initTailoredCoverLetterStudio } from "./modules/cover_letter.js";
+
+// Re-export for module consumers
+export {
+  getCsrfToken,
+  escapeHtml,
+  showToast,
+  copyToClipboard,
+  initThemeToggle,
+  getPreferredTheme,
+  setTheme,
+  updateThemeIcon,
+  initCommon,
+  initBackToTop,
+  initAccessibility,
+  initRecentAnalysesDrawer,
+  initSessionTimeout,
+  clearAllInterviewDrafts,
+  initInterviewDraftLogoutCleanup,
+  initFormUpload,
+  initCharacterCounters,
+  initCircularProgress,
+  initDashboard,
+  initSkillGapFilter,
+  initRoleSkillGapSelector,
+  initRoadmapTracker,
+  initRoadmapExport,
+  initProgressTracker,
+  initOutreachGenerator,
+  initCopySuggestions,
+  initRoleBasedPrep,
+  initSkillsComparisonChart,
+  initResumeKeywordHighlighter,
+  initSectionFeedback,
+  initUserWalkthrough,
+  initMockInterview,
+  initCodingBookmarks,
+  initInterviewBookmarks,
+  initCompanyExplorer,
+  initStreakTracker,
+  initPasswordToggle,
+  initPasswordStrengthIndicator,
+  initSelfIntroductionStudio,
+  initProjectDeepDive,
+  initTailoredCoverLetterStudio
+};
+
+// Expose public API on window for backwards compatibility with inline templates
+if (typeof window !== "undefined") {
+  window.getCsrfToken = getCsrfToken;
+  window.escapeHtml = escapeHtml;
+  window.showToast = showToast;
+  window.copyToClipboard = copyToClipboard;
+  window.clearAllInterviewDrafts = clearAllInterviewDrafts;
 }
 
-// CSRF Protection Token Helper & Interceptor (#300)
-function getCsrfToken() {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  if (meta && meta.getAttribute("content")) {
-    return meta.getAttribute("content");
-  }
-  const input = document.querySelector('input[name="csrf_token"]');
-  if (input && input.value) {
-    return input.value;
-  }
-  return "";
-}
-
-// Global fetch wrapper to ensure all mutating requests (POST, PUT, DELETE, PATCH)
-// automatically include the X-CSRFToken and X-CSRF-Token headers
-(function () {
-  if (typeof window !== "undefined" && typeof window.fetch === "function") {
-    const originalFetch = window.fetch;
-    window.fetch = function (resource, init) {
-      init = init || {};
-      const method = (init.method || "GET").toUpperCase();
-      if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
-        const token = getCsrfToken();
-        if (token) {
-          if (!init.headers) {
-            init.headers = {};
-          }
-          if (init.headers instanceof Headers) {
-            if (!init.headers.has("X-CSRFToken")) {
-              init.headers.append("X-CSRFToken", token);
-            }
-            if (!init.headers.has("X-CSRF-Token")) {
-              init.headers.append("X-CSRF-Token", token);
-            }
-          } else if (Array.isArray(init.headers)) {
-            const hasCsrf = init.headers.some(
-              ([k]) => k.toLowerCase() === "x-csrftoken" || k.toLowerCase() === "x-csrf-token"
-            );
-            if (!hasCsrf) {
-              init.headers.push(["X-CSRFToken", token]);
-              init.headers.push(["X-CSRF-Token", token]);
-            }
-          } else {
-            if (!init.headers["X-CSRFToken"] && !init.headers["x-csrftoken"]) {
-              init.headers["X-CSRFToken"] = token;
-            }
-            if (!init.headers["X-CSRF-Token"] && !init.headers["x-csrf-token"]) {
-              init.headers["X-CSRF-Token"] = token;
-            }
-          }
-        }
-      }
-      return originalFetch.call(this, resource, init);
-    };
-  }
-})();
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  if (typeof str !== "string") str = String(str);
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
+// Bootstrap on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", () => {
-  initThemeToggle();
+  initCommon();
   initFormUpload();
   initCircularProgress();
+  initCharacterCounters();
   initMockInterview();
   initCompanyExplorer();
   initSkillGapFilter();
@@ -93,29 +99,23 @@ document.addEventListener("DOMContentLoaded", () => {
   initRoadmapExport();
   initRoadmapTracker();
   initProgressTracker();
-  if (typeof initCodingSandbox === "function") {
-    initCodingSandbox();
+  if (typeof window.initCodingSandbox === "function") {
+    window.initCodingSandbox();
   }
   initOutreachGenerator();
-  initRecentAnalysesDrawer();
-  initCharacterCounters();
   initCopySuggestions();
   initRoleBasedPrep();
   initSkillsComparisonChart();
   initResumeKeywordHighlighter();
-  initBackToTop();
   initCodingBookmarks();
   initInterviewBookmarks();
   initStreakTracker();
-  initAccessibility();
-  initSessionTimeout();
   initSectionFeedback();
   initUserWalkthrough();
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
   initProjectDeepDive();
-  initInterviewDraftLogoutCleanup();
   initTailoredCoverLetterStudio();
   initCustomLearningRoadmap();
 });
@@ -7965,6 +7965,149 @@ function initProjectDeepDive() {
     });
   }
 }
+
+/**
+ * What-If Skill Impact Simulator (#557)
+ * Immediate, client-side recalculation of job match percentage when missing skills are assumed learned.
+ */
+function initSkillImpactSimulator() {
+  const simCard = document.getElementById("skillSimulatorCard");
+  if (!simCard) return;
+
+  let rawData = null;
+  try {
+    const rawAttr = simCard.getAttribute("data-simulation-data");
+    if (rawAttr) {
+      rawData = JSON.parse(rawAttr);
+    }
+  } catch (e) {
+    console.warn("Failed to parse simulation data:", e);
+  }
+  if (!rawData) return;
+
+  const originalScore = rawData.original_percentage || 0;
+  const rankedSkills = rawData.ranked_skills || [];
+  const totalMissing = rankedSkills.length;
+  if (totalMissing === 0) return;
+
+  const totalMissingWeight = rankedSkills.reduce((sum, s) => sum + (s.weight || 2.0), 0);
+  const gapTo100 = Math.max(0, 100 - originalScore);
+
+  // UI elements
+  const scoreEl = document.getElementById("simProjectedScore");
+  const deltaEl = document.getElementById("simDeltaBadge");
+  const tickedCountEl = document.getElementById("simTickedCount");
+  const boostBarEl = document.getElementById("simProgressBarBoost");
+  const btnSelectAll = document.getElementById("btnSimulatorSelectAll");
+  const btnClear = document.getElementById("btnSimulatorClear");
+
+  // Populate individual boost badges in the table rows
+  rankedSkills.forEach((r) => {
+    const tableBadge = document.querySelector(`.table-skill-impact-badge[data-skill="${CSS.escape(r.skill)}"]`);
+    if (tableBadge && r.individual_gain > 0) {
+      tableBadge.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small px-2 py-0" title="Projected boost if learned">${escapeHtml(r.individual_gain_str)}</span>` +
+        (r.is_best_next ? ` <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill small px-2 py-0" title="Rank #1 Highest impact skill"><i class="fa-solid fa-crown text-warning me-1"></i>Best Next</span>` : "");
+    }
+  });
+
+  const getTickedSkills = () => {
+    const checked = new Set();
+    document.querySelectorAll(".sim-skill-checkbox:checked, .table-skill-checkbox:checked").forEach((cb) => {
+      const val = (cb.value || cb.dataset.skill || "").trim();
+      if (val) checked.add(val.toLowerCase());
+    });
+    return checked;
+  };
+
+  const updateSimulation = () => {
+    const tickedSet = getTickedSkills();
+    let tickedWeight = 0;
+    let tickedCount = 0;
+
+    rankedSkills.forEach((s) => {
+      const isTicked = tickedSet.has((s.skill || "").toLowerCase());
+      if (isTicked) {
+        tickedWeight += (s.weight || 2.0);
+        tickedCount += 1;
+      }
+
+      // Synchronize checkbox states in simulator pills and table rows
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const pill = cb.closest(".sim-skill-pill");
+        if (pill) {
+          if (isTicked) pill.classList.add("active", "btn-primary", "text-white");
+          else pill.classList.remove("active", "btn-primary", "text-white");
+        }
+      });
+      document.querySelectorAll(`.table-skill-checkbox[data-skill="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const row = cb.closest("tr");
+        if (row) {
+          if (isTicked) row.classList.add("table-success");
+          else row.classList.remove("table-success");
+        }
+      });
+    });
+
+    let simulatedScore = originalScore;
+    let pctChange = 0;
+    if (tickedCount > 0 && totalMissingWeight > 0 && gapTo100 > 0) {
+      const boost = (tickedWeight / totalMissingWeight) * gapTo100;
+      simulatedScore = Math.min(100, Math.max(0, Math.round(originalScore + boost)));
+      pctChange = simulatedScore - originalScore;
+    }
+
+    if (scoreEl) scoreEl.textContent = `${simulatedScore}%`;
+    if (deltaEl) {
+      deltaEl.textContent = pctChange > 0 ? `+${pctChange}%` : `${pctChange}%`;
+      deltaEl.className = pctChange > 0
+        ? "badge bg-success-subtle text-success fs-6 fw-bold px-3 py-1 rounded-pill"
+        : "badge bg-secondary-subtle text-secondary fs-6 fw-bold px-3 py-1 rounded-pill";
+    }
+    if (tickedCountEl) tickedCountEl.textContent = `${tickedCount} / ${totalMissing}`;
+    if (boostBarEl) {
+      boostBarEl.style.width = `${pctChange}%`;
+      boostBarEl.setAttribute("aria-valuenow", simulatedScore);
+      boostBarEl.title = `Simulated Boost: +${pctChange}%`;
+    }
+  };
+
+  // Event delegation for checkbox changes
+  document.addEventListener("change", (e) => {
+    if (e.target && (e.target.classList.contains("sim-skill-checkbox") || e.target.classList.contains("table-skill-checkbox"))) {
+      const skillName = (e.target.value || e.target.dataset.skill || "").trim();
+      const isChecked = e.target.checked;
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(skillName)}"], .table-skill-checkbox[data-skill="${CSS.escape(skillName)}"]`).forEach((cb) => {
+        cb.checked = isChecked;
+      });
+      updateSimulation();
+    }
+  });
+
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = true;
+      });
+      updateSimulation();
+    });
+  }
+
+  if (btnClear) {
+    btnClear.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = false;
+      });
+      updateSimulation();
+    });
+  }
+
+  // Initial calculation and UI setup
+  updateSimulation();
+}
+window.initSkillImpactSimulator = initSkillImpactSimulator;
+
 
 
 

@@ -56,6 +56,9 @@
           <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Compare with</span> Previous
         </a>
         {% endif %}
+        <a href="{{ url_for('session_resume_compare_view') }}" class="btn btn-outline-success btn-sm rounded-pill px-2 px-sm-3" id="btnNavSessionCompare" title="Test revised resume in this session">
+          <i class="fa-solid fa-code-compare me-1"></i> <span class="d-none d-sm-inline">Test</span> Revision
+        </a>
         {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or session.get('is_demo_mode') %}
         <span class="badge bg-warning text-dark border rounded-pill px-3 py-2 small fw-semibold" id="navDemoBadge">
           <i class="fa-solid fa-flask-vial me-1"></i> Demo Mode
@@ -64,8 +67,14 @@
           <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Exit Demo
         </a>
         {% endif %}
-        <a href="/download/{{ analysis_id }}" class="btn btn-custom-primary btn-sm rounded-pill px-2 px-sm-3">
+        <a href="/download/{{ analysis_id }}" class="btn btn-custom-primary btn-sm rounded-pill px-2 px-sm-3" id="btnDownloadPdfNav" title="Download placement report as PDF">
           <i class="fa-solid fa-download me-1"></i> <span class="d-none d-sm-inline">Download</span> PDF
+        </a>
+        <a href="/download/{{ analysis_id }}/markdown" class="btn btn-outline-primary btn-sm rounded-pill px-2 px-sm-3" id="btnDownloadMarkdownNav" title="Download placement report as Markdown">
+          <i class="fa-brands fa-markdown me-1"></i> <span class="d-none d-sm-inline">Download</span> Markdown
+        </a>
+        <a href="/download/{{ analysis_id }}/json" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3" id="btnDownloadJsonNav" title="Download placement report as JSON">
+          <i class="fa-solid fa-code me-1"></i> <span class="d-none d-sm-inline">Download</span> JSON
         </a>
       </div>
     </div>
@@ -157,6 +166,75 @@
           <i class="fa-solid fa-arrow-right-arrow-left me-1"></i> Compare with my previous analysis
         </a>
       </div>
+    </div>
+    {% endif %}
+
+    <!-- Recommended Next Action Card (#558) -->
+    {% if recommended_action and not recommended_action.is_dismissed and recommended_action.primary %}
+    <div class="card glass-card border-0 shadow-sm rounded-4 p-4 mb-4" id="nextBestActionCard" style="background: linear-gradient(135deg, #f8faff 0%, #ffffff 100%); border-left: 5px solid #4f46e5 !important;" role="region" aria-label="Recommended Next Action">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-3">
+        <div class="d-flex align-items-center gap-2">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-semibold">
+            <i class="fa-solid fa-compass me-1"></i> Recommended Next Step
+          </span>
+          <span class="badge bg-{{ recommended_action.primary.badge_class }} rounded-pill px-2 py-1 small fw-semibold" id="nextActionBadge">
+            {{ recommended_action.primary.badge }}
+          </span>
+        </div>
+        
+        <!-- "Not now" button / form -->
+        <form method="POST" action="{{ url_for('dismiss_recommended_action_view', analysis_id=analysis_id) }}" class="m-0" id="formDismissAction">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}">
+          <input type="hidden" name="action_id" value="{{ recommended_action.primary.id }}">
+          <button type="submit" class="btn btn-link text-muted p-0 text-decoration-none small" id="btnDismissAction" title="Hide this suggestion for 24 hours">
+            <i class="fa-regular fa-clock me-1"></i> Not now (hide for 1 day)
+          </button>
+        </form>
+      </div>
+
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-start gap-3">
+            <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary text-white flex-shrink-0 shadow-sm" style="width: 48px; height: 48px;">
+              <i class="fa-solid {{ recommended_action.primary.icon }} fs-5"></i>
+            </div>
+            <div>
+              <h5 class="fw-bold text-dark mb-1" id="nextActionTitle">
+                {{ recommended_action.primary.title }}
+              </h5>
+              <p class="text-muted mb-0 small" id="nextActionDescription">
+                {{ recommended_action.primary.description }}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <a href="{{ recommended_action.primary.button_url }}" class="btn btn-primary rounded-pill px-4 py-2 fw-semibold shadow-sm" id="btnNextActionPrimary">
+            {{ recommended_action.primary.button_text }} <i class="fa-solid fa-arrow-right ms-1"></i>
+          </a>
+        </div>
+      </div>
+
+      <!-- Alternative suggestions -->
+      {% if recommended_action.alternatives and recommended_action.alternatives|length > 0 %}
+      <div class="border-top pt-3 mt-3" id="nextActionAlternatives">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <small class="text-muted fw-semibold">Other Suggested Actions:</small>
+          <div class="d-flex flex-wrap gap-2">
+            {% for alt in recommended_action.alternatives %}
+            <a href="{{ alt.button_url }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1 text-truncate" style="max-width: 340px;" title="{{ alt.description }}">
+              <i class="fa-solid {{ alt.icon }} me-1 text-primary"></i> {{ alt.button_text }}
+            </a>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    {% elif recommended_action and recommended_action.is_dismissed %}
+    <div class="alert alert-light border rounded-4 py-2 px-3 mb-4 d-flex align-items-center justify-content-between small text-muted" id="dismissedActionNotification">
+      <span><i class="fa-regular fa-eye-slash me-1"></i> Recommended next action hidden for 24 hours.</span>
+      <a href="{{ url_for('dashboard', analysis_id=analysis_id, show_action='1') }}" class="btn btn-link btn-sm p-0 text-decoration-none">Show suggestion</a>
     </div>
     {% endif %}
 
@@ -253,8 +331,14 @@
           </p>
         </div>
         <div class="d-flex gap-2 align-items-center flex-wrap">
-          <a href="/download/{{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+          <a href="/download/{{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnDownloadPdfSummary">
             <i class="fa-solid fa-download me-1"></i> PDF Report
+          </a>
+          <a href="/download/{{ analysis_id }}/markdown" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnDownloadMarkdownSummary" title="Download report as Markdown">
+            <i class="fa-brands fa-markdown me-1"></i> Markdown
+          </a>
+          <a href="/download/{{ analysis_id }}/json" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnDownloadJsonSummary" title="Download report as JSON">
+            <i class="fa-solid fa-code me-1"></i> JSON
           </a>
           <a href="{{ url_for('view_html_report', analysis_id=analysis_id) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-file-lines me-1"></i> Read HTML report
@@ -775,10 +859,16 @@
       <div class="col-lg-4 col-md-12">
         <div class="card glass-card p-4 border-0 text-center h-100 justify-content-center">
           <h5 class="fw-bold mb-2">Download Placement Guide</h5>
-          <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to a print-friendly PDF report.</p>
+          <p class="text-secondary small mb-3">Save your complete ATS evaluation details, roadmap layout milestones, and project goals to PDF, Markdown, or JSON.</p>
           <div class="d-flex flex-wrap gap-2 justify-content-center">
-            <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill">
+            <a href="/download/{{ analysis_id }}" class="btn btn-custom-outline py-2 px-3 rounded-pill" id="btnDownloadPdfCard">
               <i class="fa-solid fa-file-pdf me-2"></i> Download Complete PDF
+            </a>
+            <a href="/download/{{ analysis_id }}/markdown" class="btn btn-custom-outline py-2 px-3 rounded-pill" id="btnDownloadMarkdownCard" title="Download placement guide as Markdown">
+              <i class="fa-brands fa-markdown me-2"></i> Download Markdown
+            </a>
+            <a href="/download/{{ analysis_id }}/json" class="btn btn-custom-outline py-2 px-3 rounded-pill" id="btnDownloadJsonCard" title="Download placement guide as JSON">
+              <i class="fa-solid fa-code me-2"></i> Download JSON
             </a>
             <button type="button" class="btn btn-outline-secondary py-2 px-3 rounded-pill btn-print-page" id="btnPrintThisPageCard" onclick="window.print()" title="Print this page" aria-label="Print this page">
               <i class="fa-solid fa-print me-2"></i> Print this page
@@ -1006,6 +1096,9 @@
               <i class="fa-solid fa-code-compare me-1"></i> Side-by-Side Diff
             </button>
           {% endif %}
+          <a href="{{ url_for('session_resume_compare_view') }}" class="btn btn-sm btn-outline-success rounded-pill px-3" id="btnTestNewRevisionInSession" title="Upload a revised version to test changes in this session">
+            <i class="fa-solid fa-cloud-arrow-up me-1"></i> Test Revision In-Session
+          </a>
         </div>
       </div>
 
@@ -1548,6 +1641,7 @@
     </div>
 
     <!-- LinkedIn Profile Suggestions (#538) -->
+    {% set initial_linkedin_suggestions = initial_linkedin_suggestions|default({}) %}
     <div class="card glass-card p-4 border-0 mb-4" id="linkedInSuggestionsSection" data-linkedin='{{ initial_linkedin_suggestions_json|safe if initial_linkedin_suggestions_json is defined else "{}" }}' data-analysis-id="{{ analysis_id }}">
       <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
@@ -1579,7 +1673,7 @@
             <label for="linkedinTargetRoleInput" class="form-label small fw-bold text-secondary mb-1">Target Placement Role:</label>
             <div class="input-group input-group-sm">
               <span class="input-group-text bg-white"><i class="fa-solid fa-briefcase text-primary"></i></span>
-              <input type="text" class="form-control" id="linkedinTargetRoleInput" value="{{ initial_linkedin_suggestions.target_role|default(analysis.target_role|default('Software Engineer')) }}" placeholder="e.g. Software Engineer, Data Analyst, Web Developer">
+              <input type="text" class="form-control" id="linkedinTargetRoleInput" value="{{ (initial_linkedin_suggestions.target_role if initial_linkedin_suggestions is defined and initial_linkedin_suggestions else (analysis.target_role if analysis is defined and analysis else 'Software Engineer'))|default('Software Engineer') }}" placeholder="e.g. Software Engineer, Data Analyst, Web Developer">
             </div>
           </div>
           <div class="col-lg-3 col-md-5 col-12 text-md-end mt-md-4">
@@ -1730,7 +1824,7 @@
               <!-- Matched in Resume -->
               <div class="mb-3">
                 <div class="small fw-bold text-success mb-2">
-                  <i class="fa-solid fa-circle-check me-1"></i> Verified in Resume (<span id="linkedinMatchedCount">{{ initial_linkedin_suggestions.matched_keywords|length }}</span>):
+                  <i class="fa-solid fa-circle-check me-1"></i> Verified in Resume (<span id="linkedinMatchedCount">{{ (initial_linkedin_suggestions|default({})).matched_keywords|default([])|length }}</span>):
                 </div>
                 <div class="d-flex flex-wrap gap-1" id="linkedinMatchedContainer">
                   {% for kw in initial_linkedin_suggestions.matched_keywords|default([]) %}
@@ -1746,7 +1840,7 @@
               <!-- Recommended for Role -->
               <div>
                 <div class="small fw-bold text-primary mb-2">
-                  <i class="fa-solid fa-magnifying-glass me-1"></i> Recommended Search Terms (<span id="linkedinRecommendedCount">{{ initial_linkedin_suggestions.recommended_keywords|length }}</span>):
+                  <i class="fa-solid fa-magnifying-glass me-1"></i> Recommended Search Terms (<span id="linkedinRecommendedCount">{{ (initial_linkedin_suggestions|default({})).recommended_keywords|default([])|length }}</span>):
                 </div>
                 <div class="d-flex flex-wrap gap-1" id="linkedinRecommendedContainer">
                   {% for kw in initial_linkedin_suggestions.recommended_keywords|default([]) %}
@@ -2506,7 +2600,7 @@
         <div class="d-flex align-items-center gap-2">
           <h4 class="fw-bold mb-0"><i class="fa-solid fa-triangle-exclamation text-primary me-2"></i> Skill Gap Analysis</h4>
           <span id="skillFilterCount" class="badge bg-primary-subtle text-primary border small rounded-pill px-3 py-1">
-            {{ (role_gap_analysis.missing_skills if role_gap_analysis and role_gap_analysis.missing_skills is defined else (analysis.results.skill_gap|default([])))|length }} Skills
+            {{ (role_gap_analysis.missing_skills if (request.args.get('role') or request.args.get('role_id')) and role_gap_analysis and role_gap_analysis.missing_skills is defined else (skill_gap_resources|default(analysis.results.skill_gap|default([]))))|length }} Skills
           </span>
         </div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
@@ -2600,6 +2694,93 @@
           </div>
         </div>
       {% endif %}
+      <!-- 'What If I Learn This Skill?' Impact Simulator (#557) -->
+      {% if skill_simulation and skill_simulation.has_missing_skills %}
+      <div class="card border-0 rounded-4 shadow-sm p-3 p-md-4 mb-4" id="skillSimulatorCard" 
+           style="background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%); border: 1px solid #dbeafe !important;"
+           data-simulation-data='{{ (skill_simulation_json if skill_simulation_json is defined else skill_simulation|tojson)|safe }}'
+           role="region" aria-label="What if I learn this skill simulator">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge bg-primary rounded-pill px-3 py-1 fw-semibold">
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i> 'What if I learn this skill?' Simulator
+              </span>
+              {% if skill_simulation.best_next_skill %}
+              <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill px-2 py-1 small fw-semibold" id="bestNextSkillBadge">
+                <i class="fa-solid fa-star text-warning me-1"></i> Best Next: <strong>{{ skill_simulation.best_next_skill.skill }}</strong> ({{ skill_simulation.best_next_skill.individual_gain_str }})
+              </span>
+              {% endif %}
+            </div>
+            <p class="text-muted small mb-0 mt-1">
+              Tick missing skills below ("assume I learn these") to see immediate projected match percentage improvements.
+            </p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill px-3" id="btnSimulatorSelectAll">
+              <i class="fa-solid fa-check-double me-1"></i> Select All
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnSimulatorClear">
+              <i class="fa-solid fa-rotate-left me-1"></i> Clear
+            </button>
+          </div>
+        </div>
+
+        <!-- Before / After Score Comparison Bar -->
+        <div class="row align-items-center g-3 mb-3 p-3 bg-white rounded-3 border">
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Baseline Match</small>
+            <span class="fw-bold fs-5 text-secondary" id="simOriginalScore">{{ skill_simulation.original_percentage }}%</span>
+          </div>
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Projected Match</small>
+            <span class="fw-bold fs-4 text-primary" id="simProjectedScore">{{ skill_simulation.simulated_percentage }}%</span>
+          </div>
+          <div class="col-6 col-sm-3 text-center border-end">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Estimated Boost</small>
+            <span class="badge bg-success-subtle text-success fs-6 fw-bold px-3 py-1 rounded-pill" id="simDeltaBadge">
+              {{ skill_simulation.percentage_change_str }}
+            </span>
+          </div>
+          <div class="col-6 col-sm-3 text-center">
+            <small class="text-muted text-uppercase d-block fw-semibold" style="font-size: 0.7rem;">Skills Ticked</small>
+            <span class="fw-bold fs-5 text-dark" id="simTickedCount">{{ skill_simulation.ticked_count }} / {{ skill_simulation.total_missing_count }}</span>
+          </div>
+          <div class="col-12 mt-2">
+            <div class="progress" style="height: 10px;" role="progressbar" aria-label="Projected match percentage" aria-valuenow="{{ skill_simulation.simulated_percentage }}" aria-valuemin="0" aria-valuemax="100">
+              <div class="progress-bar bg-secondary opacity-50" style="width: {{ skill_simulation.original_percentage }}%;" title="Original: {{ skill_simulation.original_percentage }}%"></div>
+              <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" id="simProgressBarBoost" style="width: {{ skill_simulation.percentage_change }}%;" title="Simulated Boost: {{ skill_simulation.percentage_change_str }}"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ranked Missing Skills Checkbox Grid -->
+        <div class="d-flex flex-wrap gap-2 mb-2" id="simSkillsGrid">
+          {% for r in skill_simulation.ranked_skills %}
+          <label class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1 d-flex align-items-center gap-2 sim-skill-pill {% if r.is_ticked %}active{% endif %}" 
+                 style="cursor: pointer;" for="sim_skill_{{ loop.index }}" data-skill="{{ r.skill }}">
+            <input type="checkbox" class="form-check-input m-0 sim-skill-checkbox" id="sim_skill_{{ loop.index }}" value="{{ r.skill }}" {% if r.is_ticked %}checked{% endif %}>
+            <span class="fw-semibold">{{ r.skill }}</span>
+            <span class="badge bg-success text-white rounded-pill small px-2 py-0" title="Projected individual boost if learned">
+              {{ r.individual_gain_str }}
+            </span>
+            {% if r.is_best_next %}
+            <span class="badge bg-warning text-dark rounded-pill small px-1 py-0" title="Rank #1 Highest impact skill">
+              <i class="fa-solid fa-crown"></i>
+            </span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+
+        <!-- Disclaimer -->
+        <div class="d-flex align-items-center gap-1 text-muted small mt-2">
+          <i class="fa-solid fa-circle-info text-primary"></i>
+          <span class="fst-italic" id="simDisclaimerText">{{ skill_simulation.disclaimer }}</span>
+        </div>
+      </div>
+      {% endif %}
+
       <div class="table-responsive">
         <table class="table table-hover align-middle" id="skillGapTable">
           <thead class="table-light">
@@ -2613,16 +2794,22 @@
             </tr>
           </thead>
           <tbody>
-            {% set active_gaps = role_gap_analysis.missing_skills if (role_gap_analysis and role_gap_analysis.missing_skills is defined) else (skill_gap_resources|default(analysis.results.skill_gap|default([]))) %}
+            {% set active_gaps = role_gap_analysis.missing_skills if ((request.args.get('role') or request.args.get('role_id')) and role_gap_analysis and role_gap_analysis.missing_skills is defined) else (skill_gap_resources|default(analysis.results.skill_gap|default([]))) %}
             {% for gap in active_gaps %}
               <tr class="skill-gap-row" data-skill="{{ gap.skill|lower }}" data-priority="{{ gap.priority|default('Medium') }}">
                 <td>
-                  <b class="text-primary">{{ gap.skill }}</b>
-                  {% if gap.is_required %}
-                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>
-                  {% elif gap.type %}
-                    <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">{{ gap.type }}</span>
-                  {% endif %}
+                  <div class="d-flex align-items-center gap-2">
+                    <input type="checkbox" class="form-check-input table-skill-checkbox flex-shrink-0 m-0" data-skill="{{ gap.skill }}" aria-label="Assume I learn {{ gap.skill }}" title="Tick to assume learned and simulate match boost">
+                    <div>
+                      <b class="text-primary">{{ gap.skill }}</b>
+                      {% if gap.is_required %}
+                        <span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" style="font-size: 0.7rem;">Required</span>
+                      {% elif gap.type %}
+                        <span class="badge bg-secondary-subtle text-secondary border ms-1" style="font-size: 0.7rem;">{{ gap.type }}</span>
+                      {% endif %}
+                      <span class="table-skill-impact-badge ms-1" data-skill="{{ gap.skill }}"></span>
+                    </div>
+                  </div>
                 </td>
                 <td><span class="badge bg-light text-dark border">{{ gap.importance|default('High') }}</span></td>
                 <td>{{ gap.learning_time|default('2-3 weeks') }}</td>
@@ -3837,7 +4024,10 @@
   <!-- Chart.js for Longitudinal Visualizations -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Custom JS -->
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/dashboard.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/cover_letter.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/self_intro.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
   <script>
