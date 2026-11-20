@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block title %}Private Job Offer Decision Notes - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-journal-bookmark-fill text-primary me-2"></i>Private Offer Decision Notes
+      </h2>
+      <p class="text-muted mb-0">Evaluate job offers across location, bond terms, growth ratings, culture notes, and trade-offs.</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newOfferModal">
+      <i class="bi bi-plus-circle me-1"></i> Add Offer Evaluation
+    </button>
+  </div>
+
+  <div class="alert alert-secondary border-0 shadow-sm rounded-3 py-2 px-3 small d-flex align-items-center gap-2 mb-4">
+    <i class="bi bi-shield-lock-fill text-secondary fs-5"></i>
+    <span><strong>100% Private to You:</strong> These decision notes, bond evaluations, and personal reservations are strictly confidential and never shared or sent to external AI prompts.</span>
+  </div>
+
+  {% if offers %}
+  <div class="row g-4">
+    {% for off in offers %}
+    <div class="col-lg-6">
+      <div class="card h-100 border-0 shadow-sm rounded-3 p-3">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <h5 class="fw-bold text-dark mb-0">{{ off.company_name }}</h5>
+            <span class="text-muted small">{{ off.role_title }}</span>
+          </div>
+          <span class="badge bg-success-subtle text-success fs-6 border border-success">
+            ₹{{ off.ctc_lpa }} LPA
+          </span>
+        </div>
+
+        <!-- Matrix Badges -->
+        <div class="row g-2 mb-3 small">
+          <div class="col-6">
+            <span class="text-muted d-block">Location:</span>
+            <strong>{{ off.work_location }}</strong>
+          </div>
+          <div class="col-6">
+            <span class="text-muted d-block">Bond Period:</span>
+            <strong>{{ off.bond_duration_months }} Months ({{ off.bond_terms }})</strong>
+          </div>
+          <div class="col-6">
+            <span class="text-muted d-block">Probation:</span>
+            <strong>{{ off.probation_period_months }} Months</strong>
+          </div>
+          <div class="col-6">
+            <span class="text-muted d-block">Travel:</span>
+            <strong>{{ off.travel_required_pct }}%</strong>
+          </div>
+        </div>
+
+        <!-- Ratings -->
+        <div class="d-flex gap-4 p-2 bg-light rounded mb-3 small">
+          <div>
+            <span class="text-muted">Growth:</span>
+            <span class="text-warning fw-bold">★ {{ off.growth_potential_rating }}/5</span>
+          </div>
+          <div>
+            <span class="text-muted">Work-Life Balance:</span>
+            <span class="text-primary fw-bold">★ {{ off.work_life_balance_rating }}/5</span>
+          </div>
+          <div>
+            <span class="text-muted">Status:</span>
+            <span class="badge {{ 'bg-success' if off.decision_status == 'accepted' else 'bg-secondary' }}">
+              {{ off.decision_status|replace('_', ' ')|capitalize }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        {% if off.culture_and_team_notes %}
+        <div class="mb-2 small">
+          <span class="fw-semibold text-dark">Culture / Team Notes:</span>
+          <p class="text-muted mb-0">{{ off.culture_and_team_notes }}</p>
+        </div>
+        {% endif %}
+
+        {% if off.concerns_and_risks %}
+        <div class="mb-2 small">
+          <span class="fw-semibold text-danger">Concerns / Risks:</span>
+          <p class="text-muted mb-0">{{ off.concerns_and_risks }}</p>
+        </div>
+        {% endif %}
+
+        <div class="d-flex justify-content-between align-items-center pt-3 border-top mt-auto">
+          <small class="text-muted">Offer Deadline: {{ off.offer_deadline or 'Not specified' }}</small>
+          <button class="btn btn-outline-danger btn-sm" onclick="deleteOfferNote({{ off.id }})">
+            <i class="bi bi-trash me-1"></i> Delete
+          </button>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="card border-0 shadow-sm p-5 text-center text-muted">
+    <i class="bi bi-journal-plus fs-1 text-primary mb-2"></i>
+    <h5>No Offer Decision Notes Yet</h5>
+    <p class="small mb-3">Add upcoming or received job offers to compare salaries, bonds, culture pros/cons, and make informed placement decisions.</p>
+    <div>
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newOfferModal">
+        <i class="bi bi-plus-circle me-1"></i> Add Your First Offer
+      </button>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="newOfferModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">Record Offer Decision Notes</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold">Company Name *</label>
+            <input type="text" class="form-control" id="offCompany" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-semibold">Role Title *</label>
+            <input type="text" class="form-control" id="offRole" required>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">CTC (LPA) *</label>
+            <input type="number" step="0.5" class="form-control" id="offCtc" value="12.0">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Work Location</label>
+            <input type="text" class="form-control" id="offLocation" value="Bangalore (Hybrid)">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label small fw-semibold">Bond Duration (Months)</label>
+            <input type="number" class="form-control" id="offBond" value="0">
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Culture & Team Impressions</label>
+            <textarea class="form-control" id="offCulture" rows="2" placeholder="e.g. Modern tech stack, responsive hiring manager, collaborative peers"></textarea>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold">Reservations & Concerns</label>
+            <textarea class="form-control" id="offConcerns" rows="2" placeholder="e.g. Shift timings, high travel requirement, 2-year service agreement"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="submitOfferForm()">Save Decision Notes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function submitOfferForm() {
+  const company = document.getElementById('offCompany').value.trim();
+  const role = document.getElementById('offRole').value.trim();
+  const ctc = parseFloat(document.getElementById('offCtc').value) || 0;
+  if (!company || !role) return alert('Company and Role are required.');
+
+  const payload = {
+    company_name: company,
+    role_title: role,
+    ctc_lpa: ctc,
+    work_location: document.getElementById('offLocation').value.trim(),
+    bond_duration_months: parseInt(document.getElementById('offBond').value) || 0,
+    culture_and_team_notes: document.getElementById('offCulture').value.trim(),
+    concerns_and_risks: document.getElementById('offConcerns').value.trim()
+  };
+
+  try {
+    const res = await fetch('/api/offer-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) location.reload();
+    else alert('Failed to save offer notes.');
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+
+async function deleteOfferNote(id) {
+  if (!confirm('Delete these offer decision notes?')) return;
+  const res = await fetch(`/api/offer-notes/${id}`, { method: 'DELETE' });
+  if (res.ok) location.reload();
+}
+</script>
+{% endblock %}

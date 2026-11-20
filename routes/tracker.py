@@ -1524,3 +1524,77 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# APPLICATION OFFER DECISION NOTES ROUTES (#515)
+# =====================================================================
+
+@tracker_bp.route("/tracker/offer-notes", methods=["GET"])
+def offer_decision_notes_view():
+    """Renders private offer decision notes comparison matrix (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    offers = OfferDecisionNotesService.list_offer_notes(student_id)
+    return render_template("offer_decision_notes.html", offers=offers)
+
+
+@tracker_bp.route("/api/offer-notes", methods=["GET"])
+def api_list_offer_notes():
+    """Lists all private offer decision records for the student (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    offers = OfferDecisionNotesService.list_offer_notes(student_id)
+    return jsonify({"status": "success", "count": len(offers), "offers": offers}), 200
+
+
+@tracker_bp.route("/api/offer-notes", methods=["POST"])
+def api_create_offer_note():
+    """Creates a new private offer decision note (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    try:
+        note = OfferDecisionNotesService.save_offer_notes(
+            user_id=student_id,
+            company_name=payload.get("company_name", ""),
+            role_title=payload.get("role_title", ""),
+            ctc_lpa=float(payload.get("ctc_lpa", 0.0)),
+            work_location=payload.get("work_location", "Hybrid"),
+            bond_terms=payload.get("bond_terms", "None"),
+            bond_duration_months=int(payload.get("bond_duration_months", 0)),
+            probation_period_months=int(payload.get("probation_period_months", 3)),
+            travel_required_pct=int(payload.get("travel_required_pct", 0)),
+            growth_potential_rating=int(payload.get("growth_potential_rating", 3)),
+            work_life_balance_rating=int(payload.get("work_life_balance_rating", 3)),
+            culture_and_team_notes=payload.get("culture_and_team_notes", ""),
+            concerns_and_risks=payload.get("concerns_and_risks", ""),
+            hr_contact_info=payload.get("hr_contact_info", ""),
+            offer_deadline=payload.get("offer_deadline"),
+            joining_date=payload.get("joining_date"),
+            decision_status=payload.get("decision_status", "under_review"),
+            decision_rationale=payload.get("decision_rationale", ""),
+            application_id=payload.get("application_id"),
+            note_id=payload.get("note_id")
+        )
+        return jsonify({"status": "success", "offer_note": note}), 201
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/offer-notes/<int:note_id>", methods=["DELETE"])
+def api_delete_offer_note(note_id):
+    """Deletes an offer decision note (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    deleted = OfferDecisionNotesService.delete_offer_note(student_id, note_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Offer decision note removed"}), 200
+    return jsonify({"status": "not_found", "message": "Offer note not found"}), 404
+
+
+
