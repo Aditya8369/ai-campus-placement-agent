@@ -1524,3 +1524,67 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# SUBJECT-WISE CONFIDENCE TRACKER ROUTES (#513)
+# =====================================================================
+
+@tracker_bp.route("/subject-confidence", methods=["GET"])
+def subject_confidence_view():
+    """Renders the subject-wise confidence self-rating tracker (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    data = SubjectConfidenceService.get_subject_ratings(student_id)
+    return render_template("subject_confidence_tracker.html", data=data)
+
+
+@tracker_bp.route("/api/subject-confidence", methods=["GET"])
+def api_get_subject_confidence():
+    """Retrieves JSON confidence scores and recommendations (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    data = SubjectConfidenceService.get_subject_ratings(student_id)
+    return jsonify({"status": "success", "ratings": data}), 200
+
+
+@tracker_bp.route("/api/subject-confidence/update", methods=["POST"])
+def api_update_subject_confidence():
+    """Updates the confidence self-rating (1-5) for a topic (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    subject_key = payload.get("subject_key")
+    score = payload.get("score")
+    notes = payload.get("notes", "")
+
+    if not subject_key or score is None:
+        return jsonify({"status": "error", "message": "subject_key and score are required"}), 400
+
+    try:
+        updated = SubjectConfidenceService.update_rating(
+            user_id=student_id,
+            subject_key=subject_key,
+            score=int(score),
+            notes=notes
+        )
+        return jsonify({"status": "success", "ratings": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/subject-confidence/history", methods=["GET"])
+def api_get_subject_confidence_history():
+    """Returns historical progression audit (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
+    student_id = flask_session.get("user_id") or "default_student"
+    subject_key = request.args.get("subject_key")
+
+    history = SubjectConfidenceService.get_confidence_history(student_id, subject_key=subject_key)
+    return jsonify({"status": "success", "history": history}), 200
+
+
+
