@@ -4586,32 +4586,6 @@ def api_generate_linkedin_suggestions():
         "success": True,
         "suggestions": suggestions
     }), 200
-    payload = request.get_json(silent=True) or {}
-    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
-    company_name = (
-        payload.get("company_name")
-        or request.form.get("company_name")
-        or analysis_record.get("company_name")
-        or ""
-    ).strip()
-    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
-
-    if not job_description:
-        return jsonify({
-            "success": False,
-            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
-            "missing_field": "job_description"
-        }), 400
-
-    result = outreach_agent.generate_tailored_cover_letter(
-        resume_text=raw_resume,
-        job_description=job_description,
-        company_name=company_name,
-        tone=tone
-    )
-
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
 
 
 @app.route("/api/cover-letter/download", methods=["POST"])
