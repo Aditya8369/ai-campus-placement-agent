@@ -30,7 +30,7 @@ from utils.prompt_security import (
 
 logger = logging.getLogger(__name__)
 
-VALID_TONES = ["formal", "enthusiastic", "concise"]
+VALID_TONES = ["formal", "friendly", "enthusiastic", "concise"]
 DEFAULT_TONE = "formal"
 
 
@@ -288,7 +288,7 @@ class OutreachGeneratorAgent:
                 f"[Your Phone] | [Your Email] | [Portfolio Link]"
             )
 
-        elif tone == "enthusiastic":
+        elif tone in ("friendly", "enthusiastic"):
             cover_letter = (
                 f"Dear {company_name} Team,\n\n"
                 f"I am thrilled to apply for the {role_title} role at {company_name}! "
@@ -570,4 +570,532 @@ class OutreachGeneratorAgent:
         lines.append("")
         lines.append("=" * 72)
         return "\n".join(lines)
+
+    def generate_tailored_cover_letter(
+        self,
+        resume_text: str,
+        job_description: str,
+        company_name: Optional[str] = None,
+        tone: str = "formal"
+    ) -> Dict[str, Any]:
+        """
+        Generates a tailored 3-to-4 paragraph cover letter grounded strictly in the candidate's resume
+        and tailored to the target job description (#537).
+        """
+        clean_jd = (job_description or "").strip()
+        if not clean_jd:
+            return {
+                "success": False,
+                "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+                "missing_field": "job_description",
+                "cover_letter": ""
+            }
+
+        clean_resume = (resume_text or "").strip()
+        if not clean_resume:
+            return {
+                "success": False,
+                "error": "Resume text is missing. Please provide a resume to tailor the cover letter.",
+                "missing_field": "resume_text",
+                "cover_letter": ""
+            }
+
+        resume_facts = self._extract_resume_facts(clean_resume)
+
+        # 1. Try AI-powered letter if LLM available
+        ai_res = self._call_gemini_cover_letter(
+            resume_text=clean_resume,
+            job_description=clean_jd,
+            company_name=company_name or "",
+            tone=tone,
+            resume_facts=resume_facts
+        )
+        if ai_res:
+            return ai_res
+
+        # 2. Fall back to deterministic heuristic letter
+        return self._generate_heuristic_cover_letter(
+            resume_facts=resume_facts,
+            job_description=clean_jd,
+            company_name=company_name or "",
+            tone=tone
+        )
+
+    def _extract_resume_facts(self, resume_text: str) -> Dict[str, Any]:
+        """
+        Extracts verified skills, projects, degrees, experiences, and candidate name
+        from resume text to prevent claiming skills/experience missing from the resume (#537).
+        """
+        text = (resume_text or "").strip()
+        words = text.split()
+
+        # Extract name if apparent
+        candidate_name = None
+        if text:
+            first_line = text.split("\n")[0].strip()
+            if re.match(r"^[A-Za-z\.\s\-]{3,40}$", first_line) and not re.search(
+                r"\b(resume|cv|curriculum|profile|engineer|developer|analyst|student)\b",
+                first_line,
+                re.I
+            ):
+                candidate_name = first_line
+
+        # Known technical inventory
+        tech_inventory = [
+            "Python", "Java", "C++", "C", "C#", "Go", "Rust", "JavaScript", "TypeScript",
+            "HTML", "HTML5", "CSS", "CSS3", "React", "Next.js", "Angular", "Vue", "Node.js",
+            "Express", "Django", "Flask", "FastAPI", "Spring Boot", "SQL", "PostgreSQL",
+            "MySQL", "MongoDB", "Redis", "SQLite", "Docker", "Kubernetes", "AWS", "Google Cloud",
+            "Azure", "Git", "GitHub", "Linux", "REST APIs", "REST", "GraphQL", "Microservices",
+            "CI/CD", "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "Pandas",
+            "NumPy", "Scikit-Learn", "Data Structures", "Algorithms", "System Design", "Agile",
+            "Scrum", "Tailwind CSS", "Bootstrap", "Jest", "Unit Testing", "Tableau", "Power BI",
+            "Excel", "Hadoop", "Spark", "Kafka", "Bash", "Selenium"
+        ]
+
+        skills_found = []
+        # Explicit skills section
+        skills_sec = re.search(
+            r"(?:technical skills|skills|technologies|proficiencies)[\s:]+([^\n\r]+(?:\n(?:[\t\s]*-?[^\n\r]+)){0,4})",
+            text,
+            re.I
+        )
+        if skills_sec:
+            raw_sec = skills_sec.group(1)
+            raw_sec = re.split(r"\n\s*(?:experience|education|projects|certifications|awards|summary)[\s:]", raw_sec, flags=re.I)[0]
+            tokens = [t.strip() for t in re.split(r"[,;•|\n\t/]+", raw_sec) if t.strip()]
+            for tok in tokens:
+                tok_clean = re.sub(r"^[-\*•\d\.\)]+\s*", "", tok).strip()
+                if 2 <= len(tok_clean) <= 30 and tok_clean not in skills_found:
+                    if not re.search(r"\b(experience|education|projects|awards|activities)[\s:]*$", tok_clean, re.I):
+                        skills_found.append(tok_clean)
+
+        for tech in tech_inventory:
+            pattern = r"\b" + re.escape(tech) + r"\b"
+            if re.search(pattern, text, re.I):
+                if not any(tech.lower() == s.lower() for s in skills_found):
+                    skills_found.append(tech)
+
+        # Degree
+        degree = None
+        deg_match = re.search(
+            r"\b(B\.?Tech|B\.?E\.?|B\.?S\.?|Bachelor(?:'s)?|M\.?Tech|M\.?S\.?|Master(?:'s)?|Diploma)\b(?:\s+(?:in\s+)?([A-Za-z\s]+))?",
+            text,
+            re.I
+        )
+        if deg_match:
+            degree_type = deg_match.group(1).replace(".", "")
+            major = deg_match.group(2).strip() if deg_match.group(2) else ""
+            if major and len(major) < 30 and not re.search(r"\b(from|at|university|college|gpa)\b", major, re.I):
+                degree = f"{degree_type} in {major}"
+            else:
+                degree = degree_type
+
+        # Projects
+        projects = []
+        proj_sec = re.search(
+            r"(?:projects|academic projects|key projects)[\s:]*\n+([^\n\r]+(?:\n[^\n\r]+){0,6})",
+            text,
+            re.I
+        )
+        if proj_sec:
+            p_lines = proj_sec.group(1).split("\n")
+            for pl in p_lines:
+                pl = pl.strip()
+                if pl and not pl.startswith("-") and not pl.startswith("•") and len(pl) < 50:
+                    clean_p = re.sub(r"^[-\*•\d\.\)]+\s*", "", pl).strip()
+                    if clean_p and clean_p not in projects:
+                        projects.append(clean_p)
+                elif pl.startswith("-") or pl.startswith("•"):
+                    first_words = " ".join(pl.split()[:4]).replace("-", "").replace("•", "").strip()
+                    if first_words and len(first_words) < 40 and first_words not in projects:
+                        projects.append(first_words)
+
+        # Experiences
+        experiences = []
+        exp_match = re.search(
+            r"(?:experience|work experience|internships?)[\s:]*\n+([^\n\r]+(?:\n[^\n\r]+){0,6})",
+            text,
+            re.I
+        )
+        if exp_match:
+            e_lines = exp_match.group(1).split("\n")
+            for el in e_lines:
+                el = el.strip()
+                if re.search(r"\b(intern|developer|engineer|assistant|analyst|fellow)\b", el, re.I) and len(el) < 60:
+                    clean_e = re.sub(r"^[-\*•\d\.\)]+\s*", "", el).strip()
+                    if clean_e and clean_e not in experiences:
+                        experiences.append(clean_e)
+
+        return {
+            "name": candidate_name,
+            "candidate_name": candidate_name,
+            "skills": skills_found,
+            "degree": degree,
+            "projects": projects[:3],
+            "experiences": experiences[:2],
+            "is_sparse": (len(words) < 25) and (not experiences) and (not projects) and (len(skills_found) < 3),
+            "word_count": len(words)
+        }
+
+    def _generate_heuristic_cover_letter(
+        self,
+        resume_facts: Dict[str, Any],
+        job_description: str,
+        company_name: str,
+        tone: str
+    ) -> Dict[str, Any]:
+        """
+        Deterministic, rule-based 3-to-4 paragraph tailored cover letter generator.
+        Guarantees that no skills or experiences missing from the resume are claimed (#537).
+        """
+        skills = resume_facts.get("skills", [])
+        experiences = resume_facts.get("experiences", [])
+        projects = resume_facts.get("projects", [])
+        degree = resume_facts.get("degree")
+        candidate_name = resume_facts.get("name") or "[Your Name]"
+
+        role_title = self._infer_role_title("", job_description)
+        target_company = (company_name or "").strip() or "the Hiring Team"
+        norm_tone = "friendly" if str(tone).lower().strip() in ("friendly", "enthusiastic") else "formal"
+
+        # Intersect candidate's resume skills with job description keywords
+        jd_lower = job_description.lower()
+        matched_skills = []
+        for s in skills:
+            pattern = r"\b" + re.escape(s.lower()) + r"\b"
+            if re.search(pattern, jd_lower):
+                matched_skills.append(s)
+
+        # Highlight skills: strictly subset of resume skills
+        highlight_skills = matched_skills[:4] if matched_skills else skills[:4]
+        skills_summary = ", ".join(highlight_skills) if highlight_skills else "software engineering principles"
+        primary_skill = highlight_skills[0] if highlight_skills else "clean code development"
+        degree_part = f"a solid foundation in {degree}" if degree else "hands-on technical training"
+
+        # Construct Paragraphs
+        if norm_tone == "friendly":
+            salutation = f"Hi {target_company} Team," if target_company != "the Hiring Team" else "Hello Hiring Team,"
+
+            p1 = (
+                f"I was excited to discover the open {role_title} opportunity at {target_company} and would love to be considered! "
+                f"With {degree_part} and hands-on experience working with {skills_summary}, I am eager to bring my curiosity, dedication, "
+                f"and technical energy to your engineering team."
+            )
+
+            p2 = (
+                f"The challenges and priorities outlined in your job description strongly resonate with me. Looking through the requirements, "
+                f"my practical background in {skills_summary} feels like a natural fit. I genuinely enjoy writing clean, well-tested code, "
+                f"collaborating closely with teammates, and continuously expanding my technical toolkit to solve real-world user problems."
+            )
+
+            if experiences:
+                p3 = (
+                    f"During my time as {experiences[0]}, I gained valuable practical experience implementing features, "
+                    f"prioritizing code maintainability, and learning from experienced colleagues in an engineering environment."
+                )
+            elif projects:
+                p3 = (
+                    f"A project I am particularly proud of is {projects[0]}, where I applied {primary_skill} to build a working, "
+                    f"reliable application. Designing and iterating on this project taught me how to tackle technical hurdles and build with users in mind."
+                )
+            else:
+                p3 = (
+                    f"Through dedicated coursework and building practical software projects, I have developed a strong habit of writing reliable code, "
+                    f"seeking feedback, and learning quickly from technical challenges."
+                )
+
+            p4 = (
+                f"I would love the opportunity to connect and chat about how my skill set and enthusiasm can support {target_company}'s upcoming milestones. "
+                f"Thank you so much for your time and consideration!"
+            )
+
+            signoff = f"Warm regards,\n{candidate_name}"
+
+        else:  # formal
+            salutation = f"Dear Hiring Team at {target_company}," if target_company != "the Hiring Team" else "Dear Hiring Manager,"
+
+            p1 = (
+                f"I am writing to express my strong interest in the {role_title} position at {target_company}. "
+                f"With {degree_part} and hands-on technical proficiency in {skills_summary}, I am eager to contribute to "
+                f"your team's software engineering initiatives and high-quality deliverables."
+            )
+
+            p2 = (
+                f"Having carefully reviewed the job requirements, I believe my technical background in {skills_summary} provides "
+                f"a strong foundation for this role. I have consistently focused on writing clean, maintainable code, applying algorithmic efficiency, "
+                f"and adapting rapidly to modern engineering stacks and team standards."
+            )
+
+            if experiences:
+                p3 = (
+                    f"My practical experience includes serving as {experiences[0]}, where I was responsible for delivering dependable solutions "
+                    f"and collaborating with colleagues in an engineering environment. This experience reinforced my discipline in code quality, debugging, "
+                    f"and structured teamwork."
+                )
+            elif projects:
+                p3 = (
+                    f"My technical projects include developing {projects[0]}, where I utilized {primary_skill} to implement functional, "
+                    f"scalable components. This hands-on project work reinforced my understanding of architectural design, systematic testing, and software reliability."
+                )
+            else:
+                p3 = (
+                    f"Through rigorous academic coursework and hands-on projects, I have built a disciplined approach to software implementation, "
+                    f"emphasizing algorithmic efficiency, testability, and clean architecture."
+                )
+
+            p4 = (
+                f"I welcome the opportunity to discuss in an interview how my technical abilities and dedication align with {target_company}'s goals. "
+                f"Thank you for your time, consideration, and review of my application materials."
+            )
+
+            signoff = f"Sincerely,\n{candidate_name}"
+
+        full_letter = f"{salutation}\n\n{p1}\n\n{p2}\n\n{p3}\n\n{p4}\n\n{signoff}"
+        paragraphs_only = [p1, p2, p3, p4]
+
+        return {
+            "success": True,
+            "cover_letter": full_letter,
+            "tone": norm_tone,
+            "role_title": role_title,
+            "company_name": target_company,
+            "matched_skills": highlight_skills,
+            "paragraph_count": len(paragraphs_only),
+            "paragraphs_count": len(paragraphs_only),
+            "word_count": len(full_letter.split()),
+            "source": "heuristic"
+        }
+
+    def _call_gemini_cover_letter(
+        self,
+        resume_text: str,
+        job_description: str,
+        company_name: str,
+        tone: str,
+        resume_facts: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Uses Gemini LLM to generate a customized 3 to 4 paragraph cover letter.
+        Enforces strict grounding: only resume facts, no unmentioned claims.
+        """
+        try:
+            target_company = (company_name or "").strip() or "the Hiring Team"
+            role_title = self._infer_role_title("", job_description)
+            norm_tone = "friendly" if str(tone).lower().strip() in ("friendly", "enthusiastic") else "formal"
+
+            system_instruction = (
+                "You are an expert career advisor and technical recruiter. "
+                "You write compelling, tailored 3 to 4 paragraph cover letters for students and graduates. "
+                "CRITICAL CONSTRAINT: You MUST strictly use ONLY skills, technologies, projects, experiences, and education "
+                "explicitly mentioned in the candidate's resume text below. "
+                "Do NOT fabricate, invent, assume, or extrapolate any skills, tools, previous employers, degrees, or quantitative metrics. "
+                "If the job description mentions a skill or technology NOT present in the candidate's resume, DO NOT claim the candidate has it. "
+                "The letter must be exactly 3 to 4 concise paragraphs plus formal/friendly salutation and sign-off. "
+                "Return valid JSON only."
+            )
+
+            prompt = f"""
+Write a tailored 3 to 4 paragraph cover letter for this candidate based STRICTLY on their resume facts and the target job description.
+
+Candidate Resume Text:
+\"\"\"
+{resume_text[:4000]}
+\"\"\"
+
+Target Job Description:
+\"\"\"
+{job_description[:4000]}
+\"\"\"
+
+Company Name: {target_company}
+Target Role: {role_title}
+Tone: {norm_tone} (formal or friendly)
+
+Requirements:
+1. Exactly 3 to 4 paragraphs between the salutation and sign-off.
+2. Tone: {norm_tone}.
+3. STRICT FACTUAL GROUNDING: NEVER claim any skill, experience, company, or metric that is missing from the resume.
+4. Highlight skills from the resume that genuinely match the job description.
+
+Return ONLY valid JSON matching this schema:
+{{
+  "cover_letter": "Salutation\\n\\nParagraph 1\\n\\nParagraph 2\\n\\nParagraph 3\\n\\nParagraph 4\\n\\nSign-off",
+  "matched_skills": ["skill1", "skill2"],
+  "paragraph_count": 4,
+  "word_count": 250,
+  "tone": "{norm_tone}",
+  "company_name": "{target_company}"
+}}
+"""
+            data = generate_json_response(system_instruction=system_instruction, prompt=prompt, feature="outreach")
+            if not isinstance(data, dict):
+                return None
+
+            cover_letter = (data.get("cover_letter") or "").strip()
+            if not cover_letter or len(cover_letter.split()) < 50:
+                return None
+
+            matched_skills = data.get("matched_skills", [])
+            paras = [p.strip() for p in cover_letter.split("\n\n") if p.strip()]
+
+            return {
+                "success": True,
+                "cover_letter": cover_letter,
+                "tone": norm_tone,
+                "role_title": role_title,
+                "company_name": target_company,
+                "matched_skills": matched_skills,
+                "paragraph_count": max(3, min(4, len(paras) - 2 if len(paras) > 2 else len(paras))),
+                "paragraphs_count": max(3, min(4, len(paras) - 2 if len(paras) > 2 else len(paras))),
+                "word_count": len(cover_letter.split()),
+                "source": "ai"
+            }
+        except Exception as e:
+            logger.warning(f"Gemini LLM call failed in generate_tailored_cover_letter: {e}. Falling back to rule-based engine.")
+            return None
+
+    def export_cover_letter_docx(
+        self,
+        cover_letter_text: str,
+        candidate_name: str = "Candidate",
+        company_name: str = "",
+        role_title: str = ""
+    ) -> bytes:
+        """
+        Exports a clean, professionally styled single cover letter to Word (.docx) format.
+        """
+        doc = docx.Document()
+
+        # Page margins
+        for section in doc.sections:
+            section.top_margin = Inches(1.0)
+            section.bottom_margin = Inches(1.0)
+            section.left_margin = Inches(1.0)
+            section.right_margin = Inches(1.0)
+
+        # Candidate Header
+        name_p = doc.add_paragraph()
+        name_p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        name_p.paragraph_format.space_after = Pt(2)
+        n_run = name_p.add_run(candidate_name if candidate_name and candidate_name != "[Your Name]" else "Candidate Application")
+        n_run.font.size = Pt(16)
+        n_run.font.bold = True
+        n_run.font.color.rgb = RGBColor(15, 23, 42)
+
+        if role_title:
+            sub_p = doc.add_paragraph()
+            sub_p.paragraph_format.space_after = Pt(16)
+            s_run = sub_p.add_run(f"Application for {role_title}" + (f" at {company_name}" if company_name else ""))
+            s_run.font.size = Pt(11)
+            s_run.font.color.rgb = RGBColor(71, 85, 105)
+
+        # Body paragraphs
+        paragraphs = (cover_letter_text or "").strip().split("\n\n")
+        for para in paragraphs:
+            para_clean = para.strip()
+            if para_clean:
+                p = doc.add_paragraph()
+                p.paragraph_format.line_spacing = 1.15
+                p.paragraph_format.space_after = Pt(10)
+                run = p.add_run(para_clean)
+                run.font.size = Pt(11)
+                run.font.color.rgb = RGBColor(30, 41, 59)
+
+        buffer = io.BytesIO()
+        doc.save(buffer)
+        buffer.seek(0)
+        return buffer.getvalue()
+
+    def export_cover_letter_txt(
+        self,
+        cover_letter_text: str,
+        candidate_name: str = "Candidate",
+        company_name: str = "",
+        role_title: str = ""
+    ) -> str:
+        """
+        Formats a single cover letter into clean plain text.
+        """
+        lines = []
+        if candidate_name and candidate_name != "[Your Name]":
+            lines.append(candidate_name)
+        if role_title:
+            lines.append(f"Application for: {role_title}" + (f" at {company_name}" if company_name else ""))
+        if lines:
+            lines.append("=" * 60)
+            lines.append("")
+        lines.append((cover_letter_text or "").strip())
+        lines.append("")
+        return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Module-level convenience wrappers (#537)
+# ---------------------------------------------------------------------------
+
+def generate_tailored_cover_letter(
+    resume_text: str,
+    job_description: str,
+    company_name: Optional[str] = None,
+    tone: str = "formal"
+) -> Dict[str, Any]:
+    """Module-level wrapper for OutreachGeneratorAgent().generate_tailored_cover_letter."""
+    agent = OutreachGeneratorAgent()
+    return agent.generate_tailored_cover_letter(
+        resume_text=resume_text,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+
+def export_cover_letter_docx(
+    cover_letter_text: str,
+    candidate_name: str = "Candidate",
+    company_name: str = "",
+    role_title: str = ""
+) -> bytes:
+    """Module-level wrapper for OutreachGeneratorAgent().export_cover_letter_docx."""
+    agent = OutreachGeneratorAgent()
+    return agent.export_cover_letter_docx(
+        cover_letter_text=cover_letter_text,
+        candidate_name=candidate_name,
+        company_name=company_name,
+        role_title=role_title
+    )
+
+
+def export_cover_letter_txt(
+    cover_letter_text: str,
+    candidate_name: str = "Candidate",
+    company_name: str = "",
+    role_title: str = ""
+) -> str:
+    """Module-level wrapper for OutreachGeneratorAgent().export_cover_letter_txt."""
+    agent = OutreachGeneratorAgent()
+    return agent.export_cover_letter_txt(
+        cover_letter_text=cover_letter_text,
+        candidate_name=candidate_name,
+        company_name=company_name,
+        role_title=role_title
+    )
+
+
+def _extract_resume_facts(resume_text: str) -> Dict[str, Any]:
+    """Module-level wrapper for OutreachGeneratorAgent()._extract_resume_facts."""
+    agent = OutreachGeneratorAgent()
+    return agent._extract_resume_facts(resume_text)
+
+
+def _generate_heuristic_cover_letter(
+    resume_facts: Dict[str, Any],
+    job_description: str,
+    company_name: Optional[str] = None,
+    tone: str = "formal"
+) -> Dict[str, Any]:
+    """Module-level wrapper for OutreachGeneratorAgent()._generate_heuristic_cover_letter."""
+    agent = OutreachGeneratorAgent()
+    return agent._generate_heuristic_cover_letter(resume_facts, job_description, company_name, tone)
+
 

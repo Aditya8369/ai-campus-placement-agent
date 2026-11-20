@@ -282,3 +282,149 @@ def test_history_template_accessibility(client):
     assert 'aria-label="Main navigation"' in html
     assert 'id="main-content"' in html
     assert 'script.js' in html
+
+
+def test_accessibility_non_color_score_indicators():
+    """Verify scores, statuses, and badges do not rely on color alone (WCAG 1.4.1)."""
+    with open("templates/dashboard.html", "r", encoding="utf-8") as f:
+        html = f.read()
+
+    # ATS score level badge includes icon + text
+    assert 'id="atsScoreLevelBadge"' in html
+    assert 'fa-circle-check' in html
+    assert 'fa-triangle-exclamation' in html
+    assert 'Strong Match' in html
+    assert 'Needs Revision' in html
+
+    # Circular gauge SVG has role and descriptive aria-label
+    assert 'role="img"' in html
+    assert 'aria-label="ATS score circular gauge' in html
+
+    # ATS breakdown rating badge has icon and text
+    assert 'id="atsBreakdownRatingBadge"' in html
+    assert 'fa-circle-check text-success' in html
+
+    # Section progress bar has explicit aria-label with score & status
+    assert 'aria-label="{{ sec.title }}: {{ sec.score }} out of {{ sec.max_score }} points ({{ sec.status }})"' in html
+
+    # Role readiness badge has icon and high-contrast text
+    assert 'id="roleReadinessBadge"' in html
+    assert 'text-dark border-warning-subtle' in html
+
+
+def test_accessibility_form_controls_labels_and_arias():
+    """Verify all auxiliary templates and form inputs have explicit labels or aria-labels (WCAG 1.3.1, 4.1.2)."""
+    # 1. Dashboard form controls
+    with open("templates/dashboard.html", "r", encoding="utf-8") as f:
+        dash_html = f.read()
+    assert 'id="outreachRoleInput"' in dash_html
+    assert 'aria-label="Target Role Title for Outreach Pitch"' in dash_html
+    assert 'id="selfIntroPracticeInput"' in dash_html
+    assert 'aria-label="Self-introduction practice speech script"' in dash_html
+    assert 'id="modalOutreachEditor"' in dash_html
+    assert 'aria-label="Edit outreach message text"' in dash_html
+    assert 'class="form-check-input roadmap-task-check' in dash_html
+    assert 'aria-label="Mark task completed: {{ topic|escape }}"' in dash_html
+
+    # 2. Interview coding fallback textarea
+    with open("templates/interview.html", "r", encoding="utf-8") as f:
+        interview_html = f.read()
+    assert 'id="codeTextareaFallback"' in interview_html
+    assert 'aria-label="Coding solution fallback text editor"' in interview_html
+
+    # 3. Admin AI metrics canvas
+    with open("templates/admin_ai_metrics.html", "r", encoding="utf-8") as f:
+        admin_html = f.read()
+    assert 'id="dailyMetricsChart"' in admin_html
+    assert 'role="img"' in admin_html
+    assert 'aria-label="Daily AI call volume and latency chart"' in admin_html
+
+    # 4. Search page inputs
+    with open("templates/search.html", "r", encoding="utf-8") as f:
+        search_html = f.read()
+    assert 'id="search-input"' in search_html
+    assert 'aria-label="Search keywords, topics, companies, or questions"' in search_html
+    assert 'id="category-filter"' in search_html
+    assert 'aria-label="Filter results by category"' in search_html
+
+    # 5. Interview compare labels
+    with open("templates/interview_compare.html", "r", encoding="utf-8") as f:
+        compare_html = f.read()
+    assert 'for="session-id-1"' in compare_html
+    assert 'id="session-id-1"' in compare_html
+    assert 'for="session-id-2"' in compare_html
+    assert 'id="session-id-2"' in compare_html
+
+    # 6. Delete account form
+    with open("templates/delete_account.html", "r", encoding="utf-8") as f:
+        del_html = f.read()
+    assert 'for="confirmPhraseInput"' in del_html
+    assert 'id="confirmPhraseInput"' in del_html
+
+    # 7. Forgot password & resend verification
+    with open("templates/forgot_password.html", "r", encoding="utf-8") as f:
+        forgot_html = f.read()
+    assert 'for="forgotEmailInput"' in forgot_html
+    assert 'id="forgotEmailInput"' in forgot_html
+
+    with open("templates/resend_verification.html", "r", encoding="utf-8") as f:
+        resend_html = f.read()
+    assert 'for="verifyEmailInput"' in resend_html
+    assert 'id="verifyEmailInput"' in resend_html
+
+    # 8. 2FA login & setup
+    with open("templates/login_two_factor.html", "r", encoding="utf-8") as f:
+        login_2fa = f.read()
+    assert 'for="backupCodeInput"' in login_2fa
+    assert 'id="backupCodeInput"' in login_2fa
+
+    with open("templates/setup_two_factor.html", "r", encoding="utf-8") as f:
+        setup_2fa = f.read()
+    assert 'for="secretKeyText"' in setup_2fa
+    assert 'id="secretKeyText"' in setup_2fa
+
+    # 9. Notification settings & preferences
+    with open("templates/notification_settings.html", "r", encoding="utf-8") as f:
+        notif_html = f.read()
+    assert 'for="test_company"' in notif_html
+    assert 'for="test_round"' in notif_html
+    assert 'for="test_time"' in notif_html
+    assert 'id="notify_welcome"' in notif_html
+    assert 'aria-label="Welcome Registration Confirmation"' in notif_html
+
+    with open("templates/notification_preferences.html", "r", encoding="utf-8") as f:
+        pref_html = f.read()
+    assert 'category-freq' in pref_html
+    assert 'aria-label="Notification frequency for' in pref_html
+    assert 'category-enabled' in pref_html
+    assert 'aria-label="Enable notifications for' in pref_html
+
+    # 10. Profile details form labels
+    with open("templates/profile.html", "r", encoding="utf-8") as f:
+        prof_html = f.read()
+    assert 'for="profileFullName"' in prof_html
+    assert 'id="profileFullName"' in prof_html
+    assert 'for="profileEmail"' in prof_html
+    assert 'id="profileEmail"' in prof_html
+    assert 'for="profilePhone"' in prof_html
+    assert 'id="profilePhone"' in prof_html
+    assert 'for="profileDepartment"' in prof_html
+    assert 'id="profileDepartment"' in prof_html
+    assert 'for="profileSkills"' in prof_html
+    assert 'id="profileSkills"' in prof_html
+
+
+def test_accessibility_keyboard_upload_announcer():
+    """Verify resume upload announcer live region exists and script.js announces file state (WCAG 4.1.3)."""
+    with open("templates/index.html", "r", encoding="utf-8") as f:
+        index_html = f.read()
+    assert 'id="fileSelectionAnnouncer"' in index_html
+    assert 'role="status"' in index_html
+    assert 'aria-live="polite"' in index_html
+
+    with open("static/js/script.js", "r", encoding="utf-8") as f:
+        js = f.read()
+    assert 'fileSelectionAnnouncer' in js
+    assert 'Resume file selection cleared.' in js
+    assert 'selected successfully' in js
+

@@ -1241,6 +1241,10 @@ def generate_interview_transcript_pdf(
                 q_text = escape_xml(item.get("question", "N/A"))
                 user_answer = escape_xml(item.get("answer", "No response recorded.")).replace("\n", "<br/>")
 
+                attempts = item.get("attempts", [])
+                has_retries = isinstance(attempts, list) and len(attempts) > 1
+                attempt_count = len(attempts) if has_retries else 1
+
                 eval_data = item.get("evaluation", {}) if isinstance(item.get("evaluation"), dict) else {}
                 tech_score = eval_data.get("technical_accuracy", 50)
                 comm_score = eval_data.get("communication_score", 50)
@@ -1268,8 +1272,12 @@ def generate_interview_transcript_pdf(
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ]))
 
+                hdr_title = f"<b>Question {q_num} &bull; {q_type} Round</b>"
+                if has_retries:
+                    hdr_title = f"<b>Question {q_num} &bull; {q_type} Round (Attempt {attempt_count} of {attempt_count} - Final Attempt)</b>"
+
                 q_hdr_table = Table(
-                    [[Paragraph(f"<b>Question {q_num} &bull; {q_type} Round</b>", badge_hdr_style)]],
+                    [[Paragraph(hdr_title, badge_hdr_style)]],
                     colWidths=[522]
                 )
                 q_hdr_table.setStyle(TableStyle([
@@ -1280,17 +1288,56 @@ def generate_interview_transcript_pdf(
                     ("LEFTPADDING", (0, 0), (-1, -1), 8),
                 ]))
 
+                cand_resp_label = "<b>Candidate Response (Final Attempt):</b>" if has_retries else "<b>Candidate Response:</b>"
                 q_elements = [
                     q_hdr_table,
                     Spacer(1, 4),
                     Paragraph(f"<b>Question:</b> {q_text}", body_style),
                     Spacer(1, 4),
-                    Paragraph(f"<b>Candidate Response:</b><br/>{user_answer}", quote_style),
+                    Paragraph(f"{cand_resp_label}<br/>{user_answer}", quote_style),
                     Spacer(1, 6),
                     scores_table,
                     Spacer(1, 6),
                     Paragraph(f"<b>AI Feedback:</b> {feedback}", body_style),
                 ]
+
+                # Attempt comparison & addressed feedback in PDF (#467)
+                comparison = item.get("comparison")
+                if isinstance(comparison, dict) and comparison.get("criteria"):
+                    q_elements.append(Spacer(1, 4))
+                    q_elements.append(Paragraph("<b>Attempt Comparison & Score Changes:</b>", h2_style))
+                    crit = comparison["criteria"]
+                    for c_key, c_info in crit.items():
+                        c_diff = c_info.get("diff", 0)
+                        diff_sign = f"+{c_diff}" if c_diff > 0 else str(c_diff)
+                        c_stat = c_info.get("status", "unchanged").capitalize()
+                        q_elements.append(Paragraph(
+                            f"&bull; <b>{escape_xml(c_info.get('label', c_key))}:</b> {c_info.get('prev_score')}% &rarr; {c_info.get('current_score')}% ({diff_sign} pts) [{c_stat}]",
+                            bullet_style
+                        ))
+                    addressed = comparison.get("addressed_points", [])
+                    if addressed:
+                        q_elements.append(Paragraph("<b>Addressed Feedback Points:</b>", h2_style))
+                        for pt in addressed:
+                            q_elements.append(Paragraph(f"&bull; {escape_xml(pt)}", bullet_style))
+
+                # Earlier attempts listing (#467)
+                if has_retries:
+                    q_elements.append(Spacer(1, 4))
+                    q_elements.append(Paragraph("<b>Earlier Attempt History:</b>", h2_style))
+                    for prev_att in attempts[:-1]:
+                        p_num = prev_att.get("attempt_number", 1)
+                        p_ans = escape_xml(prev_att.get("answer", "No response recorded.")).replace("\n", "<br/>")
+                        p_eval = prev_att.get("evaluation", {})
+                        p_t = p_eval.get("technical_accuracy", 50)
+                        p_c = p_eval.get("communication_score", 50)
+                        p_cf = p_eval.get("confidence_score", 50)
+                        p_v = p_eval.get("verbal_clarity_score", p_c)
+                        q_elements.append(Paragraph(
+                            f"<b>Attempt {p_num}:</b> {p_ans}<br/>"
+                            f"<font color='#5f6368'>Scores: Tech: {p_t}/100 &bull; Comm: {p_c}/100 &bull; Conf: {p_cf}/100 &bull; Verbal: {p_v}/100</font>",
+                            quote_style
+                        ))
 
                 if suggestions:
                     q_elements.append(Spacer(1, 4))
@@ -1471,6 +1518,10 @@ def generate_interview_transcript_markdown(
             ans_text = item.get("answer", "No response recorded.")
             eval_data = item.get("evaluation", {}) if isinstance(item.get("evaluation"), dict) else {}
 
+            attempts = item.get("attempts", [])
+            has_retries = isinstance(attempts, list) and len(attempts) > 1
+            attempt_count = len(attempts) if has_retries else 1
+
             tech = eval_data.get("technical_accuracy", 50)
             comm = eval_data.get("communication_score", 50)
             conf = eval_data.get("confidence_score", 50)
@@ -1486,14 +1537,15 @@ def generate_interview_transcript_markdown(
             if t_disp:
                 evaluated_scores.append(f"- Timing: **{t_disp.capitalize()}**")
 
+            q_title_suffix = f" (Attempt {attempt_count} of {attempt_count} - Final Attempt)" if has_retries else ""
             lines.extend([
-                f"### Question {q_num} [{q_type} Round]",
+                f"### Question {q_num} [{q_type} Round]{q_title_suffix}",
                 f"**Question:** {q_text}",
                 "",
-                "**Candidate Response:**",
+                f"**Candidate Response{' (Final Attempt)' if has_retries else ''}:**",
                 f"> {ans_text}",
                 "",
-                "**Evaluated Scores:**",
+                f"**Evaluated Scores{' (Final Attempt)' if has_retries else ''}:**",
                 *evaluated_scores,
                 "",
             ])
@@ -1504,6 +1556,58 @@ def generate_interview_transcript_markdown(
                     f"**AI Feedback:** {feedback}",
                     "",
                 ])
+
+            # Attempt comparison & addressed feedback in Markdown (#467)
+            comparison = item.get("comparison")
+            if isinstance(comparison, dict) and comparison.get("criteria"):
+                crit = comparison["criteria"]
+                lines.extend([
+                    "**Attempt Comparison (Score Differences):**",
+                ])
+                for c_key, c_info in crit.items():
+                    c_diff = c_info.get("diff", 0)
+                    diff_sign = f"+{c_diff}" if c_diff > 0 else str(c_diff)
+                    c_stat = c_info.get("status", "unchanged").capitalize()
+                    c_label = c_info.get("label", c_key)
+                    lines.append(f"- **{c_label}:** {c_info.get('prev_score')}% \u2192 {c_info.get('current_score')}% ({diff_sign} pts) [{c_stat}]")
+
+                if comparison.get("overall"):
+                    ov = comparison["overall"]
+                    ov_diff = ov.get("diff", 0)
+                    ov_sign = f"+{ov_diff}" if ov_diff > 0 else str(ov_diff)
+                    lines.append(f"- **Overall Performance Change:** {ov.get('prev_score')}% \u2192 {ov.get('current_score')}% ({ov_sign} pts) [{ov.get('status', 'unchanged').capitalize()}]")
+                lines.append("")
+
+                addressed = comparison.get("addressed_points", [])
+                if addressed:
+                    lines.append("**Addressed Feedback Points:**")
+                    for pt in addressed:
+                        lines.append(f"- {pt}")
+                    lines.append("")
+
+            # Earlier attempts history listing (#467)
+            if has_retries:
+                lines.extend([
+                    "**Earlier Attempt History:**",
+                    "",
+                ])
+                for prev_att in attempts[:-1]:
+                    p_num = prev_att.get("attempt_number", 1)
+                    p_ans = prev_att.get("answer", "No response recorded.")
+                    p_eval = prev_att.get("evaluation", {})
+                    p_t = p_eval.get("technical_accuracy", 50)
+                    p_c = p_eval.get("communication_score", 50)
+                    p_cf = p_eval.get("confidence_score", 50)
+                    p_v = p_eval.get("verbal_clarity_score", p_c)
+                    p_fb = p_eval.get("feedback", "")
+                    lines.extend([
+                        f"- **Attempt {p_num}:**",
+                        f"  - Response: > {p_ans}",
+                        f"  - Scores: Technical: {p_t}/100 | Communication: {p_c}/100 | Confidence: {p_cf}/100 | Verbal: {p_v}/100",
+                    ])
+                    if p_fb:
+                        lines.append(f"  - Feedback: {p_fb}")
+                    lines.append("")
 
             suggestions = eval_data.get("suggestions", [])
             if suggestions and isinstance(suggestions, list):
