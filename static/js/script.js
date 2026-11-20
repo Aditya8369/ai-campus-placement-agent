@@ -1150,6 +1150,73 @@ function initFormUpload() {
     "step6": "Preparing interview questions"
   };
 
+  let currentAnalysisTaskId = null;
+  let activeEventSource = null;
+  let activePollInterval = null;
+
+  function showCancellationNotice(msg) {
+    const cancelAlert = document.getElementById("analysisCancelledAlert");
+    const cancelMsg = document.getElementById("analysisCancelledMessage");
+    if (cancelAlert && cancelMsg) {
+      cancelMsg.textContent = msg || "The analysis was cancelled. You can adjust your inputs and start a new analysis.";
+      cancelAlert.classList.remove("d-none");
+      cancelAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    const progressAnnouncer = document.getElementById("progressLiveAnnouncer");
+    if (progressAnnouncer) {
+      progressAnnouncer.textContent = "Analysis was cancelled.";
+    }
+  }
+
+  const btnCancelAnalysis = document.getElementById("btnCancelAnalysis");
+  if (btnCancelAnalysis) {
+    btnCancelAnalysis.addEventListener("click", async () => {
+      const taskIdToCancel = currentAnalysisTaskId;
+      btnCancelAnalysis.disabled = true;
+      btnCancelAnalysis.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Cancelling...';
+
+      // Immediately terminate frontend connections to avoid stale events
+      if (activeEventSource) {
+        activeEventSource.close();
+        activeEventSource = null;
+      }
+      if (activePollInterval) {
+        clearInterval(activePollInterval);
+        activePollInterval = null;
+      }
+
+      if (taskIdToCancel) {
+        try {
+          await fetch(`/api/analysis/cancel/${encodeURIComponent(taskIdToCancel)}`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest"
+            }
+          });
+        } catch (err) {
+          console.warn("Analysis cancellation request completed with:", err);
+        }
+      }
+
+      currentAnalysisTaskId = null;
+      if (progressOverlay) progressOverlay.classList.add("d-none");
+      resetProgressPanel();
+
+      btnCancelAnalysis.disabled = false;
+      btnCancelAnalysis.innerHTML = '<i class="fa-solid fa-ban me-1"></i> Cancel Analysis';
+
+      // Restore submit button state on form
+      const submitBtn = uploadForm.querySelector("button[type='submit']");
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-2"></i> Analyze Readiness';
+      }
+
+      showCancellationNotice("Analysis was cancelled. You can adjust your inputs and start a new analysis.");
+    });
+  }
+
   function resetProgressPanel() {
     if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
@@ -1183,7 +1250,12 @@ function initFormUpload() {
     if (!statusUrl) return;
     let pollCount = 0;
     const maxPolls = 120; // 2 minutes max
+    if (activePollInterval) {
+      clearInterval(activePollInterval);
+      activePollInterval = null;
+    }
     const pollInterval = setInterval(async () => {
+      activePollInterval = pollInterval;
       pollCount++;
       try {
         const res = await fetch(statusUrl);
@@ -1197,6 +1269,7 @@ function initFormUpload() {
 
         if (statusData.status === "completed") {
           clearInterval(pollInterval);
+          activePollInterval = null;
           onMilestone({
             status: "completed",
             step: "completed",
@@ -1206,21 +1279,33 @@ function initFormUpload() {
             redirect_url: statusData.redirect_url,
             message: "Multi-agent placement analysis complete! Redirecting..."
           });
+        } else if (statusData.status === "cancelled") {
+          clearInterval(pollInterval);
+          activePollInterval = null;
+          onMilestone({
+            status: "cancelled",
+            step: "cancelled",
+            progress: 0,
+            message: "Analysis was cancelled."
+          });
         } else if (statusData.status === "error") {
           clearInterval(pollInterval);
-          const failedStep = statusData.failed_step || statusData.current_step_name;
-          onError(statusData.error_message || "Analysis pipeline encountered an error.", failedStep);
+          activePollInterval = null;
+          onError(statusData.error_message || "Analysis pipeline encountered an error.");
         } else if (pollCount >= maxPolls) {
           clearInterval(pollInterval);
+          activePollInterval = null;
           onError("Analysis pipeline timed out. Please try again.");
         }
       } catch (err) {
         if (pollCount >= maxPolls) {
           clearInterval(pollInterval);
+          activePollInterval = null;
           onError("Failed to poll analysis status: " + err.message);
         }
       }
     }, 1000);
+    activePollInterval = pollInterval;
   }
 
   // Multi-Company Matrix Mode Controls
@@ -1505,6 +1590,19 @@ function initFormUpload() {
       return;
     }
 
+    // Clear any previous cancellation alerts or active listeners before starting fresh
+    const cancelAlert = document.getElementById("analysisCancelledAlert");
+    if (cancelAlert) cancelAlert.classList.add("d-none");
+    if (activeEventSource) {
+      activeEventSource.close();
+      activeEventSource = null;
+    }
+    if (activePollInterval) {
+      clearInterval(activePollInterval);
+      activePollInterval = null;
+    }
+    currentAnalysisTaskId = null;
+
     // Display and reset progress overlay
     resetProgressPanel();
     if (progressOverlay) progressOverlay.classList.remove("d-none");
@@ -1533,11 +1631,10 @@ function initFormUpload() {
       if (progressAnnouncer) {
         if (status === "completed" || step === "completed") {
           progressAnnouncer.textContent = "Analysis complete! Redirecting to your dashboard...";
-        } else if (status === "error" || step === "error") {
-          const failedStepName = milestone.failed_step || stepName;
-          progressAnnouncer.textContent = `Analysis error during ${failedStepName}: ${message}`;
-        } else if (stepName) {
-          progressAnnouncer.textContent = `Current step: ${stepName} (${progress}%). ${message}`;
+        } else if (status === "cancelled" || step === "cancelled") {
+          progressAnnouncer.textContent = "Analysis was cancelled.";
+        } else if (message) {
+          progressAnnouncer.textContent = `Analysis progress: ${progress}%. ${message}`;
         }
       }
 
@@ -1602,6 +1699,11 @@ function initFormUpload() {
           eventSource.close();
           eventSource = null;
         }
+        if (activeEventSource) {
+          activeEventSource.close();
+          activeEventSource = null;
+        }
+        currentAnalysisTaskId = null;
 
         const redirectUrl = milestone.redirect_url ||
           (milestone.extra && milestone.extra.redirect_url) ||
@@ -1609,13 +1711,40 @@ function initFormUpload() {
         setTimeout(() => {
           window.location.href = redirectUrl;
         }, 500);
+      } else if (status === "cancelled" || step === "cancelled") {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (activeEventSource) {
+          activeEventSource.close();
+          activeEventSource = null;
+        }
+        if (activePollInterval) {
+          clearInterval(activePollInterval);
+          activePollInterval = null;
+        }
+        currentAnalysisTaskId = null;
+        if (progressOverlay) progressOverlay.classList.add("d-none");
+        resetProgressPanel();
+
+        const submitBtn = uploadForm.querySelector("button[type='submit']");
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-2"></i> Analyze Readiness';
+        }
+        showCancellationNotice(milestone.message || "Analysis was cancelled. You can change your resume or job description and start a new analysis.");
       } else if (status === "error" || step === "error") {
         if (eventSource) {
           eventSource.close();
           eventSource = null;
         }
-        const failedStepName = milestone.failed_step || milestone.current_step_name || stepNamesMap[step];
-        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.", failedStepName, step);
+        if (activeEventSource) {
+          activeEventSource.close();
+          activeEventSource = null;
+        }
+        currentAnalysisTaskId = null;
+        showPipelineError(milestone.message || "An unexpected error occurred during multi-agent analysis.");
       }
     }
 
@@ -1681,27 +1810,13 @@ function initFormUpload() {
           throw new Error(data.error || "Failed to initiate background analysis.");
         }
 
-        if (data.cached && data.redirect_url) {
-          if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
-          if (analysisProgressBar) {
-            analysisProgressBar.style.width = "100%";
-            analysisProgressBar.className = "progress-bar bg-success";
-          }
-          if (progressSpinner) progressSpinner.classList.add("d-none");
-          if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
-          if (progressTitle) progressTitle.textContent = "Analysis Complete!";
-          if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
-          setTimeout(() => {
-            window.location.href = data.redirect_url;
-          }, 400);
-          return;
-        }
-
+        currentAnalysisTaskId = data.task_id;
         const streamUrl = data.stream_url;
         const statusUrl = data.status_url;
 
         if (window.EventSource && streamUrl) {
           eventSource = new EventSource(streamUrl);
+          activeEventSource = eventSource;
 
           eventSource.onmessage = (event) => {
             try {
@@ -1718,6 +1833,10 @@ function initFormUpload() {
               eventSource.close();
               eventSource = null;
             }
+            if (activeEventSource) {
+              activeEventSource.close();
+              activeEventSource = null;
+            }
             startPolling(statusUrl, handleMilestone, showPipelineError);
           };
         } else {
@@ -1726,8 +1845,8 @@ function initFormUpload() {
       })
       .catch((err) => {
         console.error("Async analysis dispatch failed:", err);
-        enableSubmitButton();
-        showPipelineError(err.message || "Could not start analysis. Please check your network and retry.", "Dispatch");
+        currentAnalysisTaskId = null;
+        showPipelineError(err.message || "Could not start analysis. Please check your network and retry.");
       });
   });
 }
