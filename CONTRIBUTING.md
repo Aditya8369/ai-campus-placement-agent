@@ -125,6 +125,25 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
 - **Variable naming**: Use descriptive, meaningful names
 - **Error handling**: Include proper error handling and logging
 
+### Route Organization & Where to Add New Routes (#553)
+
+The application has been refactored from a monolithic `app.py` into modular Flask Blueprints grouped by feature area inside the `routes/` package. **`app.py` is a thin entry point** exporting `app = create_app()` and should not have new routes added to it directly.
+
+When adding or modifying routes, place them in the corresponding Blueprint module:
+
+- **`routes/auth.py`**: Authentication, login/logout, registration, two-factor auth (2FA), session lifecycle, password recovery.
+- **`routes/analysis.py`**: Resume uploads, ATS evaluation, resume diff/comparisons, dashboards, role skill gaps.
+- **`routes/interview.py`**: Mock interviews, speech & STAR evaluation, aptitude practice, group discussions, and interview preparation notes.
+- **`routes/coding_practice.py`**: Coding problems, sandbox execution, problem bookmarks, submission tracking.
+- **`routes/tracker.py`**: Job application tracking pipelines, placement milestones, calendar deadlines, and reminder preferences.
+- **`routes/jobs.py`**: Job recommendations, company profiles, internship feeds, GitHub/LinkedIn profile analyzers.
+- **`routes/reports.py`**: PDF reports, certificates, skills gap downloads, watermarking, and read-only report sharing.
+- **`routes/admin.py`**: Administrative AI metrics, Gemini usage tracking, database backups, and moderation queue.
+- **`routes/api.py`**: Shared/utility endpoints (health checks, system status, i18n translations, walkthroughs).
+- **`routes/common.py`**: Shared constants (`APPLICATION_STAGES`, `WALKTHROUGH_STEPS_CATALOG`, caches), agent instances, and helper functions.
+
+Use the Blueprint decorator for your area (e.g. `@interview_bp.route("/path")` rather than `@app.route(...)`). URL endpoints remain backwards-compatible across templates and tests with automatic alias mapping.
+
 ## Pull Request Process
 
 1. **Update Documentation**: If your changes affect functionality, update the README or relevant documentation
