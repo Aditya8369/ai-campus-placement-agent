@@ -2665,3 +2665,47 @@ def api_get_gd_history():
 preparation_notes_view = interview_notes_view
 api_preparation_notes = api_notes_collection
 api_preparation_note_item = api_note_operations
+
+
+# =====================================================================
+# INTERVIEW COMMUNICATION FEEDBACK ROUTES (#511)
+# =====================================================================
+
+@interview_bp.route("/api/interview/communication/evaluate", methods=["POST"])
+def api_evaluate_communication():
+    """
+    Evaluates communication, articulation, pacing, and filler word density (#511).
+    Scores delivery separately from technical assessment.
+    """
+    from utils.interview_communication_service import InterviewCommunicationService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    session_id = payload.get("session_id", "default_sess")
+    question_id = payload.get("question_id", "q1")
+    answer_text = payload.get("answer_text", "")
+
+    try:
+        feedback = InterviewCommunicationService.evaluate_communication(
+            user_id=student_id,
+            session_id=session_id,
+            question_id=question_id,
+            answer_text=answer_text
+        )
+        return jsonify({"status": "success", "communication_feedback": feedback}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error in communication evaluation: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate communication."}), 500
+
+
+@interview_bp.route("/api/interview/communication/<session_id>/audit", methods=["GET"])
+def api_get_communication_audit(session_id):
+    """Returns aggregated communication metrics for an interview session (#511)."""
+    from utils.interview_communication_service import InterviewCommunicationService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    audit = InterviewCommunicationService.get_session_communication_audit(student_id, session_id)
+    return jsonify({"status": "success", "audit": audit}), 200
+
