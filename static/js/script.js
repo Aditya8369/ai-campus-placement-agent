@@ -117,7 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initSelfIntroductionStudio();
   initProjectDeepDive();
   initTailoredCoverLetterStudio();
-  initSkillImpactSimulator();
+  initCustomLearningRoadmap();
 });
 
 /**
@@ -7329,6 +7329,181 @@ function initSelfIntroductionStudio() {
 }
 
 /**
+ * Interactive Timeline Learning Roadmap Generator (#536)
+ * Handles timeline duration (weeks), commitment hours, dynamic recalculation,
+ * zero missing skills celebratory states, and deferred skills rendering.
+ */
+function initCustomLearningRoadmap() {
+  const btnRecalc = document.getElementById("btnRecalculateRoadmap");
+  const weeksSelect = document.getElementById("roadmapWeeksSelect");
+  const hoursSelect = document.getElementById("roadmapHoursSelect");
+  const spinner = document.getElementById("roadmapSpinner");
+  const icon = document.getElementById("roadmapRecalcIcon");
+  const zeroBanner = document.getElementById("zeroMissingSkillsBanner");
+  const zeroMsg = document.getElementById("zeroMissingSkillsMsg");
+  const deferredContainer = document.getElementById("deferredSkillsContainer");
+  const deferredBadges = document.getElementById("deferredSkillsBadges");
+  const deferredBadgeCount = document.getElementById("deferredSkillsCountBadge");
+  const timelineContainer = document.getElementById("customRoadmapTimeline");
+
+  if (!btnRecalc) return;
+
+  btnRecalc.addEventListener("click", async () => {
+    const analysisId = btnRecalc.getAttribute("data-analysis-id");
+    if (!analysisId) return;
+
+    const weeks = weeksSelect ? parseInt(weeksSelect.value, 10) || 6 : 6;
+    const hours = hoursSelect ? parseInt(hoursSelect.value, 10) || 10 : 10;
+
+    btnRecalc.disabled = true;
+    if (spinner) spinner.classList.remove("d-none");
+    if (icon) icon.classList.add("d-none");
+
+    try {
+      const res = await fetch(`/api/analysis/${analysisId}/custom-roadmap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weeks, hours_per_week: hours })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to recalculate learning roadmap");
+      }
+
+      // 1. Zero missing skills condition
+      if (data.is_zero_missing) {
+        if (zeroBanner) zeroBanner.classList.remove("d-none");
+        if (zeroMsg && data.congratulatory_message) zeroMsg.textContent = data.congratulatory_message;
+        if (deferredContainer) deferredContainer.classList.add("d-none");
+        if (timelineContainer) timelineContainer.classList.add("d-none");
+        return;
+      }
+
+      if (zeroBanner) zeroBanner.classList.add("d-none");
+      if (timelineContainer) timelineContainer.classList.remove("d-none");
+
+      // 2. Deferred skills condition
+      if (data.deferred_skills && data.deferred_skills.length > 0) {
+        if (deferredContainer) deferredContainer.classList.remove("d-none");
+        if (deferredBadgeCount) deferredBadgeCount.textContent = `${data.deferred_skills.length} Deferred`;
+        if (deferredBadges) {
+          deferredBadges.innerHTML = data.deferred_skills.map(defItem => `
+            <div class="p-2 px-3 bg-white rounded-3 border border-warning-subtle small shadow-xs">
+              <span class="fw-bold text-dark">${escapeHtml(defItem.skill || '')}</span>
+              <span class="badge bg-light text-secondary border rounded-pill ms-1">${escapeHtml(defItem.importance || 'Medium')}</span>
+              <small class="text-muted d-block mt-1">${escapeHtml(defItem.reason || '')}</small>
+            </div>
+          `).join("");
+        }
+      } else {
+        if (deferredContainer) deferredContainer.classList.add("d-none");
+      }
+
+      // 3. Render Week-by-Week Plan
+      if (timelineContainer && Array.isArray(data.plan)) {
+        timelineContainer.innerHTML = data.plan.map((w, idx) => {
+          const skillsHtml = (w.skills || []).map(sk => `
+            <span class="badge bg-primary-subtle text-primary border rounded-pill small py-1 px-2">
+              <i class="fa-solid fa-bullseye me-1"></i>${escapeHtml(sk)}
+            </span>
+          `).join(" ");
+
+          const topicsHtml = (w.topics || []).map((t, tIdx) => `
+            <li class="mb-1">
+              <label class="form-check-label d-flex align-items-start">
+                <input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="${analysisId}" data-task-id="${(w.week || '').replace(/\s+/g, '_')}_top_${tIdx + 1}">
+                <span>${escapeHtml(t)}</span>
+              </label>
+            </li>
+          `).join("");
+
+          const practiceTaskHtml = w.practice_task ? `
+            <div class="p-3 bg-white rounded-3 border-start border-primary border-4 mb-3 shadow-xs">
+              <h6 class="small fw-bold text-dark mb-1 d-flex align-items-center">
+                <i class="fa-solid fa-laptop-code text-primary me-2"></i> Weekly Practice Task
+                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-auto small">1 Task / Wk</span>
+              </h6>
+              <p class="small text-secondary mb-0 fw-semibold">${escapeHtml(w.practice_task)}</p>
+            </div>
+          ` : "";
+
+          const resourceTypesHtml = (w.resource_types || []).map(rt => `
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2">
+              <i class="fa-solid fa-circle-check me-1"></i>${escapeHtml(rt)}
+            </span>
+          `).join(" ");
+
+          return `
+            <div class="timeline-node" data-week-index="${idx + 1}">
+              <div class="card border-0 bg-light p-4 rounded-4 shadow-sm week-card" data-week-id="${(w.week || '').replace(/\s+/g, '_')}">
+                <div class="d-flex justify-content-between align-items-center flex-wrap mb-2 gap-2">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h5 class="fw-bold mb-0 text-primary">${escapeHtml(w.week)}</h5>
+                    ${skillsHtml}
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 copy-week-btn" data-week-name="${escapeHtml(w.week)}" title="Copy week tasks to clipboard" aria-label="Copy week tasks to clipboard">
+                      <i class="fa-regular fa-copy me-1"></i> Copy Week
+                    </button>
+                    <span class="badge bg-primary text-white rounded-pill py-2 px-3">${w.estimated_hours || 10} Hours / week</span>
+                  </div>
+                </div>
+
+                <div class="week-progress-container mb-3">
+                  <div class="d-flex justify-content-between small text-secondary mb-1">
+                    <span>Week Progress</span>
+                    <span class="week-progress-label fw-bold text-success">0%</span>
+                  </div>
+                  <div class="progress rounded-pill" style="height: 6px;">
+                    <div class="progress-bar bg-success week-progress-bar" style="width: 0%"></div>
+                  </div>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-book-open me-2 text-primary"></i> Topics to Learn</h6>
+                    <ul class="mb-3 small list-unstyled">
+                      ${topicsHtml}
+                    </ul>
+                  </div>
+                  <div class="col-md-6">
+                    ${practiceTaskHtml}
+                    <div class="p-3 bg-white rounded-3 border small shadow-xs">
+                      <span class="fw-bold text-secondary d-block mb-1">
+                        <i class="fa-solid fa-graduation-cap text-success me-1"></i> Recommended Free Resource Types:
+                      </span>
+                      <div class="d-flex flex-wrap gap-1">
+                        ${resourceTypesHtml}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+    } catch (err) {
+      console.error("Custom roadmap recalculation error:", err);
+      alert(err.message || "Failed to recalculate learning roadmap.");
+    } finally {
+      btnRecalc.disabled = false;
+      if (spinner) spinner.classList.add("d-none");
+      if (icon) icon.classList.remove("d-none");
+    }
+  });
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+}
+
+/**
  * Project Deep-Dive Interview Practice Mode (#466).
  * Handles project selection, thin project enrichment, grounded question delivery,
  * answer evaluation with scores & improvement tips, and overall session completion.
@@ -7445,7 +7620,7 @@ function initProjectDeepDive() {
 
       const updatedProj = { ...pendingThinProject };
       if (extraTech) updatedProj.tech_stack = extraTech;
-      
+
       const modalInstance = bootstrap.Modal.getInstance(thinProjectModalEl);
       if (modalInstance) modalInstance.hide();
 
