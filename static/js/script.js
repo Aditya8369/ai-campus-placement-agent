@@ -117,6 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
   initProjectDeepDive();
   initInterviewDraftLogoutCleanup();
   initTailoredCoverLetterStudio();
+  initSkillImpactSimulator();
 });
 
 /**
@@ -7789,6 +7790,149 @@ function initProjectDeepDive() {
     });
   }
 }
+
+/**
+ * What-If Skill Impact Simulator (#557)
+ * Immediate, client-side recalculation of job match percentage when missing skills are assumed learned.
+ */
+function initSkillImpactSimulator() {
+  const simCard = document.getElementById("skillSimulatorCard");
+  if (!simCard) return;
+
+  let rawData = null;
+  try {
+    const rawAttr = simCard.getAttribute("data-simulation-data");
+    if (rawAttr) {
+      rawData = JSON.parse(rawAttr);
+    }
+  } catch (e) {
+    console.warn("Failed to parse simulation data:", e);
+  }
+  if (!rawData) return;
+
+  const originalScore = rawData.original_percentage || 0;
+  const rankedSkills = rawData.ranked_skills || [];
+  const totalMissing = rankedSkills.length;
+  if (totalMissing === 0) return;
+
+  const totalMissingWeight = rankedSkills.reduce((sum, s) => sum + (s.weight || 2.0), 0);
+  const gapTo100 = Math.max(0, 100 - originalScore);
+
+  // UI elements
+  const scoreEl = document.getElementById("simProjectedScore");
+  const deltaEl = document.getElementById("simDeltaBadge");
+  const tickedCountEl = document.getElementById("simTickedCount");
+  const boostBarEl = document.getElementById("simProgressBarBoost");
+  const btnSelectAll = document.getElementById("btnSimulatorSelectAll");
+  const btnClear = document.getElementById("btnSimulatorClear");
+
+  // Populate individual boost badges in the table rows
+  rankedSkills.forEach((r) => {
+    const tableBadge = document.querySelector(`.table-skill-impact-badge[data-skill="${CSS.escape(r.skill)}"]`);
+    if (tableBadge && r.individual_gain > 0) {
+      tableBadge.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small px-2 py-0" title="Projected boost if learned">${escapeHtml(r.individual_gain_str)}</span>` +
+        (r.is_best_next ? ` <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill small px-2 py-0" title="Rank #1 Highest impact skill"><i class="fa-solid fa-crown text-warning me-1"></i>Best Next</span>` : "");
+    }
+  });
+
+  const getTickedSkills = () => {
+    const checked = new Set();
+    document.querySelectorAll(".sim-skill-checkbox:checked, .table-skill-checkbox:checked").forEach((cb) => {
+      const val = (cb.value || cb.dataset.skill || "").trim();
+      if (val) checked.add(val.toLowerCase());
+    });
+    return checked;
+  };
+
+  const updateSimulation = () => {
+    const tickedSet = getTickedSkills();
+    let tickedWeight = 0;
+    let tickedCount = 0;
+
+    rankedSkills.forEach((s) => {
+      const isTicked = tickedSet.has((s.skill || "").toLowerCase());
+      if (isTicked) {
+        tickedWeight += (s.weight || 2.0);
+        tickedCount += 1;
+      }
+
+      // Synchronize checkbox states in simulator pills and table rows
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const pill = cb.closest(".sim-skill-pill");
+        if (pill) {
+          if (isTicked) pill.classList.add("active", "btn-primary", "text-white");
+          else pill.classList.remove("active", "btn-primary", "text-white");
+        }
+      });
+      document.querySelectorAll(`.table-skill-checkbox[data-skill="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const row = cb.closest("tr");
+        if (row) {
+          if (isTicked) row.classList.add("table-success");
+          else row.classList.remove("table-success");
+        }
+      });
+    });
+
+    let simulatedScore = originalScore;
+    let pctChange = 0;
+    if (tickedCount > 0 && totalMissingWeight > 0 && gapTo100 > 0) {
+      const boost = (tickedWeight / totalMissingWeight) * gapTo100;
+      simulatedScore = Math.min(100, Math.max(0, Math.round(originalScore + boost)));
+      pctChange = simulatedScore - originalScore;
+    }
+
+    if (scoreEl) scoreEl.textContent = `${simulatedScore}%`;
+    if (deltaEl) {
+      deltaEl.textContent = pctChange > 0 ? `+${pctChange}%` : `${pctChange}%`;
+      deltaEl.className = pctChange > 0
+        ? "badge bg-success-subtle text-success fs-6 fw-bold px-3 py-1 rounded-pill"
+        : "badge bg-secondary-subtle text-secondary fs-6 fw-bold px-3 py-1 rounded-pill";
+    }
+    if (tickedCountEl) tickedCountEl.textContent = `${tickedCount} / ${totalMissing}`;
+    if (boostBarEl) {
+      boostBarEl.style.width = `${pctChange}%`;
+      boostBarEl.setAttribute("aria-valuenow", simulatedScore);
+      boostBarEl.title = `Simulated Boost: +${pctChange}%`;
+    }
+  };
+
+  // Event delegation for checkbox changes
+  document.addEventListener("change", (e) => {
+    if (e.target && (e.target.classList.contains("sim-skill-checkbox") || e.target.classList.contains("table-skill-checkbox"))) {
+      const skillName = (e.target.value || e.target.dataset.skill || "").trim();
+      const isChecked = e.target.checked;
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(skillName)}"], .table-skill-checkbox[data-skill="${CSS.escape(skillName)}"]`).forEach((cb) => {
+        cb.checked = isChecked;
+      });
+      updateSimulation();
+    }
+  });
+
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = true;
+      });
+      updateSimulation();
+    });
+  }
+
+  if (btnClear) {
+    btnClear.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = false;
+      });
+      updateSimulation();
+    });
+  }
+
+  // Initial calculation and UI setup
+  updateSimulation();
+}
+window.initSkillImpactSimulator = initSkillImpactSimulator;
+
 
 
 

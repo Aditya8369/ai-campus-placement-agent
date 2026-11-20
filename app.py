@@ -4353,6 +4353,27 @@ def dashboard(analysis_id: str) -> str:
             "checks": []
         }
 
+    # Prepare Skill Impact Simulation (#557)
+    try:
+        from utils.skill_impact_simulator import get_skill_simulation_data
+        skill_simulation = get_skill_simulation_data(analysis_record)
+    except Exception as sim_err:
+        logger.warning(f"Error preparing skill simulation for dashboard: {sim_err}")
+        skill_simulation = {
+            "original_percentage": int((analysis_record.get("results") or {}).get("job_match", {}).get("match_percentage", 0)),
+            "simulated_percentage": int((analysis_record.get("results") or {}).get("job_match", {}).get("match_percentage", 0)),
+            "percentage_change": 0,
+            "percentage_change_str": "0%",
+            "ticked_skills": [],
+            "ticked_count": 0,
+            "total_missing_count": 0,
+            "remaining_missing_count": 0,
+            "ranked_skills": [],
+            "best_next_skill": None,
+            "has_missing_skills": False,
+            "disclaimer": "This is an estimated projection based on identified competencies.",
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -4391,8 +4412,50 @@ def dashboard(analysis_id: str) -> str:
         is_demo=is_demo,
         bullet_rewrites=bullet_rewrites,
         format_compatibility=format_compatibility,
-        format_compatibility_json=json.dumps(format_compatibility)
+        format_compatibility_json=json.dumps(format_compatibility),
+        initial_linkedin_suggestions={},
+        initial_linkedin_suggestions_json="{}",
+        skill_simulation=skill_simulation,
+        skill_simulation_json=json.dumps(skill_simulation)
     )
+
+
+# ==============================================================================
+# SKILL IMPACT SIMULATOR API (#557)
+# ==============================================================================
+
+@app.route("/api/skill-gap/simulate", methods=["POST"])
+def api_simulate_skill_gap_impact():
+    """Simulates job match percentage improvements when missing skills are assumed learned (#557)."""
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    analysis_id = payload.get("analysis_id")
+    raw_ticked = payload.get("ticked_skills") or []
+    if isinstance(raw_ticked, str):
+        ticked_skills = [s.strip() for s in raw_ticked.split(",") if s.strip()]
+    elif isinstance(raw_ticked, list):
+        ticked_skills = [str(s).strip() for s in raw_ticked if str(s).strip()]
+    else:
+        ticked_skills = []
+
+    from utils.skill_impact_simulator import get_skill_simulation_data, simulate_job_match
+
+    if analysis_id:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record:
+            return jsonify({"success": False, "error": "Analysis not found."}), 404
+        data = get_skill_simulation_data(analysis_record, ticked_skills=ticked_skills)
+    else:
+        matched_skills = payload.get("matched_skills") or []
+        missing_skills = payload.get("missing_skills") or []
+        orig_pct = payload.get("original_percentage")
+        data = simulate_job_match(
+            matched_skills=matched_skills,
+            missing_skills=missing_skills,
+            ticked_skills=ticked_skills,
+            original_percentage=orig_pct
+        )
+
+    return jsonify({"success": True, "data": data}), 200
 
 
 # ==============================================================================
