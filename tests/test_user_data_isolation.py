@@ -284,6 +284,7 @@ def test_cross_student_notes_isolation_on_web(client):
 
     # Alice visits /notes page
     with client.session_transaction() as sess:
+        sess.clear()
         sess["user_id"] = "student_alice"
         sess["user_name"] = "Alice"
 
