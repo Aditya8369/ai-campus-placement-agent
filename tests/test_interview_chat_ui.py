@@ -2,6 +2,7 @@
 Unit tests for improved mock interview chat message styling and evaluation visual hierarchy (#137).
 """
 
+import os
 from app import app
 
 
@@ -30,8 +31,11 @@ def test_css_contains_chat_bubble_variants():
 
 
 def test_script_js_appends_typed_bubbles():
-    """Verify script.js assigns question and evaluation classes dynamically."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    """Verify script.js / interview.js assigns question and evaluation classes dynamically."""
+    js_path = os.path.join("static", "js", "modules", "interview.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
     assert 'appendChatBubble(feedbackText, "evaluation")' in js

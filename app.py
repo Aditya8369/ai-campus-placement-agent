@@ -151,6 +151,8 @@ from utils.database import (
     get_saved_job_description_by_id,
     update_saved_job_description,
     delete_saved_job_description,
+    count_saved_job_descriptions,
+    rename_saved_job_description,
     create_password_reset_token,
     get_valid_password_reset_token,
     reset_user_password,
@@ -264,6 +266,12 @@ from utils.progress_tracker import (
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
+from utils.analysis_export_service import (
+    export_analysis_to_json,
+    export_analysis_to_markdown,
+    build_analysis_export_payload,
+    get_export_filename,
+)
 from utils.resume_info_extractor import (
     extract_resume_information,
     validate_reviewed_information,
@@ -402,6 +410,9 @@ from utils.logger_config import (
     clear_sensitive_texts,
 )
 
+# Optional Sentry Error Monitoring & Privacy-Preserving Observability (#562)
+from utils.sentry_integration import init_sentry
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -426,6 +437,28 @@ csrf.init_app(app)
 app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
 app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+
+# Initialize Sentry error monitoring with privacy data scrubbing (#562)
+init_sentry(app=app)
+
+
+def create_app(config_override: Optional[Dict[str, Any]] = None) -> Flask:
+    """
+    Application factory for AI Campus Placement Agent (#562).
+    Initializes optional Sentry error monitoring when SENTRY_DSN is configured,
+    applies configuration overrides, and returns the Flask application instance.
+    """
+    if config_override:
+        app.config.update(config_override)
+
+    dsn = (
+        app.config.get("SENTRY_DSN")
+        if app.config.get("SENTRY_DSN") is not None
+        else os.getenv("SENTRY_DSN", getattr(config, "SENTRY_DSN", None))
+    )
+    init_sentry(app=app, dsn=dsn)
+    return app
+
 
 
 def _session_client_label() -> str:
@@ -567,7 +600,9 @@ def require_login():
         "api_aptitude_history",
         "api_aptitude_weak_topics",
         "verify_two_factor",
-        "view_shared_report",
+        "api_cancel_analysis",
+        "api_cancel_analysis_alt",
+        "api_cancel_analysis_body",
     }
 
     user_id = flask_session.get("user_id")
@@ -915,7 +950,11 @@ def internal_server_error(error):
     """
     from utils.prompt_security import redact_sensitive_information
     from utils.error_reference_service import record_application_error
+    from utils.sentry_integration import capture_exception
     from flask import g
+
+    if error and isinstance(error, Exception):
+        capture_exception(error)
 
     req_id = getattr(g, "request_id", None)
     user_id = flask_session.get("user_id")
@@ -3157,7 +3196,8 @@ def analyze():
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             task = create_analysis_task(
                 company_name=selected_company,
-                resume_filename=resume_filename
+                resume_filename=resume_filename,
+                student_id=student_id
             )
             start_async_analysis(
                 task=task,
@@ -3177,7 +3217,8 @@ def analyze():
                 "task_id": task.task_id,
                 "analysis_id": file_uuid,
                 "stream_url": f"/api/analysis/stream/{task.task_id}",
-                "status_url": f"/api/analysis/status/{task.task_id}"
+                "status_url": f"/api/analysis/status/{task.task_id}",
+                "cancel_url": f"/api/analysis/cancel/{task.task_id}"
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
@@ -4410,6 +4451,8 @@ def dashboard(analysis_id: str) -> str:
         initial_self_intro_json=json.dumps(initial_self_intro),
         aptitude_summary=aptitude_summary,
         is_demo=is_demo,
+        initial_linkedin_suggestions={},
+        initial_linkedin_suggestions_json="{}",
         bullet_rewrites=bullet_rewrites,
         format_compatibility=format_compatibility,
         format_compatibility_json=json.dumps(format_compatibility),
@@ -4418,6 +4461,45 @@ def dashboard(analysis_id: str) -> str:
         skill_simulation=skill_simulation,
         skill_simulation_json=json.dumps(skill_simulation)
     )
+    return jsonify({"success": True, "data": card_data}), 200
+
+
+@app.route("/api/recommended-action/dismiss", methods=["POST"])
+def api_dismiss_recommended_action():
+    """Dismisses the action suggestion card for 24 hours via REST API (#558)."""
+    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
+    if not student_id:
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            student_id = "default_student"
+        else:
+            return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    hours = int(payload.get("hours", 24))
+    action_id = str(payload.get("action_id", ""))
+
+    from utils.next_action_rules import dismiss_action_card
+    expiry = dismiss_action_card(student_id=student_id, hours=hours, action_id=action_id)
+    return jsonify({
+        "success": True,
+        "message": f"Action suggestion dismissed for {hours} hours.",
+        "dismissed_until": expiry.isoformat()
+    }), 200
+
+
+@app.route("/api/recommended-action/undismiss", methods=["POST"])
+def api_undismiss_recommended_action():
+    """Clears the 24-hour dismissal for the current student (#558)."""
+    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
+    if not student_id:
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            student_id = "default_student"
+        else:
+            return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    from utils.next_action_rules import undismiss_action_card
+    undismiss_action_card(student_id=student_id)
+    return jsonify({"success": True, "message": "Dismissal cleared."}), 200
 
 
 # ==============================================================================
@@ -4567,6 +4649,55 @@ def api_analysis_tailored_cover_letter(analysis_id: str):
         or ""
     )
 
+    payload = request.get_json(silent=True) or {}
+    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
+    company_name = (
+        payload.get("company_name")
+        or request.form.get("company_name")
+        or analysis_record.get("company_name")
+        or ""
+    ).strip()
+    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
+
+    if not job_description:
+        return jsonify({
+            "success": False,
+            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
+            "missing_field": "job_description"
+        }), 400
+
+    result = outreach_agent.generate_tailored_cover_letter(
+        resume_text=raw_resume,
+        job_description=job_description,
+        company_name=company_name,
+        tone=tone
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@app.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])
+def api_analysis_linkedin_suggestions(analysis_id: str):
+    """
+    Generates personalized LinkedIn profile suggestions from an existing analysis (#538).
+    Extracts candidate resume text and target role from the saved analysis record.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({
+            "success": False,
+            "error": "Analysis not found or unauthorized."
+        }), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
     # Allow overriding target_role from query param or request JSON/form
     target_role = (
         request.args.get("target_role")
@@ -4610,32 +4741,6 @@ def api_generate_linkedin_suggestions():
         "success": True,
         "suggestions": suggestions
     }), 200
-    payload = request.get_json(silent=True) or {}
-    job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
-    company_name = (
-        payload.get("company_name")
-        or request.form.get("company_name")
-        or analysis_record.get("company_name")
-        or ""
-    ).strip()
-    tone = (payload.get("tone") or request.form.get("tone") or "formal").strip()
-
-    if not job_description:
-        return jsonify({
-            "success": False,
-            "error": "A job description is required to generate a tailored cover letter. Please paste the target job description.",
-            "missing_field": "job_description"
-        }), 400
-
-    result = outreach_agent.generate_tailored_cover_letter(
-        resume_text=raw_resume,
-        job_description=job_description,
-        company_name=company_name,
-        tone=tone
-    )
-
-    status_code = 200 if result.get("success") else 400
-    return jsonify(result), status_code
 
 
 @app.route("/api/cover-letter/download", methods=["POST"])
@@ -13091,8 +13196,15 @@ def download_certificate_pdf(analysis_id: str):
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
+    Supports ?format=markdown and ?format=json query parameters (#534).
     """
     try:
+        req_format = request.args.get("format", "").lower().strip()
+        if req_format in ("md", "markdown"):
+            return download_markdown_report(analysis_id)
+        if req_format in ("json",):
+            return download_json_report(analysis_id)
+
         analysis_record = get_analysis(analysis_id)
         if not analysis_record or not _is_student_authorized(analysis_record):
             flash("Cannot generate PDF. Placement record not found.", "error")
@@ -13130,6 +13242,103 @@ def download_pdf_report(analysis_id: str):
         logger.error(f"Failed to generate and serve PDF report: {str(e)}")
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/download/<analysis_id>/markdown")
+@app.route("/download/markdown/<analysis_id>")
+def download_markdown_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a structured Markdown (.md) document (#534).
+    Preserves all unicode and non-English text verbatim.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate Markdown report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        markdown_content = export_analysis_to_markdown(analysis_record)
+        filename = get_export_filename(analysis_record, "md")
+
+        return Response(
+            markdown_content.encode("utf-8"),
+            mimetype="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/markdown; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve Markdown report: {str(e)}")
+        flash(f"Error compiling Markdown report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/download/<analysis_id>/json")
+@app.route("/download/json/<analysis_id>")
+def download_json_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a structured JSON document (#534).
+    Preserves all unicode, special characters, and non-English text without ASCII escaping.
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate JSON report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        json_content = export_analysis_to_json(analysis_record)
+        filename = get_export_filename(analysis_record, "json")
+
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve JSON report: {str(e)}")
+        flash(f"Error compiling JSON report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/api/analysis/<analysis_id>/export", methods=["GET"])
+def api_export_analysis(analysis_id: str):
+    """
+    REST API endpoint for exporting placement analysis as JSON or Markdown (#534).
+    Supports format=json (default), format=markdown, or download=true query parameter.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    export_format = request.args.get("format", "json").lower().strip()
+    as_attachment = request.args.get("download", "false").lower() in ("true", "1", "yes")
+
+    if export_format in ("md", "markdown"):
+        markdown_content = export_analysis_to_markdown(analysis_record)
+        filename = get_export_filename(analysis_record, "md")
+        headers = {"Content-Type": "text/markdown; charset=utf-8"}
+        if as_attachment:
+            headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return Response(markdown_content.encode("utf-8"), mimetype="text/markdown; charset=utf-8", headers=headers)
+
+    payload = build_analysis_export_payload(analysis_record)
+    if as_attachment:
+        filename = get_export_filename(analysis_record, "json")
+        json_content = json.dumps(payload, indent=2, ensure_ascii=False)
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+
+    return jsonify({"success": True, "analysis": payload}), 200
 
 
 @app.route("/report/<analysis_id>")
@@ -17434,7 +17643,7 @@ def api_reset_interview_practice():
 
 
 # ============================================================================
-# Saved Job Description Library
+# Saved Job Description Library (#560)
 # ============================================================================
 
 def _require_authenticated_student():
@@ -17451,16 +17660,27 @@ def _require_authenticated_student():
 def _saved_job_description_fields(payload):
     """Extracts and validates the fields shared by page and API submissions."""
     values = {
-        "company_name": (payload.get("company_name") or "").strip(),
-        "role_title": (payload.get("role_title") or "").strip(),
-        "source": (payload.get("source") or "").strip(),
-        "description": (payload.get("description") or "").strip(),
+        "company_name": (payload.get("company_name") or payload.get("company") or "").strip(),
+        "role_title": (payload.get("role_title") or payload.get("title") or "").strip(),
+        "source": (payload.get("source") or payload.get("link") or "").strip(),
+        "description": (payload.get("description") or payload.get("text") or payload.get("job_description") or "").strip(),
         "notes": (payload.get("notes") or "").strip(),
     }
-    if not values["company_name"] or not values["role_title"] or not values["source"] or not values["description"]:
-        return None, "Company, role title, source, and job description are required."
-    if len(values["description"]) > 15000:
-        return None, "Job descriptions must be 15,000 characters or fewer."
+    if not values["role_title"]:
+        return None, "Job title is required."
+    if len(values["role_title"]) > 150:
+        return None, "Job title must be 150 characters or fewer."
+    if not values["company_name"]:
+        return None, "Company name is required."
+    if len(values["company_name"]) > 150:
+        return None, "Company name must be 150 characters or fewer."
+    if not values["description"]:
+        return None, "Job description text is required."
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
+    if len(values["description"]) > max_chars:
+        return None, f"Job descriptions must be {max_chars:,} characters or fewer."
+    if len(values["source"]) > 1000:
+        return None, "Source link must be 1,000 characters or fewer."
     if len(values["notes"]) > 5000:
         return None, "Notes must be 5,000 characters or fewer."
     return values, None
@@ -17472,18 +17692,34 @@ def saved_job_descriptions_view():
     if auth_response:
         return auth_response
 
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
+
     if request.method == "POST":
+        current_count = count_saved_job_descriptions(student_id)
+        if current_count >= max_limit:
+            flash(
+                f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one.",
+                "danger"
+            )
+            return redirect(url_for("saved_job_descriptions_view"))
+
         fields, error = _saved_job_description_fields(request.form)
         if error:
             flash(error, "danger")
         else:
-            create_saved_job_description(student_id=student_id, **fields)
-            flash("Job description saved to your private library.", "success")
-            return redirect(url_for("saved_job_descriptions_view"))
+            try:
+                create_saved_job_description(student_id=student_id, **fields)
+                flash("Job description saved to your private library.", "success")
+                return redirect(url_for("saved_job_descriptions_view"))
+            except ValueError as ve:
+                flash(str(ve), "danger")
 
     return render_template(
         "saved_job_descriptions.html",
         saved_job_descriptions=get_saved_job_descriptions(student_id),
+        max_limit=max_limit,
+        max_chars=max_chars,
         editing=None
     )
 
@@ -17497,6 +17733,9 @@ def edit_saved_job_description_view(saved_id):
     if not saved:
         flash("Saved job description not found or access denied.", "danger")
         return redirect(url_for("saved_job_descriptions_view"))
+
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+    max_chars = getattr(config, "MAX_SAVED_JOB_DESCRIPTION_CHARS", 15000)
 
     if request.method == "POST":
         fields, error = _saved_job_description_fields(request.form)
@@ -17513,8 +17752,39 @@ def edit_saved_job_description_view(saved_id):
     return render_template(
         "saved_job_descriptions.html",
         saved_job_descriptions=get_saved_job_descriptions(student_id),
+        max_limit=max_limit,
+        max_chars=max_chars,
         editing=saved
     )
+
+
+@app.route("/saved-job-descriptions/<saved_id>/rename", methods=["POST"])
+def rename_saved_job_description_view(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        flash("Saved job description not found or access denied.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+
+    new_title = (request.form.get("role_title") or request.form.get("title") or "").strip()
+    new_company = (request.form.get("company_name") or request.form.get("company") or "").strip()
+    if not new_title:
+        flash("Job title is required to rename.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+    if len(new_title) > 150:
+        flash("Job title must be 150 characters or fewer.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+    if new_company and len(new_company) > 150:
+        flash("Company name must be 150 characters or fewer.", "danger")
+        return redirect(url_for("saved_job_descriptions_view"))
+
+    if rename_saved_job_description(saved_id, student_id, new_title, new_company if new_company else None):
+        flash("Job description renamed successfully.", "success")
+    else:
+        flash("Could not rename saved job description.", "danger")
+    return redirect(url_for("saved_job_descriptions_view"))
 
 
 @app.route("/saved-job-descriptions/<saved_id>/delete", methods=["POST"])
@@ -17535,16 +17805,33 @@ def api_saved_job_descriptions():
     if auth_response:
         return auth_response
 
+    max_limit = getattr(config, "MAX_SAVED_JOB_DESCRIPTIONS_PER_USER", 25)
+
     if request.method == "GET":
         descriptions = get_saved_job_descriptions(student_id)
-        return jsonify({"success": True, "saved_job_descriptions": descriptions}), 200
+        return jsonify({
+            "success": True,
+            "saved_job_descriptions": descriptions,
+            "count": len(descriptions),
+            "max_limit": max_limit
+        }), 200
+
+    current_count = count_saved_job_descriptions(student_id)
+    if current_count >= max_limit:
+        return jsonify({
+            "success": False,
+            "error": f"Limit reached: You have reached the maximum limit of {max_limit} saved job descriptions per user. Please delete an older description to save a new one."
+        }), 400
 
     payload = request.get_json(silent=True) or request.form
     fields, error = _saved_job_description_fields(payload)
     if error:
         return jsonify({"success": False, "error": error}), 400
-    saved = create_saved_job_description(student_id=student_id, **fields)
-    return jsonify({"success": True, "saved_job_description": saved}), 201
+    try:
+        saved = create_saved_job_description(student_id=student_id, **fields)
+        return jsonify({"success": True, "saved_job_description": saved}), 201
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
 
 
 @app.route("/api/saved-job-descriptions/<saved_id>", methods=["GET", "PUT", "PATCH", "DELETE"])
@@ -17563,12 +17850,52 @@ def api_saved_job_description_item(saved_id):
         return jsonify({"success": deleted, "message": "Saved job description deleted." if deleted else "Delete failed."}), 200 if deleted else 500
 
     payload = request.get_json(silent=True) or request.form
-    fields, error = _saved_job_description_fields(payload)
+    new_company = payload.get("company_name") or payload.get("company") or saved.get("company_name", "")
+    new_title = payload.get("role_title") or payload.get("title") or saved.get("role_title", "")
+    new_source = payload.get("source") if "source" in payload else (payload.get("link") if "link" in payload else saved.get("source", ""))
+    new_desc = payload.get("description") if "description" in payload else (payload.get("text") if "text" in payload else (payload.get("job_description") if "job_description" in payload else saved.get("description", "")))
+    new_notes = payload.get("notes") if "notes" in payload else saved.get("notes", "")
+
+    fields, error = _saved_job_description_fields({
+        "company_name": new_company,
+        "role_title": new_title,
+        "source": new_source,
+        "description": new_desc,
+        "notes": new_notes,
+    })
     if error:
         return jsonify({"success": False, "error": error}), 400
     updated = update_saved_job_description(saved_id, student_id, **fields)
     if not updated:
         return jsonify({"success": False, "error": "Saved job description could not be updated."}), 500
+    return jsonify({
+        "success": True,
+        "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
+    }), 200
+
+
+@app.route("/api/saved-job-descriptions/<saved_id>/rename", methods=["POST", "PATCH"])
+def api_rename_saved_job_description(saved_id):
+    student_id, auth_response = _require_authenticated_student()
+    if auth_response:
+        return auth_response
+    saved = get_saved_job_description_by_id(saved_id, student_id)
+    if not saved:
+        return jsonify({"success": False, "error": "Saved job description not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form
+    new_title = (payload.get("role_title") or payload.get("title") or "").strip()
+    new_company = (payload.get("company_name") or payload.get("company") or "").strip()
+    if not new_title:
+        return jsonify({"success": False, "error": "Job title is required to rename."}), 400
+    if len(new_title) > 150:
+        return jsonify({"success": False, "error": "Job title must be 150 characters or fewer."}), 400
+    if new_company and len(new_company) > 150:
+        return jsonify({"success": False, "error": "Company name must be 150 characters or fewer."}), 400
+
+    success = rename_saved_job_description(saved_id, student_id, new_title, new_company if new_company else None)
+    if not success:
+        return jsonify({"success": False, "error": "Could not rename saved job description."}), 500
     return jsonify({
         "success": True,
         "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)

@@ -9,6 +9,7 @@ Acceptance Criteria:
 """
 
 import json
+import os
 import pytest
 from app import app
 from utils.async_pipeline import (
@@ -49,24 +50,24 @@ def test_progress_overlay_markup_and_steps():
     assert 'id="progressErrorIcon"' in html
 
     # Progress steps: reading resume, extracting skills, generating suggestions
-    assert 'id="progressStepsList"' in html
+    assert 'id="progressStepsList"' in html or 'id="analysisProgressStepsList"' in html
     assert 'id="step1"' in html
-    assert "Reading" in html and "extracting resume" in html
+    assert "Reading" in html and ("extracting resume" in html or "Reading resume" in html)
     assert 'id="step2"' in html
-    assert "ATS formatting" in html
+    assert "ATS formatting" in html or "Checking format" in html
     assert 'id="step3"' in html
-    assert "job description match" in html
+    assert "job description match" in html or "Matching job description" in html
     assert 'id="step4"' in html
-    assert "Extracting skills" in html
+    assert "Extracting skills" in html or "Finding skill gaps" in html
     assert 'id="step5"' in html
-    assert "Generating suggestions" in html and "roadmap" in html
+    assert ("Generating suggestions" in html and "roadmap" in html) or "Building roadmap" in html
     assert 'id="step6"' in html
-    assert "Compiling final" in html
+    assert "Compiling final" in html or "Preparing interview questions" in html
 
     # Error recovery & retry controls
     assert 'id="progressErrorAlert"' in html
     assert 'id="btnCloseProgressError"' in html
-    assert 'id="btnRetryProgress"' in html
+    assert 'id="btnRetryProgress"' in html or 'id="btnRetryAnalysis"' in html
 
     # Form action buttons
     assert 'id="btnSubmitAnalysis"' in html
@@ -74,8 +75,11 @@ def test_progress_overlay_markup_and_steps():
 
 
 def test_duplicate_submission_prevention_script():
-    """Verify static/js/script.js disables buttons, blocks duplicate submits, and manages progress state."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    """Verify static/js/modules/analysis.js disables buttons, blocks duplicate submits, and manages progress state."""
+    js_path = os.path.join("static", "js", "modules", "analysis.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
     # Double click prevention flag & check

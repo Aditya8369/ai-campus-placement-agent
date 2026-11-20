@@ -1,91 +1,97 @@
-// Frontend interactions - AI Campus Placement Agent
+/**
+ * Frontend Bootstrap (static/js/script.js)
+ * =========================================
+ * Application bootstrap and backwards-compatibility module.
+ * Modular feature code has been extracted to static/js/modules/:
+ * - utils.js: CSRF helpers, escaping, toasts, clipboard helpers
+ * - theme.js: Dark/light mode theme management
+ * - common.js: Shared UI widgets (back-to-top, accessibility, session timeout, drawer)
+ * - analysis.js: Resume upload, character counters, progress pipeline
+ * - dashboard.js: Visualizations, skill gaps, roadmaps, walkthrough
+ * - interview.js: Mock interview simulator, voice coach, timers, drafts
+ * - bookmarks.js: Coding and interview question bookmarks
+ * - tracker.js: Company explorer and checklists
+ * - streaks.js: Preparation streaks and activity tracking
+ * - auth.js: Password toggle and strength meter
+ * - self_intro.js: Self-introduction pitch studio
+ * - project_deep_dive.js: Architecture defense simulator
+ * - cover_letter.js: Tailored cover letter studio
+ */
 
-// Early theme resolution to prevent flash of unstyled content (FOUC) (#158)
-try {
-  const initialTheme = (function () {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark" || stored === "light") return stored;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  })();
-  document.documentElement.setAttribute("data-bs-theme", initialTheme);
-} catch (e) {
-  // Graceful fallback
+import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
+import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
+import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
+import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
+import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
+import { initMockInterview } from "./modules/interview.js";
+import { initCodingBookmarks, initInterviewBookmarks } from "./modules/bookmarks.js";
+import { initCompanyExplorer } from "./modules/tracker.js";
+import { initStreakTracker } from "./modules/streaks.js";
+import { initPasswordToggle, initPasswordStrengthIndicator } from "./modules/auth.js";
+import { initSelfIntroductionStudio } from "./modules/self_intro.js";
+import { initProjectDeepDive } from "./modules/project_deep_dive.js";
+import { initTailoredCoverLetterStudio } from "./modules/cover_letter.js";
+
+// Re-export for module consumers
+export {
+  getCsrfToken,
+  escapeHtml,
+  showToast,
+  copyToClipboard,
+  initThemeToggle,
+  getPreferredTheme,
+  setTheme,
+  updateThemeIcon,
+  initCommon,
+  initBackToTop,
+  initAccessibility,
+  initRecentAnalysesDrawer,
+  initSessionTimeout,
+  clearAllInterviewDrafts,
+  initInterviewDraftLogoutCleanup,
+  initFormUpload,
+  initCharacterCounters,
+  initCircularProgress,
+  initDashboard,
+  initSkillGapFilter,
+  initRoleSkillGapSelector,
+  initRoadmapTracker,
+  initRoadmapExport,
+  initProgressTracker,
+  initOutreachGenerator,
+  initCopySuggestions,
+  initRoleBasedPrep,
+  initSkillsComparisonChart,
+  initResumeKeywordHighlighter,
+  initSectionFeedback,
+  initUserWalkthrough,
+  initMockInterview,
+  initCodingBookmarks,
+  initInterviewBookmarks,
+  initCompanyExplorer,
+  initStreakTracker,
+  initPasswordToggle,
+  initPasswordStrengthIndicator,
+  initSelfIntroductionStudio,
+  initProjectDeepDive,
+  initTailoredCoverLetterStudio
+};
+
+// Expose public API on window for backwards compatibility with inline templates
+if (typeof window !== "undefined") {
+  window.getCsrfToken = getCsrfToken;
+  window.escapeHtml = escapeHtml;
+  window.showToast = showToast;
+  window.copyToClipboard = copyToClipboard;
+  window.clearAllInterviewDrafts = clearAllInterviewDrafts;
 }
 
-// CSRF Protection Token Helper & Interceptor (#300)
-function getCsrfToken() {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  if (meta && meta.getAttribute("content")) {
-    return meta.getAttribute("content");
-  }
-  const input = document.querySelector('input[name="csrf_token"]');
-  if (input && input.value) {
-    return input.value;
-  }
-  return "";
-}
-
-// Global fetch wrapper to ensure all mutating requests (POST, PUT, DELETE, PATCH)
-// automatically include the X-CSRFToken and X-CSRF-Token headers
-(function () {
-  if (typeof window !== "undefined" && typeof window.fetch === "function") {
-    const originalFetch = window.fetch;
-    window.fetch = function (resource, init) {
-      init = init || {};
-      const method = (init.method || "GET").toUpperCase();
-      if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
-        const token = getCsrfToken();
-        if (token) {
-          if (!init.headers) {
-            init.headers = {};
-          }
-          if (init.headers instanceof Headers) {
-            if (!init.headers.has("X-CSRFToken")) {
-              init.headers.append("X-CSRFToken", token);
-            }
-            if (!init.headers.has("X-CSRF-Token")) {
-              init.headers.append("X-CSRF-Token", token);
-            }
-          } else if (Array.isArray(init.headers)) {
-            const hasCsrf = init.headers.some(
-              ([k]) => k.toLowerCase() === "x-csrftoken" || k.toLowerCase() === "x-csrf-token"
-            );
-            if (!hasCsrf) {
-              init.headers.push(["X-CSRFToken", token]);
-              init.headers.push(["X-CSRF-Token", token]);
-            }
-          } else {
-            if (!init.headers["X-CSRFToken"] && !init.headers["x-csrftoken"]) {
-              init.headers["X-CSRFToken"] = token;
-            }
-            if (!init.headers["X-CSRF-Token"] && !init.headers["x-csrf-token"]) {
-              init.headers["X-CSRF-Token"] = token;
-            }
-          }
-        }
-      }
-      return originalFetch.call(this, resource, init);
-    };
-  }
-})();
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  if (typeof str !== "string") str = String(str);
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
+// Bootstrap on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", () => {
-  initThemeToggle();
+  initCommon();
   initFormUpload();
   initCircularProgress();
+  initCharacterCounters();
   initMockInterview();
   initCompanyExplorer();
   initSkillGapFilter();
@@ -93,29 +99,23 @@ document.addEventListener("DOMContentLoaded", () => {
   initRoadmapExport();
   initRoadmapTracker();
   initProgressTracker();
-  if (typeof initCodingSandbox === "function") {
-    initCodingSandbox();
+  if (typeof window.initCodingSandbox === "function") {
+    window.initCodingSandbox();
   }
   initOutreachGenerator();
-  initRecentAnalysesDrawer();
-  initCharacterCounters();
   initCopySuggestions();
   initRoleBasedPrep();
   initSkillsComparisonChart();
   initResumeKeywordHighlighter();
-  initBackToTop();
   initCodingBookmarks();
   initInterviewBookmarks();
   initStreakTracker();
-  initAccessibility();
-  initSessionTimeout();
   initSectionFeedback();
   initUserWalkthrough();
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
   initProjectDeepDive();
-  initInterviewDraftLogoutCleanup();
   initTailoredCoverLetterStudio();
   initSkillImpactSimulator();
 });

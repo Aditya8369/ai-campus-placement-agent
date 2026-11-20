@@ -188,8 +188,10 @@ def test_template_named_steps_markup():
 
 
 def test_javascript_double_submission_and_retry_wiring():
-    """Verify script.js implements isAnalysisRunning guard and retry triggers."""
-    js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "script.js"
+    """Verify script.js / analysis.js implements isAnalysisRunning guard and retry triggers."""
+    js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "modules" / "analysis.js"
+    if not js_path.exists():
+        js_path = Path(__file__).resolve().parent.parent / "static" / "js" / "script.js"
     content = js_path.read_text(encoding="utf-8")
 
     assert "isAnalysisRunning" in content
