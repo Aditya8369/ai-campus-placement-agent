@@ -4353,6 +4353,24 @@ def dashboard(analysis_id: str) -> str:
             "checks": []
         }
 
+    # Prepare Recommended Next Best Action (#558)
+    try:
+        from utils.next_action_rules import get_recommended_action_card_data
+        recommended_action = get_recommended_action_card_data(
+            student_id=student_id,
+            analysis_record=analysis_record,
+            force_show=(request.args.get("show_action") in ("1", "true", "yes"))
+        )
+    except Exception as ra_err:
+        logger.warning(f"Error preparing recommended action card for dashboard: {ra_err}")
+        recommended_action = {
+            "is_dismissed": False,
+            "dismissed_until": None,
+            "primary": None,
+            "alternatives": [],
+            "student_id": student_id,
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -4391,8 +4409,93 @@ def dashboard(analysis_id: str) -> str:
         is_demo=is_demo,
         bullet_rewrites=bullet_rewrites,
         format_compatibility=format_compatibility,
-        format_compatibility_json=json.dumps(format_compatibility)
+        format_compatibility_json=json.dumps(format_compatibility),
+        recommended_action=recommended_action,
+        initial_linkedin_suggestions={},
+        initial_linkedin_suggestions_json="{}",
     )
+
+
+# ==============================================================================
+# RECOMMENDED NEXT ACTION DISMISSAL & API (#558)
+# ==============================================================================
+
+@app.route("/dashboard/<analysis_id>/dismiss-action", methods=["POST"])
+def dismiss_recommended_action_view(analysis_id: str):
+    """Dismisses the recommended next action suggestion card for 24 hours (#558)."""
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        flash("Unauthorized or analysis report not found.", "error")
+        return redirect(url_for("index"))
+
+    student_id = analysis_record.get("student_id") or flask_session.get("user_id") or "default_student"
+    action_id = request.form.get("action_id", "").strip()
+
+    from utils.next_action_rules import dismiss_action_card
+    dismiss_action_card(student_id=student_id, hours=24, action_id=action_id)
+    flash("Recommended action suggestion hidden for 24 hours.", "info")
+    return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@app.route("/api/recommended-action", methods=["GET"])
+def api_get_recommended_action():
+    """Returns the recommended next action for the current student (#558)."""
+    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
+    if not student_id:
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            student_id = "default_student"
+        else:
+            return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    force_show = request.args.get("force_show", "").strip().lower() in ("1", "true", "yes")
+    analysis_id = request.args.get("analysis_id")
+    analysis_record = get_analysis(analysis_id) if analysis_id else None
+
+    from utils.next_action_rules import get_recommended_action_card_data
+    card_data = get_recommended_action_card_data(
+        student_id=student_id,
+        analysis_record=analysis_record,
+        force_show=force_show
+    )
+    return jsonify({"success": True, "data": card_data}), 200
+
+
+@app.route("/api/recommended-action/dismiss", methods=["POST"])
+def api_dismiss_recommended_action():
+    """Dismisses the action suggestion card for 24 hours via REST API (#558)."""
+    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
+    if not student_id:
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            student_id = "default_student"
+        else:
+            return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    hours = int(payload.get("hours", 24))
+    action_id = str(payload.get("action_id", ""))
+
+    from utils.next_action_rules import dismiss_action_card
+    expiry = dismiss_action_card(student_id=student_id, hours=hours, action_id=action_id)
+    return jsonify({
+        "success": True,
+        "message": f"Action suggestion dismissed for {hours} hours.",
+        "dismissed_until": expiry.isoformat()
+    }), 200
+
+
+@app.route("/api/recommended-action/undismiss", methods=["POST"])
+def api_undismiss_recommended_action():
+    """Clears the 24-hour dismissal for the current student (#558)."""
+    student_id = flask_session.get("user_id") or (flask_session.get("user") or {}).get("id")
+    if not student_id:
+        if app.config.get("TESTING") and not app.config.get("ENFORCE_LOGIN_IN_TESTS"):
+            student_id = "default_student"
+        else:
+            return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    from utils.next_action_rules import undismiss_action_card
+    undismiss_action_card(student_id=student_id)
+    return jsonify({"success": True, "message": "Dismissal cleared."}), 200
 
 
 # ==============================================================================

@@ -317,6 +317,16 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_jd_student_updated ON saved_job_descriptions (student_id, updated_at DESC)")
 
+        # Table 13d: Store student action card 24-hour dismissals (#558)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS student_action_card_dismissals (
+                student_id TEXT PRIMARY KEY,
+                dismissed_at TIMESTAMP NOT NULL,
+                dismissed_until TIMESTAMP NOT NULL,
+                action_id TEXT DEFAULT ''
+            )
+        """)
+
         # Table 14: Store anonymized cohort benchmarks for peer ranking and leaderboard
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS cohort_benchmarks (
@@ -5084,6 +5094,10 @@ def get_user_data_export_manifest(student_id: str) -> Dict[str, Any]:
         cursor.execute("SELECT COUNT(*) FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         summary["tables"]["saved_job_descriptions"] = cursor.fetchone()[0]
 
+        # Count in action card dismissals (#558)
+        cursor.execute("SELECT COUNT(*) FROM student_action_card_dismissals WHERE student_id = ?", (student_id,))
+        summary["tables"]["student_action_card_dismissals"] = cursor.fetchone()[0]
+
         # Count in users
         cursor.execute("SELECT COUNT(*) FROM users WHERE id = ?", (student_id,))
         summary["tables"]["users"] = cursor.fetchone()[0]
@@ -5165,6 +5179,10 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         # 12b. Delete saved job descriptions
         cursor.execute("DELETE FROM saved_job_descriptions WHERE student_id = ?", (student_id,))
         deleted_counts["saved_job_descriptions"] = cursor.rowcount
+
+        # 12c. Delete action card dismissals (#558)
+        cursor.execute("DELETE FROM student_action_card_dismissals WHERE student_id = ?", (student_id,))
+        deleted_counts["student_action_card_dismissals"] = cursor.rowcount
 
         # 13. Delete student profile if exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
