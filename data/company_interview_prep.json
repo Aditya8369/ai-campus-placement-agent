@@ -1,0 +1,292 @@
+{
+  "General": {
+    "company_name": "General Placement",
+    "typical_rounds": [
+      "Round 1: Online Assessment (Quantitative Aptitude, Logical Reasoning & Foundational Coding)",
+      "Round 2: Technical Interview 1 (Data Structures, Algorithms & Core Computer Science)",
+      "Round 3: Technical Interview 2 (System Architecture, Tech Stack & Resume Project Deep-Dive)",
+      "Round 4: HR & Behavioral Round (Cultural Fit, Situational Questions & Career Goals)"
+    ],
+    "commonly_tested_topics": [
+      "Data Structures (Arrays, Strings, Linked Lists, Trees, Graphs, HashMaps)",
+      "Object-Oriented Programming (Inheritance, Polymorphism, Encapsulation, Abstraction)",
+      "Database Management Systems & SQL Queries (Joins, Indexing, Transactions)",
+      "Operating Systems & Computer Networks (Threads, Deadlocks, TCP/IP, HTTP/S)",
+      "Resume Project Architecture & Problem-Solving Trade-offs",
+      "STAR Method Scenarios (Conflict Resolution, Team Leadership, Adaptability)"
+    ],
+    "preparation_tips": [
+      "Clarify constraints, edge cases, and assumptions before writing any code.",
+      "Analyze and state time and space complexity for both brute-force and optimized solutions.",
+      "Thoroughly review every project, library, and metric stated on your resume.",
+      "Structure behavioral responses using the Situation, Task, Action, Result (STAR) framework.",
+      "Prepare 2-3 thoughtful questions for the interviewers about engineering culture and tech stack."
+    ],
+    "last_updated": "2026-11-18",
+    "community_contributed": true
+  },
+  "Google": {
+    "company_name": "Google",
+    "typical_rounds": [
+      "Round 1: Online Coding Assessment (Google Online Challenge on HackerEarth)",
+      "Round 2: Technical Phone Screen (Algorithms & Data Structures via Google Docs/Meet)",
+      "Round 3: Onsite / Virtual Technical Interview 1 (Advanced DSA & Graph/DP Algorithms)",
+      "Round 4: Onsite / Virtual Technical Interview 2 (Data Structures, Trees & Optimization)",
+      "Round 5: Googleyness & Leadership (Navigating Ambiguity, Teamwork & Behavioral)"
+    ],
+    "commonly_tested_topics": [
+      "Graphs (BFS/DFS, Dijkstra, Topological Sort, Union-Find)",
+      "Dynamic Programming (1D/2D, Memoization & Tabulation)",
+      "Binary Trees, BST, Heaps & Segment Trees / Tries",
+      "Recursion, Backtracking & Two Pointers",
+      "Time & Space Complexity Proofs",
+      "Googleyness (Intellectual Humility, Navigating Ambiguity, Collaborative Problem-Solving)"
+    ],
+    "preparation_tips": [
+      "Practice coding in plain text editors without syntax highlighting or auto-complete.",
+      "Think aloud continuously — Google interviewers heavily evaluate your reasoning process.",
+      "Always verify your solution against boundary conditions, empty inputs, and large inputs before claiming it works.",
+      "For Googleyness, emphasize proactive initiative, teamwork, constructive feedback, and ethical decision-making."
+    ],
+    "last_updated": "2026-11-15",
+    "community_contributed": true
+  },
+  "Amazon": {
+    "company_name": "Amazon",
+    "typical_rounds": [
+      "Round 1: Online Assessment (OA 1: Code Debugging & Coding; OA 2: Work Simulation & Work Styles)",
+      "Round 2: Technical Interview 1 (Algorithms, Data Structures & Leadership Principles)",
+      "Round 3: Technical Interview 2 (Low-Level Design / OOP & Leadership Principles)",
+      "Round 4: Bar Raiser Round (In-depth Behavioral + Scalability/Coding by an Independent Evaluator)"
+    ],
+    "commonly_tested_topics": [
+      "Binary Trees, Binary Search Trees & Heaps",
+      "Arrays, Strings, Sliding Window & HashMaps",
+      "Graphs & Breadth-First / Depth-First Search",
+      "Object-Oriented Design (Clean Code, SOLID Principles)",
+      "16 Amazon Leadership Principles (Customer Obsession, Ownership, Bias for Action, Dive Deep)"
+    ],
+    "preparation_tips": [
+      "Every single interview round includes 15-20 minutes dedicated to Amazon Leadership Principles.",
+      "Prepare at least two distinct real-world stories for every major Leadership Principle using the STAR method.",
+      "Always justify customer-centric thinking and trade-offs in design and architectural questions.",
+      "Write modular, clean code with descriptive variable and function names."
+    ],
+    "last_updated": "2026-11-14",
+    "community_contributed": true
+  },
+  "Microsoft": {
+    "company_name": "Microsoft",
+    "typical_rounds": [
+      "Round 1: Online Coding Assessment (Codility platform, 3 coding problems)",
+      "Round 2: Technical Interview 1 (Data Structures, Algorithms & Code Optimization)",
+      "Round 3: Technical Interview 2 (Systems Fundamentals, Multithreading & DSA)",
+      "Round 4: Technical & Cultural Fit / Partner Director Round (Design, Core CS & Microsoft Values)"
+    ],
+    "commonly_tested_topics": [
+      "Linked Lists, Trees (Tree Traversals, Lowest Common Ancestor) & Graphs",
+      "Strings, Palindromes & Matrix Manipulations",
+      "Dynamic Programming & Greedy Algorithms",
+      "Operating Systems (Process synchronization, Memory management, Paging)",
+      "Database Fundamentals & SQL Queries",
+      "Growth Mindset & Inclusive Collaboration"
+    ],
+    "preparation_tips": [
+      "Microsoft interviewers place heavy emphasis on testing your code on edge cases and debugging.",
+      "Demonstrate a growth mindset: be receptive to interviewer hints and iterate on your solutions.",
+      "Revise OS and multithreading concepts thoroughly for circuital/software engineer tracks.",
+      "Be prepared to write syntactically correct code and step through each line manually."
+    ],
+    "last_updated": "2026-11-12",
+    "community_contributed": true
+  },
+  "TCS": {
+    "company_name": "TCS",
+    "typical_rounds": [
+      "Round 1: TCS NQT (National Qualifier Test: Foundation Section + Advanced Cognitive & Coding)",
+      "Round 2: Technical Interview (Core Engineering Concepts, DSA, Resume Projects & Languages)",
+      "Round 3: Managerial Interview (Problem Solving, Project Scenarios & Real-Time Challenges)",
+      "Round 4: HR Interview (Willingness to Relocate, Shifts, Background & Communication)"
+    ],
+    "commonly_tested_topics": [
+      "Quantitative Aptitude, Logical Reasoning & Verbal Ability",
+      "C, C++, Java, or Python Basics (Pointers, Memory, OOP)",
+      "Database Concepts, Normalization & Basic SQL Queries",
+      "Data Structures (Arrays, Stacks, Queues, Searching & Sorting)",
+      "Academic Projects and Final-Year Project Implementation"
+    ],
+    "preparation_tips": [
+      "Speed and accuracy in the Foundation Cognitive Section of TCS NQT determine Digital vs Prime vs Ninja qualification.",
+      "Be completely transparent about your resume projects — interviewers drill down on individual contributions.",
+      "Maintain a polite, confident, and professional demeanor throughout the managerial and HR rounds.",
+      "Practice explaining standard algorithms (Binary Search, Bubble/Merge Sort) and writing their code on paper."
+    ],
+    "last_updated": "2026-11-10",
+    "community_contributed": true
+  },
+  "Infosys": {
+    "company_name": "Infosys",
+    "typical_rounds": [
+      "Round 1: Infosys Online Test / InfyTQ / HackWithInfy (Reasoning, Verbal & Coding)",
+      "Round 2: Technical Interview (DSA, OOP, Web Technologies & Resume Verification)",
+      "Round 3: HR Interview (Career Aspirations, Relocation Flexibility & Communication Skills)"
+    ],
+    "commonly_tested_topics": [
+      "Object-Oriented Programming (Java/Python OOP paradigms)",
+      "Basic Data Structures (Arrays, Strings, Stacks, Queues)",
+      "SQL Queries, Joins, Primary/Foreign Keys & ACID Properties",
+      "Software Engineering Methodologies (Agile, SDLC phases)",
+      "Web Basics (HTML, CSS, REST APIs, HTTP methods)"
+    ],
+    "preparation_tips": [
+      "Prepare strong foundational knowledge in at least one object-oriented language (preferably Java or Python).",
+      "Practice SQL queries on employee/department schemas (finding Nth highest salary, grouping, joins).",
+      "Be ready to explain the architecture and technology choices behind your college projects.",
+      "Show genuine enthusiasm for continuous learning and readiness to adapt to new technology domains."
+    ],
+    "last_updated": "2026-11-08",
+    "community_contributed": true
+  },
+  "Accenture": {
+    "company_name": "Accenture",
+    "typical_rounds": [
+      "Round 1: Cognitive & Technical Assessment (English, Critical Thinking, Abstract Reasoning, MS Office & Cloud basics)",
+      "Round 2: Coding Assessment (2 coding questions in 45 minutes)",
+      "Round 3: Communication Assessment (Automated AI-based spoken English test: reading, repetition, storytelling)",
+      "Round 4: Technical + HR Interview (Combined interview evaluating projects, situational judgment & soft skills)"
+    ],
+    "commonly_tested_topics": [
+      "Pseudo-code Interpretation & Output Prediction",
+      "Cloud & Digital Fundamentals (IaaS, PaaS, SaaS, Cyber basics)",
+      "Basic Networking Fundamentals (IP addressing, DNS, Firewalls)",
+      "Fundamental Coding (String reversals, Palindromes, Array sorting)",
+      "Situational Judgment & Client-Facing Behavioral Scenarios"
+    ],
+    "preparation_tips": [
+      "Practice solving pseudo-code snippets quickly under timed conditions.",
+      "For the automated Communication Assessment, speak clearly at a measured pace into a good headset.",
+      "Prepare a concise chronological walkthrough of your resume projects emphasizing your individual role.",
+      "Demonstrate customer-first thinking and adaptability to work across hybrid environments."
+    ],
+    "last_updated": "2026-11-06",
+    "community_contributed": true
+  },
+  "Capgemini": {
+    "company_name": "Capgemini",
+    "typical_rounds": [
+      "Round 1: Technical & Cognitive Assessment (Pseudo-code, English Communication, Game-based Aptitude)",
+      "Round 2: Spoken English / Communication Assessment",
+      "Round 3: Technical Interview (Programming fundamentals, DBMS, Project discussion)",
+      "Round 4: HR Interview (Behavioral questions, Willingness to relocate & Shift flexibility)"
+    ],
+    "commonly_tested_topics": [
+      "Game-based Cognitive Aptitude (Memory, Spatial Reasoning, Speed)",
+      "Pseudo-code logic and bitwise operations",
+      "Core Java / C++ Fundamentals and OOP concepts",
+      "Database Management Systems & SQL syntax",
+      "Academic Project Lifecycle & Technology Stack"
+    ],
+    "preparation_tips": [
+      "Familiarize yourself with game-based aptitude challenges beforehand to avoid surprise during Round 1.",
+      "Revise data types, operator precedence, and loop execution in pseudo-codes.",
+      "Ensure you can write clean code for basic string and array operations on a shared screen.",
+      "Exhibit clear communication, professional etiquette, and flexibility in the HR discussion."
+    ],
+    "last_updated": "2026-11-04",
+    "community_contributed": true
+  },
+  "Adobe": {
+    "company_name": "Adobe",
+    "typical_rounds": [
+      "Round 1: Online Assessment (HackerRank: Algorithmic Coding + Aptitude + CS Fundamentals)",
+      "Round 2: Technical Interview 1 (Advanced Data Structures, Trees, Graphs & Dynamic Programming)",
+      "Round 3: Technical Interview 2 (System Design / Low-Level Design & Operating Systems)",
+      "Round 4: Engineering Director / HR Round (Innovation, Values Alignment & Behavioral)"
+    ],
+    "commonly_tested_topics": [
+      "Binary Trees, BST, Tries & Segment Trees",
+      "Dynamic Programming (Matrix DP, Subsets, Strings)",
+      "Graph Traversals (BFS/DFS, Topological Sort, Shortest Path)",
+      "Operating Systems (Virtual Memory, Semaphores, Multithreading, Concurrency)",
+      "Object-Oriented Design & Design Patterns (Factory, Observer, Singleton)"
+    ],
+    "preparation_tips": [
+      "Master tree and graph algorithms along with dynamic programming patterns.",
+      "Be prepared to write bug-free code and mathematically justify time and space complexity.",
+      "Deeply understand systems concepts like memory management, caching, and thread synchronization.",
+      "Align your answers with Adobe core values: Genuine, Exceptional, Innovative, and Involved."
+    ],
+    "last_updated": "2026-11-02",
+    "community_contributed": true
+  },
+  "Wipro": {
+    "company_name": "Wipro",
+    "typical_rounds": [
+      "Round 1: Elite NTH Assessment (Aptitude, Written Communication Essay & Coding)",
+      "Round 2: Technical Interview (Core CS, Programming languages & Resume Projects)",
+      "Round 3: HR Interview (Behavioral, Background verification & Career orientation)"
+    ],
+    "commonly_tested_topics": [
+      "Numerical Ability, Logical Reasoning & English Essay Writing",
+      "Programming Fundamentals in C, C++, Java or Python",
+      "Data Structures (Arrays, Linked Lists, Stacks, Queues)",
+      "Relational Databases, Keys, Constraints & SQL Queries",
+      "Final Year Project Architecture and Problem Statement"
+    ],
+    "preparation_tips": [
+      "Focus on grammar, structure, and clarity in the Written Communication essay section.",
+      "Practice basic algorithmic coding problems (Fibonacci, Factorial, Matrix operations, Prime checks).",
+      "Be ready to explain how your project solves a genuine practical problem.",
+      "Maintain high confidence and clear spoken communication in both Technical and HR rounds."
+    ],
+    "last_updated": "2026-10-30",
+    "community_contributed": true
+  },
+  "Cognizant": {
+    "company_name": "Cognizant",
+    "typical_rounds": [
+      "Round 1: GenC / GenC Next Assessment (Aptitude, Domain MCQs & Coding Challenges)",
+      "Round 2: Technical Interview (DSA, OOP, SQL & Web/Cloud Technologies)",
+      "Round 3: HR Interview (Cultural Alignment, Communication & Willingness to Relocate)"
+    ],
+    "commonly_tested_topics": [
+      "Analytical & Quantitative Reasoning",
+      "Object-Oriented Programming (Java/Python/C++)",
+      "Database Queries (SELECT, GROUP BY, HAVING, Subqueries)",
+      "Data Structures & Basic Search/Sort Algorithms",
+      "Resume Projects & Tech Stack Components"
+    ],
+    "preparation_tips": [
+      "For GenC Next, master medium-level DSA problems in arrays, strings, and hash maps.",
+      "Review core database concepts including normalization forms, primary keys, and index types.",
+      "Walk the interviewer through your project's architecture, tools used, and personal contributions.",
+      "Express a proactive attitude toward learning emerging tech stacks like cloud and AI."
+    ],
+    "last_updated": "2026-10-28",
+    "community_contributed": true
+  },
+  "Meta": {
+    "company_name": "Meta",
+    "typical_rounds": [
+      "Round 1: Technical Screening (2 algorithmic coding problems in 45 minutes on CoderPad)",
+      "Round 2: Onsite Technical Coding 1 (Data Structures, Algorithms & Edge Cases)",
+      "Round 3: Onsite Technical Coding 2 (Problem Solving, Optimization & Complexity)",
+      "Round 4: Behavioral & Engineering Culture (Collaboration, Conflict, Meta Values)"
+    ],
+    "commonly_tested_topics": [
+      "Binary Trees, Graph Traversals & Binary Search Variations",
+      "Sliding Window, Two Pointers & HashMaps",
+      "Dynamic Programming & Heap / Priority Queues",
+      "Time & Space Complexity Optimization",
+      "Meta Core Values (Move Fast, Focus on Long-Term Impact, Be Direct)"
+    ],
+    "preparation_tips": [
+      "Pacing is critical: you must solve 2 coding questions cleanly within 45 minutes.",
+      "Communicate before coding, test code thoroughly with dry-runs, and minimize bug density.",
+      "Be prepared to write code on a blank board/CoderPad without compilation or debugger assistance.",
+      "Prepare concrete stories illustrating how you resolved technical disagreements and prioritized impact."
+    ],
+    "last_updated": "2026-10-25",
+    "community_contributed": true
+  }
+}

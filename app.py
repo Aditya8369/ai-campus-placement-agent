@@ -6210,6 +6210,14 @@ def interview(analysis_id: str) -> str:
     if interview_session and interview_session.get("completed") and interview_session.get("answers"):
         session_summary = live_interview_agent.calculate_session_summary(interview_session["answers"])
 
+    from utils.company_interview_prep_service import (
+        get_available_companies,
+        get_company_prep,
+    )
+    available_prep_companies = get_available_companies()
+    target_company = analysis_record.get("company_name", "General")
+    company_prep_data = get_company_prep(target_company)
+
     return render_template(
         "interview.html",
         interview=interview_session,
@@ -6219,7 +6227,9 @@ def interview(analysis_id: str) -> str:
         active_round=active_round,
         selected_difficulty=selected_difficulty,
         difficulty_meta=difficulty_meta,
-        company_name=analysis_record.get("company_name", "General"),
+        company_name=target_company,
+        available_prep_companies=available_prep_companies,
+        company_prep=company_prep_data,
     )
 
 @app.route("/interview/<analysis_id>/submit", methods=["POST"])
@@ -6448,6 +6458,48 @@ def submit_interview_answer(analysis_id: str):
     except Exception as e:
         logger.error(f"Failed to process answer submission: {str(e)}")
         return jsonify({"error": f"Internal process error evaluating response: {str(e)}"}), 500
+
+
+# ============================================================================
+# COMPANY-SPECIFIC INTERVIEW PREPARATION ENDPOINTS (#541)
+# ============================================================================
+
+@app.route("/api/interview/company-prep", methods=["GET"])
+def api_get_interview_company_prep_list():
+    """
+    Returns available companies for interview prep and data for a selected or default company (#541).
+    Accepts optional ?company=<name> query parameter.
+    """
+    from utils.company_interview_prep_service import (
+        get_available_companies,
+        get_company_prep,
+    )
+    companies = get_available_companies()
+    selected = request.args.get("company", "").strip() or "General"
+    prep = get_company_prep(selected)
+    return jsonify({
+        "status": "success",
+        "companies": companies,
+        "selected_company": selected,
+        "data": prep,
+        "is_fallback": prep.get("is_fallback", False),
+    })
+
+
+@app.route("/api/interview/company-prep/<path:company_name>", methods=["GET"])
+def api_get_interview_company_prep(company_name: str):
+    """
+    Returns interview preparation details (typical rounds, tested topics, tips, last-updated)
+    for a specific company. Unknown companies fall back to general tips (#541).
+    """
+    from utils.company_interview_prep_service import get_company_prep
+    prep = get_company_prep(company_name)
+    return jsonify({
+        "status": "success",
+        "company": company_name,
+        "data": prep,
+        "is_fallback": prep.get("is_fallback", False),
+    })
 
 
 # ============================================================================

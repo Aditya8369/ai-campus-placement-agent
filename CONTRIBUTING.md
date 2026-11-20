@@ -8,6 +8,7 @@ Thank you for your interest in contributing to the AI Campus Placement Agent! We
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Contributing Guidelines](#contributing-guidelines)
+- [Contributing Company Interview Preparation Guides](#contributing-company-interview-preparation-guides)
 - [Pull Request Process](#pull-request-process)
 - [Reporting Issues](#reporting-issues)
 
@@ -125,16 +126,71 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
 - **Variable naming**: Use descriptive, meaningful names
 - **Error handling**: Include proper error handling and logging
 
-### Frontend JavaScript Architecture (ES Modules)
+## Contributing Company Interview Preparation Guides
 
-Client-side behavior in `static/js/` is split into domain modules under `static/js/modules/` loaded via `<script type="module">`:
-- **`modules/utils.js`**: Shared utilities including CSRF token helpers (`getCsrfToken`), custom `apiFetch`, safe HTML escaping (`escapeHtml`), clipboard copying (`copyToClipboard`), and floating toast notifications (`showToast`).
-- **`modules/theme.js`**: Theme resolution, dark/light toggle (`initThemeToggle`), and system preference sync.
-- **`modules/common.js`**: Reusable global UI widgets (back-to-top, accessibility traps/skip links, session timeout modal, recent analyses drawer, interview draft cleanup).
-- **Feature modules**: Domain-specific modules (`analysis.js`, `dashboard.js`, `interview.js`, `bookmarks.js`, `tracker.js`, `streaks.js`, `auth.js`, `self_intro.js`, `project_deep_dive.js`, `cover_letter.js`).
-- **Template loading**: Each HTML template loads only the module(s) it needs via `<script type="module" src="{{ url_for('static', filename='js/modules/<feature>.js') }}"></script>`.
-- **Encapsulation**: Avoid defining global variables on `window`; share logic explicitly using ES module `import` and `export` statements.
-- **`static/js/script.js`**: Serves as a small backwards-compatible bootstrap facade.
+We welcome community contributions to expand and update our company-specific interview preparation guides!
+
+### How It Works
+
+1. All company interview guides are stored in a single contributor-maintained JSON file: [`data/company_interview_prep.json`](data/company_interview_prep.json).
+2. A contribution template with example structure is provided at [`data/company_contribution_template.json`](data/company_contribution_template.json).
+3. **No code changes are required** — adding or updating a company in `data/company_interview_prep.json` immediately populates the company selector in the interview simulator and serves tips via the API.
+4. If a student targets a company not yet in the data file, the system automatically falls back to general preparation tips.
+
+### Guide Schema Requirements
+
+Every company entry must contain the following fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `company_name` | `string` | Display name of the company (e.g. `"Google"`, `"Amazon"`). |
+| `typical_rounds` | `list[string]` | Step-by-step recruitment stages (e.g. Online Assessment, Tech 1, Tech 2, HR). |
+| `commonly_tested_topics` | `list[string]` | Key topics frequently asked (e.g. Dynamic Programming, Trees, System Design, SQL). |
+| `preparation_tips` | `list[string]` | Actionable advice and strategic suggestions for students. |
+| `last_updated` | `string (YYYY-MM-DD)` | Date of the latest verification or update (e.g. `"2026-11-18"`). |
+| `community_contributed` | `boolean` | Set to `true` to indicate community contribution. |
+
+### Example Entry
+
+```json
+{
+  "Stripe": {
+    "company_name": "Stripe",
+    "typical_rounds": [
+      "Round 1: Online Technical Assessment (Practical Coding / Bug Investigation)",
+      "Round 2: Technical Phone Screen (API Integration or Data Structures)",
+      "Round 3: Onsite Practical Coding (Working in a real codebase)",
+      "Round 4: System Architecture & Design",
+      "Round 5: Cultural Alignment & Teamwork"
+    ],
+    "commonly_tested_topics": [
+      "API Design & HTTP Protocol",
+      "Real-world Refactoring & Debugging",
+      "Data Structures & Algorithmic Analysis",
+      "System Scalability & Reliability",
+      "Clean Code & Error Handling"
+    ],
+    "preparation_tips": [
+      "Stripe tests practical development skills — be comfortable writing and reading real code.",
+      "Get familiar with reading documentation and writing clean API calls.",
+      "Explain your thought process continuously during coding rounds.",
+      "Emphasize reliability, edge cases, and user experience in architectural questions."
+    ],
+    "last_updated": "2026-11-18",
+    "community_contributed": true
+  }
+}
+```
+
+### Steps to Submit
+
+1. Copy the structure from `data/company_contribution_template.json`.
+2. Add your new company key to `data/company_interview_prep.json` (or update an existing entry with recent insights and an updated `last_updated` date).
+3. Run the test suite:
+   ```bash
+   pytest tests/test_company_interview_prep.py
+   ```
+4. Submit a Pull Request titled `feat(data): add interview prep guide for <Company Name>`.
 
 ## Pull Request Process
 
