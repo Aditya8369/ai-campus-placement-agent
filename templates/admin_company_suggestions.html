@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Company Suggestions Review Portal - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .comparison-table td, .comparison-table th {
+      padding: 0.6rem 0.75rem;
+      vertical-align: middle;
+      font-size: 0.875rem;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand fs-5 fw-bold text-white text-truncate" href="/">
+        <i class="fa-solid fa-shield-halved text-warning me-2"></i>Admin &bull; Placement Maintainer Portal
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/companies" class="btn btn-outline-light btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> Public Directory
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> App Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3 shadow-sm" role="alert">
+              <i class="fa-solid fa-circle-info me-2"></i> {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Header Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4 bg-white">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-1.5 rounded-pill fw-semibold text-uppercase small mb-2 d-inline-block">
+            <i class="fa-solid fa-list-check me-1"></i> Moderation Queue
+          </span>
+          <h2 class="fw-bold text-dark mt-1 mb-2">Company Profile Suggestions Review</h2>
+          <p class="text-secondary mb-0">
+            Review, verify, and approve user-suggested recruiting companies and profile update requests before they are published to the public placement directory.
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <a href="/companies/suggest" class="btn btn-outline-primary rounded-pill px-3">
+            <i class="fa-solid fa-plus me-1"></i> Submit Suggestion
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <small class="text-muted fw-semibold text-uppercase">Pending Review</small>
+          <h3 class="fw-bold text-warning mb-0 mt-1">{{ stats.pending }}</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <small class="text-muted fw-semibold text-uppercase">Approved & Published</small>
+          <h3 class="fw-bold text-success mb-0 mt-1">{{ stats.approved }}</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <small class="text-muted fw-semibold text-uppercase">Rejected</small>
+          <h3 class="fw-bold text-danger mb-0 mt-1">{{ stats.rejected }}</h3>
+        </div>
+      </div>
+      <div class="col-md-3 col-6">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <small class="text-muted fw-semibold text-uppercase">Total Submitted</small>
+          <h3 class="fw-bold text-dark mb-0 mt-1">{{ stats.total }}</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Pills Navigation -->
+    <div class="d-flex align-items-center gap-2 mb-4 overflow-auto pb-2">
+      <a href="/admin/company-suggestions?status=pending" class="btn btn-sm rounded-pill px-3 {% if current_status == 'pending' %}btn-warning fw-bold{% else %}btn-outline-secondary bg-white{% endif %}">
+        <i class="fa-solid fa-hourglass-half me-1"></i> Pending Unverified ({{ stats.pending }})
+      </a>
+      <a href="/admin/company-suggestions?status=approved" class="btn btn-sm rounded-pill px-3 {% if current_status == 'approved' %}btn-success fw-bold{% else %}btn-outline-secondary bg-white{% endif %}">
+        <i class="fa-solid fa-check-circle me-1"></i> Approved ({{ stats.approved }})
+      </a>
+      <a href="/admin/company-suggestions?status=rejected" class="btn btn-sm rounded-pill px-3 {% if current_status == 'rejected' %}btn-danger fw-bold{% else %}btn-outline-secondary bg-white{% endif %}">
+        <i class="fa-solid fa-ban me-1"></i> Rejected ({{ stats.rejected }})
+      </a>
+      <a href="/admin/company-suggestions?status=all" class="btn btn-sm rounded-pill px-3 {% if current_status == 'all' %}btn-dark fw-bold{% else %}btn-outline-secondary bg-white{% endif %}">
+        <i class="fa-solid fa-layer-group me-1"></i> All Suggestions ({{ stats.total }})
+      </a>
+    </div>
+
+    <!-- Suggestions List -->
+    {% if suggestions and suggestions|length > 0 %}
+    <div class="d-flex flex-column gap-4">
+      {% for sugg in suggestions %}
+      <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+        <div class="d-flex flex-wrap align-items-start justify-content-between gap-2 mb-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="rounded-3 bg-primary-subtle text-primary fw-bold d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 1.25rem;">
+              {{ sugg.company_name[:2]|upper }}
+            </div>
+            <div>
+              <h5 class="fw-bold text-dark mb-1">
+                {{ sugg.company_name }}
+                {% if sugg.suggestion_type == 'update' %}
+                <small class="text-muted fw-normal fs-6">
+                  (Update to: <strong class="text-dark">{{ sugg.existing_company_name or sugg.company_name }}</strong>)
+                </small>
+                {% endif %}
+              </h5>
+              <div class="d-flex flex-wrap align-items-center gap-2 small text-muted">
+                <span><i class="fa-solid fa-calendar me-1"></i>{{ sugg.created_at[:10] if sugg.created_at else 'Recent' }}</span>
+                <span>&bull;</span>
+                <span><i class="fa-solid fa-user me-1"></i>{{ sugg.submitter_name }} {% if sugg.submitter_email %}({{ sugg.submitter_email }}){% endif %}</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status & Type Badges -->
+          <div class="d-flex align-items-center gap-2">
+            {% if sugg.suggestion_type == 'new' %}
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2.5 py-1">
+              <i class="fa-solid fa-plus-circle me-1"></i> New Company
+            </span>
+            {% else %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2.5 py-1">
+              <i class="fa-solid fa-pen-to-square me-1"></i> Update Request
+            </span>
+            {% endif %}
+
+            {% if sugg.status == 'pending' %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1 fw-bold">
+              <i class="fa-solid fa-hourglass-start me-1"></i> Pending Review (Unverified)
+            </span>
+            {% elif sugg.status == 'approved' %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 fw-bold">
+              <i class="fa-solid fa-circle-check me-1"></i> Approved &amp; Published
+            </span>
+            {% elif sugg.status == 'rejected' %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1 fw-bold">
+              <i class="fa-solid fa-circle-xmark me-1"></i> Rejected
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Update Comparison Table (If update request with current verified profile) -->
+        {% if sugg.suggestion_type == 'update' and sugg.current_verified_profile %}
+        <div class="mb-3 border rounded-3 overflow-hidden bg-light">
+          <div class="p-2.5 bg-light-subtle border-bottom d-flex align-items-center justify-content-between">
+            <span class="fw-bold small text-dark"><i class="fa-solid fa-code-compare text-primary me-1"></i> Field Comparison: Current Verified Profile vs Unverified Suggestion</span>
+            <span class="badge bg-secondary-subtle text-secondary border rounded-pill">Target ID: {{ sugg.current_verified_profile.id[:8] }}</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm comparison-table mb-0 bg-white">
+              <thead class="table-light">
+                <tr>
+                  <th style="width: 20%;">Field</th>
+                  <th style="width: 40%;" class="text-success"><i class="fa-solid fa-circle-check me-1"></i> Current Approved Profile</th>
+                  <th style="width: 40%;" class="text-warning-emphasis"><i class="fa-solid fa-lightbulb me-1"></i> Proposed Suggestion</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="fw-semibold text-muted">Industry</td>
+                  <td>{{ sugg.current_verified_profile.industry or '—' }}</td>
+                  <td class="{% if sugg.industry and sugg.industry != sugg.current_verified_profile.industry %}bg-warning-subtle fw-bold text-dark{% endif %}">
+                    {{ sugg.industry or '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="fw-semibold text-muted">Hiring Tier</td>
+                  <td><span class="badge bg-light text-dark border">{{ sugg.current_verified_profile.hiring_tier }}</span></td>
+                  <td class="{% if sugg.hiring_tier and sugg.hiring_tier != sugg.current_verified_profile.hiring_tier %}bg-warning-subtle fw-bold text-dark{% endif %}">
+                    <span class="badge bg-light text-dark border">{{ sugg.hiring_tier or sugg.current_verified_profile.hiring_tier }}</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="fw-semibold text-muted">CTC Package</td>
+                  <td>{{ sugg.current_verified_profile.typical_ctc_range or '—' }}</td>
+                  <td class="{% if sugg.typical_ctc_range and sugg.typical_ctc_range != sugg.current_verified_profile.typical_ctc_range %}bg-warning-subtle fw-bold text-dark{% endif %}">
+                    {{ sugg.typical_ctc_range or '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="fw-semibold text-muted">Headquarters</td>
+                  <td>{{ sugg.current_verified_profile.headquarters or '—' }}</td>
+                  <td class="{% if sugg.headquarters and sugg.headquarters != sugg.current_verified_profile.headquarters %}bg-warning-subtle fw-bold text-dark{% endif %}">
+                    {{ sugg.headquarters or '—' }}
+                  </td>
+                </tr>
+                <tr>
+                  <td class="fw-semibold text-muted">Website / Careers</td>
+                  <td>
+                    {% if sugg.current_verified_profile.careers_url %}
+                    <a href="{{ sugg.current_verified_profile.careers_url }}" target="_blank" class="small">{{ sugg.current_verified_profile.careers_url }}</a>
+                    {% else %}—{% endif %}
+                  </td>
+                  <td class="{% if sugg.careers_url and sugg.careers_url != sugg.current_verified_profile.careers_url %}bg-warning-subtle fw-bold{% endif %}">
+                    {% if sugg.careers_url %}
+                    <a href="{{ sugg.careers_url }}" target="_blank" class="small">{{ sugg.careers_url }}</a>
+                    {% else %}—{% endif %}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Proposed Information Details -->
+        <div class="row g-3 p-3 bg-light rounded-3 mb-3 small">
+          <div class="col-md-3 col-sm-6">
+            <span class="text-muted d-block">Industry:</span>
+            <strong class="text-dark">{{ sugg.industry or 'Technology' }}</strong>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <span class="text-muted d-block">Hiring Tier:</span>
+            <strong class="text-dark">{{ sugg.hiring_tier or 'Tier 1' }}</strong>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <span class="text-muted d-block">Typical CTC:</span>
+            <strong class="text-dark">{{ sugg.typical_ctc_range or 'Not specified' }}</strong>
+          </div>
+          <div class="col-md-3 col-sm-6">
+            <span class="text-muted d-block">Headquarters:</span>
+            <strong class="text-dark">{{ sugg.headquarters or 'Not specified' }}</strong>
+          </div>
+          {% if sugg.website_url or sugg.careers_url %}
+          <div class="col-12 pt-2 border-top">
+            <span class="text-muted me-2">Links:</span>
+            {% if sugg.website_url %}
+            <a href="{{ sugg.website_url }}" target="_blank" class="text-primary me-3 text-truncate d-inline-block" style="max-width: 250px;">
+              <i class="fa-solid fa-globe me-1"></i>{{ sugg.website_url }}
+            </a>
+            {% endif %}
+            {% if sugg.careers_url %}
+            <a href="{{ sugg.careers_url }}" target="_blank" class="text-success text-truncate d-inline-block" style="max-width: 250px;">
+              <i class="fa-solid fa-briefcase me-1"></i>{{ sugg.careers_url }}
+            </a>
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+
+        <!-- Tech Stack -->
+        {% if sugg.primary_tech_stack and sugg.primary_tech_stack|length > 0 %}
+        <div class="mb-3">
+          <small class="text-muted fw-semibold d-block mb-1">Proposed Tech Stack &amp; Skills:</small>
+          <div class="d-flex flex-wrap gap-1">
+            {% for tech in sugg.primary_tech_stack %}
+            <span class="badge bg-light text-dark border rounded-pill">{{ tech }}</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Hiring Workflow Stages -->
+        {% if sugg.hiring_workflow and sugg.hiring_workflow|length > 0 %}
+        <div class="mb-3">
+          <small class="text-muted fw-semibold d-block mb-1">Proposed Recruitment Stages:</small>
+          <ol class="small ps-3 mb-0 text-secondary">
+            {% for stage in sugg.hiring_workflow %}
+            <li>{{ stage }}</li>
+            {% endfor %}
+          </ol>
+        </div>
+        {% endif %}
+
+        <!-- Overview & Notes -->
+        {% if sugg.overview %}
+        <div class="mb-2">
+          <small class="text-muted fw-semibold d-block">Overview:</small>
+          <p class="small text-secondary mb-0">{{ sugg.overview }}</p>
+        </div>
+        {% endif %}
+
+        {% if sugg.notes %}
+        <div class="p-2.5 bg-warning-subtle rounded-3 small mb-3 border border-warning-subtle">
+          <span class="fw-bold text-warning-emphasis"><i class="fa-solid fa-comment-dots me-1"></i> Submitter Notes:</span>
+          <span class="text-dark">{{ sugg.notes }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Moderator Audit Logs if reviewed -->
+        {% if sugg.status != 'pending' %}
+        <div class="p-2.5 bg-light rounded-3 small text-muted border mt-2">
+          <i class="fa-solid fa-gavel me-1"></i>
+          <strong>{{ sugg.status|capitalize }} by:</strong> {{ sugg.moderated_by or 'Admin' }}
+          {% if sugg.moderated_at %}on {{ sugg.moderated_at[:10] }}{% endif %}
+          {% if sugg.moderator_notes %}&mdash; <em>"{{ sugg.moderator_notes }}"</em>{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Action Buttons (If pending) -->
+        {% if sugg.status == 'pending' %}
+        <div class="d-flex align-items-center justify-content-end gap-2 pt-3 border-top mt-3">
+          <!-- Reject Form -->
+          <form method="POST" action="/admin/company-suggestions/{{ sugg.id }}/reject" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="moderator_notes" value="Declined by maintainer.">
+            <button type="submit" class="btn btn-outline-danger btn-sm rounded-pill px-3" onclick="return confirm('Are you sure you want to reject this suggestion?');">
+              <i class="fa-solid fa-ban me-1"></i> Reject
+            </button>
+          </form>
+
+          <!-- Approve Form -->
+          <form method="POST" action="/admin/company-suggestions/{{ sugg.id }}/approve" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="moderator_notes" value="Verified and approved by maintainer.">
+            <button type="submit" class="btn btn-success btn-sm rounded-pill px-4 fw-bold">
+              <i class="fa-solid fa-check me-1"></i> Approve &amp; Publish
+            </button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <!-- Empty State -->
+    {% else %}
+    <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white my-4">
+      <div class="py-4">
+        <div class="rounded-circle bg-light d-inline-flex align-items-center justify-content-center mb-3" style="width: 80px; height: 80px;">
+          <i class="fa-solid fa-inbox fs-1 text-muted"></i>
+        </div>
+        <h4 class="fw-bold mb-2 text-dark">No suggestions in this queue</h4>
+        <p class="text-secondary max-w-md mx-auto mb-3" style="max-width: 450px;">
+          There are currently no company suggestions matching the filter status <strong>"{{ current_status }}"</strong>.
+        </p>
+        <a href="/admin/company-suggestions?status=all" class="btn btn-outline-primary rounded-pill px-4">
+          View All Suggestions
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

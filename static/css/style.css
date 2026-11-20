@@ -278,9 +278,19 @@ body {
   font-weight: bold;
 }
 
+.progress-step.failed {
+  color: var(--danger-red, #dc3545);
+}
+
 .progress-step.completed .step-indicator {
   border-color: var(--success-green);
   background: var(--success-green);
+  color: white;
+}
+
+.progress-step.failed .step-indicator {
+  border-color: var(--danger-red, #dc3545);
+  background: var(--danger-red, #dc3545);
   color: white;
 }
 
@@ -288,6 +298,16 @@ body {
   border-color: var(--primary-blue);
   background: white;
   animation: pulse-ring 1.5s infinite;
+}
+
+.progress-step.error {
+  color: var(--danger-red, #dc3545) !important;
+}
+
+.progress-step.error .step-indicator {
+  border-color: #dc3545 !important;
+  background: #dc3545 !important;
+  color: white !important;
 }
 
 @keyframes pulse-ring {
@@ -1249,86 +1269,340 @@ html, body {
 }
 
 /* ==============================================================================
-   Print-Friendly Placement Report Styles (#138)
+   Print-Friendly Stylesheet for Dashboard and Report Pages (#138, #472)
+   Provides clean, high-contrast monochrome printing and PDF saving from browsers.
+   Hides navigation, buttons, floating widgets, and decorative backgrounds.
+   Prevents page breaks inside cards/tables, repeats table headers, expands accordions,
+   and preserves charts and score indicators.
    ============================================================================== */
 @media print {
-  /* Hide non-printable UI chrome, navigation, buttons, and drawers */
+  @page {
+    margin: 1.5cm 1cm;
+    size: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+    filter: none !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.45 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Reset Dark Theme Overrides for Printing */
+  [data-bs-theme="dark"],
+  [data-bs-theme="light"],
+  body[data-bs-theme="dark"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  [data-bs-theme="dark"] .text-dark,
+  [data-bs-theme="dark"] .text-muted,
+  [data-bs-theme="dark"] .text-secondary,
+  [data-bs-theme="dark"] .card,
+  [data-bs-theme="dark"] .glass-card,
+  [data-bs-theme="dark"] h1,
+  [data-bs-theme="dark"] h2,
+  [data-bs-theme="dark"] h3,
+  [data-bs-theme="dark"] h4,
+  [data-bs-theme="dark"] h5,
+  [data-bs-theme="dark"] h6,
+  [data-bs-theme="dark"] p,
+  [data-bs-theme="dark"] span {
+    color: #000000 !important;
+    background: #ffffff !important;
+  }
+
+  /* Navigation & Headers/Footers */
+  nav,
   nav.navbar,
+  .navbar,
+  .navbar-nav,
+  .nav,
+  .nav-tabs,
+  .nav-pills,
+  .breadcrumb,
+  .pagination,
+  header,
   footer,
-  .theme-toggle-btn,
-  .btn,
-  button,
-  .modal,
+  .skip-link,
+  .sidebar,
+  .drawer-mobile,
+  .drawer-mobile-backdrop,
   .offcanvas,
+  .offcanvas-backdrop {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* All Buttons & Interactive Controls */
+  button,
+  .btn,
+  input[type="button"],
+  input[type="submit"],
+  input[type="reset"],
+  [role="button"],
+  .btn-group,
+  .btn-print-report,
+  .btn-print-page,
+  .copy-btn,
+  .btn-rewrite-line,
+  .copy-week-btn,
+  .theme-toggle-btn,
+  .btn-close,
+  .dropdown-toggle,
+  .dropdown-menu,
   #shareProfileModal,
   #btnShareProfileModal,
-  .btn-print-report,
   #btnExportRoadmapMarkdown,
   #btnCopyShareText,
   #btnWebShare,
-  .btn-rewrite-line,
-  .copy-week-btn,
-  .progress-overlay {
+  #btnOpenDiffModal,
+  #btnOpenOutreachModal,
+  #btnNavExitDemo,
+  #btnExitDemo,
+  #btnUploadOwnResume,
+  #btnJumpToOutreach {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Floating Widgets, Drawers, Modals, & Overlays */
+  .floating-widget,
+  .chat-widget,
+  #chatWidget,
+  #aiChatWidget,
+  .fab,
+  .fab-mobile,
+  .back-to-top-btn,
+  #backToTopBtn,
+  .copy-toast-container,
+  #copyToastContainer,
+  .toast,
+  .toast-container,
+  .modal,
+  .modal-backdrop,
+  .tooltip,
+  .popover,
+  .mobile-action-bar,
+  .progress-overlay,
+  #sessionExpiryModal,
+  .session-warning-toast,
+  .alert-dismissible .btn-close {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Decorative Elements & Backgrounds */
+  .mesh-gradient,
+  .blob,
+  .glow,
+  .decorative-blob,
+  .bg-gradient,
+  .hero-glow {
     display: none !important;
   }
 
-  /* Reset body and background for crisp monochrome/inkjet reproduction */
-  body {
-    background-color: #ffffff !important;
-    color: #111111 !important;
-    font-size: 11pt !important;
-    line-height: 1.4 !important;
-  }
-
-  .container {
+  .container,
+  .container-fluid,
+  main,
+  #dashboardContainer {
     max-width: 100% !important;
     width: 100% !important;
-    padding: 0 !important;
     margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
   }
 
-  /* Flatten card shadows and add solid thin borders */
+  /* Cards, Panels, & Containers: Avoid Page-Break Inside */
   .card,
-  .glass-card {
-    box-shadow: none !important;
-    border: 1px solid #cccccc !important;
+  .glass-card,
+  .accordion-item,
+  .list-group-item,
+  .alert,
+  .kpi-tile,
+  .metric-card,
+  .chart-container,
+  .walkthrough-card,
+  .sem-skill-card,
+  figure,
+  blockquote,
+  pre,
+  section {
     background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 4px !important;
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    margin-bottom: 16px !important;
-    padding: 14px !important;
+    margin-bottom: 1rem !important;
+    padding: 1rem !important;
   }
 
-  /* Prevent page breaks inside critical metric blocks and tables */
+  /* Tables: Avoid Row Splitting & Repeat Header on Each Page */
   .table-responsive {
     overflow: visible !important;
-  }
-
-  table {
-    page-break-inside: auto !important;
+    display: block !important;
     width: 100% !important;
   }
 
-  tr {
-    page-break-inside: avoid !important;
-    page-break-after: auto !important;
+  table,
+  .table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 1rem !important;
+    background: #ffffff !important;
   }
 
   thead {
     display: table-header-group !important;
   }
 
-  /* Retain charts and score gauges */
-  canvas {
-    max-width: 100% !important;
-    page-break-inside: avoid !important;
+  tfoot {
+    display: table-footer-group !important;
   }
 
-  /* Clean contrast for badges */
-  .badge {
-    border: 1px solid #777777 !important;
+  tr,
+  tbody tr,
+  thead tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  th,
+  td,
+  .table > :not(caption) > * > * {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
     color: #000000 !important;
-    background-color: #f0f0f0 !important;
+    border: 1px solid #d1d5db !important;
+    padding: 6px 10px !important;
+    font-size: 9.5pt !important;
+  }
+
+  th,
+  thead th {
+    font-weight: 700 !important;
+    background-color: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Accordions: Expand All Collapsed Sections Automatically */
+  .collapse,
+  .accordion-collapse,
+  .collapsing,
+  .collapse:not(.show),
+  .accordion-collapse:not(.show) {
+    display: block !important;
+    height: auto !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    transition: none !important;
+  }
+
+  .accordion-button {
+    background: #f9fafb !important;
+    color: #000000 !important;
+    pointer-events: none !important;
+    border-bottom: 1px solid #e5e7eb !important;
+    font-weight: 600 !important;
+  }
+
+  .accordion-button::after {
+    display: none !important;
+  }
+
+  .accordion-body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0.75rem 1rem !important;
+    display: block !important;
+  }
+
+  /* Charts & Visual Indicators: Retain and Prevent Break Inside */
+  canvas,
+  svg,
+  .circular-progress-svg,
+  .chartjs-render-monitor,
+  .chart-container,
+  img {
+    max-width: 100% !important;
+    height: auto !important;
+    display: block !important;
+    visibility: visible !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .badge {
+    border: 1px solid #9ca3af !important;
+    color: #000000 !important;
+    background-color: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    font-size: 8.5pt !important;
+  }
+
+  .progress {
+    border: 1px solid #d1d5db !important;
+    background-color: #f3f4f6 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    height: 14px !important;
+  }
+
+  .progress-bar {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: #2563eb !important;
+  }
+
+  /* Links: Show Full URLs Only Where Useful */
+  a[href]::after {
+    content: "";
+  }
+
+  a.print-url[href^="http"]::after,
+  .print-urls a[href^="http"]::after,
+  .show-print-url[href^="http"]::after,
+  article a[href^="http"]:not([href*="javascript"]):not(.btn):not(.nav-link):not([href*="ai-campus"])::after,
+  .external-reference a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 85%;
+    font-weight: 400;
+    color: #374151 !important;
+    word-break: break-all;
   }
 }
 /* Preparation Progress Overview Panel */
@@ -3313,25 +3587,146 @@ footer a:hover {
 }
 
 @media (max-width: 575.98px) {
+    /* Prevent horizontal scrolling at 360px width and below */
+    html, body {
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+
     .hero-section {
         padding: 28px 0;
     }
 
     .hero-section h1 {
-        font-size: 1.9rem;
+        font-size: 1.75rem;
     }
 
     .features-section {
-        padding: 32px 0;
+        padding: 24px 0;
+    }
+
+    /* Stack sections with full-width cards */
+    .features-section .card,
+    .hero-section .card,
+    .kpi-tile,
+    .walkthrough-card {
+        width: 100% !important;
+        margin-bottom: 12px;
     }
 
     #uploadArea {
         padding: 20px 12px;
     }
 
-    .container {
-        padding-left: 16px;
-        padding-right: 16px;
+    .container,
+    .container-fluid {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+        max-width: 100% !important;
+    }
+
+    /* Stack form buttons vertically on narrow screens */
+    #analysisForm .d-flex.flex-column.flex-sm-row {
+        flex-direction: column !important;
+        gap: 10px !important;
+    }
+
+    #btnSubmitAnalysis,
+    #btnClearForm,
+    #btnTrySampleResume,
+    #btnReviewResumeDirect,
+    #btnExploreCompany {
+        width: 100% !important;
+    }
+
+    /* Progress Overlay Mobile Fit */
+    .progress-overlay {
+        padding: 12px !important;
+    }
+
+    .progress-panel {
+        width: 100% !important;
+        max-width: 340px !important;
+        padding: 20px 14px !important;
+        margin: 0 auto;
+        border-radius: 16px;
+        box-sizing: border-box;
+    }
+
+    .progress-panel h3 {
+        font-size: 1.25rem !important;
+    }
+
+    .progress-steps-list {
+        margin: 16px 0 !important;
+        font-size: 0.85rem !important;
+    }
+
+    .progress-step {
+        gap: 10px !important;
+        margin-bottom: 12px;
+    }
+
+    .step-indicator {
+        width: 26px !important;
+        height: 26px !important;
+        font-size: 0.75rem !important;
+        flex-shrink: 0;
+    }
+
+    /* Ensure tables and code never cause horizontal window scroll */
+    .table-responsive {
+        max-width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    pre, code, .font-monospace {
+        max-width: 100% !important;
+        white-space: pre-wrap !important;
+        word-break: break-word !important;
+    }
+}
+
+/* Specific styling for 360px viewport smartphones */
+@media (max-width: 400px) {
+    .navbar-brand-custom {
+        font-size: 0.95rem !important;
+        max-width: 200px;
+        white-space: normal;
+        line-height: 1.2;
+    }
+
+    /* Stack multi-column elements to single-column at 360px width */
+    .col-6 {
+        width: 100% !important;
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+    }
+
+    .kpi-tile,
+    .glass-card,
+    .card {
+        padding: 14px 10px !important;
+    }
+
+    .company-pill-badge {
+        font-size: 0.8rem;
+        padding: 6px 10px !important;
+    }
+
+    .modal-dialog {
+        margin: 8px !important;
+        max-width: calc(100% - 16px) !important;
+    }
+
+    .progress-panel {
+        max-width: 320px !important;
+        padding: 16px 10px !important;
+    }
+
+    .progress-steps-list {
+        font-size: 0.8rem !important;
     }
 }
 
