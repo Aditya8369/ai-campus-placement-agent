@@ -102,7 +102,7 @@ The system is engineered as a modular, decoupled pipeline designed for efficienc
 4. **6-Week Study Roadmap**: Access a weekly preparation calendar mapping theoretical topics, coding challenges, and revision items.
 5. **Interactive Mock Interview Simulator & Timed Answer Mode**: Engage in a live, conversational chat with the Interview Agent. Answers are evaluated dynamically on technical accuracy, communication style, verbal clarity, and STAR story structure. Practice under realistic exam conditions with optional **Timed Answer Mode** featuring per-question countdowns, configurable time limits (Technical, Behavioral, HR), last-15-second visual and screen-reader accessible warnings (`aria-live`), automatic submission on expiration, and pacing telemetry included in feedback and transcripts. Keep untimed mode by default.
 6. **Static Company Profiles**: Contains pre-cached interview processes, hiring guidelines, eligibility patterns, and preparation advice for 15 top campus recruiters: Google, Microsoft, Amazon, Adobe, Flipkart, Zoho, TCS, Infosys, Accenture, Capgemini, Wipro, Cognizant, Deloitte, HCLTech, and Tech Mahindra.
-7. **Comprehensive PDF Reports**: Generates and compiles a formatted, multi-page PDF document summarizing placement analysis and roadmaps using ReportLab.
+7. **Comprehensive Multi-Format Reports**: Generates and compiles placement readiness reports as print-ready PDF, structured GitHub Flavored Markdown (`.md`), or machine-readable JSON (`.json`) for pasting directly into personal notes, Notion, Obsidian, or external tracking systems.
 8. **Dark / Light Theme Toggle**: Seamless single-click switching between light and dark modes with zero page reload, browser persistence (`localStorage`), default system preference detection (`prefers-color-scheme`), and high-contrast readability across dashboards, tables, interview chat, and study roadmaps.
 9. **Placement Analysis History & Data Management**: Browse past evaluations ordered newest first, view target company, target role, and ATS scores, reopen past analyses in the dashboard view without running new AI calls, and delete stored analyses and personal data with confirmation.
 10. **Privacy Notice & Consent Protection**: Transparent plain-language privacy notice (`/privacy`), required candidate consent before processing resume text via the Gemini API, optional PII redaction (masking emails, phones, and addresses), local SQLite storage, and complete account deletion options.
@@ -369,6 +369,46 @@ black --check .
 
 ---
 
+### Optional Error Monitoring (Sentry) & Personal Data Scrubbing (#562)
+
+To detect unhandled production errors (e.g., AI model rate limit timeouts, PDF parsing errors) without relying solely on manual log inspection, the platform includes optional Sentry integration initialized within the application factory (`create_app()`).
+
+Monitoring is **strictly opt-in** and completely disabled unless `SENTRY_DSN` is configured.
+
+#### Setup & Configuration
+
+Add your project DSN to `.env`:
+```env
+# Optional Sentry Error Monitoring (#562)
+SENTRY_DSN=https://your-public-key@sentry.io/your-project-id
+SENTRY_ENVIRONMENT=production
+SENTRY_RELEASE=ai-campus-placement-agent@1.0.0
+SENTRY_TRACES_SAMPLE_RATE=0.0
+```
+
+#### Privacy & Personal Data Scrubbing Rules
+
+To uphold strict student privacy guarantees, Sentry's `before_send` and `before_breadcrumb` pipelines scrub all candidate and credential data before any event is transmitted:
+
+##### Exactly What is NOT Sent (Scrubbed)
+* **Request bodies & Form Data**: Raw HTTP request payloads, form data, multipart uploads, uploaded resume text, and job descriptions are stripped (`request.data` is completely removed).
+* **Cookies & Session Tokens**: HTTP cookies (`session`, `auth_session_token`, etc.) are stripped (`request.cookies` is completely removed).
+* **Authorization Headers**: Sensitive HTTP headers (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Auth-Token`, `X-API-Key`, `X-CSRF-Token`) are stripped from `request.headers`.
+* **Personal Identifiable Information (PII)**: All candidate emails and phone numbers appearing in query strings, exception messages, breadcrumb messages, or extra contexts are redacted to `[REDACTED_EMAIL]` and `[REDACTED_PHONE]`.
+* **Sensitive Context Fields**: Any dictionary keys matching `resume`, `job_description`, `jd`, `email`, `phone`, `password`, `secret`, `token`, `credential`, `ssn`, `transcript`, or `bio` are replaced with `[SCRUBBED]`.
+* **User Identity Context**: The Sentry `user` object is removed entirely to prevent linking exceptions to student accounts.
+
+##### Exactly What IS Sent
+* **Release Version**: Tagged as `release` (e.g. `ai-campus-placement-agent@1.0.0`).
+* **Route / URL Rule**: Tagged as `route` (e.g. `/analyze`, `/interview`, `/api/aptitude/submit`).
+* **Request Correlation ID**: Tagged as `request_id` (matching the `X-Request-ID` HTTP header for log correlation).
+* **Sanitized Exception & Stack Trace**: Python exception class, sanitized traceback, file names, line numbers, and error message with emails/phones redacted.
+* **HTTP Metadata**: Request method (`GET`, `POST`), endpoint URL path, and coarse user agent (browser/OS).
+
+When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inactive, makes zero network requests, and introduces zero performance overhead.
+
+---
+
 ### Deployment & Cloud Hosting (Vercel)
 The project is configured for deployment on Vercel using Python Serverless Functions (`api/index.py` and `vercel.json`):
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
@@ -583,6 +623,126 @@ To help candidates quickly revise on the way to campus drives, a downloadable on
 - **Personalized Skill Gap Targeting**: Seamlessly integrates the student's top 3 identified skill gaps for that company when previous analyses exist; skips the section cleanly and gracefully when the candidate has no analysis.
 - **XML/HTML Entity Escaping**: Robust escaping prevents rendering errors and parser crashes on special symbols such as `&`, `<`, `>`, quotes, and `C++`.
 - **Direct Downloads**: Accessible from the Company Explorer modal, the Companies Directory (`/companies`), and the Preparation Checklist (`/company-checklist`).
+
+---
+
+## Multi-Format Placement Report Exports (Markdown & JSON) (#534)
+
+To support students who organize their placement preparation in external tools (such as Obsidian, Notion, Logseq, or local Markdown notes), the platform enables one-click exporting of the complete placement report as both **GitHub Flavored Markdown (`.md`)** and **Structured JSON (`.json`)** alongside the standard PDF export.
+
+### Export Capabilities & Content Parity
+
+- **Direct Download Buttons**: Download buttons for **Download as Markdown** and **Download as JSON** appear directly alongside the PDF option in:
+  1. The top navigation bar on the analysis dashboard (`#btnDownloadMarkdownNav`, `#btnDownloadJsonNav`).
+  2. The placement readiness summary header next to the PDF and HTML report options (`#btnDownloadMarkdownSummary`, `#btnDownloadJsonSummary`).
+  3. The "Download Placement Guide" card in the bottom actions section (`#btnDownloadMarkdownCard`, `#btnDownloadJsonCard`).
+  4. The dedicated on-screen HTML report view (`/report/<analysis_id>`).
+- **Complete Content Parity**: Both formats export the exact same evaluation metrics presented on-screen:
+  - **Readiness Scores**: Grounded ATS Compatibility Score (0–100), Section-wise Breakdown (Contact, Summary, Skills, Experience, Projects, Education), Job Match Percentage, and readiness verdict.
+  - **Resume Feedback & Suggestions**: Specific identified strengths, critical weaknesses, grammar and formatting suggestions, and top 5 prioritized resume adjustments.
+  - **Skill Gap Assessment**: Prioritized technical skill gaps, importance level, estimated learning times, priority rankings, recommended learning resources, and hands-on project suggestions.
+  - **Interview Tips & Tailored Questions**: Drive-day interview preparation best practices, interview rounds, and tailored technical, behavioral, and HR questions gathered from analysis and roadmap modules.
+  - **Six-Week Learning Roadmap**: Full weekly curriculum including theoretical topics, coding challenges, mini-projects, interview questions, and revision tasks.
+- **UTF-8 & Unicode Preservation**: Non-English languages (Hindi, Devanagari, Japanese, Chinese, German, etc.), accents (`café`, `résumé`), mathematical symbols, smart quotes, and technical acronyms (`C++`, `C#`, `Node.js`) are preserved as pure UTF-8 text without ASCII escaping (`ensure_ascii=False`).
+
+### Stable JSON Schema Specification (`v1.0`)
+
+All JSON exports adhere to a versioned, stable JSON schema (`v1.0`):
+
+```json
+{
+  "version": "1.0",
+  "metadata": {
+    "analysis_id": "demo-sample-analysis",
+    "company_name": "Google",
+    "target_role": "Software Development Engineer",
+    "resume_filename": "Alex_Chen_Resume.pdf",
+    "created_at": "2026-11-20 12:00:00",
+    "exported_at": "2026-11-20T15:20:00.000000+00:00"
+  },
+  "score": 86,
+  "scores": {
+    "ats_score": 86,
+    "job_match_score": 88,
+    "readiness_verdict": "High ATS Compatibility",
+    "breakdown": {
+      "contact_info": 100,
+      "formatting": 85,
+      "experience": 90,
+      "skills": 88
+    }
+  },
+  "summary": "Candidate profile with solid foundations in algorithms, backend services, and distributed systems.",
+  "overall_recommendation": "Alex is an outstanding candidate with demonstrated engineering curiosity and strong problem-solving skills.",
+  "suggestions": {
+    "strengths": [
+      "Quantified achievements across distributed task queue and caching projects",
+      "Solid foundational CS background with relevant coursework"
+    ],
+    "weaknesses": [
+      "Limited demonstrated experience with Kubernetes container orchestration"
+    ],
+    "grammar_suggestions": [],
+    "formatting_suggestions": [],
+    "resume_changes": [
+      "Incorporate 'Distributed Systems' and 'Redis In-Memory Caching' into the core skills section.",
+      "Highlight Docker containerization in the project deployment summary."
+    ],
+    "general_recommendations": []
+  },
+  "skill_gaps": [
+    {
+      "skill": "Distributed System Design",
+      "importance": "High",
+      "learning_time": "3 weeks",
+      "priority": "High",
+      "learning_resource": "Designing Data-Intensive Applications (Martin Kleppmann)",
+      "project_suggestion": "Build a distributed URL shortener or rate limiter with consistent hashing."
+    }
+  ],
+  "interview_tips": {
+    "preparation_tips": [
+      "Structure behavioral responses using the STAR method (Situation, Task, Action, Result).",
+      "State time and space complexity upfront before writing algorithmic solutions."
+    ],
+    "questions": [
+      "[Technical] How does Python's GIL impact multithreaded CPU-bound vs I/O-bound tasks?",
+      "[Behavioral] Tell me about a time you identified a subtle performance bottleneck in code you did not write.",
+      "[HR] Walk me through your journey into computer science and what excites you about software engineering."
+    ],
+    "interview_rounds": [
+      "Round 1: Online Technical Assessment (Data Structures & Algorithms)",
+      "Round 2: Technical Problem Solving & Live Coding",
+      "Round 3: Systems & Googleyness / Behavioral"
+    ],
+    "elevator_pitch_guidance": "Lead with your core technical competencies, cite a measurable project achievement, and articulate your direct alignment with the target company's mission."
+  },
+  "learning_roadmap": [
+    {
+      "week": "Week 1",
+      "estimated_hours": 12,
+      "topics": ["Advanced Data Structures", "Time & Space Complexity Analysis"],
+      "coding_practice": ["LeetCode 208 (Implement Trie)"],
+      "mini_projects": ["In-Memory Trie-based Autocomplete Search Service"],
+      "interview_questions": ["How do you detect a cycle in a directed graph using Kahn's algorithm?"],
+      "revision_tasks": ["Review BFS vs DFS traversal trade-offs"]
+    }
+  ],
+  "advisories": []
+}
+```
+
+### Direct Download & API Endpoints
+
+| Resource Endpoint | Description |
+| :--- | :--- |
+| `GET /download/<analysis_id>/markdown` | Download placement report as a formatted Markdown (`.md`) attachment |
+| `GET /download/<analysis_id>/json` | Download placement report as a structured JSON (`.json`) attachment |
+| `GET /download/<analysis_id>?format=markdown` | Query parameter shortcut to download Markdown |
+| `GET /download/<analysis_id>?format=json` | Query parameter shortcut to download JSON |
+| `GET /api/analysis/<analysis_id>/export?format=json` | REST API endpoint returning structured JSON payload directly |
+| `GET /api/analysis/<analysis_id>/export?format=markdown` | REST API endpoint returning Markdown string |
+| `GET /api/analysis/<analysis_id>/export?format=json&download=true` | REST API endpoint initiating file download attachment |
 
 ---
 

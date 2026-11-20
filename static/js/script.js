@@ -1,91 +1,97 @@
-// Frontend interactions - AI Campus Placement Agent
+/**
+ * Frontend Bootstrap (static/js/script.js)
+ * =========================================
+ * Application bootstrap and backwards-compatibility module.
+ * Modular feature code has been extracted to static/js/modules/:
+ * - utils.js: CSRF helpers, escaping, toasts, clipboard helpers
+ * - theme.js: Dark/light mode theme management
+ * - common.js: Shared UI widgets (back-to-top, accessibility, session timeout, drawer)
+ * - analysis.js: Resume upload, character counters, progress pipeline
+ * - dashboard.js: Visualizations, skill gaps, roadmaps, walkthrough
+ * - interview.js: Mock interview simulator, voice coach, timers, drafts
+ * - bookmarks.js: Coding and interview question bookmarks
+ * - tracker.js: Company explorer and checklists
+ * - streaks.js: Preparation streaks and activity tracking
+ * - auth.js: Password toggle and strength meter
+ * - self_intro.js: Self-introduction pitch studio
+ * - project_deep_dive.js: Architecture defense simulator
+ * - cover_letter.js: Tailored cover letter studio
+ */
 
-// Early theme resolution to prevent flash of unstyled content (FOUC) (#158)
-try {
-  const initialTheme = (function () {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark" || stored === "light") return stored;
-    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  })();
-  document.documentElement.setAttribute("data-bs-theme", initialTheme);
-} catch (e) {
-  // Graceful fallback
+import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
+import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
+import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
+import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
+import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
+import { initMockInterview } from "./modules/interview.js";
+import { initCodingBookmarks, initInterviewBookmarks } from "./modules/bookmarks.js";
+import { initCompanyExplorer } from "./modules/tracker.js";
+import { initStreakTracker } from "./modules/streaks.js";
+import { initPasswordToggle, initPasswordStrengthIndicator } from "./modules/auth.js";
+import { initSelfIntroductionStudio } from "./modules/self_intro.js";
+import { initProjectDeepDive } from "./modules/project_deep_dive.js";
+import { initTailoredCoverLetterStudio } from "./modules/cover_letter.js";
+
+// Re-export for module consumers
+export {
+  getCsrfToken,
+  escapeHtml,
+  showToast,
+  copyToClipboard,
+  initThemeToggle,
+  getPreferredTheme,
+  setTheme,
+  updateThemeIcon,
+  initCommon,
+  initBackToTop,
+  initAccessibility,
+  initRecentAnalysesDrawer,
+  initSessionTimeout,
+  clearAllInterviewDrafts,
+  initInterviewDraftLogoutCleanup,
+  initFormUpload,
+  initCharacterCounters,
+  initCircularProgress,
+  initDashboard,
+  initSkillGapFilter,
+  initRoleSkillGapSelector,
+  initRoadmapTracker,
+  initRoadmapExport,
+  initProgressTracker,
+  initOutreachGenerator,
+  initCopySuggestions,
+  initRoleBasedPrep,
+  initSkillsComparisonChart,
+  initResumeKeywordHighlighter,
+  initSectionFeedback,
+  initUserWalkthrough,
+  initMockInterview,
+  initCodingBookmarks,
+  initInterviewBookmarks,
+  initCompanyExplorer,
+  initStreakTracker,
+  initPasswordToggle,
+  initPasswordStrengthIndicator,
+  initSelfIntroductionStudio,
+  initProjectDeepDive,
+  initTailoredCoverLetterStudio
+};
+
+// Expose public API on window for backwards compatibility with inline templates
+if (typeof window !== "undefined") {
+  window.getCsrfToken = getCsrfToken;
+  window.escapeHtml = escapeHtml;
+  window.showToast = showToast;
+  window.copyToClipboard = copyToClipboard;
+  window.clearAllInterviewDrafts = clearAllInterviewDrafts;
 }
 
-// CSRF Protection Token Helper & Interceptor (#300)
-function getCsrfToken() {
-  const meta = document.querySelector('meta[name="csrf-token"]');
-  if (meta && meta.getAttribute("content")) {
-    return meta.getAttribute("content");
-  }
-  const input = document.querySelector('input[name="csrf_token"]');
-  if (input && input.value) {
-    return input.value;
-  }
-  return "";
-}
-
-// Global fetch wrapper to ensure all mutating requests (POST, PUT, DELETE, PATCH)
-// automatically include the X-CSRFToken and X-CSRF-Token headers
-(function () {
-  if (typeof window !== "undefined" && typeof window.fetch === "function") {
-    const originalFetch = window.fetch;
-    window.fetch = function (resource, init) {
-      init = init || {};
-      const method = (init.method || "GET").toUpperCase();
-      if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
-        const token = getCsrfToken();
-        if (token) {
-          if (!init.headers) {
-            init.headers = {};
-          }
-          if (init.headers instanceof Headers) {
-            if (!init.headers.has("X-CSRFToken")) {
-              init.headers.append("X-CSRFToken", token);
-            }
-            if (!init.headers.has("X-CSRF-Token")) {
-              init.headers.append("X-CSRF-Token", token);
-            }
-          } else if (Array.isArray(init.headers)) {
-            const hasCsrf = init.headers.some(
-              ([k]) => k.toLowerCase() === "x-csrftoken" || k.toLowerCase() === "x-csrf-token"
-            );
-            if (!hasCsrf) {
-              init.headers.push(["X-CSRFToken", token]);
-              init.headers.push(["X-CSRF-Token", token]);
-            }
-          } else {
-            if (!init.headers["X-CSRFToken"] && !init.headers["x-csrftoken"]) {
-              init.headers["X-CSRFToken"] = token;
-            }
-            if (!init.headers["X-CSRF-Token"] && !init.headers["x-csrf-token"]) {
-              init.headers["X-CSRF-Token"] = token;
-            }
-          }
-        }
-      }
-      return originalFetch.call(this, resource, init);
-    };
-  }
-})();
-
-function escapeHtml(str) {
-  if (str === null || str === undefined) return "";
-  if (typeof str !== "string") str = String(str);
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
+// Bootstrap on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", () => {
-  initThemeToggle();
+  initCommon();
   initFormUpload();
   initCircularProgress();
+  initCharacterCounters();
   initMockInterview();
   initCompanyExplorer();
   initSkillGapFilter();
@@ -93,30 +99,25 @@ document.addEventListener("DOMContentLoaded", () => {
   initRoadmapExport();
   initRoadmapTracker();
   initProgressTracker();
-  if (typeof initCodingSandbox === "function") {
-    initCodingSandbox();
+  if (typeof window.initCodingSandbox === "function") {
+    window.initCodingSandbox();
   }
   initOutreachGenerator();
-  initRecentAnalysesDrawer();
-  initCharacterCounters();
   initCopySuggestions();
   initRoleBasedPrep();
   initSkillsComparisonChart();
   initResumeKeywordHighlighter();
-  initBackToTop();
   initCodingBookmarks();
   initInterviewBookmarks();
   initStreakTracker();
-  initAccessibility();
-  initSessionTimeout();
   initSectionFeedback();
   initUserWalkthrough();
   initPasswordToggle();
   initPasswordStrengthIndicator();
   initSelfIntroductionStudio();
   initProjectDeepDive();
-  initInterviewDraftLogoutCleanup();
   initTailoredCoverLetterStudio();
+  initCustomLearningRoadmap();
 });
 
 /**
@@ -1227,8 +1228,8 @@ function initFormUpload() {
   const batchModeSwitch = document.getElementById("batchModeSwitch");
   const singleCompanyContainer = document.getElementById("singleCompanyContainer");
   const batchCompanyContainer = document.getElementById("batchCompanyContainer");
-  const submitBtnSpan = uploadForm.querySelector("button[type='submit'] span");
-  const submitBtnIcon = uploadForm.querySelector("button[type='submit'] i");
+  const batchSubmitSpan = submitBtnSpan || uploadForm.querySelector("button[type='submit'] span");
+  const batchSubmitIcon = submitBtnIcon || uploadForm.querySelector("button[type='submit'] i");
 
   if (batchModeSwitch) {
     batchModeSwitch.addEventListener("change", () => {
@@ -1236,13 +1237,13 @@ function initFormUpload() {
       if (isBatch) {
         if (singleCompanyContainer) singleCompanyContainer.classList.add("d-none");
         if (batchCompanyContainer) batchCompanyContainer.classList.remove("d-none");
-        if (submitBtnSpan) submitBtnSpan.textContent = "Compare Companies & Offer Matrix";
-        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-chart-pie me-2";
+        if (batchSubmitSpan) batchSubmitSpan.textContent = "Compare Companies & Offer Matrix";
+        if (batchSubmitIcon) batchSubmitIcon.className = "fa-solid fa-chart-pie me-2";
       } else {
         if (singleCompanyContainer) singleCompanyContainer.classList.remove("d-none");
         if (batchCompanyContainer) batchCompanyContainer.classList.add("d-none");
-        if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
-        if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
+        if (batchSubmitSpan) batchSubmitSpan.textContent = "Analyze Readiness";
+        if (batchSubmitIcon) batchSubmitIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
       }
     });
   }
@@ -7328,6 +7329,181 @@ function initSelfIntroductionStudio() {
 }
 
 /**
+ * Interactive Timeline Learning Roadmap Generator (#536)
+ * Handles timeline duration (weeks), commitment hours, dynamic recalculation,
+ * zero missing skills celebratory states, and deferred skills rendering.
+ */
+function initCustomLearningRoadmap() {
+  const btnRecalc = document.getElementById("btnRecalculateRoadmap");
+  const weeksSelect = document.getElementById("roadmapWeeksSelect");
+  const hoursSelect = document.getElementById("roadmapHoursSelect");
+  const spinner = document.getElementById("roadmapSpinner");
+  const icon = document.getElementById("roadmapRecalcIcon");
+  const zeroBanner = document.getElementById("zeroMissingSkillsBanner");
+  const zeroMsg = document.getElementById("zeroMissingSkillsMsg");
+  const deferredContainer = document.getElementById("deferredSkillsContainer");
+  const deferredBadges = document.getElementById("deferredSkillsBadges");
+  const deferredBadgeCount = document.getElementById("deferredSkillsCountBadge");
+  const timelineContainer = document.getElementById("customRoadmapTimeline");
+
+  if (!btnRecalc) return;
+
+  btnRecalc.addEventListener("click", async () => {
+    const analysisId = btnRecalc.getAttribute("data-analysis-id");
+    if (!analysisId) return;
+
+    const weeks = weeksSelect ? parseInt(weeksSelect.value, 10) || 6 : 6;
+    const hours = hoursSelect ? parseInt(hoursSelect.value, 10) || 10 : 10;
+
+    btnRecalc.disabled = true;
+    if (spinner) spinner.classList.remove("d-none");
+    if (icon) icon.classList.add("d-none");
+
+    try {
+      const res = await fetch(`/api/analysis/${analysisId}/custom-roadmap`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weeks, hours_per_week: hours })
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to recalculate learning roadmap");
+      }
+
+      // 1. Zero missing skills condition
+      if (data.is_zero_missing) {
+        if (zeroBanner) zeroBanner.classList.remove("d-none");
+        if (zeroMsg && data.congratulatory_message) zeroMsg.textContent = data.congratulatory_message;
+        if (deferredContainer) deferredContainer.classList.add("d-none");
+        if (timelineContainer) timelineContainer.classList.add("d-none");
+        return;
+      }
+
+      if (zeroBanner) zeroBanner.classList.add("d-none");
+      if (timelineContainer) timelineContainer.classList.remove("d-none");
+
+      // 2. Deferred skills condition
+      if (data.deferred_skills && data.deferred_skills.length > 0) {
+        if (deferredContainer) deferredContainer.classList.remove("d-none");
+        if (deferredBadgeCount) deferredBadgeCount.textContent = `${data.deferred_skills.length} Deferred`;
+        if (deferredBadges) {
+          deferredBadges.innerHTML = data.deferred_skills.map(defItem => `
+            <div class="p-2 px-3 bg-white rounded-3 border border-warning-subtle small shadow-xs">
+              <span class="fw-bold text-dark">${escapeHtml(defItem.skill || '')}</span>
+              <span class="badge bg-light text-secondary border rounded-pill ms-1">${escapeHtml(defItem.importance || 'Medium')}</span>
+              <small class="text-muted d-block mt-1">${escapeHtml(defItem.reason || '')}</small>
+            </div>
+          `).join("");
+        }
+      } else {
+        if (deferredContainer) deferredContainer.classList.add("d-none");
+      }
+
+      // 3. Render Week-by-Week Plan
+      if (timelineContainer && Array.isArray(data.plan)) {
+        timelineContainer.innerHTML = data.plan.map((w, idx) => {
+          const skillsHtml = (w.skills || []).map(sk => `
+            <span class="badge bg-primary-subtle text-primary border rounded-pill small py-1 px-2">
+              <i class="fa-solid fa-bullseye me-1"></i>${escapeHtml(sk)}
+            </span>
+          `).join(" ");
+
+          const topicsHtml = (w.topics || []).map((t, tIdx) => `
+            <li class="mb-1">
+              <label class="form-check-label d-flex align-items-start">
+                <input type="checkbox" class="form-check-input roadmap-task-check me-2 flex-shrink-0 mt-1" data-analysis-id="${analysisId}" data-task-id="${(w.week || '').replace(/\s+/g, '_')}_top_${tIdx + 1}">
+                <span>${escapeHtml(t)}</span>
+              </label>
+            </li>
+          `).join("");
+
+          const practiceTaskHtml = w.practice_task ? `
+            <div class="p-3 bg-white rounded-3 border-start border-primary border-4 mb-3 shadow-xs">
+              <h6 class="small fw-bold text-dark mb-1 d-flex align-items-center">
+                <i class="fa-solid fa-laptop-code text-primary me-2"></i> Weekly Practice Task
+                <span class="badge bg-primary-subtle text-primary border rounded-pill ms-auto small">1 Task / Wk</span>
+              </h6>
+              <p class="small text-secondary mb-0 fw-semibold">${escapeHtml(w.practice_task)}</p>
+            </div>
+          ` : "";
+
+          const resourceTypesHtml = (w.resource_types || []).map(rt => `
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2">
+              <i class="fa-solid fa-circle-check me-1"></i>${escapeHtml(rt)}
+            </span>
+          `).join(" ");
+
+          return `
+            <div class="timeline-node" data-week-index="${idx + 1}">
+              <div class="card border-0 bg-light p-4 rounded-4 shadow-sm week-card" data-week-id="${(w.week || '').replace(/\s+/g, '_')}">
+                <div class="d-flex justify-content-between align-items-center flex-wrap mb-2 gap-2">
+                  <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <h5 class="fw-bold mb-0 text-primary">${escapeHtml(w.week)}</h5>
+                    ${skillsHtml}
+                  </div>
+                  <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 copy-week-btn" data-week-name="${escapeHtml(w.week)}" title="Copy week tasks to clipboard" aria-label="Copy week tasks to clipboard">
+                      <i class="fa-regular fa-copy me-1"></i> Copy Week
+                    </button>
+                    <span class="badge bg-primary text-white rounded-pill py-2 px-3">${w.estimated_hours || 10} Hours / week</span>
+                  </div>
+                </div>
+
+                <div class="week-progress-container mb-3">
+                  <div class="d-flex justify-content-between small text-secondary mb-1">
+                    <span>Week Progress</span>
+                    <span class="week-progress-label fw-bold text-success">0%</span>
+                  </div>
+                  <div class="progress rounded-pill" style="height: 6px;">
+                    <div class="progress-bar bg-success week-progress-bar" style="width: 0%"></div>
+                  </div>
+                </div>
+
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <h6 class="fw-semibold text-secondary"><i class="fa-solid fa-book-open me-2 text-primary"></i> Topics to Learn</h6>
+                    <ul class="mb-3 small list-unstyled">
+                      ${topicsHtml}
+                    </ul>
+                  </div>
+                  <div class="col-md-6">
+                    ${practiceTaskHtml}
+                    <div class="p-3 bg-white rounded-3 border small shadow-xs">
+                      <span class="fw-bold text-secondary d-block mb-1">
+                        <i class="fa-solid fa-graduation-cap text-success me-1"></i> Recommended Free Resource Types:
+                      </span>
+                      <div class="d-flex flex-wrap gap-1">
+                        ${resourceTypesHtml}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+
+    } catch (err) {
+      console.error("Custom roadmap recalculation error:", err);
+      alert(err.message || "Failed to recalculate learning roadmap.");
+    } finally {
+      btnRecalc.disabled = false;
+      if (spinner) spinner.classList.add("d-none");
+      if (icon) icon.classList.remove("d-none");
+    }
+  });
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+}
+
+/**
  * Project Deep-Dive Interview Practice Mode (#466).
  * Handles project selection, thin project enrichment, grounded question delivery,
  * answer evaluation with scores & improvement tips, and overall session completion.
@@ -7444,7 +7620,7 @@ function initProjectDeepDive() {
 
       const updatedProj = { ...pendingThinProject };
       if (extraTech) updatedProj.tech_stack = extraTech;
-      
+
       const modalInstance = bootstrap.Modal.getInstance(thinProjectModalEl);
       if (modalInstance) modalInstance.hide();
 
@@ -7789,6 +7965,149 @@ function initProjectDeepDive() {
     });
   }
 }
+
+/**
+ * What-If Skill Impact Simulator (#557)
+ * Immediate, client-side recalculation of job match percentage when missing skills are assumed learned.
+ */
+function initSkillImpactSimulator() {
+  const simCard = document.getElementById("skillSimulatorCard");
+  if (!simCard) return;
+
+  let rawData = null;
+  try {
+    const rawAttr = simCard.getAttribute("data-simulation-data");
+    if (rawAttr) {
+      rawData = JSON.parse(rawAttr);
+    }
+  } catch (e) {
+    console.warn("Failed to parse simulation data:", e);
+  }
+  if (!rawData) return;
+
+  const originalScore = rawData.original_percentage || 0;
+  const rankedSkills = rawData.ranked_skills || [];
+  const totalMissing = rankedSkills.length;
+  if (totalMissing === 0) return;
+
+  const totalMissingWeight = rankedSkills.reduce((sum, s) => sum + (s.weight || 2.0), 0);
+  const gapTo100 = Math.max(0, 100 - originalScore);
+
+  // UI elements
+  const scoreEl = document.getElementById("simProjectedScore");
+  const deltaEl = document.getElementById("simDeltaBadge");
+  const tickedCountEl = document.getElementById("simTickedCount");
+  const boostBarEl = document.getElementById("simProgressBarBoost");
+  const btnSelectAll = document.getElementById("btnSimulatorSelectAll");
+  const btnClear = document.getElementById("btnSimulatorClear");
+
+  // Populate individual boost badges in the table rows
+  rankedSkills.forEach((r) => {
+    const tableBadge = document.querySelector(`.table-skill-impact-badge[data-skill="${CSS.escape(r.skill)}"]`);
+    if (tableBadge && r.individual_gain > 0) {
+      tableBadge.innerHTML = `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small px-2 py-0" title="Projected boost if learned">${escapeHtml(r.individual_gain_str)}</span>` +
+        (r.is_best_next ? ` <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill small px-2 py-0" title="Rank #1 Highest impact skill"><i class="fa-solid fa-crown text-warning me-1"></i>Best Next</span>` : "");
+    }
+  });
+
+  const getTickedSkills = () => {
+    const checked = new Set();
+    document.querySelectorAll(".sim-skill-checkbox:checked, .table-skill-checkbox:checked").forEach((cb) => {
+      const val = (cb.value || cb.dataset.skill || "").trim();
+      if (val) checked.add(val.toLowerCase());
+    });
+    return checked;
+  };
+
+  const updateSimulation = () => {
+    const tickedSet = getTickedSkills();
+    let tickedWeight = 0;
+    let tickedCount = 0;
+
+    rankedSkills.forEach((s) => {
+      const isTicked = tickedSet.has((s.skill || "").toLowerCase());
+      if (isTicked) {
+        tickedWeight += (s.weight || 2.0);
+        tickedCount += 1;
+      }
+
+      // Synchronize checkbox states in simulator pills and table rows
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const pill = cb.closest(".sim-skill-pill");
+        if (pill) {
+          if (isTicked) pill.classList.add("active", "btn-primary", "text-white");
+          else pill.classList.remove("active", "btn-primary", "text-white");
+        }
+      });
+      document.querySelectorAll(`.table-skill-checkbox[data-skill="${CSS.escape(s.skill)}"]`).forEach((cb) => {
+        cb.checked = isTicked;
+        const row = cb.closest("tr");
+        if (row) {
+          if (isTicked) row.classList.add("table-success");
+          else row.classList.remove("table-success");
+        }
+      });
+    });
+
+    let simulatedScore = originalScore;
+    let pctChange = 0;
+    if (tickedCount > 0 && totalMissingWeight > 0 && gapTo100 > 0) {
+      const boost = (tickedWeight / totalMissingWeight) * gapTo100;
+      simulatedScore = Math.min(100, Math.max(0, Math.round(originalScore + boost)));
+      pctChange = simulatedScore - originalScore;
+    }
+
+    if (scoreEl) scoreEl.textContent = `${simulatedScore}%`;
+    if (deltaEl) {
+      deltaEl.textContent = pctChange > 0 ? `+${pctChange}%` : `${pctChange}%`;
+      deltaEl.className = pctChange > 0
+        ? "badge bg-success-subtle text-success fs-6 fw-bold px-3 py-1 rounded-pill"
+        : "badge bg-secondary-subtle text-secondary fs-6 fw-bold px-3 py-1 rounded-pill";
+    }
+    if (tickedCountEl) tickedCountEl.textContent = `${tickedCount} / ${totalMissing}`;
+    if (boostBarEl) {
+      boostBarEl.style.width = `${pctChange}%`;
+      boostBarEl.setAttribute("aria-valuenow", simulatedScore);
+      boostBarEl.title = `Simulated Boost: +${pctChange}%`;
+    }
+  };
+
+  // Event delegation for checkbox changes
+  document.addEventListener("change", (e) => {
+    if (e.target && (e.target.classList.contains("sim-skill-checkbox") || e.target.classList.contains("table-skill-checkbox"))) {
+      const skillName = (e.target.value || e.target.dataset.skill || "").trim();
+      const isChecked = e.target.checked;
+      document.querySelectorAll(`.sim-skill-checkbox[value="${CSS.escape(skillName)}"], .table-skill-checkbox[data-skill="${CSS.escape(skillName)}"]`).forEach((cb) => {
+        cb.checked = isChecked;
+      });
+      updateSimulation();
+    }
+  });
+
+  if (btnSelectAll) {
+    btnSelectAll.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = true;
+      });
+      updateSimulation();
+    });
+  }
+
+  if (btnClear) {
+    btnClear.addEventListener("click", () => {
+      document.querySelectorAll(".sim-skill-checkbox, .table-skill-checkbox").forEach((cb) => {
+        cb.checked = false;
+      });
+      updateSimulation();
+    });
+  }
+
+  // Initial calculation and UI setup
+  updateSimulation();
+}
+window.initSkillImpactSimulator = initSkillImpactSimulator;
+
 
 
 

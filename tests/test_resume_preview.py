@@ -2,6 +2,7 @@
 Unit tests for resume upload preview before analysis (#133).
 """
 
+import os
 from app import app
 
 
@@ -26,8 +27,11 @@ def test_index_page_contains_resume_preview_elements():
 
 
 def test_script_js_contains_preview_handlers():
-    """Verify script.js binds preview updates and clear handlers."""
-    with open("static/js/script.js", "r", encoding="utf-8") as f:
+    """Verify script.js / analysis.js binds preview updates and clear handlers."""
+    js_path = os.path.join("static", "js", "modules", "analysis.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join("static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
         js = f.read()
 
     assert "resumePreviewCard" in js
