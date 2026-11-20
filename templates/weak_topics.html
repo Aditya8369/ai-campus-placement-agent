@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Weak-Topic Notebook - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .topic-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      border-radius: 1rem;
+    }
+    .topic-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+    }
+    .badge-signal {
+      font-size: 0.8rem;
+      padding: 0.4em 0.75em;
+    }
+    .evidence-item {
+      font-size: 0.9rem;
+      border-left: 3px solid #dee2e6;
+      padding-left: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+    .evidence-item.source-interview {
+      border-left-color: #dc3545;
+    }
+    .evidence-item.source-analysis {
+      border-left-color: #0d6efd;
+    }
+    .evidence-item.source-coding {
+      border-left-color: #ffc107;
+    }
+    .stat-card {
+      border-radius: 0.85rem;
+    }
+  </style>
+</head>
+<body class="bg-light min-vh-100 d-flex flex-column">
+  <!-- Accessibility Skip Link -->
+  <a href="#main-content" class="skip-link visually-hidden-focusable">Skip to main content</a>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2">
+    <div class="container d-flex justify-content-between align-items-center">
+      <a class="navbar-brand fw-bold text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary me-2"></i>AI Campus <span class="d-none d-sm-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/coding-practice" class="btn btn-outline-dark btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-code me-1"></i> Coding Practice
+        </a>
+        <a href="/notes" class="btn btn-outline-warning text-dark btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-note-sticky me-1"></i> Prep Notes
+        </a>
+        <a href="/logout" class="btn btn-outline-danger btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-right-from-bracket me-1"></i> Logout
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container py-4 flex-grow-1" id="main-content">
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category in ['danger', 'error'] else category }} alert-dismissible fade show rounded-3 shadow-sm mb-4" role="alert">
+          <i class="fa-solid {{ 'fa-circle-exclamation' if category in ['danger', 'error'] else 'fa-circle-check' }} me-2"></i>
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+
+    <!-- Page Header & Filters -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-bullseye text-danger me-2"></i>Weak-Topic Notebook
+        </h2>
+        <p class="text-muted mb-0">
+          Aggregated focus areas from low interview scores, resume skill gaps, and difficult coding challenges.
+        </p>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        {% if show_resolved %}
+          <a href="{{ url_for('weak_topics_view') }}" class="btn btn-outline-secondary rounded-pill px-3" id="btnToggleResolved">
+            <i class="fa-solid fa-eye-slash me-1"></i> Hide Resolved
+          </a>
+        {% else %}
+          <a href="{{ url_for('weak_topics_view', show_resolved='1') }}" class="btn btn-outline-primary rounded-pill px-3" id="btnToggleResolved">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i> Show Resolved ({{ summary.resolved }})
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Summary KPI Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card stat-card border-0 shadow-sm p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold">Total Topics</span>
+            <span class="badge bg-primary-subtle text-primary rounded-pill"><i class="fa-solid fa-layer-group"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="statTotalTopics">{{ summary.total }}</h3>
+          <small class="text-muted">Detected across sources</small>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card border-0 shadow-sm p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold">Needs Practice</span>
+            <span class="badge bg-danger-subtle text-danger rounded-pill"><i class="fa-solid fa-triangle-exclamation"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-danger" id="statActiveTopics">{{ summary.active }}</h3>
+          <small class="text-muted">High priority areas</small>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card border-0 shadow-sm p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold">In Progress</span>
+            <span class="badge bg-warning-subtle text-warning-emphasis rounded-pill"><i class="fa-solid fa-spinner"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-warning" id="statImprovingTopics">{{ summary.improving }}</h3>
+          <small class="text-muted">Actively improving</small>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card stat-card border-0 shadow-sm p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-muted small fw-semibold">Resolved</span>
+            <span class="badge bg-success-subtle text-success rounded-pill"><i class="fa-solid fa-circle-check"></i></span>
+          </div>
+          <h3 class="fw-bold mb-0 text-success" id="statResolvedTopics">{{ summary.resolved }}</h3>
+          <small class="text-muted">Mastered & hidden</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Topics Container -->
+    {% if not weak_topics or weak_topics|length == 0 %}
+      <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white my-4" id="emptyWeakTopics">
+        <div class="mb-3">
+          {% if summary.total > 0 and not show_resolved %}
+            <i class="fa-solid fa-circle-check text-success" style="font-size: 3.5rem;"></i>
+          {% else %}
+            <i class="fa-solid fa-clipboard-check text-muted" style="font-size: 3.5rem;"></i>
+          {% endif %}
+        </div>
+        {% if summary.total > 0 and not show_resolved %}
+          <h4 class="fw-bold text-dark mb-2">All Identified Weak Topics Are Resolved!</h4>
+          <p class="text-muted mx-auto mb-4" style="max-width: 520px;">
+            You have marked all your weak areas as resolved. Great progress on your placement preparation!
+          </p>
+          <div>
+            <a href="{{ url_for('weak_topics_view', show_resolved='1') }}" class="btn btn-outline-primary rounded-pill px-4">
+              <i class="fa-solid fa-clock-rotate-left me-1"></i> Review Resolved Topics ({{ summary.resolved }})
+            </a>
+          </div>
+        {% else %}
+          <h4 class="fw-bold text-dark mb-2">No Weak Topics Detected Yet</h4>
+          <p class="text-muted mx-auto mb-4" style="max-width: 540px;">
+            Your notebook automatically collects weak areas when you score below 70 in mock interviews, have missing skills in resume analyses, or bookmark difficult coding problems.
+          </p>
+          <div class="d-flex flex-wrap justify-content-center gap-2">
+            <a href="/" class="btn btn-primary rounded-pill px-4">
+              <i class="fa-solid fa-file-arrow-up me-1"></i> Run Resume Analysis
+            </a>
+            <a href="/coding-practice" class="btn btn-outline-dark rounded-pill px-4">
+              <i class="fa-solid fa-code me-1"></i> Practice DSA
+            </a>
+          </div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="row g-4" id="weakTopicsList">
+        {% for topic in weak_topics %}
+          <div class="col-12 col-lg-6" id="topicCard-{{ topic.topic_key }}">
+            <div class="card topic-card border-0 shadow-sm h-100 bg-white p-4">
+              <!-- Topic Header -->
+              <div class="d-flex justify-content-between align-items-start gap-2 mb-3">
+                <div>
+                  <h5 class="fw-bold text-dark mb-1 d-flex align-items-center flex-wrap gap-2">
+                    <span>{{ topic.topic_name }}</span>
+                    {% if topic.status == 'improving' %}
+                      <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-spinner fa-spin me-1"></i>Improving
+                      </span>
+                    {% elif topic.status == 'resolved' %}
+                      <span class="badge bg-success rounded-pill" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-circle-check me-1"></i>Resolved
+                      </span>
+                    {% else %}
+                      <span class="badge bg-danger rounded-pill" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>Needs Practice
+                      </span>
+                    {% endif %}
+                  </h5>
+                  <span class="badge bg-light text-secondary border rounded-pill" style="font-size: 0.75rem;">
+                    <i class="fa-solid fa-signal me-1"></i>{{ topic.total_count }} signal{{ 's' if topic.total_count != 1 else '' }}
+                  </span>
+                </div>
+
+                <!-- Status Action Dropdown / Button Group -->
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Status
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0">
+                    {% if topic.status != 'active' %}
+                      <li>
+                        <form method="POST" action="{{ url_for('update_weak_topic_status_view', topic_key=topic.topic_key) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="status" value="active">
+                          {% if show_resolved %}<input type="hidden" name="show_resolved" value="1">{% endif %}
+                          <button type="submit" class="dropdown-item text-danger">
+                            <i class="fa-solid fa-triangle-exclamation me-2"></i>Mark Needs Practice
+                          </button>
+                        </form>
+                      </li>
+                    {% endif %}
+                    {% if topic.status != 'improving' %}
+                      <li>
+                        <form method="POST" action="{{ url_for('update_weak_topic_status_view', topic_key=topic.topic_key) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="status" value="improving">
+                          {% if show_resolved %}<input type="hidden" name="show_resolved" value="1">{% endif %}
+                          <button type="submit" class="dropdown-item text-warning">
+                            <i class="fa-solid fa-clock-rotate-left me-2"></i>Mark Improving
+                          </button>
+                        </form>
+                      </li>
+                    {% endif %}
+                    {% if topic.status != 'resolved' %}
+                      <li>
+                        <form method="POST" action="{{ url_for('update_weak_topic_status_view', topic_key=topic.topic_key) }}">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="status" value="resolved">
+                          {% if show_resolved %}<input type="hidden" name="show_resolved" value="1">{% endif %}
+                          <button type="submit" class="dropdown-item text-success">
+                            <i class="fa-solid fa-circle-check me-2"></i>Mark Resolved
+                          </button>
+                        </form>
+                      </li>
+                    {% endif %}
+                  </ul>
+                </div>
+              </div>
+
+              <!-- Source Counts Breakdown -->
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                {% if topic.interview_count > 0 %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill badge-signal">
+                    <i class="fa-solid fa-microphone me-1"></i>{{ topic.interview_count }} low interview answer{{ 's' if topic.interview_count != 1 else '' }}
+                  </span>
+                {% endif %}
+                {% if topic.analysis_count > 0 %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill badge-signal">
+                    <i class="fa-solid fa-file-lines me-1"></i>{{ topic.analysis_count }} resume skill gap{{ 's' if topic.analysis_count != 1 else '' }}
+                  </span>
+                {% endif %}
+                {% if topic.coding_count > 0 %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill badge-signal">
+                    <i class="fa-solid fa-laptop-code me-1"></i>{{ topic.coding_count }} hard/failed coding problem{{ 's' if topic.coding_count != 1 else '' }}
+                  </span>
+                {% endif %}
+              </div>
+
+              <!-- Evidence Section -->
+              <div class="mb-3 flex-grow-1">
+                <small class="text-muted fw-semibold d-block mb-1">Evidence Detected:</small>
+                <div class="evidence-container" style="max-height: 180px; overflow-y: auto;">
+                  {% for ev in topic.evidence_list %}
+                    <div class="evidence-item source-{{ ev.source }}">
+                      <span class="text-secondary">{{ ev.text }}</span>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Action Links to Practice -->
+              <div class="border-top pt-3 mt-auto">
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+                  <span class="small text-muted fw-semibold">Targeted Practice:</span>
+                  <div class="d-flex flex-wrap gap-1">
+                    <a href="{{ topic.practice_links.interview_url }}" class="btn btn-outline-danger btn-sm rounded-pill px-2 py-1" title="Practice in Interview Mode">
+                      <i class="fa-solid fa-microphone me-1"></i>Interview
+                    </a>
+                    <a href="{{ topic.practice_links.coding_url }}" class="btn btn-outline-primary btn-sm rounded-pill px-2 py-1" title="Practice Coding Questions">
+                      <i class="fa-solid fa-code me-1"></i>Coding
+                    </a>
+                    <a href="{{ topic.practice_links.roadmap_url }}" class="btn btn-outline-success btn-sm rounded-pill px-2 py-1" title="View Roadmap Step">
+                      <i class="fa-solid fa-map me-1"></i>Roadmap
+                    </a>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-3 mt-auto">
+    <div class="container text-center text-muted small">
+      &copy; 2026 AI Campus Placement Agent &bull; All weak topics computed strictly from local student practice records.
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -8,6 +8,14 @@ import pytest
 from app import app
 
 
+def _get_analysis_js_content():
+    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "modules", "analysis.js")
+    if not os.path.exists(js_path):
+        js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
+    with open(js_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 def test_index_page_contains_feedback_elements():
     """Verify that index.html contains DOM targets for upload feedback badges and error alerts."""
     app.config["TESTING"] = True
@@ -32,12 +40,8 @@ def test_index_page_contains_feedback_elements():
 
 
 def test_script_js_defines_upload_feedback_and_validation_logic():
-    """Verify script.js contains the client-side drag-and-drop and validation handlers."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    assert os.path.exists(js_path)
-
-    with open(js_path, "r", encoding="utf-8") as f:
-        js = f.read()
+    """Verify script.js / analysis.js contains the client-side drag-and-drop and validation handlers."""
+    js = _get_analysis_js_content()
 
     # Function declarations and selectors
     assert "handleSelectedFile" in js
@@ -91,10 +95,8 @@ def test_upload_area_rendered_in_unauthenticated_session():
 
 
 def test_script_js_file_size_formatting_logic():
-    """Verify the unit boundaries implemented in formatFileSize inside script.js."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    """Verify the unit boundaries implemented in formatFileSize inside script.js / analysis.js."""
+    content = _get_analysis_js_content()
     
     assert 'sizes = ["Bytes", "KB", "MB", "GB"]' in content
     assert 'formatFileSize(file.size)' in content
@@ -104,9 +106,7 @@ def test_script_js_file_size_formatting_logic():
 
 def test_drag_drop_event_listeners_bound():
     """Verify all dragenter, dragover, dragleave, and drop event handlers are registered."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _get_analysis_js_content()
 
     assert '["dragenter", "dragover"].forEach' in content
     assert '["dragleave"].forEach' in content
@@ -116,10 +116,8 @@ def test_drag_drop_event_listeners_bound():
 
 
 def test_visual_feedback_icon_swapping():
-    """Verify script.js dynamically swaps font awesome classes depending on file extension."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    """Verify dynamically swaps font awesome classes depending on file extension."""
+    content = _get_analysis_js_content()
 
     assert 'fa-file-word text-primary' in content
     assert 'fa-file-pdf text-danger' in content
@@ -127,10 +125,8 @@ def test_visual_feedback_icon_swapping():
 
 
 def test_drag_and_drop_event_prevention_logic():
-    """Verify script.js prevents default event behavior on dragenter, dragover, dragleave, drop."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    """Verify prevents default event behavior on dragenter, dragover, dragleave, drop."""
+    content = _get_analysis_js_content()
 
     assert 'e.preventDefault()' in content
     assert 'e.stopPropagation()' in content
@@ -140,9 +136,7 @@ def test_drag_and_drop_event_prevention_logic():
 
 def test_unsupported_file_type_alert_messages():
     """Verify the error messaging details when invalid files like .png, .exe, or .zip are dropped."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _get_analysis_js_content()
 
     assert 'Unsupported file type' in content
     assert 'uploadTypeErrorMessage.textContent' in content
@@ -152,9 +146,7 @@ def test_unsupported_file_type_alert_messages():
 
 def test_remove_file_cleans_input_value_and_restores_state():
     """Verify clicking the remove button resets file inputs and DOM elements."""
-    js_path = os.path.join(os.path.dirname(__file__), "..", "static", "js", "script.js")
-    with open(js_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    content = _get_analysis_js_content()
 
     assert 'fileInput.value = ""' in content
     assert 'uploadArea.classList.remove("border-danger", "dragover-active")' in content

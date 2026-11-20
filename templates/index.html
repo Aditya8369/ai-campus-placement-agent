@@ -89,6 +89,9 @@
             <li><a class="dropdown-item" href="/notes">
               <i class="fa-solid fa-note-sticky me-2 text-warning"></i>Prep Notes
             </a></li>
+            <li><a class="dropdown-item" href="/weak-topics">
+              <i class="fa-solid fa-bullseye me-2 text-danger"></i>Weak Topics
+            </a></li>
             <li><a class="dropdown-item" href="/role-preparation">
               <i class="fa-solid fa-user-gear me-2"></i>Role Preparation
             </a></li>
@@ -406,6 +409,17 @@
             {% endfor %}
             {% endif %}
             {% endwith %}
+
+            <!-- Analysis Cancelled Confirmation Alert -->
+            <div id="analysisCancelledAlert" class="alert alert-warning alert-dismissible fade show d-none mb-4 rounded-3 border border-warning-subtle" role="alert">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-circle-info text-warning fs-5 flex-shrink-0"></i>
+                <div>
+                  <strong>Analysis Cancelled:</strong> <span id="analysisCancelledMessage">The previous analysis was stopped. You can adjust your resume or job description and submit a new analysis.</span>
+                </div>
+              </div>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
 
             <form id="analysisForm" action="/analyze" method="POST" enctype="multipart/form-data">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -799,7 +813,7 @@
         </div>
       </div>
 
-      <ul class="progress-steps-list text-start" id="analysisProgressStepsList">
+      <ul class="progress-steps-list text-start" id="progressStepsList">
         <li class="progress-step text-muted" id="step1">
           <div class="step-indicator">1</div>
           <span class="step-name">Reading resume</span>
@@ -826,6 +840,13 @@
         </li>
       </ul>
       <p class="text-muted small mb-0" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
+
+      <!-- Cancel Analysis Action (#465) -->
+      <div class="mt-4 pt-3 border-top">
+        <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-4" id="btnCancelAnalysis">
+          <i class="fa-solid fa-ban me-1"></i> Cancel Analysis
+        </button>
+      </div>
     </div>
   </div>
 
@@ -1197,7 +1218,8 @@
     });
   </script>
   <!-- Custom JS -->
-  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/analysis.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
 </body>
