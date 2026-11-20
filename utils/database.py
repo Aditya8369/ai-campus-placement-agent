@@ -1,36 +1,5 @@
 """
 Backwards Compatibility Facade (utils/database.py)
-===================================================
-During the transition to the domain-based db/ package (#556), this module re-exports
-all functions, constants, and database utilities so existing callers across the entire
-codebase continue to function without interruption.
-
-New code should import directly from the corresponding db package module:
-- db.connection: get_connection, transaction, get_db_connection
-- db.migrations: init_db, run_migrations, MIGRATIONS
-- db.users: user authentication, sessions, 2FA, password tokens, GDPR export/delete
-- db.analyses: resume evaluations, versions, comparisons, annotations, feedback
-- db.interviews: mock interviews, questions, answers, bookmarks, experiences, prep notes, GD
-- db.tracker: job applications, status, deadlines (#477), checklists, calendar events, viewed jobs
-- db.coding_practice: coding submissions, bookmarks, skill self-assessments, student profiles, aptitude
-- db.reports: shared reports for mentors, view tracking, revocation
-- db.streaks: preparation activity logs, streak calculations, streak calendar
-- db.cohorts: peer benchmarks, leaderboards, placement history, company skill gaps
-- db.system: backups, integrity checks, telemetry, feedback
-"""
-
-from __future__ import annotations
-
-import logging
-import sqlite3
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-# Connection and Transaction Helpers
-from db.connection import (
-    create_connection,
-    get_connection,
-    get_db_connection,
-    transaction,
 )
 
 # Migration Runner and Registry
