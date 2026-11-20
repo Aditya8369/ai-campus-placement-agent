@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>ATS Resume Templates Gallery - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/print.css') }}" rel="stylesheet" media="print">
+  <style>
+    .template-card {
+      border: 2px solid #e2e8f0;
+      border-radius: 1rem;
+      transition: all 0.2s ease-in-out;
+      cursor: pointer;
+      background: #ffffff;
+    }
+    .template-card:hover {
+      border-color: #3b82f6;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.08);
+    }
+    .template-card.active {
+      border-color: #2563eb;
+      background-color: #eff6ff;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+    .preview-container {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 1rem;
+      padding: 1.5rem;
+      min-height: 600px;
+      max-height: 850px;
+      overflow-y: auto;
+    }
+    .resume-preview-sheet {
+      background: #ffffff;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      border-radius: 8px;
+    }
+  </style>
+</head>
+
+<body class="bg-light text-dark">
+  <!-- Navigation Header -->
+  <header class="navbar navbar-expand-lg navbar-light bg-white border-bottom sticky-top py-2 shadow-sm">
+    <div class="container-fluid px-4">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary fs-4"></i>
+        <span class="fw-bold tracking-tight text-dark">AI Campus Placement Agent</span>
+      </a>
+
+      <div class="d-flex align-items-center gap-2">
+        {% if file_uuid %}
+        <a href="{{ url_for('resume_review_by_uuid', file_uuid=file_uuid) }}" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-arrow-left me-1"></i> Back to Review
+        </a>
+        {% else %}
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <main class="container-fluid px-4 py-4" style="max-width: 1400px;">
+    <!-- Title & Overview -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card border-0 rounded-4 shadow-sm p-4 bg-white">
+          <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+            <div>
+              <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 mb-2 fw-semibold">
+                <i class="fa-solid fa-shield-check me-1"></i> 100% ATS-Compliant Single Column
+              </span>
+              <h1 class="h3 fw-bold text-dark mb-1">ATS-Friendly Resume Template Gallery</h1>
+              <p class="text-secondary mb-0">
+                Generate clean, parser-certified resumes in DOCX and PDF directly from your reviewed information. No complex tables or multi-column layouts that confuse campus recruitment applicant tracking systems.
+              </p>
+            </div>
+            <div class="d-flex gap-2 text-nowrap">
+              <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-3 d-flex align-items-center gap-2">
+                <i class="fa-solid fa-circle-check"></i> Standard Section Headings
+              </span>
+              <span class="badge bg-info-subtle text-info border border-info-subtle px-3 py-2 rounded-3 d-flex align-items-center gap-2">
+                <i class="fa-solid fa-file-word"></i> DOCX + PDF
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="row g-4">
+      <!-- Left Column: Controls & Template Selection -->
+      <div class="col-lg-5 col-xl-4">
+        <form id="downloadForm" action="{{ url_for('resume_template_download') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="file_uuid" value="{{ file_uuid or '' }}">
+          <input type="hidden" id="selectedTemplateInput" name="template" value="{{ selected_template or 'classic' }}">
+          <input type="hidden" id="selectedFormatInput" name="format" value="docx">
+
+          <!-- 1. Template Gallery -->
+          <div class="card border-0 rounded-4 shadow-sm p-4 bg-white mb-4">
+            <h5 class="fw-bold mb-3 d-flex align-items-center gap-2 text-dark">
+              <i class="fa-solid fa-palette text-primary"></i> 1. Select Template
+            </h5>
+
+            <div class="d-flex flex-column gap-3">
+              {% for tpl in templates %}
+              <div class="template-card p-3 {% if tpl.id == (selected_template or 'classic') %}active{% endif %}"
+                   data-template-id="{{ tpl.id }}"
+                   onclick="selectTemplate('{{ tpl.id }}')">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                  <h6 class="fw-bold text-dark mb-0">{{ tpl.name }}</h6>
+                  <span class="badge rounded-pill {% if tpl.id == 'classic' %}bg-primary{% elif tpl.id == 'compact' %}bg-success{% else %}bg-purple text-dark bg-warning-subtle{% endif %}">
+                    {{ tpl.id|capitalize }}
+                  </span>
+                </div>
+                <p class="text-secondary small mb-2">{{ tpl.description }}</p>
+                <div class="d-flex align-items-center gap-3 small text-muted">
+                  <span><i class="fa-solid fa-font me-1"></i> {{ tpl.font_family_docx }}</span>
+                  <span><i class="fa-solid fa-ruler-horizontal me-1"></i> {{ tpl.margin_inches }}" margins</span>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- 2. Section Selector -->
+          <div class="card border-0 rounded-4 shadow-sm p-4 bg-white mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="fw-bold mb-0 d-flex align-items-center gap-2 text-dark">
+                <i class="fa-solid fa-sliders text-primary"></i> 2. Choose Sections
+              </h5>
+              <button type="button" class="btn btn-sm btn-link text-decoration-none p-0" onclick="toggleAllSections(true)">Select All</button>
+            </div>
+            <p class="text-secondary small mb-3">Uncheck any optional section to omit it cleanly without leaving empty gaps.</p>
+
+            <div class="row g-2">
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="summary" id="sec_summary" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_summary">Summary</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="education" id="sec_education" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_education">Education</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="skills" id="sec_skills" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_skills">Technical Skills</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="experience" id="sec_experience" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_experience">Work Experience</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="projects" id="sec_projects" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_projects">Projects</label>
+                </div>
+              </div>
+              <div class="col-6">
+                <div class="form-check">
+                  <input class="form-check-input section-checkbox" type="checkbox" name="sections" value="certifications" id="sec_certifications" checked onchange="updatePreview()">
+                  <label class="form-check-label small fw-semibold" for="sec_certifications">Certifications</label>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. Download Actions -->
+          <div class="card border-0 rounded-4 shadow-sm p-4 bg-white">
+            <h5 class="fw-bold mb-3 d-flex align-items-center gap-2 text-dark">
+              <i class="fa-solid fa-download text-primary"></i> 3. Download Resume
+            </h5>
+            <p class="text-secondary small mb-3">Both files are compiled on the server on demand without persisting student files.</p>
+
+            <div class="d-grid gap-2">
+              <button type="button" class="btn btn-primary rounded-pill py-2 fw-semibold d-flex align-items-center justify-content-center gap-2 shadow-sm" onclick="triggerDownload('docx')">
+                <i class="fa-solid fa-file-word"></i> Download DOCX (Editable Word)
+              </button>
+              <button type="button" class="btn btn-outline-primary rounded-pill py-2 fw-semibold d-flex align-items-center justify-content-center gap-2" onclick="triggerDownload('pdf')">
+                <i class="fa-solid fa-file-pdf"></i> Download PDF (ATS-Certified)
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <!-- Right Column: Live In-Browser Preview -->
+      <div class="col-lg-7 col-xl-8">
+        <div class="card border-0 rounded-4 shadow-sm bg-white p-4 h-100">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+              <h5 class="fw-bold mb-0 text-dark d-flex align-items-center gap-2">
+                <i class="fa-solid fa-eye text-primary"></i> Live Single-Column Preview
+              </h5>
+              <span class="text-muted small">Real-time preview of the generated document content</span>
+            </div>
+            <div class="badge bg-light text-dark border px-3 py-2 rounded-pill d-flex align-items-center gap-1">
+              <i class="fa-solid fa-circle text-success" style="font-size: 8px;"></i> Live Updates Active
+            </div>
+          </div>
+
+          <div class="preview-container" id="previewContainer">
+            <div id="previewContent">
+              {{ preview_html|safe }}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="container-fluid text-center text-muted py-4 border-top bg-white mt-5">
+    <p class="small mb-0">
+      AI Campus Placement Agent &bull; 100% Client-Safe Single-Column Resume Formatter &bull; No Tables, No Embedded Icons, No Parsing Confusion.
+    </p>
+  </footer>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    let currentTemplate = "{{ selected_template or 'classic' }}";
+    const fileUuid = "{{ file_uuid or '' }}";
+
+    function selectTemplate(tplId) {
+      currentTemplate = tplId;
+      document.getElementById('selectedTemplateInput').value = tplId;
+
+      document.querySelectorAll('.template-card').forEach(card => {
+        if (card.getAttribute('data-template-id') === tplId) {
+          card.classList.add('active');
+        } else {
+          card.classList.remove('active');
+        }
+      });
+
+      updatePreview();
+    }
+
+    function getSelectedSections() {
+      const checked = [];
+      document.querySelectorAll('.section-checkbox:checked').forEach(cb => {
+        checked.push(cb.value);
+      });
+      return checked;
+    }
+
+    function toggleAllSections(status) {
+      document.querySelectorAll('.section-checkbox').forEach(cb => {
+        cb.checked = status;
+      });
+      updatePreview();
+    }
+
+    let debounceTimer = null;
+    function updatePreview() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const sections = getSelectedSections();
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        fetch('/api/resume/preview', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+          },
+          body: JSON.stringify({
+            file_uuid: fileUuid,
+            template: currentTemplate,
+            sections: sections
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.success && data.html) {
+            document.getElementById('previewContent').innerHTML = data.html;
+          }
+        })
+        .catch(err => {
+          console.warn('Failed to fetch preview update:', err);
+        });
+      }, 150);
+    }
+
+    function triggerDownload(format) {
+      document.getElementById('selectedFormatInput').value = format;
+      document.getElementById('downloadForm').submit();
+    }
+  </script>
+</body>
+</html>

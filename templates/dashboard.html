@@ -64,6 +64,9 @@
           <i class="fa-solid fa-arrow-right-from-bracket me-1"></i> Exit Demo
         </a>
         {% endif %}
+        <a href="{{ url_for('resume_templates_gallery') }}" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3" title="Generate ATS-compliant single column resume">
+          <i class="fa-solid fa-file-lines me-1"></i> ATS Resume
+        </a>
         <a href="/download/{{ analysis_id }}" class="btn btn-custom-primary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-download me-1"></i> <span class="d-none d-sm-inline">Download</span> PDF
         </a>

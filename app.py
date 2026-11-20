@@ -568,6 +568,11 @@ def require_login():
         "api_aptitude_weak_topics",
         "verify_two_factor",
         "view_shared_report",
+        "resume_templates_gallery",
+        "resume_templates_gallery_by_uuid",
+        "api_resume_preview",
+        "resume_template_download",
+        "resume_template_download_by_uuid",
     }
 
     user_id = flask_session.get("user_id")
@@ -3796,6 +3801,122 @@ def resume_review_by_uuid(file_uuid: str):
         target_company=review_data.get("target_company", "General"),
         job_description=review_data.get("job_description", "")
     )
+
+
+# ============================================================================
+# ATS RESUME TEMPLATE GALLERY & EXPORT ENDPOINTS (#561)
+# ============================================================================
+
+from utils.resume_generator import (
+    generate_resume_docx,
+    generate_resume_pdf,
+    generate_resume_preview_html,
+    get_available_templates,
+    DEFAULT_SAMPLE_RESUME,
+    TEMPLATES as RESUME_TEMPLATES,
+)
+
+
+@app.route("/resume/templates", methods=["GET"], endpoint="resume_templates_gallery")
+@app.route("/resume/templates/<file_uuid>", methods=["GET"], endpoint="resume_templates_gallery_by_uuid")
+def resume_templates_gallery(file_uuid: Optional[str] = None):
+    """
+    Renders the ATS-friendly Resume Template Gallery (#561).
+    Displays 3 single-column templates (classic, compact, project-focused),
+    section selection toggles, and live in-browser preview.
+    """
+    uuid_param = file_uuid or request.args.get("file_uuid")
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+
+    if not resume_data:
+        # Fallback to realistic demo candidate resume data
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    selected_template = request.args.get("template", "classic").strip().lower()
+    if selected_template not in RESUME_TEMPLATES:
+        selected_template = "classic"
+
+    preview_html = generate_resume_preview_html(resume_data, template=selected_template)
+
+    return render_template(
+        "resume_templates.html",
+        templates=get_available_templates(),
+        selected_template=selected_template,
+        preview_html=preview_html,
+        file_uuid=uuid_param,
+        resume_data=resume_data,
+    )
+
+
+@app.route("/api/resume/preview", methods=["POST"], endpoint="api_resume_preview")
+@csrf.exempt
+def api_resume_preview():
+    """
+    Returns updated HTML preview of the ATS single-column resume (#561)
+    based on selected template and included sections.
+    """
+    data = request.get_json(silent=True) or request.form
+    file_uuid = data.get("file_uuid")
+    template = (data.get("template") or "classic").strip().lower()
+    sections = data.get("sections")
+
+    resume_data = None
+    if file_uuid:
+        resume_data = get_resume_review_cache(file_uuid)
+    if not resume_data:
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    preview_html = generate_resume_preview_html(resume_data, template=template, sections=sections)
+    return jsonify({"success": True, "html": preview_html}), 200
+
+
+@app.route("/resume/download", methods=["POST", "GET"], endpoint="resume_template_download")
+@app.route("/resume/download/<file_uuid>", methods=["POST", "GET"], endpoint="resume_template_download_by_uuid")
+def resume_template_download(file_uuid: Optional[str] = None):
+    """
+    Generates and downloads a clean single-column ATS resume in DOCX or PDF format (#561).
+    Generated in-memory on demand without persisting student files on disk.
+    """
+    params = request.form if request.method == "POST" else request.args
+
+    uuid_param = file_uuid or params.get("file_uuid")
+    fmt = (params.get("format") or "docx").strip().lower()
+    template = (params.get("template") or "classic").strip().lower()
+
+    if request.method == "POST":
+        sections = request.form.getlist("sections") or None
+    else:
+        sections_str = params.get("sections")
+        sections = [s.strip() for s in sections_str.split(",") if s.strip()] if sections_str else None
+
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+    if not resume_data:
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    candidate_name = resume_data.get("candidate_name") or "Candidate"
+    safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", candidate_name).strip("_") or "Resume"
+
+    if fmt == "pdf":
+        file_bytes = generate_resume_pdf(resume_data, template=template, sections=sections)
+        mimetype = "application/pdf"
+        download_name = f"{safe_name}_{template.capitalize()}_ATS_Resume.pdf"
+    else:
+        file_bytes = generate_resume_docx(resume_data, template=template, sections=sections)
+        mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        download_name = f"{safe_name}_{template.capitalize()}_ATS_Resume.docx"
+
+    buffer = io.BytesIO(file_bytes)
+    return send_file(
+        buffer,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=download_name,
+    )
+
 
 
 @app.route("/api/resume/parse-preview", methods=["POST"])
