@@ -263,6 +263,12 @@ from utils.progress_tracker import (
     extract_skills_list,
     extract_weaknesses_list,
 )
+from utils.session_resume_comparator import (
+    compare_resume_versions,
+    store_session_comparison,
+    get_session_comparison,
+    clear_session_comparison,
+)
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
@@ -4380,6 +4386,12 @@ def dashboard(analysis_id: str) -> str:
             "missing_skills": [],
         }
 
+    # Store active resume in session for in-session revision comparisons (#535)
+    flask_session["active_resume_text"] = raw_resume
+    flask_session["active_resume_filename"] = analysis_record.get("resume_filename", "Current_Resume.pdf")
+    flask_session["active_analysis_id"] = analysis_id
+    flask_session["active_target_role"] = analysis_record.get("target_role", "Software Engineer")
+
     # Prepare ATS Format Compatibility (#474)
     try:
         format_compatibility = get_or_compute_format_compatibility(analysis_record)
@@ -4788,6 +4800,246 @@ def api_download_cover_letter():
             as_attachment=True,
             download_name=f"Cover_Letter_{safe_comp}.docx"
         )
+
+
+# ==============================================================================
+# IN-SESSION RESUME REVISION COMPARISON (#535)
+# ==============================================================================
+
+@app.route("/resume/session-compare", methods=["GET", "POST"])
+@app.route("/session-resume-compare", methods=["GET", "POST"])
+def session_resume_compare_view():
+    """
+    In-session side-by-side resume revision comparator (#535).
+    Allows uploading a second version of the resume in the same session.
+    Keeps both versions in memory for the session only with zero database writes.
+    Highlights improvements, regressions, added/removed skills, and added/removed sections.
+    """
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.cookies.get("session")
+        or "default_student_session"
+    )
+
+    if request.method == "GET":
+        comparison = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        active_resume_name = flask_session.get("active_resume_filename", "")
+        active_text_sample = flask_session.get("active_resume_text", "")
+        target_role = flask_session.get("active_target_role", "Software Engineer")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=active_resume_name,
+            active_resume_text_sample=active_text_sample,
+            target_role=target_role
+        )
+
+    # POST Handling
+    try:
+        file_v1 = request.files.get("resume_v1")
+        file_v2 = request.files.get("resume_v2")
+        text_v1 = request.form.get("text_v1", "").strip()
+        text_v2 = request.form.get("text_v2", "").strip()
+        target_role = (request.form.get("target_role") or flask_session.get("active_target_role") or "Software Engineer").strip()
+        job_description = request.form.get("job_description", "").strip()
+        name_v1 = "Version 1"
+        name_v2 = "Version 2"
+
+        # If file_v1 provided, extract text and clean up
+        if file_v1 and file_v1.filename:
+            name_v1 = secure_filename(file_v1.filename)
+            temp_path_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v1_{name_v1}")
+            file_v1.save(temp_path_v1)
+            try:
+                text_v1 = extract_text_from_file(temp_path_v1)
+            finally:
+                if os.path.exists(temp_path_v1):
+                    os.remove(temp_path_v1)
+
+        # If text_v1 not provided, fallback to active session resume
+        if not text_v1 and flask_session.get("active_resume_text"):
+            text_v1 = flask_session["active_resume_text"]
+            name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+        # If file_v2 provided, extract text and clean up
+        if file_v2 and file_v2.filename:
+            name_v2 = secure_filename(file_v2.filename)
+            temp_path_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v2_{name_v2}")
+            file_v2.save(temp_path_v2)
+            try:
+                text_v2 = extract_text_from_file(temp_path_v2)
+            finally:
+                if os.path.exists(temp_path_v2):
+                    os.remove(temp_path_v2)
+
+        if not text_v1:
+            err_msg = "Please provide Version 1 (Baseline) content or upload a baseline resume."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        if not text_v2:
+            err_msg = "Please provide Version 2 (Revised) content to compare against Version 1."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        comparison = compare_resume_versions(
+            text_v1=text_v1,
+            text_v2=text_v2,
+            filename_v1=name_v1,
+            filename_v2=name_v2,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+        # Keep strictly in memory for the session only
+        store_session_comparison(session_key, comparison)
+        flask_session["session_resume_comparison"] = comparison
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "comparison": comparison}), 200
+
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=name_v1,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+    except (ValueError, ScannedPDFError) as ve:
+        err_msg = str(ve)
+        logger.warning(f"Validation error in session resume comparison: {err_msg}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
+    except Exception as exc:
+        logger.error(f"Error in session resume comparison: {exc}")
+        err_msg = f"Failed to compare resume versions: {str(exc)}"
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 500
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
+
+
+@app.route("/resume/session-compare/reset", methods=["GET", "POST"])
+def session_resume_compare_reset():
+    """Resets in-memory comparison state for the current session (#535)."""
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.cookies.get("session")
+        or "default_student_session"
+    )
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    flash("Session comparison reset successfully.", "info")
+    return redirect(url_for("session_resume_compare_view"))
+
+
+@app.route("/api/resume/session-compare", methods=["GET", "POST"])
+def api_session_resume_compare():
+    """
+    REST API endpoint for in-session resume comparison (#535).
+    Keeps both versions in memory for the session only.
+    Returns side-by-side score, detected skills, missing skills, and section changes.
+    """
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.headers.get("X-Session-ID")
+        or "default_student_session"
+    )
+
+    if request.method == "GET":
+        comp = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        if not comp:
+            return jsonify({"status": "success", "has_comparison": False, "comparison": None}), 200
+        return jsonify({"status": "success", "has_comparison": True, "comparison": comp}), 200
+
+    # POST
+    payload = request.get_json(silent=True) or {}
+    file_v1 = request.files.get("resume_v1")
+    file_v2 = request.files.get("resume_v2")
+
+    text_v1 = (payload.get("text_v1") or request.form.get("text_v1") or "").strip()
+    text_v2 = (payload.get("text_v2") or request.form.get("text_v2") or "").strip()
+    name_v1 = payload.get("filename_v1") or request.form.get("filename_v1") or "Version 1"
+    name_v2 = payload.get("filename_v2") or request.form.get("filename_v2") or "Version 2"
+    target_role = payload.get("target_role") or request.form.get("target_role") or flask_session.get("active_target_role", "Software Engineer")
+    job_description = payload.get("job_description") or request.form.get("job_description")
+
+    if file_v1 and file_v1.filename:
+        name_v1 = secure_filename(file_v1.filename)
+        temp_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v1_{name_v1}")
+        file_v1.save(temp_v1)
+        try:
+            text_v1 = extract_text_from_file(temp_v1)
+        finally:
+            if os.path.exists(temp_v1):
+                os.remove(temp_v1)
+
+    if not text_v1 and flask_session.get("active_resume_text"):
+        text_v1 = flask_session["active_resume_text"]
+        name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+    if file_v2 and file_v2.filename:
+        name_v2 = secure_filename(file_v2.filename)
+        temp_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v2_{name_v2}")
+        file_v2.save(temp_v2)
+        try:
+            text_v2 = extract_text_from_file(temp_v2)
+        finally:
+            if os.path.exists(temp_v2):
+                os.remove(temp_v2)
+
+    if not text_v1 or not text_v2:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Both Version 1 and Version 2 resume contents are required for comparison."
+        }), 400
+
+    comparison = compare_resume_versions(
+        text_v1=text_v1,
+        text_v2=text_v2,
+        filename_v1=name_v1,
+        filename_v2=name_v2,
+        target_role=target_role,
+        job_description=job_description
+    )
+
+    store_session_comparison(session_key, comparison)
+    flask_session["session_resume_comparison"] = comparison
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
+@app.route("/api/resume/session-compare/reset", methods=["POST"])
+def api_session_resume_compare_reset():
+    """Resets the in-memory session comparison (#535)."""
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.headers.get("X-Session-ID")
+        or "default_student_session"
+    )
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    return jsonify({"status": "success", "cleared": True}), 200
 
 
 # ==============================================================================

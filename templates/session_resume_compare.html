@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
+  <title>Resume Revision Comparison - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/print.css') }}" rel="stylesheet" media="print">
+</head>
+<body class="bg-light">
+
+  <!-- Top Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Main navigation">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        {% if active_analysis_id %}
+        <a href="/dashboard/{{ active_analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-gauge-high me-1"></i> Dashboard
+        </a>
+        {% endif %}
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5 fade-in">
+    
+    <!-- Hero Banner Card -->
+    <div class="card glass-card p-4 p-md-5 mb-4 border-0 shadow-sm">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+        <div>
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-1 rounded-pill fw-bold text-uppercase small mb-2 d-inline-block">
+            <i class="fa-solid fa-code-compare me-1"></i> In-Session Revision Analyzer (#535)
+          </span>
+          <h2 class="fw-bold mb-1">Resume Revision Comparison</h2>
+          <p class="text-secondary mb-0">
+            Upload a second version of your resume in this session to evaluate whether changes actually helped.
+            Both versions are stored in memory for this session only and will not overwrite your saved database records.
+          </p>
+        </div>
+
+        {% if comparison %}
+        <div class="text-end">
+          <span class="badge bg-{{ comparison.badge_class }} text-white px-3 py-2 rounded-pill fs-6 shadow-sm" id="overallStatusBadge">
+            <i class="fa-solid {{ 'fa-arrow-trend-up' if comparison.overall_status == 'improvement' else ('fa-arrow-trend-down' if comparison.overall_status == 'regression' else 'fa-minus') }} me-1"></i>
+            {{ comparison.badge_text }}
+          </span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Flashed Error / Status Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show rounded-4 mb-4 shadow-sm" role="alert">
+      <i class="fa-solid fa-circle-exclamation me-2"></i> {{ message }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Upload & Revision Form Card -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm">
+      <form method="POST" action="/resume/session-compare" enctype="multipart/form-data" id="sessionCompareForm">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token is defined else '' }}"/>
+        
+        <div class="row g-4">
+          <!-- Column 1: Version 1 (Baseline) -->
+          <div class="col-md-6">
+            <div class="p-3 bg-light rounded-4 border h-100">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="fw-bold text-dark mb-0">
+                  <i class="fa-solid fa-file-lines text-secondary me-2"></i> Version 1 (Baseline)
+                </h5>
+                {% if active_resume_name %}
+                <span class="badge bg-secondary-subtle text-secondary border rounded-pill small">Pre-loaded from session</span>
+                {% endif %}
+              </div>
+              <p class="text-secondary small mb-3">Upload your initial resume, or leave blank to use your active session resume.</p>
+              
+              <div class="mb-3">
+                <label for="resume_v1" class="form-label small fw-semibold text-muted">Upload PDF or DOCX</label>
+                <input class="form-control rounded-pill" type="file" id="resume_v1" name="resume_v1" accept=".pdf,.docx">
+              </div>
+              <div class="mb-2">
+                <label for="text_v1" class="form-label small fw-semibold text-muted">Or Paste Text (Baseline)</label>
+                <textarea class="form-control rounded-3" id="text_v1" name="text_v1" rows="4" placeholder="Paste baseline resume content...">{{ active_resume_text_sample if not comparison else '' }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Column 2: Version 2 (Revised) -->
+          <div class="col-md-6">
+            <div class="p-3 bg-light rounded-4 border h-100">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="fw-bold text-primary mb-0">
+                  <i class="fa-solid fa-file-circle-check text-primary me-2"></i> Version 2 (Revised)
+                </h5>
+                <span class="badge bg-primary-subtle text-primary border rounded-pill small">Target Revision</span>
+              </div>
+              <p class="text-secondary small mb-3">Upload your updated resume with recent modifications, added projects, or skills.</p>
+
+              <div class="mb-3">
+                <label for="resume_v2" class="form-label small fw-semibold text-muted">Upload PDF or DOCX</label>
+                <input class="form-control rounded-pill" type="file" id="resume_v2" name="resume_v2" accept=".pdf,.docx">
+              </div>
+              <div class="mb-2">
+                <label for="text_v2" class="form-label small fw-semibold text-muted">Or Paste Text (Revised)</label>
+                <textarea class="form-control rounded-3" id="text_v2" name="text_v2" rows="4" placeholder="Paste revised resume content with new skills, projects, or sections..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Optional Job Context -->
+        <div class="row g-3 mt-2">
+          <div class="col-md-6">
+            <label for="target_role" class="form-label small fw-semibold text-muted">Target Role Benchmark (Optional)</label>
+            <input type="text" class="form-control rounded-pill px-3" id="target_role" name="target_role" placeholder="e.g. Software Engineer, Backend Developer" value="{{ target_role|default('Software Engineer') }}">
+          </div>
+          <div class="col-md-6">
+            <label for="job_description" class="form-label small fw-semibold text-muted">Job Description / Requirements (Optional)</label>
+            <input type="text" class="form-control rounded-pill px-3" id="job_description" name="job_description" placeholder="Paste job description keywords to evaluate missing skills..." value="{{ job_description|default('') }}">
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-center align-items-center gap-3 mt-4">
+          <button type="submit" class="btn btn-primary rounded-pill px-5 py-2 shadow-sm fw-semibold" id="btnCompareSessionResumes">
+            <i class="fa-solid fa-code-compare me-1"></i> Compare Versions In Session
+          </button>
+          {% if comparison %}
+          <a href="/resume/session-compare/reset" class="btn btn-outline-secondary rounded-pill px-4 py-2" id="btnResetSessionCompare">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset
+          </a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+
+    {% if comparison %}
+    <!-- ===================================================================== -->
+    <!-- COMPARISON RESULTS VIEW -->
+    <!-- ===================================================================== -->
+
+    {% if comparison.is_identical %}
+    <!-- Acceptance Criterion: Identical files show a "no changes found" message -->
+    <div class="alert alert-info border-0 shadow-sm rounded-4 p-4 text-center mb-4" id="identicalFilesAlert" role="alert">
+      <div class="rounded-circle d-flex align-items-center justify-content-center bg-info-subtle text-info mx-auto mb-3" style="width: 64px; height: 64px;">
+        <i class="fa-solid fa-copy fs-2"></i>
+      </div>
+      <h4 class="fw-bold mb-1">No changes found</h4>
+      <p class="text-secondary mb-0 mx-auto" style="max-width: 600px;">
+        Both resume versions contain identical content, structure, and competencies.
+        Make edits (such as adding technical proficiencies, project experience, or certifications) and upload Version 2 again to see side-by-side improvements.
+      </p>
+    </div>
+    {% endif %}
+
+    <!-- 1. Score Side-by-Side Summary -->
+    <div class="row g-4 mb-4" id="scoreComparisonRow">
+      <!-- V1 Score Card -->
+      <div class="col-md-4">
+        <div class="card glass-card p-4 text-center border-0 h-100 shadow-sm">
+          <span class="text-secondary small fw-bold text-uppercase mb-1 d-block">Version 1 (Baseline)</span>
+          <div class="display-5 fw-bold text-dark my-2">{{ comparison.score_v1 }}<span class="fs-6 text-muted">/100</span></div>
+          <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3 py-1 small">
+            <i class="fa-solid fa-file me-1"></i> {{ comparison.filename_v1 }}
+          </span>
+        </div>
+      </div>
+
+      <!-- Score Delta Indicator -->
+      <div class="col-md-4">
+        <div class="card glass-card p-4 text-center border-0 h-100 shadow-sm d-flex flex-column justify-content-center align-items-center">
+          <span class="text-secondary small fw-bold text-uppercase mb-1 d-block">Score Differential</span>
+          <div class="display-6 fw-bold my-2 {{ 'text-success' if comparison.score_delta > 0 else ('text-danger' if comparison.score_delta < 0 else 'text-secondary') }}" id="scoreDeltaDisplay">
+            {{ '+' if comparison.score_delta > 0 else '' }}{{ comparison.score_delta }} pts
+          </div>
+          <span class="badge bg-{{ comparison.badge_class }}-subtle text-{{ comparison.badge_class }} border border-{{ comparison.badge_class }}-subtle rounded-pill px-3 py-1 small fw-bold">
+            <i class="fa-solid {{ 'fa-arrow-trend-up' if comparison.score_delta > 0 else ('fa-arrow-trend-down' if comparison.score_delta < 0 else 'fa-minus') }} me-1"></i>
+            {{ 'Improvement' if comparison.score_delta > 0 else ('Regression' if comparison.score_delta < 0 else 'Unchanged') }}
+          </span>
+        </div>
+      </div>
+
+      <!-- V2 Score Card -->
+      <div class="col-md-4">
+        <div class="card glass-card p-4 text-center border-0 h-100 shadow-sm">
+          <span class="text-primary small fw-bold text-uppercase mb-1 d-block">Version 2 (Revised)</span>
+          <div class="display-5 fw-bold text-primary my-2">{{ comparison.score_v2 }}<span class="fs-6 text-muted">/100</span></div>
+          <span class="badge bg-primary-subtle text-primary rounded-pill px-3 py-1 small">
+            <i class="fa-solid fa-file-circle-check me-1"></i> {{ comparison.filename_v2 }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. Improvements & Regressions Highlight Boxes -->
+    <div class="row g-4 mb-4">
+      <!-- Improvements Column -->
+      <div class="col-md-6">
+        <div class="card glass-card p-4 border-0 h-100 shadow-sm border-start border-success border-4" id="improvementsContainer">
+          <h5 class="fw-bold text-success mb-3 d-flex align-items-center">
+            <i class="fa-solid fa-circle-check me-2"></i> Clearly Marked Improvements
+            <span class="badge bg-success-subtle text-success rounded-pill ms-auto small">{{ comparison.improvements|length }} detected</span>
+          </h5>
+          {% if comparison.improvements %}
+          <ul class="list-unstyled mb-0 small">
+            {% for imp in comparison.improvements %}
+            <li class="mb-2 d-flex align-items-start">
+              <i class="fa-solid fa-arrow-trend-up text-success me-2 mt-1 flex-shrink-0"></i>
+              <span>{{ imp }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-secondary small mb-0 fst-italic">No new improvements detected in this revision iteration.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Regressions Column -->
+      <div class="col-md-6">
+        <div class="card glass-card p-4 border-0 h-100 shadow-sm border-start border-danger border-4" id="regressionsContainer">
+          <h5 class="fw-bold text-danger mb-3 d-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation me-2"></i> Clearly Marked Regressions
+            <span class="badge bg-danger-subtle text-danger rounded-pill ms-auto small">{{ comparison.regressions|length }} detected</span>
+          </h5>
+          {% if comparison.regressions %}
+          <ul class="list-unstyled mb-0 small">
+            {% for reg in comparison.regressions %}
+            <li class="mb-2 d-flex align-items-start">
+              <i class="fa-solid fa-arrow-trend-down text-danger me-2 mt-1 flex-shrink-0"></i>
+              <span>{{ reg }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-success small mb-0">
+            <i class="fa-solid fa-shield-check me-1"></i> No regressions found! No critical skills or sections were omitted.
+          </p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Side-by-Side Detected Skills & Missing Skills -->
+    <div class="row g-4 mb-4">
+      <!-- Detected Skills Comparison -->
+      <div class="col-md-6">
+        <div class="card glass-card p-4 border-0 h-100 shadow-sm">
+          <h5 class="fw-bold text-dark mb-3">
+            <i class="fa-solid fa-wand-magic-sparkles text-primary me-2"></i> Detected Skills Comparison
+          </h5>
+          
+          <!-- Newly Added Skills Highlight -->
+          <div class="mb-3">
+            <span class="fw-semibold small text-success d-block mb-1">
+              <i class="fa-solid fa-circle-plus me-1"></i> Newly Added Skills in V2 (Improvements):
+            </span>
+            <div class="d-flex flex-wrap gap-1" id="addedSkillsBadges">
+              {% for s in comparison.skills_added %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2 small">
+                <i class="fa-solid fa-plus me-1"></i>{{ s }}
+              </span>
+              {% else %}
+              <span class="text-secondary small fst-italic">None</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Removed Skills Highlight -->
+          <div class="mb-3">
+            <span class="fw-semibold small text-danger d-block mb-1">
+              <i class="fa-solid fa-circle-minus me-1"></i> Removed Skills in V2 (Regressions):
+            </span>
+            <div class="d-flex flex-wrap gap-1" id="removedSkillsBadges">
+              {% for s in comparison.skills_removed %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill py-1 px-2 small text-decoration-line-through">
+                <i class="fa-solid fa-minus me-1"></i>{{ s }}
+              </span>
+              {% else %}
+              <span class="text-secondary small fst-italic">None</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Retained Skills -->
+          <div>
+            <span class="fw-semibold small text-secondary d-block mb-1">Retained Skills:</span>
+            <div class="d-flex flex-wrap gap-1">
+              {% for s in comparison.skills_retained %}
+              <span class="badge bg-light text-dark border rounded-pill py-1 px-2 small">{{ s }}</span>
+              {% else %}
+              <span class="text-secondary small fst-italic">None</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Missing Skills Comparison -->
+      <div class="col-md-6">
+        <div class="card glass-card p-4 border-0 h-100 shadow-sm">
+          <h5 class="fw-bold text-dark mb-3">
+            <i class="fa-solid fa-bullseye text-warning me-2"></i> Missing Skills Comparison
+          </h5>
+
+          <!-- Resolved Missing Skills Highlight -->
+          <div class="mb-3">
+            <span class="fw-semibold small text-success d-block mb-1">
+              <i class="fa-solid fa-check-double me-1"></i> Resolved Missing Skills in V2 (Improvements):
+            </span>
+            <div class="d-flex flex-wrap gap-1" id="resolvedMissingSkillsBadges">
+              {% for s in comparison.missing_skills_resolved %}
+              <span class="badge bg-success text-white rounded-pill py-1 px-2 small">
+                <i class="fa-solid fa-check me-1"></i>{{ s }}
+              </span>
+              {% else %}
+              <span class="text-secondary small fst-italic">None</span>
+              {% endfor %}
+            </div>
+          </div>
+
+          <!-- Current Remaining Missing Skills in V2 -->
+          <div>
+            <span class="fw-semibold small text-warning d-block mb-1">Remaining Missing Skills in V2:</span>
+            <div class="d-flex flex-wrap gap-1" id="remainingMissingSkillsBadges">
+              {% for s in comparison.missing_skills_v2 %}
+              <span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill py-1 px-2 small">
+                <i class="fa-solid fa-triangle-exclamation me-1 text-warning"></i>{{ s }}
+              </span>
+              {% else %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill py-1 px-2 small">
+                <i class="fa-solid fa-circle-check me-1"></i> Zero missing skills!
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Highlighted Sections Added or Removed -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="sectionsComparisonCard">
+      <h5 class="fw-bold text-dark mb-3">
+        <i class="fa-solid fa-layer-group text-primary me-2"></i> Resume Sections Added or Removed
+      </h5>
+      <div class="table-responsive">
+        <table class="table table-hover align-middle small mb-0">
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Section Name</th>
+              <th scope="col" class="text-center">Version 1 Status</th>
+              <th scope="col" class="text-center">Version 2 Status</th>
+              <th scope="col" class="text-center">Revision Shift</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for sec_id, v1_info in comparison.sections_v1.items() %}
+            {% set v2_info = comparison.sections_v2.get(sec_id, {}) %}
+            <tr>
+              <td class="fw-semibold text-dark">{{ v1_info.title }}</td>
+              <td class="text-center">
+                {% if v1_info.present %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Present</span>
+                {% else %}
+                <span class="badge bg-light text-muted border rounded-pill">Absent</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if v2_info.present %}
+                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Present</span>
+                {% else %}
+                <span class="badge bg-light text-muted border rounded-pill">Absent</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                {% if v2_info.present and not v1_info.present %}
+                <span class="badge bg-success text-white rounded-pill px-2 py-1">
+                  <i class="fa-solid fa-plus me-1"></i> Added Section (Improvement)
+                </span>
+                {% elif v1_info.present and not v2_info.present %}
+                <span class="badge bg-danger text-white rounded-pill px-2 py-1">
+                  <i class="fa-solid fa-minus me-1"></i> Removed Section (Regression)
+                </span>
+                {% elif v1_info.present and v2_info.present %}
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill px-2 py-1">
+                  Retained
+                </span>
+                {% else %}
+                <span class="text-muted small">Not Included</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  </main>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>
