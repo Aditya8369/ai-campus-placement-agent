@@ -164,6 +164,63 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
+        "/api/analysis/cancel/{task_id}": {
+            "post": {
+                "tags": ["Placement Analysis"],
+                "summary": "Cancel Pending Analysis",
+                "description": "Cancels an in-progress or queued background analysis task, aborting worker processing and cleaning up temporary files.",
+                "operationId": "cancelAnalysisTask",
+                "parameters": [
+                    {
+                        "name": "task_id",
+                        "in": "path",
+                        "required": True,
+                        "description": "Unique identifier of the analysis task to cancel.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Analysis task cancelled successfully.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {"type": "boolean", "example": True},
+                                        "message": {"type": "string", "example": "Analysis task cancelled successfully."},
+                                        "task_id": {"type": "string", "example": "task-4f7b-91c2"},
+                                        "status": {"type": "string", "example": "cancelled"}
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Task already completed or invalid request.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Task not found.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/analysis/stream/{task_id}": {
             "get": {
                 "tags": ["Placement Analysis"],

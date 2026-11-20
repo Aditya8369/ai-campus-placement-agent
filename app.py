@@ -498,6 +498,9 @@ def require_login():
         "api_demo_sample_job_description",
         "download_company_cheat_sheet",
         "verify_two_factor",
+        "api_cancel_analysis",
+        "api_cancel_analysis_alt",
+        "api_cancel_analysis_body",
     }
 
     user_id = flask_session.get("user_id")
@@ -2747,7 +2750,8 @@ def analyze():
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             task = create_analysis_task(
                 company_name=selected_company,
-                resume_filename=resume_filename
+                resume_filename=resume_filename,
+                student_id=student_id
             )
             start_async_analysis(
                 task=task,
@@ -2766,7 +2770,8 @@ def analyze():
                 "task_id": task.task_id,
                 "analysis_id": file_uuid,
                 "stream_url": f"/api/analysis/stream/{task.task_id}",
-                "status_url": f"/api/analysis/status/{task.task_id}"
+                "status_url": f"/api/analysis/status/{task.task_id}",
+                "cancel_url": f"/api/analysis/cancel/{task.task_id}"
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
