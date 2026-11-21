@@ -723,14 +723,39 @@
                   <i class="fa-solid fa-microphone"></i>
                   <span class="d-none d-sm-inline small fw-semibold">Voice Answer</span>
                 </button>
-                <button class="btn btn-custom-primary px-4 rounded-end-3" type="submit" aria-label="Submit interview answer">Submit Answer</button>
+                <button class="btn btn-custom-primary px-4 rounded-end-3" type="submit" id="btnSubmitAnswer" aria-label="Submit interview answer">Submit Answer</button>
               </div>
+              {% set interview_quota = rate_limit_status('interview_eval') %}
               <div class="d-flex justify-content-between align-items-center mt-2 flex-wrap gap-2">
                 <div class="d-flex align-items-center gap-2">
                   <small class="text-muted" id="submitShortcutHint">Press <kbd>Ctrl+Enter</kbd> or <kbd>Cmd+Enter</kbd> to submit. Recommended: 30+ words for complete evaluation.</small>
                   <small id="draftStatusBadge" class="badge bg-light text-secondary border small d-none" aria-live="polite"></small>
                 </div>
-                <small id="wordCountBadge" class="text-secondary fw-semibold">0 words</small>
+                <div class="d-flex align-items-center gap-3">
+                  <div id="interviewRateLimitIndicator" class="small text-muted d-flex align-items-center gap-1"
+                       data-scope="interview_eval"
+                       data-limit="{{ interview_quota.limit }}"
+                       data-remaining="{{ interview_quota.remaining }}"
+                       data-reset-seconds="{{ interview_quota.reset_seconds }}"
+                       aria-live="polite">
+                    <i class="fa-solid fa-gauge-high text-primary"></i>
+                    <span class="rate-limit-text">
+                      <span class="rate-limit-remaining fw-bold text-dark">{{ interview_quota.remaining }}</span>
+                      <span class="rate-limit-label">{{ _t('rate_limit_evaluations_left', 'evaluations left this hour') }}</span>
+                    </span>
+                  </div>
+                  <small id="wordCountBadge" class="text-secondary fw-semibold">0 words</small>
+                </div>
+              </div>
+
+              <div id="interviewRateLimitNotice" class="alert alert-warning border-warning-subtle rounded-3 mt-2 py-2 px-3 small {% if interview_quota.remaining > 0 %}d-none{% endif %}" role="alert" aria-live="polite">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-hourglass-half text-warning fs-5"></i>
+                  <div>
+                    <span id="interviewRateLimitMessage" class="fw-medium">Rate limit reached.</span>
+                    <span id="interviewCountdownWrapper" class="fw-bold ms-1">You can try again in <span id="interviewCountdownTimer">{% if interview_quota.reset_seconds > 0 %}{{ (interview_quota.reset_seconds // 60) }}:{{ "%02d"|format(interview_quota.reset_seconds % 60) }}{% else %}0:00{% endif %}</span></span>
+                  </div>
+                </div>
               </div>
             </form>
           {% endif %}
@@ -1404,6 +1429,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js" integrity="sha384-UcP5/iVWyRzIhnVjcB2o9W1eoYKL5fAhHTRzvFZg8ctOsoAoDeBQyQuyIk+BJ/nh" crossorigin="anonymous"></script>
   <!-- Custom JS -->
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/rate_limit.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/interview.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/bookmarks.js') }}"></script>
   <!-- Vercel Web Analytics -->

@@ -75,10 +75,10 @@
         {{ message|default("You have temporarily exceeded the request rate limit for this action.") }}
       </p>
 
-      {% if retry_hint %}
-      <div class="alert alert-warning border-warning-subtle d-inline-flex align-items-center gap-2 justify-content-center py-2 px-4 mb-4 mx-auto">
+      {% if retry_hint or retry_after_seconds %}
+      <div class="alert alert-warning border-warning-subtle d-inline-flex align-items-center gap-2 justify-content-center py-2 px-4 mb-4 mx-auto" role="alert" aria-live="polite">
         <i class="fa-regular fa-clock"></i>
-        <strong id="retryHintDisplay">{{ retry_hint }}</strong>
+        <strong id="retryHintDisplay">{% if retry_after_seconds %}You can try again in {{ (retry_after_seconds // 60) }}:{{ "%02d"|format(retry_after_seconds % 60) }}{% else %}{{ retry_hint }}{% endif %}</strong>
       </div>
       {% endif %}
 
@@ -135,17 +135,19 @@
     {% if retry_after_seconds %}
     let remainingSeconds = {{ retry_after_seconds }};
     const hintElem = document.getElementById("retryHintDisplay");
+    function formatTime(secs) {
+      const m = Math.floor(secs / 60);
+      const s = String(secs % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
     if (hintElem && remainingSeconds > 0) {
       const timer = setInterval(() => {
         remainingSeconds--;
         if (remainingSeconds <= 0) {
           clearInterval(timer);
           hintElem.textContent = "Cooldown expired. You may try again now.";
-        } else if (remainingSeconds < 60) {
-          hintElem.textContent = `try again in ${remainingSeconds} ${remainingSeconds === 1 ? 'second' : 'seconds'}`;
         } else {
-          const mins = Math.ceil(remainingSeconds / 60);
-          hintElem.textContent = `try again in ${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+          hintElem.textContent = `You can try again in ${formatTime(remainingSeconds)}`;
         }
       }, 1000);
     }
