@@ -496,47 +496,4 @@ def api_reset_checklist():
     }), 200
 
 
-# ---------------------------------------------------------
-# Drag-and-Drop File Validation Feedback Endpoint (#507)
-# ---------------------------------------------------------
-@api_bp.route("/api/upload/validate-file", methods=["POST"])
-def api_validate_upload_file():
-    """
-    Validates uploaded or dropped resume files and returns plain-language feedback (#507).
-    Guarantees no unsupported or corrupted files proceed to heavy AI analysis pipelines.
-    """
-    from utils.file_validation_service import file_validation_service
-
-    has_existing = request.form.get("has_existing_file", "false").lower() in ("true", "1")
-    existing_filename = request.form.get("existing_filename")
-
-    if "file" in request.files:
-        uploaded_file = request.files["file"]
-        filename = uploaded_file.filename or "unknown"
-        file_bytes = uploaded_file.read()
-    else:
-        payload = request.get_json(silent=True) or request.form
-        filename = payload.get("filename", "resume.txt")
-        content = payload.get("content", "")
-        file_bytes = content.encode("utf-8") if isinstance(content, str) else b""
-
-    if not filename:
-        return jsonify({
-            "success": False,
-            "error": "No file or filename provided for validation."
-        }), 400
-
-    feedback = file_validation_service.validate_file(
-        filename=filename,
-        file_bytes=file_bytes,
-        has_existing_file=has_existing,
-        existing_filename=existing_filename
-    )
-
-    return jsonify({
-        "success": feedback["is_valid"],
-        "feedback": feedback
-    }), 200
-
-
 
