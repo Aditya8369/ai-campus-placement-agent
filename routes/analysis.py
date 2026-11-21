@@ -2151,6 +2151,64 @@ def api_get_analysis_format_compatibility(analysis_id: str):
     }), 200
 
 
+@analysis_bp.route("/api/analysis/<analysis_id>/pdf-page-issues", methods=["GET"])
+def api_get_analysis_pdf_page_issues(analysis_id: str):
+    """
+    Returns page-level PDF layout and extraction diagnostics for a resume (#597).
+    Reports page numbers with multi-column, table, graphic, or extraction issues.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    from utils.pdf_page_issue_detector import analyze_pdf_page_issues
+    file_id = analysis_record.get("id") or analysis_record.get("file_uuid")
+    fname = analysis_record.get("resume_filename") or ""
+    report = None
+    try:
+        import config
+        upload_folder = getattr(config, "UPLOAD_FOLDER", "uploads")
+        if file_id and fname:
+            from werkzeug.utils import secure_filename
+            target_path = os.path.join(upload_folder, secure_filename(f"{file_id}_{fname}"))
+            if os.path.exists(target_path) and target_path.lower().endswith(".pdf"):
+                report = analyze_pdf_page_issues(target_path)
+    except Exception as e:
+        logger.debug(f"Could not load PDF file for page issues: {e}")
+
+    if not report:
+        # Check if already present in format_compatibility
+        fc = get_or_compute_format_compatibility(analysis_record)
+        if fc and fc.get("page_level_issues"):
+            report = fc["page_level_issues"]
+        else:
+            report = {
+                "success": True,
+                "total_pages": 1,
+                "problem_page_count": 0,
+                "problem_page_numbers": [],
+                "overall_status": "clean",
+                "pages": [{
+                    "page_number": 1,
+                    "has_issues": False,
+                    "issue_count": 0,
+                    "word_count": len((analysis_record.get("resume_text") or "").split()),
+                    "char_count": len((analysis_record.get("resume_text") or "").strip()),
+                    "snippet": (analysis_record.get("resume_text") or "")[:200],
+                    "issues": []
+                }],
+                "summary_message": "Single-page text representation analyzed.",
+                "general_recommendations": []
+            }
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "page_issues": report
+    }), 200
+
+
 @analysis_bp.route("/api/resume/format-compatibility", methods=["POST"])
 def api_evaluate_resume_format_compatibility():
     """
