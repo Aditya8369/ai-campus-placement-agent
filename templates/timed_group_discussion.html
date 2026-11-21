@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Timed Group Discussion Round - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-stopwatch-fill text-danger me-2"></i>Timed Group Discussion Round
+      </h2>
+      <p class="text-muted mb-0">Simulate high-pressure multi-phase campus GD rounds with strict countdown timers.</p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge bg-secondary fs-6" id="gdPhaseBadge">{{ session.phase_title }}</span>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Active Stage & Timer Column -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+        <!-- Topic Banner -->
+        <div class="p-3 bg-light rounded-3 border-start border-4 border-primary mb-3">
+          <small class="text-muted text-uppercase fw-bold">Discussion Topic</small>
+          <h5 class="mb-0 mt-1 fw-bold text-dark">{{ session.topic }}</h5>
+        </div>
+
+        {% if session.current_phase != 'completed' %}
+        <!-- Timer Display -->
+        <div class="text-center py-3 my-2 border rounded-3 bg-light" id="timerBox">
+          <div class="text-muted small text-uppercase fw-semibold">Phase Time Remaining</div>
+          <div class="display-3 fw-bold text-danger my-1" id="phaseCountdown">{{ session.remaining_seconds }}s</div>
+          <small class="text-secondary" id="timerAdvice">Be ready to wrap up your thoughts before the clock hits zero!</small>
+        </div>
+
+        <!-- Participant Input Area -->
+        <div class="mb-3 mt-3">
+          <label class="form-label fw-semibold" id="inputLabel">
+            {% if session.current_phase == 'preparation' %}
+            Jot down your key arguments, facts, and structure:
+            {% elif session.current_phase == 'opening' %}
+            Type your 60-second opening statement:
+            {% elif session.current_phase == 'discussion' %}
+            Add your rebuttal and cross-discussion arguments:
+            {% elif session.current_phase == 'conclusion' %}
+            Summarize the group consensus and closing remark:
+            {% endif %}
+          </label>
+          <textarea class="form-control" id="gdInputText" rows="6" placeholder="Type your contribution here..."></textarea>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center">
+          <span class="text-muted small"><i class="bi bi-clock me-1"></i>Advance when you finish or let the timer guide you.</span>
+          <button type="button" class="btn btn-primary px-4" id="btnNextPhase" onclick="advancePhase()">
+            Submit & Next Phase &rarr;
+          </button>
+        </div>
+        {% else %}
+        <!-- Completed Round Score -->
+        <div class="text-center py-4">
+          <i class="bi bi-trophy-fill text-warning display-4 mb-2"></i>
+          <h4 class="fw-bold">Group Discussion Round Completed!</h4>
+          <div class="display-5 fw-bold text-primary mb-3">{{ session.overall_score }} / 100</div>
+
+          <div class="text-start bg-light p-3 rounded-3 mb-4">
+            <h6 class="fw-bold mb-2">Performance Assessment:</h6>
+            <div class="row g-2 mb-3">
+              <div class="col-4">
+                <div class="p-2 border rounded bg-white text-center">
+                  <small class="text-muted d-block">Opening</small>
+                  <strong>{{ session.evaluation_feedback.opening_score or 20 }}/25</strong>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="p-2 border rounded bg-white text-center">
+                  <small class="text-muted d-block">Discussion</small>
+                  <strong>{{ session.evaluation_feedback.discussion_score or 30 }}/40</strong>
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="p-2 border rounded bg-white text-center">
+                  <small class="text-muted d-block">Conclusion</small>
+                  <strong>{{ session.evaluation_feedback.conclusion_score or 20 }}/25</strong>
+                </div>
+              </div>
+            </div>
+
+            <h6 class="fw-semibold small text-dark mb-1">Key Strengths:</h6>
+            <ul class="small text-secondary ps-3 mb-2">
+              {% for s in session.evaluation_feedback.strengths %}
+              <li>{{ s }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <a href="{{ url_for('interview.interview_view') }}" class="btn btn-outline-primary">
+            Return to Mock Interview Hub
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Stepper & Rules Column -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-header bg-white py-3">
+          <h5 class="mb-0 fw-bold">Rounds Flow</h5>
+        </div>
+        <div class="card-body p-0">
+          <ul class="list-group list-group-flush small">
+            <li class="list-group-item d-flex justify-content-between align-items-center {{ 'fw-bold bg-light' if session.current_phase == 'preparation' else '' }}">
+              <span>1. Preparation & Brainstorming</span>
+              <span class="badge bg-secondary">60s</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center {{ 'fw-bold bg-light' if session.current_phase == 'opening' else '' }}">
+              <span>2. Opening Remarks & Stance</span>
+              <span class="badge bg-secondary">90s</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center {{ 'fw-bold bg-light' if session.current_phase == 'discussion' else '' }}">
+              <span>3. Rebuttal & Discussion</span>
+              <span class="badge bg-secondary">180s</span>
+            </li>
+            <li class="list-group-item d-flex justify-content-between align-items-center {{ 'fw-bold bg-light' if session.current_phase == 'conclusion' else '' }}">
+              <span>4. Final Summary & Closing</span>
+              <span class="badge bg-secondary">60s</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let remainingSeconds = {{ session.remaining_seconds }};
+const currentPhase = '{{ session.current_phase }}';
+const sessionId = {{ session.id }};
+
+if (currentPhase !== 'completed' && remainingSeconds > 0) {
+  const timerElem = document.getElementById('phaseCountdown');
+  const timerInterval = setInterval(() => {
+    remainingSeconds--;
+    if (timerElem) timerElem.textContent = remainingSeconds + 's';
+
+    if (remainingSeconds <= 15) {
+      timerElem.classList.add('text-danger', 'animate-pulse');
+    }
+
+    if (remainingSeconds <= 0) {
+      clearInterval(timerInterval);
+      alert('Time is up for this phase! Transitioning to next round...');
+      advancePhase();
+    }
+  }, 1000);
+}
+
+async function advancePhase() {
+  const txt = document.getElementById('gdInputText')?.value || '';
+  try {
+    const res = await fetch(`/api/group-discussion/timed/${sessionId}/advance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contribution_text: txt })
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      alert('Failed to advance phase.');
+    }
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+</script>
+{% endblock %}
