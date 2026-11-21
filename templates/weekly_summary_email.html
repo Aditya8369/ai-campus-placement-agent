@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Weekly Preparation Summary Email Preview - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-envelope-paper-fill text-primary me-2"></i>Weekly Preparation Digest
+      </h2>
+      <p class="text-muted mb-0">Preview the automated weekly summary delivered to your inbox every Sunday.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary" onclick="triggerTestEmail()">
+        <i class="bi bi-send-fill me-1"></i> Send Test Digest
+      </button>
+      <button class="btn btn-outline-secondary" onclick="toggleSubscription()">
+        {{ 'Unsubscribe' if summary.is_subscribed else 'Subscribe' }}
+      </button>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center">
+      <div>
+        <h6 class="fw-bold mb-1">Status: {{ 'Active Subscription' if summary.is_subscribed else 'Unsubscribed' }}</h6>
+        <small class="text-muted">Target Recipient: <strong>{{ summary.recipient_email }}</strong></small>
+      </div>
+      <span class="badge bg-primary-subtle text-primary fs-6">{{ summary.week_label }}</span>
+    </div>
+  </div>
+
+  <!-- Email Render Frame -->
+  <div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold">Live Digest Preview</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="p-3 bg-light border-bottom">
+        <small class="text-muted font-monospace">Subject: Your Weekly Placement Prep Summary [{{ summary.week_label }}]</small>
+      </div>
+      <div class="p-4">
+        {{ email_html|safe }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function triggerTestEmail() {
+  try {
+    const res = await fetch('/api/weekly-summary/send-now', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      alert(`Digest logged and sent to ${data.recipient}`);
+    } else {
+      alert(data.message || 'Failed to dispatch email.');
+    }
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+
+async function toggleSubscription() {
+  const current = {{ 'true' if summary.is_subscribed else 'false' }};
+  try {
+    const res = await fetch('/api/weekly-summary/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_enabled: !current })
+    });
+    if (res.ok) location.reload();
+  } catch (e) {
+    alert('Failed to update preference.');
+  }
+}
+</script>
+{% endblock %}
