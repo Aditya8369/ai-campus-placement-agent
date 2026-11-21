@@ -182,6 +182,25 @@ def init_db() -> None:
             )
         """)
 
+        # Table 9b: Store drive day practical readiness checklist progress (#651)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS drive_day_checklists (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL DEFAULT 'default_student',
+                application_id TEXT DEFAULT '',
+                drive_mode TEXT NOT NULL DEFAULT 'offline',
+                checklist_json TEXT NOT NULL,
+                total_items INTEGER NOT NULL DEFAULT 0,
+                completed_items INTEGER NOT NULL DEFAULT 0,
+                completion_percentage REAL NOT NULL DEFAULT 0.0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, application_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_day_checklists_student ON drive_day_checklists(student_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_day_checklists_app ON drive_day_checklists(application_id)")
+
         # Table 10: Store coding assessment submission history (#194)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS coding_submissions (
@@ -6659,6 +6678,17 @@ from db.tracker import (
     update_job_application,
     update_job_application_status,
     update_saved_job_description,
+    get_drive_day_checklist,
+    save_drive_day_checklist,
+    toggle_checklist_item,
+    add_checklist_item,
+    rename_checklist_item,
+    delete_checklist_item,
+    reset_drive_day_checklist,
+    switch_drive_mode,
+    calculate_checklist_progress,
+    get_default_checklist,
+    get_dashboard_drive_reminder,
 )
 
 logger = logging.getLogger(__name__)

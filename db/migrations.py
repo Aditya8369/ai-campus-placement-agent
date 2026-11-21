@@ -637,6 +637,27 @@ def _migration_008_reports_and_sharing(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_secure_shared_reports_student ON secure_shared_reports (student_id, created_at DESC)")
 
 
+def _migration_009_drive_day_checklists(cursor: sqlite3.Cursor) -> None:
+    """Create drive_day_checklists table with mode and progress indexing (#651)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS drive_day_checklists (
+            id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL DEFAULT 'default_student',
+            application_id TEXT DEFAULT '',
+            drive_mode TEXT NOT NULL DEFAULT 'offline',
+            checklist_json TEXT NOT NULL,
+            total_items INTEGER NOT NULL DEFAULT 0,
+            completed_items INTEGER NOT NULL DEFAULT 0,
+            completion_percentage REAL NOT NULL DEFAULT 0.0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(student_id, application_id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_day_checklists_student ON drive_day_checklists(student_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_drive_day_checklists_app ON drive_day_checklists(application_id)")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -647,6 +668,7 @@ MIGRATIONS: List[Migration] = [
     Migration("006_tokens_and_streaks", "Create email/password reset tokens, activity log, student streaks, feedback", _migration_006_tokens_and_streaks),
     Migration("007_monitoring_and_practice", "Create analysis cache, aptitude, gd attempts, gemini logs, telemetry", _migration_007_monitoring_and_practice),
     Migration("008_reports_and_sharing", "Create shared reports and view logs for mentor reviews", _migration_008_reports_and_sharing),
+    Migration("009_drive_day_checklists", "Create drive_day_checklists table with mode and progress indexing", _migration_009_drive_day_checklists),
 ]
 
 

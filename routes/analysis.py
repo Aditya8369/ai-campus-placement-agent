@@ -1422,8 +1422,17 @@ def dashboard(analysis_id: str) -> str:
             "checks": []
         }
 
+    # Drive Day Checklist Reminder (#651)
+    drive_reminder = None
+    try:
+        from utils.drive_day_checklist import get_dashboard_drive_reminder
+        drive_reminder = get_dashboard_drive_reminder(student_id)
+    except Exception as dr_err:
+        logger.warning(f"Error checking drive day reminder for dashboard: {dr_err}")
+
     return render_template(
         "dashboard.html",
+        drive_reminder=drive_reminder,
         analysis=analysis_record,
         analysis_id=analysis_id,
         is_cached=is_cached,

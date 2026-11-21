@@ -51,6 +51,9 @@
             </li>
           </ul>
         </div>
+        <a href="/drive-day-checklist" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm">
+          <i class="fa-solid fa-clipboard-check me-1"></i> Drive Checklist
+        </a>
         <button class="btn btn-outline-primary btn-sm rounded-pill px-3 shadow-sm" data-bs-toggle="modal" data-bs-target="#importApplicationsModal">
           <i class="fa-solid fa-file-import me-1"></i> Import CSV
         </button>
@@ -417,6 +420,10 @@
                   <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 btn-view-app me-1" data-app-id="{{ app.id }}" title="View application details" aria-label="View application details for {{ app.company_name }}">
                     <i class="fa-solid fa-eye"></i>
                   </button>
+                  <!-- Drive Day Checklist -->
+                  <a href="/drive-day-checklist?application_id={{ app.id }}" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 me-1" title="Drive Day Checklist" aria-label="Drive Day Checklist for {{ app.company_name }}">
+                    <i class="fa-solid fa-clipboard-check"></i>
+                  </a>
                   <!-- Edit Details -->
                   <button class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 btn-edit-app me-1" data-app-id="{{ app.id }}" title="Edit application" aria-label="Edit application for {{ app.company_name }}">
                     <i class="fa-solid fa-pen-to-square"></i>
