@@ -33,6 +33,7 @@ from flask import (
     stream_with_context,
     current_app,
     g,
+    abort,
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -1052,6 +1053,274 @@ def api_reset_checklist():
     }), 200
 
 
+from utils.drive_day_checklist import (
+    get_drive_day_checklist,
+    save_drive_day_checklist,
+    toggle_checklist_item,
+    add_checklist_item,
+    rename_checklist_item,
+    delete_checklist_item,
+    reset_drive_day_checklist,
+    switch_drive_mode,
+    calculate_checklist_progress,
+    get_default_checklist,
+    get_dashboard_drive_reminder,
+)
+
+
+def _verify_drive_day_application_ownership(
+    student_id: str, application_id: Optional[str]
+) -> Tuple[bool, Optional[Dict[str, Any]], Optional[Tuple[Dict[str, Any], int]]]:
+    """
+    Verifies that the target application_id exists and is owned by the student (#651).
+    Returns: (is_valid, application_record, error_tuple)
+    """
+    clean_id = (application_id or "").strip()
+    if not clean_id:
+        return True, None, None
+
+    # Check if application belongs to the student
+    app_record = get_job_application_by_id(clean_id, student_id)
+    if app_record:
+        return True, app_record, None
+
+    # Check if application exists for another student
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT student_id FROM job_applications WHERE id = ?", (clean_id,))
+        row = cursor.fetchone()
+        if row:
+            if row["student_id"] != student_id:
+                return False, None, ({"success": False, "error": "Access denied: application does not belong to you."}, 403)
+            return True, None, None
+        return False, None, ({"success": False, "error": "Application not found."}, 404)
+    finally:
+        conn.close()
+
+
+@tracker_bp.route("/drive-day-checklist", methods=["GET"])
+def drive_day_checklist_view():
+    """
+    Drive Day Practical Readiness Checklist View (#651).
+    Displays categorized checklist across Documents, Technical Setup, Logistics, and Mindset
+    for Offline and Online recruitment drives with tick-off progress and application binding.
+    """
+    student_id = request.args.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (request.args.get("application_id") or "").strip()
+    drive_mode = request.args.get("mode")
+
+    attached_app = None
+    if application_id:
+        valid, app_rec, err = _verify_drive_day_application_ownership(student_id, application_id)
+        if not valid:
+            status_code = err[1] if err else 403
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", ""):
+                return jsonify(err[0]), status_code
+            if status_code == 403:
+                abort(403)
+            flash("Target application record not found.", "warning")
+            return redirect(url_for("tracker.drive_day_checklist_view"))
+        attached_app = app_rec
+
+    checklist_info = get_drive_day_checklist(
+        student_id=student_id,
+        application_id=application_id if attached_app else None,
+        drive_mode=drive_mode,
+    )
+    user_apps = get_job_applications(student_id=student_id)
+
+    if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest" or "application/json" in request.headers.get("Accept", ""):
+        return jsonify({
+            "success": True,
+            "checklist": checklist_info,
+            "attached_application": attached_app,
+        }), 200
+
+    return render_template(
+        "drive_day_checklist.html",
+        checklist=checklist_info,
+        attached_application=attached_app,
+        applications=user_apps,
+        selected_application_id=application_id if attached_app else "",
+        active_mode=checklist_info.get("drive_mode", "offline"),
+        student_id=student_id,
+    )
+
+
+@tracker_bp.route("/api/drive-day-checklist/toggle", methods=["POST"])
+def api_toggle_drive_day_checklist():
+    """Toggles completion state of a drive day checklist item (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    item_id = str(payload.get("item_id") or "").strip()
+    completed = bool(payload.get("completed", False))
+
+    if not item_id:
+        return jsonify({"success": False, "error": "Item ID is required."}), 400
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = toggle_checklist_item(
+            student_id=student_id,
+            application_id=application_id or None,
+            item_id=item_id,
+            completed=completed,
+        )
+        return jsonify({"success": True, "data": updated}), 200
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error toggling drive day checklist item: {e}")
+        return jsonify({"success": False, "error": "Internal error toggling item."}), 500
+
+
+@tracker_bp.route("/api/drive-day-checklist/item", methods=["POST"])
+def api_add_drive_day_checklist_item():
+    """Adds a new custom item to a checklist group (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    category = (payload.get("category") or "documents").strip()
+    text = (payload.get("text") or "").strip()
+
+    if not text:
+        return jsonify({"success": False, "error": "Item description is required."}), 400
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = add_checklist_item(
+            student_id=student_id,
+            application_id=application_id or None,
+            category=category,
+            text=text,
+        )
+        return jsonify({"success": True, "data": updated}), 201
+    except Exception as e:
+        logger.error(f"Error adding drive day checklist item: {e}")
+        return jsonify({"success": False, "error": "Internal error adding item."}), 500
+
+
+@tracker_bp.route("/api/drive-day-checklist/item", methods=["PUT"])
+@tracker_bp.route("/api/drive-day-checklist/rename", methods=["POST"])
+def api_rename_drive_day_checklist_item():
+    """Renames an existing drive day checklist item (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    item_id = str(payload.get("item_id") or "").strip()
+    text = (payload.get("text") or "").strip()
+
+    if not item_id or not text:
+        return jsonify({"success": False, "error": "Item ID and new description are required."}), 400
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = rename_checklist_item(
+            student_id=student_id,
+            application_id=application_id or None,
+            item_id=item_id,
+            new_text=text,
+        )
+        return jsonify({"success": True, "data": updated}), 200
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error renaming drive day checklist item: {e}")
+        return jsonify({"success": False, "error": "Internal error renaming item."}), 500
+
+
+@tracker_bp.route("/api/drive-day-checklist/item", methods=["DELETE"])
+@tracker_bp.route("/api/drive-day-checklist/delete", methods=["POST"])
+def api_delete_drive_day_checklist_item():
+    """Deletes an item from the drive day checklist (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    item_id = str(payload.get("item_id") or "").strip()
+
+    if not item_id:
+        return jsonify({"success": False, "error": "Item ID is required."}), 400
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = delete_checklist_item(
+            student_id=student_id,
+            application_id=application_id or None,
+            item_id=item_id,
+        )
+        return jsonify({"success": True, "data": updated}), 200
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 404
+    except Exception as e:
+        logger.error(f"Error deleting drive day checklist item: {e}")
+        return jsonify({"success": False, "error": "Internal error deleting item."}), 500
+
+
+@tracker_bp.route("/api/drive-day-checklist/reset", methods=["POST"])
+def api_reset_drive_day_checklist():
+    """Resets the drive day checklist to default items for specified drive mode (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    mode = (payload.get("mode") or "offline").strip().lower()
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = reset_drive_day_checklist(
+            student_id=student_id,
+            application_id=application_id or None,
+            drive_mode=mode,
+        )
+        return jsonify({"success": True, "message": "Checklist reset to defaults.", "data": updated}), 200
+    except Exception as e:
+        logger.error(f"Error resetting drive day checklist: {e}")
+        return jsonify({"success": False, "error": "Internal error resetting checklist."}), 500
+
+
+@tracker_bp.route("/api/drive-day-checklist/mode", methods=["POST"])
+def api_switch_drive_day_checklist_mode():
+    """Switches drive mode (offline or online) for the checklist (#651)."""
+    payload = request.get_json(silent=True) or {}
+    student_id = payload.get("student_id") or flask_session.get("user_id") or "default_student"
+    application_id = (payload.get("application_id") or "").strip()
+    mode = (payload.get("mode") or "offline").strip().lower()
+    reload_defaults = bool(payload.get("reload_defaults", False))
+
+    valid, _, err = _verify_drive_day_application_ownership(student_id, application_id)
+    if not valid:
+        return jsonify(err[0]), err[1]
+
+    try:
+        updated = switch_drive_mode(
+            student_id=student_id,
+            application_id=application_id or None,
+            new_drive_mode=mode,
+            reload_defaults=reload_defaults,
+        )
+        return jsonify({"success": True, "data": updated}), 200
+    except Exception as e:
+        logger.error(f"Error switching drive day checklist mode: {e}")
+        return jsonify({"success": False, "error": "Internal error switching mode."}), 500
+
+
+
 @tracker_bp.route("/applications/import/preview", methods=["POST"])
 def preview_application_import():
     student_id = _application_import_student_id()
@@ -1522,5 +1791,64 @@ def api_ctc_calculator_compare():
             "success": False,
             "error": "Failed to calculate salary offer comparison. Please review your inputs."
         }), 500
+
+
+# =====================================================================
+# DAILY PLACEMENT PREPARATION DASHBOARD ROUTES (#512)
+# =====================================================================
+
+@tracker_bp.route("/daily-prep", methods=["GET"])
+def daily_prep_view():
+    """Renders the Daily Placement Preparation Hub ('Today' view) (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    dashboard_data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return render_template("daily_prep_dashboard.html", data=dashboard_data)
+
+
+@tracker_bp.route("/api/daily-prep/dashboard", methods=["GET"])
+def api_get_daily_prep_dashboard():
+    """Retrieves JSON representation of today's prep tasks and deadlines (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return jsonify({"status": "success", "dashboard": data}), 200
+
+
+@tracker_bp.route("/api/daily-prep/tasks/<int:task_id>/toggle", methods=["POST"])
+def api_toggle_daily_task(task_id):
+    """Toggles task completion status (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    try:
+        updated = DailyPrepDashboardService.toggle_task(student_id, task_id)
+        return jsonify({"status": "success", "task": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/daily-prep/tasks", methods=["POST"])
+def api_add_custom_daily_task():
+    """Adds a custom task for today (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    title = payload.get("title")
+    if not title:
+        return jsonify({"status": "error", "message": "Task title is required"}), 400
+
+    task = DailyPrepDashboardService.add_custom_daily_task(
+        user_id=student_id,
+        title=title,
+        task_type=payload.get("task_type", "custom")
+    )
+    return jsonify({"status": "success", "task": task}), 201
+
 
 

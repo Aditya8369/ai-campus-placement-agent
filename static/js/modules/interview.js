@@ -12,6 +12,7 @@
 
 import { escapeHtml, showToast, getCsrfToken } from "./utils.js";
 import { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./common.js";
+import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
 
 export { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup };
 
@@ -1307,6 +1308,26 @@ export function initMockInterview() {
       document.getElementById("retryAlertBanner")?.remove();
       chatForm.removeAttribute("data-is-retry");
       submitBtn.innerHTML = "Submit Answer";
+
+      syncRateLimitFromHeaders(response, "interview_eval");
+
+      if (response.status === 429 || result.retry_after || result.retry_after_seconds) {
+        handleRateLimitResponse(response, result, {
+          scope: "interview_eval",
+          submitButton: submitBtn,
+          countdownElement: document.getElementById("interviewCountdownTimer"),
+          noticeContainer: document.getElementById("interviewRateLimitNotice"),
+          messageElement: document.getElementById("interviewRateLimitMessage"),
+        });
+        const retryTime = formatCountdown(result.retry_after || result.retry_after_seconds || 60);
+        appendChatBubble(
+          result.message || `You have temporarily exceeded the request rate limit. You can try again in ${retryTime}.`,
+          "agent"
+        );
+        resetInputs();
+        submitBtn.disabled = true;
+        return;
+      }
 
       if (result.error) {
         appendChatBubble(`Error: ${result.error}`, "agent");

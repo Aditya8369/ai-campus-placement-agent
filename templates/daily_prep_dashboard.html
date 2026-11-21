@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Today's Daily Placement Preparation Dashboard - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-calendar-check-fill text-primary me-2"></i>Daily Placement Prep Hub
+      </h2>
+      <p class="text-muted mb-0">Your daily action plan for {{ data.date }} — maintain momentum toward placement day.</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTaskModal">
+        <i class="bi bi-plus-circle me-1"></i> Add Custom Task
+      </button>
+    </div>
+  </div>
+
+  <!-- Focus Banner -->
+  <div class="alert alert-primary border-0 shadow-sm rounded-3 d-flex align-items-center gap-3 p-3 mb-4">
+    <i class="bi bi-compass-fill fs-2 text-primary"></i>
+    <div>
+      <div class="fw-bold">Today's Strategic Focus</div>
+      <div class="small text-secondary">{{ data.daily_focus_tip }}</div>
+    </div>
+  </div>
+
+  <!-- Progress Bar & Summary Stats -->
+  <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="fw-bold mb-0">Daily Preparation Progress</h5>
+      <span class="badge bg-primary fs-6">{{ data.completion_pct }}% Complete</span>
+    </div>
+    <div class="progress mb-3" style="height: 12px;">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: {{ data.completion_pct }}%;" aria-valuenow="{{ data.completion_pct }}" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+    <div class="d-flex justify-content-between text-muted small">
+      <span>Completed {{ data.completed_tasks }} of {{ data.total_tasks }} milestones today</span>
+      {% if data.all_done %}
+      <span class="text-success fw-bold"><i class="bi bi-trophy-fill me-1"></i>All done for today!</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Today's Tasks -->
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm rounded-3 mb-4">
+        <div class="card-header bg-white py-3">
+          <h5 class="mb-0 fw-bold"><i class="bi bi-check2-square text-primary me-2"></i>Today's Habits & Action Items</h5>
+        </div>
+        <div class="card-body p-0">
+          <ul class="list-group list-group-flush">
+            {% for task in data.tasks %}
+            <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+              <div class="d-flex align-items-center gap-3">
+                <input class="form-check-input fs-5" type="checkbox" id="task-chk-{{ task.id }}" {{ 'checked' if task.is_completed else '' }} onchange="toggleDailyTask({{ task.id }})">
+                <label class="form-check-label {{ 'text-decoration-line-through text-muted' if task.is_completed else 'fw-semibold text-dark' }}" for="task-chk-{{ task.id }}">
+                  {{ task.title }}
+                </label>
+              </div>
+              <span class="badge bg-light text-dark border">{{ task.task_type|capitalize }}</span>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <!-- Spaced Repetition Due Today -->
+      <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 fw-bold"><i class="bi bi-repeat text-danger me-2"></i>Coding Reviews Due Today</h5>
+          <a href="/coding-practice/spaced-repetition" class="btn btn-sm btn-link text-decoration-none">Review Queue &rarr;</a>
+        </div>
+        <div class="card-body p-0">
+          {% if data.due_coding_problems %}
+          <ul class="list-group list-group-flush">
+            {% for prob in data.due_coding_problems %}
+            <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+              <div>
+                <span class="fw-semibold text-dark">{{ prob.title }}</span>
+                <span class="badge bg-light text-muted border ms-2">{{ prob.topic }}</span>
+              </div>
+              <a href="/coding-practice/spaced-repetition" class="btn btn-sm btn-outline-primary">Review Now</a>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-check-circle-fill text-success fs-3 d-block mb-2"></i>
+            <span>No spaced repetition coding problems due today!</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Deadlines Sidebar -->
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm rounded-3">
+        <div class="card-header bg-white py-3">
+          <h5 class="mb-0 fw-bold text-danger"><i class="bi bi-clock-fill me-2"></i>Urgent Deadlines (3 Days)</h5>
+        </div>
+        <div class="card-body p-0">
+          {% if data.upcoming_deadlines %}
+          <ul class="list-group list-group-flush">
+            {% for dl in data.upcoming_deadlines %}
+            <li class="list-group-item py-3">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <h6 class="mb-1 fw-bold">{{ dl.company }}</h6>
+                  <small class="text-muted d-block">{{ dl.role }}</small>
+                </div>
+                <span class="badge bg-danger-subtle text-danger">{{ dl.deadline }}</span>
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-shield-check text-primary fs-3 d-block mb-2"></i>
+            <span class="small">No urgent job application deadlines due in the next 3 days.</span>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add Custom Task -->
+<div class="modal fade" id="addTaskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">Add Custom Daily Task</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Task Description</label>
+          <input type="text" class="form-control" id="customTaskTitle" placeholder="e.g. Read 2 chapters of Designing Data-Intensive Applications">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="submitCustomTask()">Add Task</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function toggleDailyTask(taskId) {
+  try {
+    const res = await fetch(`/api/daily-prep/tasks/${taskId}/toggle`, { method: 'POST' });
+    if (res.ok) location.reload();
+  } catch (e) {
+    alert('Failed to update task.');
+  }
+}
+
+async function submitCustomTask() {
+  const title = document.getElementById('customTaskTitle').value.trim();
+  if (!title) return alert('Please enter a task title.');
+  try {
+    const res = await fetch('/api/daily-prep/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title })
+    });
+    if (res.ok) location.reload();
+    else alert('Error adding task.');
+  } catch (e) {
+    alert('Failed to add custom task.');
+  }
+}
+</script>
+{% endblock %}
