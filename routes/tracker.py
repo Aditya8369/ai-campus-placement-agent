@@ -1524,3 +1524,75 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# LEARNING RESOURCE COMPLETION TRACKER ROUTES (#520)
+# =====================================================================
+
+@tracker_bp.route("/tracker/learning-resources", methods=["GET"])
+def learning_resource_tracker_view():
+    """Renders the student learning resource completion tracker (#520)."""
+    from utils.resource_completion_service import LearningResourceTrackerService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
+    return render_template("learning_resource_tracker.html", data=metrics)
+
+
+@tracker_bp.route("/api/learning-resources", methods=["GET"])
+def api_get_learning_resources():
+    """Returns all learning resources and progress metrics in JSON format (#520)."""
+    from utils.resource_completion_service import LearningResourceTrackerService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
+    return jsonify({"status": "success", "data": metrics}), 200
+
+
+@tracker_bp.route("/api/learning-resources", methods=["POST"])
+def api_add_learning_resource():
+    """Adds a custom learning resource (#520)."""
+    from utils.resource_completion_service import LearningResourceTrackerService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    title = payload.get("title")
+    if not title:
+        return jsonify({"status": "error", "message": "title is required"}), 400
+
+    resource = LearningResourceTrackerService.add_custom_resource(
+        user_id=student_id,
+        title=title,
+        category=payload.get("category", "General"),
+        url=payload.get("url"),
+        estimated_minutes=int(payload.get("estimated_minutes", 45))
+    )
+    return jsonify({"status": "success", "resource": resource}), 201
+
+
+@tracker_bp.route("/api/learning-resources/<resource_id>/status", methods=["POST"])
+def api_update_learning_resource_status(resource_id):
+    """Updates the status and time invested for a learning resource (#520)."""
+    from utils.resource_completion_service import LearningResourceTrackerService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    new_status = payload.get("status")
+    if not new_status:
+        return jsonify({"status": "error", "message": "status is required"}), 400
+
+    try:
+        updated = LearningResourceTrackerService.update_resource_status(
+            user_id=student_id,
+            resource_id=resource_id,
+            status=new_status,
+            time_spent_minutes=payload.get("time_spent_minutes"),
+            notes=payload.get("notes")
+        )
+        return jsonify({"status": "success", "resource": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
