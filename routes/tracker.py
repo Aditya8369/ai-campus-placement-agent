@@ -1525,74 +1525,85 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# LEARNING RESOURCE COMPLETION TRACKER ROUTES (#520)
+# APPLICATION STAGE HISTORY & FILTERS ROUTES (#517)
 # =====================================================================
 
-@tracker_bp.route("/tracker/learning-resources", methods=["GET"])
-def learning_resource_tracker_view():
-    """Renders the student learning resource completion tracker (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
+@tracker_bp.route("/tracker/stage-history", methods=["GET"])
+def application_stage_filters_view():
+    """Renders application stage history timeline with filters (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
     student_id = flask_session.get("user_id") or "default_student"
 
-    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
-    return render_template("learning_resource_tracker.html", data=metrics)
+    company = request.args.get("company")
+    stage = request.args.get("stage")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    stagnant_only = request.args.get("stagnant_only") == "true"
 
-
-@tracker_bp.route("/api/learning-resources", methods=["GET"])
-def api_get_learning_resources():
-    """Returns all learning resources and progress metrics in JSON format (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
-    return jsonify({"status": "success", "data": metrics}), 200
-
-
-@tracker_bp.route("/api/learning-resources", methods=["POST"])
-def api_add_learning_resource():
-    """Adds a custom learning resource (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
-    student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
-
-    title = payload.get("title")
-    if not title:
-        return jsonify({"status": "error", "message": "title is required"}), 400
-
-    resource = LearningResourceTrackerService.add_custom_resource(
+    result = ApplicationStageFilterService.filter_stage_history(
         user_id=student_id,
-        title=title,
-        category=payload.get("category", "General"),
-        url=payload.get("url"),
-        estimated_minutes=int(payload.get("estimated_minutes", 45))
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date,
+        stagnant_only=stagnant_only
     )
-    return jsonify({"status": "success", "resource": resource}), 201
+
+    return render_template(
+        "application_stage_filters.html",
+        result=result,
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date
+    )
 
 
-@tracker_bp.route("/api/learning-resources/<resource_id>/status", methods=["POST"])
-def api_update_learning_resource_status(resource_id):
-    """Updates the status and time invested for a learning resource (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
+@tracker_bp.route("/api/stage-history/filter", methods=["GET"])
+def api_filter_stage_history():
+    """Returns filtered application stage history in JSON format (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    company = request.args.get("company")
+    stage = request.args.get("stage")
+    start_date = request.args.get("start_date")
+    end_date = request.args.get("end_date")
+    stagnant_only = request.args.get("stagnant_only") == "true"
+
+    result = ApplicationStageFilterService.filter_stage_history(
+        user_id=student_id,
+        company=company,
+        stage=stage,
+        start_date=start_date,
+        end_date=end_date,
+        stagnant_only=stagnant_only
+    )
+    return jsonify({"status": "success", "result": result}), 200
+
+
+@tracker_bp.route("/api/stage-history/transition", methods=["POST"])
+def api_record_stage_transition():
+    """Logs a new application stage transition (#517)."""
+    from utils.application_stage_filters import ApplicationStageFilterService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    new_status = payload.get("status")
-    if not new_status:
-        return jsonify({"status": "error", "message": "status is required"}), 400
+    app_id = payload.get("application_id")
+    to_stage = payload.get("to_stage")
+    if not app_id or not to_stage:
+        return jsonify({"status": "error", "message": "application_id and to_stage are required"}), 400
 
-    try:
-        updated = LearningResourceTrackerService.update_resource_status(
-            user_id=student_id,
-            resource_id=resource_id,
-            status=new_status,
-            time_spent_minutes=payload.get("time_spent_minutes"),
-            notes=payload.get("notes")
-        )
-        return jsonify({"status": "success", "resource": updated}), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    record = ApplicationStageFilterService.record_stage_transition(
+        user_id=student_id,
+        application_id=int(app_id),
+        company_name=payload.get("company_name", "Company"),
+        job_title=payload.get("job_title", "Software Engineer"),
+        to_stage=to_stage,
+        from_stage=payload.get("from_stage"),
+        notes=payload.get("notes", "")
+    )
+    return jsonify({"status": "success", "record": record}), 201
 
 
 
