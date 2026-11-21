@@ -534,6 +534,272 @@ export function initFormUpload() {
     }, 1000);
   }
 
+  const DRAFT_STORAGE_KEY = "placement_analysis_form_draft_v1";
+  const DRAFT_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+  const draftRestoredAlert = document.getElementById("draftRestoredAlert");
+  const draftRestoredTimeText = document.getElementById("draftRestoredTimeText");
+  const btnDiscardDraft = document.getElementById("btnDiscardDraft");
+  const btnCloseDraftAlert = document.getElementById("btnCloseDraftAlert");
+  const analysisDraftStatusBadge = document.getElementById("analysisDraftStatusBadge");
+  const analysisDraftStatusText = document.getElementById("analysisDraftStatusText");
+  const resumeDraftPrivacyWarning = document.getElementById("resumeDraftPrivacyWarning");
+
+  let draftIndicatorTimeout = null;
+  let draftAutosaveDebounce = null;
+
+  function setDraftBadge(message, isVisible = true) {
+    if (!analysisDraftStatusBadge) return;
+    if (draftIndicatorTimeout) clearTimeout(draftIndicatorTimeout);
+    if (!isVisible) {
+      analysisDraftStatusBadge.classList.add("d-none");
+      return;
+    }
+    if (analysisDraftStatusText) analysisDraftStatusText.textContent = message;
+    analysisDraftStatusBadge.classList.remove("d-none");
+    analysisDraftStatusBadge.classList.add("d-inline-flex");
+    draftIndicatorTimeout = setTimeout(() => {
+      analysisDraftStatusBadge.classList.add("d-none");
+      analysisDraftStatusBadge.classList.remove("d-inline-flex");
+    }, 3000);
+  }
+
+  function getFormDraftPayload() {
+    const resumeTextEl = document.getElementById("resumeTextInput");
+    const jdInputEl = document.getElementById("jdInput");
+    const roleSelectEl = document.getElementById("roleTemplateSelect");
+    const companySelectEl = document.getElementById("companySelect");
+    const studentIdEl = document.getElementById("studentIdInput");
+    const analysisModeEl = document.getElementById("analysisModeInput");
+    const reviewSwitchEl = document.getElementById("reviewStepSwitch");
+    const consentCheckEl = document.getElementById("privacyConsentCheck");
+
+    const batchSelected = [];
+    const batchChecks = uploadForm.querySelectorAll(".company-pill-check:checked");
+    batchChecks.forEach((c) => batchSelected.push(c.value));
+
+    const activeTab = document.querySelector("#resumeTab .nav-link.active");
+    const activeTabId = activeTab ? activeTab.id : "pdf-tab";
+
+    return {
+      timestamp: Date.now(),
+      active_tab: activeTabId,
+      resume_text: resumeTextEl ? resumeTextEl.value : "",
+      job_description: jdInputEl ? jdInputEl.value : "",
+      role_template: roleSelectEl ? roleSelectEl.value : "",
+      company: companySelectEl ? companySelectEl.value : "General",
+      student_id: studentIdEl ? studentIdEl.value : "",
+      analysis_mode: analysisModeEl ? analysisModeEl.value : "role",
+      batch_mode: batchModeSwitch ? batchModeSwitch.checked : false,
+      batch_companies: batchSelected,
+      review_step: reviewSwitchEl ? reviewSwitchEl.checked : false,
+      privacy_consent: consentCheckEl ? consentCheckEl.checked : false,
+    };
+  }
+
+  function hasSubstantialDraftContent(draft) {
+    if (!draft) return false;
+    const hasResumeText = (draft.resume_text || "").trim().length > 0;
+    const hasJd = (draft.job_description || "").trim().length > 0;
+    const hasRole = Boolean(draft.role_template);
+    const hasCustomCompany = draft.company && draft.company !== "General";
+    const hasStudentId = (draft.student_id || "").trim().length > 0;
+    const hasBatch = Boolean(draft.batch_mode);
+    return hasResumeText || hasJd || hasRole || hasCustomCompany || hasStudentId || hasBatch;
+  }
+
+  function saveFormDraft() {
+    try {
+      const draft = getFormDraftPayload();
+      // Update pasted resume privacy warning
+      if (resumeDraftPrivacyWarning) {
+        if ((draft.resume_text || "").trim().length > 10) {
+          resumeDraftPrivacyWarning.classList.remove("d-none");
+        } else {
+          resumeDraftPrivacyWarning.classList.add("d-none");
+        }
+      }
+
+      if (!hasSubstantialDraftContent(draft)) {
+        // Nothing meaningful to store; remove draft if present
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        return;
+      }
+
+      localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+      setDraftBadge("Draft saved locally");
+    } catch (err) {
+      console.warn("Unable to save analysis form draft to localStorage:", err);
+    }
+  }
+
+  function clearFormDraft() {
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      if (draftRestoredAlert) draftRestoredAlert.classList.add("d-none");
+      if (analysisDraftStatusBadge) analysisDraftStatusBadge.classList.add("d-none");
+      if (resumeDraftPrivacyWarning) resumeDraftPrivacyWarning.classList.add("d-none");
+    } catch (err) {
+      console.warn("Unable to clear analysis form draft:", err);
+    }
+  }
+
+  function restoreFormDraft() {
+    try {
+      const raw = localStorage.getItem(DRAFT_STORAGE_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (!draft || !draft.timestamp) return;
+
+      // Expire draft if older than 48 hours
+      if (Date.now() - draft.timestamp > DRAFT_MAX_AGE_MS) {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        return;
+      }
+
+      if (!hasSubstantialDraftContent(draft)) {
+        localStorage.removeItem(DRAFT_STORAGE_KEY);
+        return;
+      }
+
+      // Restore form fields
+      const resumeTextEl = document.getElementById("resumeTextInput");
+      if (resumeTextEl && draft.resume_text) {
+        resumeTextEl.value = draft.resume_text;
+        resumeTextEl.dispatchEvent(new Event("input", { bubbles: true }));
+        if (resumeDraftPrivacyWarning) resumeDraftPrivacyWarning.classList.remove("d-none");
+      }
+
+      const jdInputEl = document.getElementById("jdInput");
+      if (jdInputEl && draft.job_description) {
+        jdInputEl.value = draft.job_description;
+        jdInputEl.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+
+      const roleSelectEl = document.getElementById("roleTemplateSelect");
+      if (roleSelectEl && draft.role_template) {
+        roleSelectEl.value = draft.role_template;
+        roleSelectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+
+      const companySelectEl = document.getElementById("companySelect");
+      if (companySelectEl && draft.company) {
+        companySelectEl.value = draft.company;
+      }
+
+      const studentIdEl = document.getElementById("studentIdInput");
+      if (studentIdEl && draft.student_id) {
+        studentIdEl.value = draft.student_id;
+      }
+
+      const analysisModeEl = document.getElementById("analysisModeInput");
+      const btnModeRole = document.getElementById("btnModeRole");
+      const btnModeJd = document.getElementById("btnModeJd");
+      const roleSection = document.getElementById("roleTemplateSection");
+      const customJdSection = document.getElementById("customJdSection");
+
+      if (draft.analysis_mode === "jd" && btnModeJd) {
+        btnModeJd.click();
+      } else if (draft.analysis_mode === "role" && btnModeRole) {
+        btnModeRole.click();
+      }
+
+      if (batchModeSwitch && draft.batch_mode) {
+        batchModeSwitch.checked = true;
+        batchModeSwitch.dispatchEvent(new Event("change"));
+        if (draft.batch_companies && Array.isArray(draft.batch_companies)) {
+          const companyPills = document.querySelectorAll(".company-pill-badge");
+          companyPills.forEach((pill) => {
+            const chk = pill.querySelector(".company-pill-check");
+            if (chk) {
+              chk.checked = draft.batch_companies.includes(chk.value);
+              if (chk.checked) pill.classList.add("active");
+              else pill.classList.remove("active");
+            }
+          });
+        }
+      }
+
+      const reviewSwitchEl = document.getElementById("reviewStepSwitch");
+      if (reviewSwitchEl && typeof draft.review_step === "boolean") {
+        reviewSwitchEl.checked = draft.review_step;
+      }
+
+      const consentCheckEl = document.getElementById("privacyConsentCheck");
+      if (consentCheckEl && draft.privacy_consent) {
+        consentCheckEl.checked = true;
+      }
+
+      if (draft.active_tab === "text-tab") {
+        const textTab = document.getElementById("text-tab");
+        if (textTab) {
+          if (window.bootstrap && window.bootstrap.Tab) {
+            window.bootstrap.Tab.getOrCreateInstance(textTab).show();
+          } else {
+            textTab.click();
+          }
+        }
+      }
+
+      // Display draft restored banner
+      if (draftRestoredAlert) {
+        if (draftRestoredTimeText) {
+          const savedDate = new Date(draft.timestamp);
+          const timeFormatted = savedDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          draftRestoredTimeText.textContent = `Unfinished inputs saved at ${timeFormatted} were restored. You can continue editing or discard the draft.`;
+        }
+        draftRestoredAlert.classList.remove("d-none");
+      }
+      setDraftBadge("Draft restored");
+    } catch (err) {
+      console.warn("Unable to restore analysis form draft:", err);
+    }
+  }
+
+  // Restore on initialization
+  restoreFormDraft();
+
+  // Setup draft auto-save listeners on inputs
+  const draftInputSelectors = "#resumeTextInput, #jdInput, #studentIdInput, #companySelect, #roleTemplateSelect, #privacyConsentCheck, #reviewStepSwitch";
+  uploadForm.querySelectorAll(draftInputSelectors).forEach((inputEl) => {
+    const evtType = (inputEl.tagName === "SELECT" || inputEl.type === "checkbox") ? "change" : "input";
+    inputEl.addEventListener(evtType, () => {
+      if (draftAutosaveDebounce) clearTimeout(draftAutosaveDebounce);
+      draftAutosaveDebounce = setTimeout(saveFormDraft, 800);
+    });
+  });
+
+  // Periodic autosave every 4 seconds when user is actively editing
+  const draftPeriodicInterval = setInterval(saveFormDraft, 4000);
+
+  // Before unload listener to save last-second edits
+  window.addEventListener("beforeunload", () => {
+    saveFormDraft();
+  });
+
+  // Discard draft button handler
+  if (btnDiscardDraft) {
+    btnDiscardDraft.addEventListener("click", () => {
+      clearFormDraft();
+      if (btnClearForm) {
+        btnClearForm.click();
+      }
+    });
+  }
+
+  if (btnCloseDraftAlert && draftRestoredAlert) {
+    btnCloseDraftAlert.addEventListener("click", () => {
+      draftRestoredAlert.classList.add("d-none");
+    });
+  }
+
+  // Hook clearFormDraft to window for tests and consumers
+  if (typeof window !== "undefined") {
+    window.clearAnalysisFormDraft = clearFormDraft;
+    window.saveAnalysisFormDraft = saveFormDraft;
+    window.restoreAnalysisFormDraft = restoreFormDraft;
+  }
+
   const batchModeSwitch = document.getElementById("batchModeSwitch");
   const singleCompanyContainer = document.getElementById("singleCompanyContainer");
   const batchCompanyContainer = document.getElementById("batchCompanyContainer");
@@ -677,6 +943,8 @@ export function initFormUpload() {
           formResetAlert.classList.add("d-none");
         }, 4000);
       }
+
+      clearFormDraft();
     });
   }
 
@@ -779,6 +1047,7 @@ export function initFormUpload() {
           if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
           if (progressTitle) progressTitle.textContent = "Comparison Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
+          clearFormDraft();
           setTimeout(() => {
             window.location.href = data.redirect_url;
           }, 500);
@@ -881,6 +1150,7 @@ export function initFormUpload() {
         }
         if (progressTitle) progressTitle.textContent = "Analysis Complete!";
         if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your comprehensive placement dashboard...";
+        clearFormDraft();
 
         if (eventSource) {
           eventSource.close();
@@ -1001,6 +1271,7 @@ export function initFormUpload() {
           if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
           if (progressTitle) progressTitle.textContent = "Analysis Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
+          clearFormDraft();
           setTimeout(() => {
             window.location.href = data.redirect_url;
           }, 400);

@@ -113,6 +113,18 @@ def create_app(config_override=None) -> Flask:
     app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
     app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+    app.config["DISPLAY_TIMEZONE"] = getattr(config, "DISPLAY_TIMEZONE", "Asia/Kolkata")
+    app.config["TIMEZONE"] = getattr(config, "TIMEZONE", "Asia/Kolkata")
+
+    # Register shared Indian localization and formatting filters (#650)
+    app.jinja_env.filters["format_date_ist"] = format_date_ist
+    app.jinja_env.filters["format_datetime_ist"] = format_datetime_ist
+    app.jinja_env.filters["format_time_ist"] = format_time_ist
+    app.jinja_env.filters["format_inr"] = format_inr
+    app.jinja_env.filters["format_lpa"] = format_lpa
+    app.jinja_env.filters["format_crore"] = format_crore
+    app.jinja_env.filters["format_inr_words"] = format_inr_words
+
     app.config["ALLOWED_EMAIL_DOMAINS"] = getattr(config, "ALLOWED_EMAIL_DOMAINS", "")
 
     # CAPTCHA Protection Settings (#653)
