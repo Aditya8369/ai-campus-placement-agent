@@ -215,7 +215,17 @@ def create_app(config_override=None) -> Flask:
             "api_aptitude_weak_topics",
             "verify_two_factor",
             "view_shared_report",
-            "api_rate_limit_status",
+            "resume_templates_gallery",
+            "resume_templates_gallery_by_uuid",
+            "api_resume_preview",
+            "resume_template_download",
+            "resume_template_download_by_uuid",
+            "session_resume_compare_view",
+            "session_resume_compare_reset",
+            "api_session_resume_compare",
+            "api_session_resume_compare_reset",
+            "api_get_role_templates",
+            "api_get_role_template_by_id",
         }
 
         user_id = flask_session.get("user_id")

@@ -112,21 +112,24 @@ from utils.logger_config import (
     register_sensitive_text,
     clear_sensitive_texts,
 )
-from utils.roadmap_calendar import generate_roadmap_ics
-from agents.roadmap_agent import generate_learning_roadmap, roadmap_agent
-from utils.session_resume_comparator import (
-    compare_resume_versions,
-    get_session_comparison,
-    store_session_comparison,
-    clear_session_comparison,
+from utils.role_template_service import (
+    load_role_templates,
+    get_role_template_by_id,
+    format_role_template_as_job_description,
 )
 from utils.resume_generator import (
-    DEFAULT_SAMPLE_RESUME,
-    TEMPLATES,
     get_available_templates,
-    generate_resume_preview_html,
     generate_resume_docx,
     generate_resume_pdf,
+    generate_resume_preview_html,
+    DEFAULT_SAMPLE_RESUME,
+    TEMPLATES as RESUME_TEMPLATES,
+)
+from utils.session_resume_comparator import (
+    store_session_comparison,
+    get_session_comparison,
+    clear_session_comparison,
+    compare_resume_versions,
 )
 from .common import *
 
@@ -141,9 +144,11 @@ def index() -> str:
     """
     companies_list = get_available_companies()
     student_id = flask_session.get("user_id")
+    role_templates = load_role_templates()
     return render_template(
         "index.html",
         companies=companies_list,
+        role_templates=role_templates,
         saved_job_descriptions=get_saved_job_descriptions(student_id) if student_id else [],
         walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
         walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
@@ -187,6 +192,24 @@ def analyze():
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
         student_id = flask_session["user_id"]
+
+        # Support selecting a role template instead of pasting a job description (#646)
+        selected_role_id = (
+            request.form.get("role_template")
+            or request.form.get("selected_role")
+            or request.form.get("role_id")
+        )
+        if selected_role_id:
+            role_template = get_role_template_by_id(selected_role_id)
+            if role_template:
+                flask_session["active_target_role"] = role_template["name"]
+                if (
+                    not job_description
+                    or request.form.get("input_mode") == "role"
+                    or request.form.get("analysis_mode") == "role"
+                ):
+                    job_description = format_role_template_as_job_description(role_template)
+
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -417,6 +440,24 @@ def start_analysis_async():
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
         student_id = flask_session["user_id"]
+
+        # Support selecting a role template instead of pasting a job description (#646)
+        selected_role_id = (
+            request.form.get("role_template")
+            or request.form.get("selected_role")
+            or request.form.get("role_id")
+        )
+        if selected_role_id:
+            role_template = get_role_template_by_id(selected_role_id)
+            if role_template:
+                flask_session["active_target_role"] = role_template["name"]
+                if (
+                    not job_description
+                    or request.form.get("input_mode") == "role"
+                    or request.form.get("analysis_mode") == "role"
+                ):
+                    job_description = format_role_template_as_job_description(role_template)
+
         if len(job_description) > 15000:
             job_description = job_description[:15000]
 
@@ -4460,67 +4501,373 @@ def api_get_analysis_feedback(analysis_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# =====================================================================
-# CUSTOM RESUME COMPARISON LABELS ROUTES (#523)
-# =====================================================================
+# ==============================================================================
+# ROLE SKILL TEMPLATES API (#646)
+# ==============================================================================
 
-@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["GET"])
-def api_get_resume_label(resume_id):
-    """Retrieves custom version nickname and notes for a resume (#523)."""
-    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
-    student_id = flask_session.get("user_id") or "default_student"
+@analysis_bp.route("/api/role-templates", methods=["GET"])
+def api_get_role_templates():
+    """
+    Returns the list of predefined campus placement role templates (#646).
+    """
+    templates = load_role_templates()
+    return jsonify({
+        "success": True,
+        "count": len(templates),
+        "templates": templates
+    }), 200
 
-    label_data = ResumeComparisonLabelsService.get_label(student_id, resume_id)
-    return jsonify({"status": "success", "label": label_data}), 200
+
+@analysis_bp.route("/api/role-templates/<role_id>", methods=["GET"])
+def api_get_role_template_by_id(role_id: str):
+    """
+    Returns details for a specific role template by id (#646).
+    """
+    template = get_role_template_by_id(role_id)
+    if not template:
+        return jsonify({
+            "success": False,
+            "error": f"Role template '{role_id}' not found."
+        }), 404
+    return jsonify({
+        "success": True,
+        "template": template
+    }), 200
 
 
-@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["POST"])
-def api_set_resume_label(resume_id):
-    """Assigns or updates a custom version label/nickname (#523)."""
-    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
-    student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
+# ==============================================================================
+# IN-SESSION RESUME REVISION COMPARISON (#535)
+# ==============================================================================
 
-    custom_label = payload.get("custom_label")
-    if not custom_label:
-        return jsonify({"status": "error", "message": "custom_label is required"}), 400
+def _get_session_comparator_key() -> str:
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.headers.get("X-Session-ID")
+    )
+    if not session_key:
+        if "_session_comparator_key" not in flask_session:
+            flask_session["_session_comparator_key"] = f"anon_{secrets.token_hex(8)}"
+        session_key = flask_session["_session_comparator_key"]
+    return str(session_key)
 
-    color_tag = payload.get("color_tag", "primary")
-    change_notes = payload.get("change_notes", "")
 
-    try:
-        updated = ResumeComparisonLabelsService.set_label(
-            user_id=student_id,
-            resume_id=resume_id,
-            custom_label=custom_label,
-            color_tag=color_tag,
-            change_notes=change_notes
+@analysis_bp.route("/session-resume-compare", methods=["GET", "POST"])
+@analysis_bp.route("/resume/session-compare", methods=["GET", "POST"])
+def session_resume_compare_view():
+    """
+    In-session side-by-side resume revision comparator (#535).
+    Allows uploading a second version of the resume in the same session.
+    Keeps both versions in memory for the session only with zero database writes.
+    Highlights improvements, regressions, added/removed skills, and added/removed sections.
+    """
+    session_key = _get_session_comparator_key()
+
+    if request.method == "GET":
+        comparison = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        active_resume_name = flask_session.get("active_resume_filename", "")
+        active_text_sample = flask_session.get("active_resume_text", "")
+        target_role = flask_session.get("active_target_role", "Software Engineer")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=active_resume_name,
+            active_resume_text_sample=active_text_sample,
+            target_role=target_role
         )
-        return jsonify({"status": "success", "label": updated}), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+
+    # POST Handling
+    try:
+        file_v1 = request.files.get("resume_v1")
+        file_v2 = request.files.get("resume_v2")
+        text_v1 = request.form.get("text_v1", "").strip()
+        text_v2 = request.form.get("text_v2", "").strip()
+        target_role = (request.form.get("target_role") or flask_session.get("active_target_role") or "Software Engineer").strip()
+        job_description = request.form.get("job_description", "").strip()
+        name_v1 = "Version 1"
+        name_v2 = "Version 2"
+
+        # If file_v1 provided, extract text and clean up
+        if file_v1 and file_v1.filename:
+            name_v1 = secure_filename(file_v1.filename)
+            temp_path_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v1_{name_v1}")
+            file_v1.save(temp_path_v1)
+            try:
+                text_v1 = extract_text_from_file(temp_path_v1)
+            finally:
+                if os.path.exists(temp_path_v1):
+                    os.remove(temp_path_v1)
+
+        # If text_v1 not provided, fallback to active session resume
+        if not text_v1 and flask_session.get("active_resume_text"):
+            text_v1 = flask_session["active_resume_text"]
+            name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+        # If file_v2 provided, extract text and clean up
+        if file_v2 and file_v2.filename:
+            name_v2 = secure_filename(file_v2.filename)
+            temp_path_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v2_{name_v2}")
+            file_v2.save(temp_path_v2)
+            try:
+                text_v2 = extract_text_from_file(temp_path_v2)
+            finally:
+                if os.path.exists(temp_path_v2):
+                    os.remove(temp_path_v2)
+
+        if not text_v1:
+            err_msg = "Please provide Version 1 (Baseline) content or upload a baseline resume."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        if not text_v2:
+            err_msg = "Please provide Version 2 (Revised) content to compare against Version 1."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        comparison = compare_resume_versions(
+            text_v1=text_v1,
+            text_v2=text_v2,
+            filename_v1=name_v1,
+            filename_v2=name_v2,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+        # Keep strictly in memory for the session only
+        store_session_comparison(session_key, comparison)
+        flask_session["session_resume_comparison"] = comparison
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "comparison": comparison}), 200
+
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=name_v1,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+    except (ValueError, ScannedPDFError) as ve:
+        err_msg = str(ve)
+        logger.warning(f"Validation error in session resume comparison: {err_msg}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
+    except Exception as exc:
+        logger.error(f"Error in session resume comparison: {exc}")
+        err_msg = f"Failed to compare resume versions: {str(exc)}"
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 500
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
 
 
-@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["DELETE"])
-def api_delete_resume_label(resume_id):
-    """Deletes custom label, reverting to default (#523)."""
-    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
-    student_id = flask_session.get("user_id") or "default_student"
+@analysis_bp.route("/resume/session-compare/reset", methods=["GET", "POST"])
+def session_resume_compare_reset():
+    """Resets in-memory comparison state for the current session (#535)."""
+    session_key = _get_session_comparator_key()
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    flash("Session comparison reset successfully.", "info")
+    return redirect(url_for("session_resume_compare_view"))
 
-    deleted = ResumeComparisonLabelsService.delete_label(student_id, resume_id)
-    return jsonify({"status": "success", "deleted": deleted}), 200
+
+@analysis_bp.route("/api/resume/session-compare", methods=["GET", "POST"])
+def api_session_resume_compare():
+    """
+    REST API endpoint for in-session resume comparison (#535).
+    Keeps both versions in memory for the session only.
+    Returns side-by-side score, detected skills, missing skills, and section changes.
+    """
+    session_key = _get_session_comparator_key()
+
+    if request.method == "GET":
+        comp = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        if not comp:
+            return jsonify({"status": "success", "has_comparison": False, "comparison": None}), 200
+        return jsonify({"status": "success", "has_comparison": True, "comparison": comp}), 200
+
+    # POST
+    payload = request.get_json(silent=True) or {}
+    file_v1 = request.files.get("resume_v1")
+    file_v2 = request.files.get("resume_v2")
+
+    text_v1 = (payload.get("text_v1") or request.form.get("text_v1") or "").strip()
+    text_v2 = (payload.get("text_v2") or request.form.get("text_v2") or "").strip()
+    name_v1 = payload.get("filename_v1") or request.form.get("filename_v1") or "Version 1"
+    name_v2 = payload.get("filename_v2") or request.form.get("filename_v2") or "Version 2"
+    target_role = payload.get("target_role") or request.form.get("target_role") or flask_session.get("active_target_role", "Software Engineer")
+    job_description = payload.get("job_description") or request.form.get("job_description")
+
+    if file_v1 and file_v1.filename:
+        name_v1 = secure_filename(file_v1.filename)
+        temp_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v1_{name_v1}")
+        file_v1.save(temp_v1)
+        try:
+            text_v1 = extract_text_from_file(temp_v1)
+        finally:
+            if os.path.exists(temp_v1):
+                os.remove(temp_v1)
+
+    if not text_v1 and flask_session.get("active_resume_text"):
+        text_v1 = flask_session["active_resume_text"]
+        name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+    if file_v2 and file_v2.filename:
+        name_v2 = secure_filename(file_v2.filename)
+        temp_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v2_{name_v2}")
+        file_v2.save(temp_v2)
+        try:
+            text_v2 = extract_text_from_file(temp_v2)
+        finally:
+            if os.path.exists(temp_v2):
+                os.remove(temp_v2)
+
+    if not text_v1 or not text_v2:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Both Version 1 and Version 2 resume contents are required for comparison."
+        }), 400
+
+    comparison = compare_resume_versions(
+        text_v1=text_v1,
+        text_v2=text_v2,
+        filename_v1=name_v1,
+        filename_v2=name_v2,
+        target_role=target_role,
+        job_description=job_description
+    )
+
+    store_session_comparison(session_key, comparison)
+    flask_session["session_resume_comparison"] = comparison
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "comparison": comparison
+    }), 200
 
 
-@analysis_bp.route("/api/analysis/resume/labels", methods=["GET"])
-def api_list_user_resume_labels():
-    """Lists all custom labels configured by the student (#523)."""
-    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
-    student_id = flask_session.get("user_id") or "default_student"
+@analysis_bp.route("/api/resume/session-compare/reset", methods=["POST"])
+def api_session_resume_compare_reset():
+    """Resets the in-memory session comparison (#535)."""
+    session_key = _get_session_comparator_key()
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    return jsonify({"status": "success", "cleared": True}), 200
 
-    labels = ResumeComparisonLabelsService.list_user_labels(student_id)
-    return jsonify({"status": "success", "count": len(labels), "labels": labels}), 200
+
+# ==============================================================================
+# ATS-FRIENDLY RESUME TEMPLATE GALLERY (#561)
+# ==============================================================================
+
+@analysis_bp.route("/resume/templates", methods=["GET"])
+@analysis_bp.route("/resume/templates/<file_uuid>", methods=["GET"])
+def resume_templates_gallery(file_uuid: Optional[str] = None):
+    """
+    Renders the ATS-friendly Resume Template Gallery (#561).
+    Displays 3 single-column templates (classic, compact, project-focused),
+    section selection toggles, and live in-browser preview.
+    """
+    uuid_param = file_uuid or request.args.get("file_uuid")
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+
+    if not resume_data:
+        # Fallback to realistic demo candidate resume data
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    selected_template = request.args.get("template", "classic").strip().lower()
+    if selected_template not in RESUME_TEMPLATES:
+        selected_template = "classic"
+
+    preview_html = generate_resume_preview_html(resume_data, template=selected_template)
+
+    return render_template(
+        "resume_templates.html",
+        templates=get_available_templates(),
+        selected_template=selected_template,
+        preview_html=preview_html,
+        file_uuid=uuid_param,
+        resume_data=resume_data,
+    )
+
+
+@analysis_bp.route("/api/resume/preview", methods=["POST"])
+def api_resume_preview():
+    """
+    Generates and returns HTML preview for selected template and active sections (#561).
+    """
+    payload = request.get_json(silent=True) or {}
+    template = payload.get("template", "classic").strip().lower()
+    sections = payload.get("sections")
+    file_uuid = payload.get("file_uuid")
+
+    resume_data = None
+    if file_uuid:
+        resume_data = get_resume_review_cache(file_uuid)
+    if not resume_data:
+        resume_data = payload.get("resume_data") or dict(DEFAULT_SAMPLE_RESUME)
+
+    html = generate_resume_preview_html(resume_data, template=template, sections=sections)
+    return jsonify({"success": True, "html": html}), 200
+
+
+@analysis_bp.route("/resume/download", methods=["POST", "GET"])
+@analysis_bp.route("/resume/download/<file_uuid>", methods=["POST", "GET"])
+def resume_template_download(file_uuid: Optional[str] = None):
+    """
+    Generates and downloads an ATS-compliant resume in DOCX or PDF format (#561).
+    Streams file directly from memory with zero disk persistence.
+    """
+    if request.method == "POST":
+        payload = request.form if request.form else (request.get_json(silent=True) or {})
+        uuid_param = file_uuid or payload.get("file_uuid")
+        fmt = payload.get("format", "docx").strip().lower()
+        template = payload.get("template", "classic").strip().lower()
+        sections = payload.getlist("sections") if hasattr(payload, "getlist") else payload.get("sections")
+    else:
+        uuid_param = file_uuid or request.args.get("file_uuid")
+        fmt = request.args.get("format", "docx").strip().lower()
+        template = request.args.get("template", "classic").strip().lower()
+        sections = request.args.getlist("sections") if request.args.get("sections") else None
+
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+    if not resume_data:
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    cand_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", resume_data.get("candidate_name", "Resume")).strip("_") or "Resume"
+
+    if fmt == "pdf":
+        pdf_bytes = generate_resume_pdf(resume_data, template=template, sections=sections)
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"{cand_name}_{template}_resume.pdf",
+        )
+    else:
+        docx_bytes = generate_resume_docx(resume_data, template=template, sections=sections)
+        return send_file(
+            io.BytesIO(docx_bytes),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True,
+            download_name=f"{cand_name}_{template}_resume.docx",
+        )
 
 
 

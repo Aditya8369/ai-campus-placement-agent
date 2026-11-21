@@ -389,7 +389,7 @@ def compare_resume_versions(
             "badge_class": "secondary",
             "badge_text": "No Changes Found (0 pts)",
             "message": "No changes found. Both resume versions are identical.",
-            "summary": "No changes found. Both uploaded versions contain identical text, structure, and technical competencies.",
+            "summary": "Both uploaded versions contain identical text, structure, and technical competencies. No changes found.",
             "detected_skills_v1": skills_v1,
             "detected_skills_v2": skills_v2,
             "skills_added": [],
