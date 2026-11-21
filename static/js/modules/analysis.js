@@ -6,6 +6,7 @@
  */
 
 import { escapeHtml } from "./utils.js";
+import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
 
 /**
  * Real-time character counter and limit monitor for resume text and job description inputs (#132).
@@ -963,7 +964,29 @@ export function initFormUpload() {
       body: formData
     })
       .then(async (response) => {
-        const data = await response.json();
+        let data = {};
+        try {
+          data = await response.json();
+        } catch (e) {
+          data = {};
+        }
+
+        syncRateLimitFromHeaders(response, "analyze");
+
+        if (response.status === 429 || (!response.ok && (data.retry_after || data.retry_after_seconds))) {
+          handleRateLimitResponse(response, data, {
+            scope: "analyze",
+            submitButton: btnSubmitAnalysis,
+            countdownElement: document.getElementById("analyzeCountdownTimer"),
+            noticeContainer: document.getElementById("analyzeRateLimitNotice"),
+            messageElement: document.getElementById("analyzeRateLimitMessage"),
+          });
+          const retryTime = formatCountdown(data.retry_after || data.retry_after_seconds || 60);
+          const msg = data.message || `You have temporarily exceeded the request rate limit. You can try again in ${retryTime}.`;
+          showPipelineError(msg, "Rate Limit");
+          return;
+        }
+
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initiate background analysis.");
         }

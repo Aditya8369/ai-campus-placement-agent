@@ -123,6 +123,9 @@
             <li><a class="dropdown-item" href="/applications">
               <i class="fa-solid fa-clipboard-list me-2 text-primary"></i>Application Tracker
             </a></li>
+            <li><a class="dropdown-item" href="/drive-day-checklist">
+              <i class="fa-solid fa-clipboard-check me-2 text-success"></i>Drive Day Checklist
+            </a></li>
             <li><a class="dropdown-item" href="/saved-job-descriptions">
               <i class="fa-solid fa-bookmark me-2 text-primary"></i>Saved Job Descriptions
             </a></li>
@@ -546,49 +549,107 @@
                 </div>
               </div>
 
-              <!-- Job Description Input -->
+              <!-- Job Description or Target Role Mode Selector (#646) -->
               <div class="mb-4">
-                <div class="d-flex justify-content-between align-items-center mb-2">
-                  <label for="jdInput" class="form-label fw-semibold text-secondary mb-0">2. Paste Job Description (Optional)</label>
-                  {% if session.get('user_id') %}
-                  <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
-                    <i class="fa-solid fa-bookmark me-1"></i> Save job description
-                  </button>
-                  {% else %}
-                  <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
-                    <i class="fa-solid fa-bookmark me-1"></i> Save job description
-                  </a>
-                  {% endif %}
-                </div>
-                {% if session.get('user_id') %}
-                <div class="input-group mb-2">
-                  <span class="input-group-text bg-white"><i class="fa-solid fa-bookmark text-primary"></i></span>
-                  <select id="savedJobDescriptionSelect" class="form-select" aria-label="Select a saved job description">
-                    <option value="">Use a saved job description...</option>
-                    {% for saved in saved_job_descriptions %}
-                    <option value="{{ saved.id }}"
-                            data-description="{{ saved.description|e }}"
-                            data-company="{{ saved.company_name|e }}"
-                            data-role="{{ saved.role_title|e }}">
-                      {{ saved.company_name }} - {{ saved.role_title }}
-                    </option>
-                    {% endfor %}
-                  </select>
-                  <a href="{{ url_for('saved_job_descriptions_view') }}" class="btn btn-outline-primary">Manage</a>
-                </div>
-                {% endif %}
-                <textarea name="job_description" id="jdInput" rows="4" class="form-control rounded-3"
-                  placeholder="Paste the job post description here to check your matching compatibility..."></textarea>
-                <div class="d-flex justify-content-between align-items-center mt-1 px-1">
-                  <span id="jdFeedback" class="small text-muted">
-                    <i class="fa-solid fa-briefcase me-1"></i> Paste role requirements to evaluate skill match
-                  </span>
-                  <div id="jdCharCounter" class="small text-muted font-monospace">
-                    <span id="jdCurrentChars">0</span> / <span id="jdMaxChars">5000</span> chars
+                <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                  <label class="form-label fw-semibold text-secondary mb-0">2. Target Role Benchmark or Job Description (Optional)</label>
+                  <div class="btn-group btn-group-sm" role="group" aria-label="Role or JD selection mode">
+                    <button type="button" class="btn btn-primary active" id="btnModeRole" title="Choose a target campus role instead of pasting a job description">
+                      <i class="fa-solid fa-user-tag me-1"></i> Choose a Role Instead
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="btnModeJd" title="Paste a custom company job description">
+                      <i class="fa-solid fa-file-lines me-1"></i> Paste Job Description
+                    </button>
                   </div>
                 </div>
-                <div id="jdCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
-                  <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for job descriptions.
+
+                <input type="hidden" name="analysis_mode" id="analysisModeInput" value="role">
+
+                <!-- Mode 1: Role Template Selection (Default & Ideal for 1st/2nd years) -->
+                <div id="roleTemplateSection">
+                  <div class="input-group mb-2">
+                    <span class="input-group-text bg-white"><i class="fa-solid fa-briefcase text-primary"></i></span>
+                    <select name="role_template" id="roleTemplateSelect" class="form-select" aria-label="Choose a role instead of a job description">
+                      <option value="">-- Choose a Role (e.g. Software Developer, Data Analyst) --</option>
+                      {% for role in role_templates %}
+                      <option value="{{ role.id }}"
+                              data-name="{{ role.name|e }}"
+                              data-description="{{ role.description|e }}"
+                              data-core="{{ role.core_skills|join(', ')|e }}"
+                              data-good="{{ role.good_to_have_skills|join(', ')|e }}"
+                              data-tools="{{ role.typical_tools|join(', ')|e }}">
+                        {{ role.name }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div id="roleTemplatePreview" class="border rounded-3 p-3 bg-light d-none mb-2">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                      <h6 class="fw-bold mb-0 text-primary" id="rolePreviewTitle">Role Title</h6>
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Predefined Campus Benchmark</span>
+                    </div>
+                    <p class="small text-muted mb-2" id="rolePreviewDescription"></p>
+                    <div class="mb-2">
+                      <span class="fw-semibold small text-secondary me-2">Core Skills:</span>
+                      <div id="rolePreviewCore" class="d-inline-flex flex-wrap gap-1"></div>
+                    </div>
+                    <div class="mb-2">
+                      <span class="fw-semibold small text-secondary me-2">Good to Have:</span>
+                      <div id="rolePreviewGood" class="d-inline-flex flex-wrap gap-1"></div>
+                    </div>
+                    <div>
+                      <span class="fw-semibold small text-secondary me-2">Tools:</span>
+                      <div id="rolePreviewTools" class="d-inline-flex flex-wrap gap-1"></div>
+                    </div>
+                  </div>
+                  <div class="small text-muted px-1">
+                    <i class="fa-solid fa-circle-info me-1 text-primary"></i> Don't have a job description? Benchmark your resume against campus role standards.
+                  </div>
+                </div>
+
+                <!-- Mode 2: Custom Job Description Textarea & Saved Descriptions -->
+                <div id="customJdSection" class="d-none">
+                  <div class="d-flex justify-content-end mb-2">
+                    {% if session.get('user_id') %}
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
+                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                    </button>
+                    {% else %}
+                    <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
+                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                    </a>
+                    {% endif %}
+                  </div>
+                  {% if session.get('user_id') %}
+                  <div class="input-group mb-2">
+                    <span class="input-group-text bg-white"><i class="fa-solid fa-bookmark text-primary"></i></span>
+                    <select id="savedJobDescriptionSelect" class="form-select" aria-label="Select a saved job description">
+                      <option value="">Use a saved job description...</option>
+                      {% for saved in saved_job_descriptions %}
+                      <option value="{{ saved.id }}"
+                              data-description="{{ saved.description|e }}"
+                              data-company="{{ saved.company_name|e }}"
+                              data-role="{{ saved.role_title|e }}">
+                        {{ saved.company_name }} - {{ saved.role_title }}
+                      </option>
+                      {% endfor %}
+                    </select>
+                    <a href="{{ url_for('saved_job_descriptions_view') }}" class="btn btn-outline-primary">Manage</a>
+                  </div>
+                  {% endif %}
+                  <textarea name="job_description" id="jdInput" rows="4" class="form-control rounded-3"
+                    placeholder="Paste the job post description here to check your matching compatibility..."></textarea>
+                  <div class="d-flex justify-content-between align-items-center mt-1 px-1">
+                    <span id="jdFeedback" class="small text-muted">
+                      <i class="fa-solid fa-briefcase me-1"></i> Paste role requirements to evaluate skill match
+                    </span>
+                    <div id="jdCharCounter" class="small text-muted font-monospace">
+                      <span id="jdCurrentChars">0</span> / <span id="jdMaxChars">5000</span> chars
+                    </div>
+                  </div>
+                  <div id="jdCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
+                    <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for job descriptions.
+                  </div>
                 </div>
               </div>
 
@@ -703,6 +764,33 @@
                   title="Clear all inputs and reset form without refreshing">
                   <i class="fa-solid fa-rotate-left me-2"></i> <span>Clear All</span>
                 </button>
+              </div>
+
+              <!-- Rate Limit Remaining Indicator & Live Countdown Notice (#652) -->
+              {% set analyze_quota = rate_limit_status('analyze') %}
+              <div class="d-flex align-items-center justify-content-between mt-2 px-1 flex-wrap gap-2">
+                <div id="analyzeRateLimitIndicator" class="small text-muted d-flex align-items-center gap-1"
+                     data-scope="analyze"
+                     data-limit="{{ analyze_quota.limit }}"
+                     data-remaining="{{ analyze_quota.remaining }}"
+                     data-reset-seconds="{{ analyze_quota.reset_seconds }}"
+                     aria-live="polite">
+                  <i class="fa-solid fa-gauge-high text-primary"></i>
+                  <span class="rate-limit-text">
+                    <span class="rate-limit-remaining fw-bold text-dark">{{ analyze_quota.remaining }}</span>
+                    <span class="rate-limit-label">{{ _t('rate_limit_analyses_left', 'analyses left this hour') }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div id="analyzeRateLimitNotice" class="alert alert-warning border-warning-subtle rounded-3 mt-2 py-2 px-3 small {% if analyze_quota.remaining > 0 %}d-none{% endif %}" role="alert" aria-live="polite">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-hourglass-half text-warning fs-5"></i>
+                  <div>
+                    <span id="analyzeRateLimitMessage" class="fw-medium">Rate limit reached.</span>
+                    <span id="analyzeCountdownWrapper" class="fw-bold ms-1">You can try again in <span id="analyzeCountdownTimer">{% if analyze_quota.reset_seconds > 0 %}{{ (analyze_quota.reset_seconds // 60) }}:{{ "%02d"|format(analyze_quota.reset_seconds % 60) }}{% else %}0:00{% endif %}</span></span>
+                  </div>
+                </div>
               </div>
 
               <!-- Quick Demo Mode Callout (#435) -->
@@ -1080,6 +1168,74 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
+      // Role Template vs Custom Job Description Mode Toggle (#646)
+      const btnModeRole = document.getElementById("btnModeRole");
+      const btnModeJd = document.getElementById("btnModeJd");
+      const roleSection = document.getElementById("roleTemplateSection");
+      const customJdSection = document.getElementById("customJdSection");
+      const analysisModeInput = document.getElementById("analysisModeInput");
+      const roleSelect = document.getElementById("roleTemplateSelect");
+      const rolePreview = document.getElementById("roleTemplatePreview");
+      const roleTitle = document.getElementById("rolePreviewTitle");
+      const roleDesc = document.getElementById("rolePreviewDescription");
+      const roleCore = document.getElementById("rolePreviewCore");
+      const roleGood = document.getElementById("rolePreviewGood");
+      const roleTools = document.getElementById("rolePreviewTools");
+
+      function updateRolePreview() {
+        if (!roleSelect || !rolePreview) return;
+        const selected = roleSelect.options[roleSelect.selectedIndex];
+        if (!selected || !selected.value) {
+          rolePreview.classList.add("d-none");
+          return;
+        }
+        if (roleTitle) roleTitle.textContent = selected.dataset.name || selected.text;
+        if (roleDesc) roleDesc.textContent = selected.dataset.description || "";
+        
+        const renderBadges = (target, text, cls) => {
+          if (!target) return;
+          target.innerHTML = "";
+          if (!text) return;
+          text.split(",").map(s => s.trim()).filter(Boolean).forEach(skill => {
+            const badge = document.createElement("span");
+            badge.className = `badge ${cls} rounded-pill px-2 py-1`;
+            badge.textContent = skill;
+            target.appendChild(badge);
+          });
+        };
+
+        renderBadges(roleCore, selected.dataset.core, "bg-primary");
+        renderBadges(roleGood, selected.dataset.good, "bg-secondary");
+        renderBadges(roleTools, selected.dataset.tools, "bg-light text-dark border");
+        rolePreview.classList.remove("d-none");
+      }
+
+      if (btnModeRole && btnModeJd && roleSection && customJdSection) {
+        btnModeRole.addEventListener("click", function () {
+          btnModeRole.classList.add("active", "btn-primary");
+          btnModeRole.classList.remove("btn-outline-secondary");
+          btnModeJd.classList.remove("active", "btn-primary");
+          btnModeJd.classList.add("btn-outline-secondary");
+          roleSection.classList.remove("d-none");
+          customJdSection.classList.add("d-none");
+          if (analysisModeInput) analysisModeInput.value = "role";
+        });
+
+        btnModeJd.addEventListener("click", function () {
+          btnModeJd.classList.add("active", "btn-primary");
+          btnModeJd.classList.remove("btn-outline-secondary");
+          btnModeRole.classList.remove("active", "btn-primary");
+          btnModeRole.classList.add("btn-outline-secondary");
+          customJdSection.classList.remove("d-none");
+          roleSection.classList.add("d-none");
+          if (analysisModeInput) analysisModeInput.value = "jd";
+        });
+      }
+
+      if (roleSelect) {
+        roleSelect.addEventListener("change", updateRolePreview);
+      }
+
       const savedSelect = document.getElementById("savedJobDescriptionSelect");
       const jobDescription = document.getElementById("jdInput");
       const companySelect = document.getElementById("companySelect");
@@ -1225,6 +1381,7 @@
   </script>
   <!-- Custom JS -->
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/rate_limit.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/analysis.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>

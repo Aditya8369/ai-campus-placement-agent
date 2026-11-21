@@ -88,34 +88,202 @@ if (typeof window !== "undefined") {
 
 // Bootstrap on DOMContentLoaded
 document.addEventListener("DOMContentLoaded", () => {
-  initCommon();
-  initFormUpload();
-  initCircularProgress();
-  initCharacterCounters();
-  initMockInterview();
-  initCompanyExplorer();
-  initSkillGapFilter();
-  initRoleSkillGapSelector();
-  initRoadmapExport();
-  initRoadmapTracker();
-  initProgressTracker();
-  if (typeof window.initCodingSandbox === "function") {
-    window.initCodingSandbox();
+  const statusBanner = document.getElementById("aiRetryStatusBanner");
+  const statusTitle = document.getElementById("aiRetryStatusTitle");
+  const statusMessage = document.getElementById("aiRetryStatusMessage");
+  const cooldownBadge = document.getElementById("aiRetryCooldownBadge");
+
+  function escapeHtml(value) {
+    const div = document.createElement("div");
+    div.textContent = value == null ? "" : String(value);
+    return div.innerHTML;
   }
-  initOutreachGenerator();
-  initCopySuggestions();
-  initRoleBasedPrep();
-  initSkillsComparisonChart();
-  initResumeKeywordHighlighter();
-  initCodingBookmarks();
-  initInterviewBookmarks();
-  initStreakTracker();
-  initSectionFeedback();
-  initUserWalkthrough();
-  initPasswordToggle();
-  initPasswordStrengthIndicator();
-  initSelfIntroductionStudio();
-  initCompanyInterviewPrep();
+
+  function showAiBanner(type, title, message, badgeText = "") {
+    if (!statusBanner) return;
+    statusBanner.className = `alert alert-${type} d-flex align-items-center justify-content-between mb-4`;
+    statusTitle.textContent = title;
+    statusMessage.textContent = ` ${message}`;
+    if (badgeText) {
+      cooldownBadge.textContent = badgeText;
+      cooldownBadge.classList.remove("d-none");
+    } else {
+      cooldownBadge.classList.add("d-none");
+    }
+  }
+
+  function renderSectionHtml(section, data) {
+    if (section === "skill_gaps" && Array.isArray(data)) {
+      const rows = data
+        .map(
+          (gap) => `
+          <tr>
+            <td><strong>${escapeHtml(gap.skill)}</strong></td>
+            <td><span class="badge bg-danger">${escapeHtml(gap.priority || gap.importance || "High")}</span></td>
+            <td>${escapeHtml(gap.learning_time || "1-2 weeks")}</td>
+            <td>
+              <div>${escapeHtml(gap.learning_resource || "")}</div>
+              <small class="text-muted">Project: ${escapeHtml(gap.project_suggestion || "")}</small>
+            </td>
+          </tr>`
+        )
+        .join("");
+      return `
+        <div class="table-responsive">
+          <table class="table table-hover align-middle">
+            <thead>
+              <tr>
+                <th>Missing Skill</th>
+                <th>Priority</th>
+                <th>Est. Time</th>
+                <th>Recommended Resource & Project</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+
+    if (section === "roadmap" && Array.isArray(data)) {
+      const items = data
+        .map(
+          (week, idx) => `
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button ${idx === 0 ? "" : "collapsed"}" type="button" data-bs-toggle="collapse" data-bs-target="#weekCollapseRetry${idx}">
+                ${escapeHtml(week.week || `Week ${idx + 1}`)} (${escapeHtml(week.estimated_hours || 10)} hrs)
+              </button>
+            </h2>
+            <div id="weekCollapseRetry${idx}" class="accordion-collapse collapse ${idx === 0 ? "show" : ""}">
+              <div class="accordion-body">
+                <p><strong>Topics:</strong> ${escapeHtml((week.topics || []).join(", "))}</p>
+                <p><strong>Coding Practice:</strong> ${escapeHtml((week.coding_practice || []).join(", "))}</p>
+                <p class="mb-0"><strong>Revision:</strong> ${escapeHtml((week.revision_tasks || []).join(", "))}</p>
+              </div>
+            </div>
+          </div>`
+        )
+        .join("");
+      return `<div class="accordion" id="roadmapAccordionRetry">${items}</div>`;
+    }
+
+    if (section === "interview_questions" && Array.isArray(data)) {
+      const list = data
+        .map((q) => {
+          const category = typeof q === "object" && q !== null ? q.category || "Interview" : "Interview";
+          const question = typeof q === "object" && q !== null ? q.question || "" : String(q);
+          return `
+            <li class="list-group-item">
+              <span class="badge bg-secondary me-2">${escapeHtml(category)}</span>
+              ${escapeHtml(question)}
+            </li>`;
+        })
+        .join("");
+      return `<ul class="list-group list-group-flush">${list}</ul>`;
+    }
+
+    return `<pre class="mb-0 small">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+  }
+
+  document.addEventListener("click", async (event) => {
+    const btn = event.target.closest(".retry-section-btn");
+    if (!btn) return;
+
+    const analysisId = btn.dataset.analysisId;
+    const section = btn.dataset.section;
+    const sectionLabel = btn.dataset.sectionLabel || section;
+    const contentContainer = document.getElementById(`section-content-${section}`);
+    const card = document.getElementById(`section-card-${section}`);
+    const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+
+    btn.disabled = true;
+    const originalText = btn.textContent;
+    btn.textContent = "Requesting AI...";
+
+    showAiBanner(
+      "info",
+      "New AI Request Initiated:",
+      `Sending a targeted Gemini AI request to regenerate "${sectionLabel}". Other report sections remain untouched.`,
+      "AI Request In Progress"
+    );
+
+    try {
+      const response = await fetch(`/api/analysis/${encodeURIComponent(analysisId)}/retry-section`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
+        },
+        body: JSON.stringify({ section }),
+      });
+
+      const payload = await response.json();
+
+      if (response.status === 429) {
+        const waitSeconds = payload.retry_after_seconds || 60;
+        const hint = payload.retry_after_hint || `try again in ${waitSeconds} seconds`;
+        showAiBanner(
+          "warning",
+          "AI Rate Limit Reached:",
+          `No new AI request can be sent right now. Please ${hint}.`,
+          `Retry in ${waitSeconds}s`
+        );
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+
+      if (!response.ok || !payload.success) {
+        const retryHint = payload.retry_after_hint
+          ? ` ${payload.retry_after_hint}`
+          : " You may retry this section again shortly.";
+        showAiBanner(
+          "danger",
+          "Section Retry Unsuccessful:",
+          `${payload.message || "Could not regenerate section."}${retryHint}`,
+          "Retry Available"
+        );
+        btn.disabled = false;
+        btn.textContent = originalText;
+        return;
+      }
+
+      if (contentContainer) {
+        contentContainer.innerHTML = renderSectionHtml(section, payload.data);
+      }
+      if (card) {
+        const badge = card.querySelector(".card-header .badge");
+        if (badge) {
+          badge.className = "badge bg-success";
+          badge.textContent = "Recovered";
+        }
+      }
+
+      const aiNotice =
+        (payload.ai_request && payload.ai_request.notice) ||
+        `Regenerated "${sectionLabel}" via a new Gemini AI request.`;
+      const nextCallGuidance =
+        (payload.rate_limit && payload.rate_limit.guidance) ||
+        "You may make another AI request immediately.";
+
+      showAiBanner(
+        "success",
+        "AI Request Completed:",
+        `${aiNotice} ${nextCallGuidance}`,
+        `Quota: ${payload.rate_limit?.quota || "Active"}`
+      );
+    } catch (err) {
+      showAiBanner(
+        "danger",
+        "Network Error:",
+        "Unable to reach the server to complete the AI request. Existing sections are safe; you may retry immediately.",
+        "Retry Available"
+      );
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  });
 });
 
 /**
@@ -358,7 +526,7 @@ function initRoleSkillGapSelector() {
         readinessBadge.textContent = roleData.readiness_verdict || "Targeted Prep";
         readinessBadge.className = "badge border " + (
           roleData.match_percentage >= 80 ? "bg-success-subtle text-success" :
-          (roleData.match_percentage >= 55 ? "bg-primary-subtle text-primary" : "bg-warning-subtle text-warning")
+            (roleData.match_percentage >= 55 ? "bg-primary-subtle text-primary" : "bg-warning-subtle text-warning")
         );
       }
 
@@ -1742,7 +1910,7 @@ function initCircularProgress() {
       const radius = circle.r.baseVal.value;
       const circumference = 2 * Math.PI * radius;
       const offset = circumference - (score / 100) * circumference;
-      
+
       // Animate circular transition
       setTimeout(() => {
         circle.style.strokeDasharray = `${circumference} ${circumference}`;
@@ -2092,7 +2260,7 @@ function initMockInterview() {
 
       if (candidateVideoFeed) {
         candidateVideoFeed.srcObject = videoStream;
-        candidateVideoFeed.play().catch(() => {});
+        candidateVideoFeed.play().catch(() => { });
       }
       if (videoCoachPanel) videoCoachPanel.classList.remove("d-none");
       if (cameraStatusText) cameraStatusText.textContent = "Live camera active (Tracking non-verbal composure)";
@@ -2845,7 +3013,7 @@ function initMockInterview() {
       if (lastSavedDraftText) {
         try {
           localStorage.removeItem(key);
-        } catch (e) {}
+        } catch (e) { }
         lastSavedDraftText = "";
         hideDraftIndicator();
       }
@@ -2890,7 +3058,7 @@ function initMockInterview() {
       if (altAnalysisId) {
         localStorage.removeItem(`interview_draft_${altAnalysisId}_${currentQ}`);
       }
-    } catch (e) {}
+    } catch (e) { }
     lastSavedDraftText = "";
     hideDraftIndicator();
   }
@@ -2911,7 +3079,7 @@ function initMockInterview() {
         }
       }
       keysToRemove.forEach((k) => localStorage.removeItem(k));
-    } catch (e) {}
+    } catch (e) { }
     lastSavedDraftText = "";
     hideDraftIndicator();
   }
@@ -2971,7 +3139,7 @@ function initMockInterview() {
 
     // Stop active speech recognition or TTS
     if (recognition && isRecording) {
-      try { recognition.stop(); } catch (err) {}
+      try { recognition.stop(); } catch (err) { }
       isRecording = false;
     }
     if (isSpeechSynthesisSupported) {
@@ -3832,6 +4000,79 @@ function initRoadmapExport() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+    });
+  }
+
+  // 3. Export study plan to iCalendar (.ics) file (#647)
+  const calendarModal = document.getElementById("roadmapCalendarModal");
+  const startDateInput = document.getElementById("calendarStartDate");
+  const radioTimed = document.getElementById("calendarTypeTimed");
+  const radioAllDay = document.getElementById("calendarTypeAllDay");
+  const timedContainer = document.getElementById("calendarTimedOptionsContainer");
+  const downloadCalendarBtn = document.getElementById("btnDownloadRoadmapCalendar");
+
+  const setDefaultStartDate = () => {
+    if (startDateInput && !startDateInput.value) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const yyyy = tomorrow.getFullYear();
+      const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+      const dd = String(tomorrow.getDate()).padStart(2, "0");
+      startDateInput.value = `${yyyy}-${mm}-${dd}`;
+      startDateInput.min = new Date().toISOString().split("T")[0];
+    }
+  };
+
+  if (calendarModal) {
+    calendarModal.addEventListener("show.bs.modal", setDefaultStartDate);
+  }
+  setDefaultStartDate();
+
+  if (radioTimed && radioAllDay && timedContainer) {
+    const updateTimedVisibility = () => {
+      timedContainer.style.display = radioAllDay.checked ? "none" : "";
+    };
+    radioTimed.addEventListener("change", updateTimedVisibility);
+    radioAllDay.addEventListener("change", updateTimedVisibility);
+  }
+
+  if (downloadCalendarBtn) {
+    downloadCalendarBtn.addEventListener("click", () => {
+      const analysisId = container.getAttribute("data-analysis-id") || "";
+      const startDate = startDateInput ? startDateInput.value : "";
+      const isAllDay = radioAllDay && radioAllDay.checked ? "1" : "0";
+      const studyTimeInput = document.getElementById("calendarStudyTime");
+      const durationSelect = document.getElementById("calendarDurationSelect");
+      const studyTime = studyTimeInput ? studyTimeInput.value : "19:00";
+      const duration = durationSelect ? durationSelect.value : "60";
+
+      const queryParams = new URLSearchParams({
+        start_date: startDate,
+        all_day: isAllDay,
+        study_time: studyTime,
+        duration: duration,
+      });
+
+      const exportUrl = analysisId
+        ? `/api/analysis/${encodeURIComponent(analysisId)}/roadmap/calendar.ics?${queryParams.toString()}`
+        : `/api/roadmap/calendar.ics?${queryParams.toString()}`;
+
+      // Trigger file download
+      const tempLink = document.createElement("a");
+      tempLink.href = exportUrl;
+      tempLink.setAttribute("download", `placement-roadmap-${companyName.replace(/[^a-zA-Z0-9_-]/g, "_")}.ics`);
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      document.body.removeChild(tempLink);
+
+      // Feedback state
+      const originalHtml = downloadCalendarBtn.innerHTML;
+      downloadCalendarBtn.innerHTML = '<i class="fa-solid fa-check me-1"></i> Downloaded!';
+      downloadCalendarBtn.classList.replace("btn-success", "btn-outline-success");
+      setTimeout(() => {
+        downloadCalendarBtn.innerHTML = originalHtml;
+        downloadCalendarBtn.classList.replace("btn-outline-success", "btn-success");
+      }, 2500);
     });
   }
 }
@@ -5453,8 +5694,8 @@ function initCodingBookmarks() {
       prob.difficulty === "Easy"
         ? "bg-success"
         : prob.difficulty === "Medium"
-        ? "bg-warning text-dark"
-        : "bg-danger";
+          ? "bg-warning text-dark"
+          : "bg-danger";
 
     const companiesHtml =
       Array.isArray(prob.companies) && prob.companies.length > 0
@@ -5462,8 +5703,8 @@ function initCodingBookmarks() {
              <div class="small fw-semibold text-muted mb-1">Target Companies:</div>
              <div class="d-flex flex-wrap gap-1">
                ${prob.companies
-                 .map((c) => `<span class="badge bg-light text-dark border rounded-pill small">${escapeHtml(c)}</span>`)
-                 .join("")}
+          .map((c) => `<span class="badge bg-light text-dark border rounded-pill small">${escapeHtml(c)}</span>`)
+          .join("")}
              </div>
            </div>`
         : "";
@@ -5922,10 +6163,10 @@ function initAccessibility() {
   const uploadArea = document.getElementById("uploadArea");
   const resumeInput = document.getElementById("resumeInput");
   if (uploadArea && resumeInput) {
-  // role="button" semantics are required for keyboard and assistive-technology access.
-  if (!uploadArea.hasAttribute("role")) {
-    uploadArea.setAttribute("role", "button");
-  }
+    // role="button" semantics are required for keyboard and assistive-technology access.
+    if (!uploadArea.hasAttribute("role")) {
+      uploadArea.setAttribute("role", "button");
+    }
     if (!uploadArea.hasAttribute("tabindex")) {
       uploadArea.setAttribute("tabindex", "0");
     }
@@ -5975,7 +6216,7 @@ function initAccessibility() {
       setTimeout(() => {
         try {
           modal._triggerElement.focus();
-        } catch (_) {}
+        } catch (_) { }
       }, 50);
     }
   });
@@ -6009,7 +6250,7 @@ function initAccessibility() {
       setTimeout(() => {
         try {
           offcanvas._triggerElement.focus();
-        } catch (_) {}
+        } catch (_) { }
       }, 50);
     }
   });
@@ -6288,7 +6529,7 @@ function initPasswordStrengthIndicator() {
       progressBar.setAttribute("aria-valuenow", evaluation.percentage);
       progressBar.className = "progress-bar " + (
         evaluation.strength === "Strong" ? "strength-bar-strong" :
-        evaluation.strength === "Medium" ? "strength-bar-medium" : "strength-bar-weak"
+          evaluation.strength === "Medium" ? "strength-bar-medium" : "strength-bar-weak"
       );
     }
 
@@ -6297,7 +6538,7 @@ function initPasswordStrengthIndicator() {
       strengthLabel.textContent = evaluation.strength;
       strengthLabel.className = "badge rounded-pill " + (
         evaluation.strength === "Strong" ? "strength-badge-strong" :
-        evaluation.strength === "Medium" ? "strength-badge-medium" : "strength-badge-weak"
+          evaluation.strength === "Medium" ? "strength-badge-medium" : "strength-badge-weak"
       );
     }
 
@@ -6541,7 +6782,7 @@ function initSessionTimeout() {
                 remainingSeconds = resData.remaining_seconds || timeoutSeconds;
               }
             })
-            .catch(() => {});
+            .catch(() => { });
         }
       };
 
@@ -6549,7 +6790,7 @@ function initSessionTimeout() {
         window.addEventListener(ev, onUserActivity, { passive: true });
       });
     })
-    .catch(() => {});
+    .catch(() => { });
 }
 
 /**
@@ -6602,7 +6843,7 @@ function initSectionFeedback() {
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Live character counter on comment input
     if (commentInput && charCounter) {
@@ -6764,8 +7005,8 @@ function initUserWalkthrough() {
       fetch("/api/walkthrough/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
   }
 
   function resetWalkthrough() {
@@ -6777,8 +7018,8 @@ function initUserWalkthrough() {
       fetch("/api/walkthrough/reset", {
         method: "POST",
         headers: { "Content-Type": "application/json" }
-      }).catch(() => {});
-    } catch (e) {}
+      }).catch(() => { });
+    } catch (e) { }
   }
 
   if (dismissBtn) {

@@ -141,7 +141,7 @@
                 <span class="fw-bold text-dark">{{ sub.question_title }}</span>
                 <span class="badge bg-light text-muted border rounded-pill ms-1">{{ sub.company_name }}</span>
               </td>
-              <td class="small text-muted">{{ sub.submitted_at[:16] if sub.submitted_at else 'N/A' }}</td>
+              <td class="small text-muted">{{ sub.submitted_at | format_datetime_ist if sub.submitted_at else 'N/A' }}</td>
               <td><span class="badge bg-secondary-subtle text-secondary rounded-pill text-uppercase">{{ sub.language }}</span></td>
               <td>
                 {% if sub.passed %}
