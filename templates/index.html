@@ -408,6 +408,40 @@
               <button type="button" class="btn-close p-2" id="btnCloseResetAlert" aria-label="Close"></button>
             </div>
 
+            <!-- Restored Unfinished Analysis Form Draft Alert (#596) -->
+            <div id="draftRestoredAlert" class="alert alert-info alert-dismissible fade show d-none p-3 small rounded-3 mb-3 border border-info-subtle shadow-sm" role="region" aria-label="Restored Unfinished Analysis Form">
+              <div class="d-flex align-items-start justify-content-between flex-wrap gap-2">
+                <div class="d-flex align-items-start gap-2">
+                  <i class="fa-solid fa-file-pen text-info fs-5 mt-1 flex-shrink-0"></i>
+                  <div>
+                    <div class="fw-bold text-dark">Unfinished Analysis Form Restored</div>
+                    <div class="text-secondary mt-1" id="draftRestoredTimeText">Your previous unfinished inputs (job description, target company, role benchmark, and preferences) were recovered from your browser storage.</div>
+                    <div class="text-muted small mt-1">
+                      <i class="fa-solid fa-clock-rotate-left me-1"></i>Saved drafts expire automatically after 48 hours and are permanently cleared upon successful analysis.
+                    </div>
+                  </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                  <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnDiscardDraft" title="Discard this saved draft and reset all fields">
+                    <i class="fa-solid fa-trash-can me-1"></i> Discard Draft
+                  </button>
+                  <button type="button" class="btn-close" id="btnCloseDraftAlert" aria-label="Dismiss draft restored alert"></button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Draft Auto-Save Status Badge & Storage Privacy Warning (#596) -->
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+              <div id="analysisDraftStatusBadge" class="badge bg-light text-secondary border rounded-pill px-3 py-2 small d-none align-items-center gap-1 font-monospace" role="status" aria-live="polite">
+                <i class="fa-solid fa-floppy-disk text-primary me-1"></i>
+                <span id="analysisDraftStatusText">Draft saved locally</span>
+              </div>
+              <div class="small text-muted d-flex align-items-center gap-1 ms-auto">
+                <i class="fa-solid fa-shield-halved text-success"></i>
+                <span title="Your draft is stored only in this browser and automatically cleared after analysis">Local Draft Protection</span>
+              </div>
+            </div>
+
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             {% for category, message in messages %}
@@ -544,6 +578,13 @@
                     </div>
                     <div id="resumeCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
                       <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for resume analysis. Extra content might be truncated.
+                    </div>
+                    <!-- Local Browser Storage Privacy Warning for Pasted Resume (#596) -->
+                    <div id="resumeDraftPrivacyWarning" class="alert alert-light border border-secondary-subtle py-2 px-3 mt-2 small text-muted rounded-3 d-none">
+                      <div class="d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-triangle-exclamation text-warning flex-shrink-0"></i>
+                        <span><strong>Draft Privacy Notice:</strong> Pasted resume text will be temporarily saved in your local browser storage so you don't lose progress on page refresh. It is never uploaded to any server until you click Analyze, and is deleted when you clear or complete the form.</span>
+                      </div>
                     </div>
                   </div>
                 </div>
