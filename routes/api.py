@@ -407,3 +407,25 @@ def api_get_ai_disclaimer():
     }), 200
 
 
+@api_bp.route("/api/rate-limit/status", methods=["GET"], endpoint="api_rate_limit_status")
+def api_rate_limit_status():
+    """
+    Returns current rate limit quota and remaining requests for a requested scope (#652).
+    Allows client-side countdowns and usage badges to synchronize with server counters.
+    Query parameters:
+        scope: Target rate limit scope ('analyze', 'interview_eval', etc. Default: 'analyze')
+    """
+    scope = request.args.get("scope", "analyze").strip()
+    from utils.rate_limiter import get_rate_limit_status
+    status = get_rate_limit_status(scope=scope)
+    resp = jsonify({
+        "success": True,
+        **status,
+    })
+    resp.headers["X-RateLimit-Limit"] = str(status["limit"])
+    resp.headers["X-RateLimit-Remaining"] = str(status["remaining"])
+    resp.headers["X-RateLimit-Reset"] = str(status["reset_seconds"])
+    return resp
+
+
+

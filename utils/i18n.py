@@ -67,7 +67,11 @@ TRANSLATION_CATALOG: Dict[str, Dict[str, str]] = {
         "feature_interview_desc": "Generates tailored interview questions and evaluates your answers in real time with scoring.",
         "empty_analyses": "No placement analyses found. Upload your resume to begin preparation.",
         "empty_jobs": "No job applications tracked yet. Add your first opportunity above.",
-        "lang_switch_success": "Interface language updated successfully."
+        "lang_switch_success": "Interface language updated successfully.",
+        "rate_limit_analyses_left": "analyses left this hour",
+        "rate_limit_evaluations_left": "evaluations left this hour",
+        "rate_limit_try_again": "You can try again in {time}",
+        "rate_limit_exceeded_title": "Rate limit reached"
     },
     "hi": {
         "app_title": "एआई कैंपस प्लेसमेंट एजेंट",
@@ -119,7 +123,11 @@ TRANSLATION_CATALOG: Dict[str, Dict[str, str]] = {
         "feature_interview_desc": "साक्षात्कार प्रश्न उत्पन्न करता है और वास्तविक समय में उत्तरों का मूल्यांकन करता है।",
         "empty_analyses": "कोई विश्लेषण नहीं मिला। तैयारी शुरू करने के लिए अपना बायोडाटा अपलोड करें।",
         "empty_jobs": "अभी तक कोई आवेदन ट्रैक नहीं किया गया है।",
-        "lang_switch_success": "भाषा सफलतापूर्वक बदल दी गई है।"
+        "lang_switch_success": "भाषा सफलतापूर्वक बदल दी गई है।",
+        "rate_limit_analyses_left": "इस घंटे {count} विश्लेषण शेष हैं",
+        "rate_limit_evaluations_left": "इस घंटे {count} मूल्यांकन शेष हैं",
+        "rate_limit_try_again": "आप {time} में पुनः प्रयास कर सकते हैं",
+        "rate_limit_exceeded_title": "दर सीमा समाप्त"
     },
     "te": {
         "app_title": "ఏఐ క్యాంపస్ ప్లేస్‌మెంట్ ఏజెంట్",
@@ -154,7 +162,11 @@ TRANSLATION_CATALOG: Dict[str, Dict[str, str]] = {
         "footer_copyright": "© 2026 ఏఐ క్యాంపస్ ప్లేస్‌మెంట్ ఏజెంట్. సర్వహక్కులు ప్రత్యేకించబడ్డాయి.",
         "empty_analyses": "విశ్లేషణలు కనుగొనబడలేదు. ప్రారంభించడానికి మీ రెజ్యూమ్‌ను అప్‌లోడ్ చేయండి.",
         "empty_jobs": "ఇంకా ఉద్యోగ దరఖాస్తులు ఏవీ ట్రాక్ చేయబడలేదు.",
-        "lang_switch_success": "భాష విజయవంతంగా నవీకరించబడింది."
+        "lang_switch_success": "భాష విజయవంతంగా నవీకరించబడింది.",
+        "rate_limit_analyses_left": "ఈ గంటలో {count} విశ్లేషణలు మిగిలి ఉన్నాయి",
+        "rate_limit_evaluations_left": "ఈ గంటలో {count} మూల్యాంకనాలు మిగిలి ఉన్నాయి",
+        "rate_limit_try_again": "మీరు {time} లో మళ్ళీ ప్రయత్నించవచ్చు",
+        "rate_limit_exceeded_title": "రేట్ పరిమితి చేరుకుంది"
     },
     "es": {
         "app_title": "Agente de Colocación Campus IA",
@@ -189,15 +201,20 @@ TRANSLATION_CATALOG: Dict[str, Dict[str, str]] = {
         "footer_copyright": "© 2026 Agente de Colocación Campus IA. Todos los derechos reservados.",
         "empty_analyses": "No se encontraron análisis. Sube tu currículum para comenzar.",
         "empty_jobs": "Aún no hay postulaciones registradas.",
-        "lang_switch_success": "Idioma de interfaz actualizado exitosamente."
+        "lang_switch_success": "Idioma de interfaz actualizado exitosamente.",
+        "rate_limit_analyses_left": "{count} análisis restantes esta hora",
+        "rate_limit_evaluations_left": "{count} evaluaciones restantes esta hora",
+        "rate_limit_try_again": "Puedes volver a intentarlo en {time}",
+        "rate_limit_exceeded_title": "Límite de tasa alcanzado"
     }
 }
 
 
-def get_translation(key: str, locale: Optional[str] = None, default: Optional[str] = None) -> str:
+def get_translation(key: str, locale: Optional[str] = None, default: Optional[str] = None, **kwargs) -> str:
     """
     Retrieves the translated text for a specified dictionary key and locale (#214).
     Falls back to English if key is missing in the chosen locale, and returns default if not in English.
+    Supports interpolation with keyword arguments (e.g. count=5, time='2:35').
     """
     norm_locale = (locale or DEFAULT_LOCALE).strip().lower()
     if norm_locale not in TRANSLATION_CATALOG:
@@ -205,15 +222,22 @@ def get_translation(key: str, locale: Optional[str] = None, default: Optional[st
 
     # Check target locale
     locale_dict = TRANSLATION_CATALOG.get(norm_locale, {})
-    if key in locale_dict:
-        return locale_dict[key]
-
-    # Fallback to English
     fallback_dict = TRANSLATION_CATALOG.get(DEFAULT_LOCALE, {})
-    if key in fallback_dict:
-        return fallback_dict[key]
 
-    return default if default is not None else key
+    if key in locale_dict:
+        template_str = locale_dict[key]
+    elif key in fallback_dict:
+        template_str = fallback_dict[key]
+    else:
+        template_str = default if default is not None else key
+
+    if kwargs:
+        try:
+            return template_str.format(**kwargs)
+        except Exception:
+            return template_str
+
+    return template_str
 
 
 def get_all_translations_for_locale(locale: Optional[str] = None) -> Dict[str, str]:
