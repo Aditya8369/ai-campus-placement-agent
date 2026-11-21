@@ -52,6 +52,17 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 from utils.api_versioning import register_api_versioning
+from utils.formatters import (
+    format_date_ist,
+    format_datetime_ist,
+    format_time_ist,
+    format_inr,
+    format_lpa,
+    format_crore,
+    format_inr_words,
+    format_indian_number,
+    get_display_timezone,
+)
 import config
 
 from .common import (
@@ -194,6 +205,7 @@ def create_app(config_override=None) -> Flask:
             "api_aptitude_weak_topics",
             "verify_two_factor",
             "view_shared_report",
+            "api_rate_limit_status",
         }
 
         user_id = flask_session.get("user_id")
@@ -333,7 +345,18 @@ def create_app(config_override=None) -> Flask:
             "current_locale": current_locale,
             "supported_locales": SUPPORTED_LOCALES,
             "locale_names": LOCALE_NAMES,
-            "_t": lambda key, default=None: get_translation(key, locale=current_locale, default=default)
+            "_t": lambda key, default=None, **kwargs: get_translation(key, locale=current_locale, default=default, **kwargs)
+        }
+
+
+    @app.context_processor
+    def inject_rate_limit():
+        """
+        Injects rate limit inspection helper into Jinja templates (#652).
+        """
+        from utils.rate_limiter import get_rate_limit_status
+        return {
+            "rate_limit_status": get_rate_limit_status,
         }
 
 
@@ -485,7 +508,7 @@ def create_app(config_override=None) -> Flask:
     @app.errorhandler(429)
     def rate_limit_exceeded(error):
         """
-        Handles HTTP 429 Too Many Requests errors (#160, #362).
+        Handles HTTP 429 Too Many Requests errors (#160, #362, #652).
         Returns JSON for API/AJAX requests and a styled 429 page for browser UI requests.
         """
         from flask import g
@@ -493,6 +516,11 @@ def create_app(config_override=None) -> Flask:
         description = getattr(error, "description", None) or "You have temporarily exceeded the request rate limit for this action."
         retry_hint = getattr(error, "retry_hint", "try again in a few minutes")
         retry_after = getattr(error, "retry_after", 60)
+        try:
+            retry_after_int = int(retry_after)
+        except (ValueError, TypeError):
+            retry_after_int = 60
+
         is_json = (
             request.is_json
             or request.path.startswith("/api/")
@@ -504,21 +532,30 @@ def create_app(config_override=None) -> Flask:
                 "success": False,
                 "error": "Too Many Requests",
                 "message": description,
-                "retry_after_seconds": retry_after,
+                "retry_after": retry_after_int,
+                "retry_after_seconds": retry_after_int,
                 "retry_after_hint": retry_hint,
                 "request_id": req_id,
             })
             response.status_code = 429
-            response.headers["Retry-After"] = str(retry_after)
+            response.headers["Retry-After"] = str(retry_after_int)
+            response.headers["X-RateLimit-Remaining"] = "0"
+            response.headers["X-RateLimit-Reset"] = str(retry_after_int)
             return response
 
-        return render_template(
+        rendered = render_template(
             "429.html",
             message=description,
             retry_hint=retry_hint,
-            retry_after_seconds=retry_after,
+            retry_after=retry_after_int,
+            retry_after_seconds=retry_after_int,
             request_id=req_id,
-        ), 429
+        )
+        resp = make_response(rendered, 429)
+        resp.headers["Retry-After"] = str(retry_after_int)
+        resp.headers["X-RateLimit-Remaining"] = "0"
+        resp.headers["X-RateLimit-Reset"] = str(retry_after_int)
+        return resp
 
 
     @app.errorhandler(500)

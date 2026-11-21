@@ -153,6 +153,13 @@ SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", os.getenv("FLASK_ENV", "pro
 SENTRY_RELEASE = os.getenv("SENTRY_RELEASE", f"ai-campus-placement-agent@{__version__}").strip()
 SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 
+# Timezone & Regional Localization Settings (#650)
+# Default display timezone for all dates and times shown across pages and alerts.
+# Database timestamps remain strictly in UTC.
+DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", os.getenv("TIMEZONE", "Asia/Kolkata")).strip() or "Asia/Kolkata"
+TIMEZONE = DISPLAY_TIMEZONE
+
+
 
 
 

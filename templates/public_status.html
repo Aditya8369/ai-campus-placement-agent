@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}System Status & Scheduled Maintenance - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 900px;">
+  <!-- Overall Banner -->
+  <div class="text-center mb-5">
+    <div class="mb-2">
+      {% if status_data.overall_status == 'operational' %}
+      <span class="badge bg-success-subtle text-success fs-5 px-4 py-2 rounded-pill border border-success">
+        <i class="bi bi-check-circle-fill me-2"></i> All Systems Operational
+      </span>
+      {% elif status_data.overall_status == 'maintenance' %}
+      <span class="badge bg-info-subtle text-info fs-5 px-4 py-2 rounded-pill border border-info">
+        <i class="bi bi-tools me-2"></i> Scheduled Maintenance in Progress
+      </span>
+      {% else %}
+      <span class="badge bg-warning-subtle text-warning fs-5 px-4 py-2 rounded-pill border border-warning">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i> Partial System Degradation
+      </span>
+      {% endif %}
+    </div>
+    <h2 class="fw-bold mt-3">Platform Health & Status</h2>
+    <p class="text-muted small">Live uptime monitoring &bull; 30-Day Rolling Uptime: <strong>{{ status_data.uptime_30d_pct }}%</strong></p>
+  </div>
+
+  <!-- Active Maintenance Notices -->
+  {% if status_data.active_incidents %}
+  <div class="card border-0 shadow-sm border-start border-4 border-warning mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold text-dark"><i class="bi bi-bell-fill text-warning me-2"></i>Active System Advisories</h5>
+    </div>
+    <div class="card-body">
+      {% for inc in status_data.active_incidents %}
+      <div class="mb-3 pb-3 border-bottom last-border-0">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <h6 class="fw-bold text-dark mb-0">{{ inc.title }}</h6>
+          <span class="badge bg-warning text-dark">{{ inc.severity|capitalize }}</span>
+        </div>
+        <p class="small text-secondary mb-1">{{ inc.message }}</p>
+        {% if inc.scheduled_start %}
+        <small class="text-muted d-block">Window: {{ inc.scheduled_start }} to {{ inc.scheduled_end or 'TBD' }}</small>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Subsystems Health Table -->
+  <div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold text-dark">Subsystems & Core Services</h5>
+    </div>
+    <div class="card-body p-0">
+      <ul class="list-group list-group-flush">
+        {% for sub in status_data.subsystems %}
+        <li class="list-group-item d-flex justify-content-between align-items-center py-3">
+          <div class="d-flex align-items-center gap-3">
+            <i class="bi {{ sub.icon }} fs-4 text-primary"></i>
+            <div>
+              <span class="fw-semibold text-dark">{{ sub.name }}</span>
+              {% if sub.active_incident %}
+              <small class="d-block text-warning">{{ sub.active_incident.title }}</small>
+              {% endif %}
+            </div>
+          </div>
+          {% if sub.status == 'operational' %}
+          <span class="badge bg-success-subtle text-success border border-success px-3 py-2">Operational</span>
+          {% elif sub.status == 'maintenance' %}
+          <span class="badge bg-info-subtle text-info border border-info px-3 py-2">Maintenance</span>
+          {% else %}
+          <span class="badge bg-warning-subtle text-warning border border-warning px-3 py-2">Degraded</span>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <!-- Incident History -->
+  <div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold text-dark">Recent Incident & Maintenance History</h5>
+    </div>
+    <div class="card-body">
+      {% if status_data.incident_history %}
+      <ul class="list-group list-group-flush">
+        {% for h in status_data.incident_history %}
+        <li class="list-group-item px-0 py-2">
+          <div class="d-flex justify-content-between">
+            <span class="fw-semibold">{{ h.title }}</span>
+            <span class="badge bg-secondary-subtle text-secondary">{{ h.updated_at[:10] }}</span>
+          </div>
+          <p class="small text-muted mb-0">{{ h.message }}</p>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-muted small mb-0 text-center py-3">No major outages or incidents reported in the past 90 days.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
