@@ -124,6 +124,16 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 SESSION_TIMEOUT_SECONDS = int(os.getenv("SESSION_TIMEOUT_SECONDS", str(SESSION_TIMEOUT_MINUTES * 60)))
 SESSION_WARNING_SECONDS = int(os.getenv("SESSION_WARNING_SECONDS", "120"))
 
+# Optional CAPTCHA Bot Protection (Cloudflare Turnstile or hCaptcha) (#653)
+# Supported providers: 'turnstile', 'hcaptcha'
+CAPTCHA_PROVIDER = os.getenv("CAPTCHA_PROVIDER", "").strip().lower()
+CAPTCHA_SITE_KEY = os.getenv("CAPTCHA_SITE_KEY", "").strip()
+CAPTCHA_SECRET_KEY = os.getenv("CAPTCHA_SECRET_KEY", "").strip()
+CAPTCHA_FAIL_OPEN = os.getenv("CAPTCHA_FAIL_OPEN", "false").lower() in ("true", "1", "yes")
+CAPTCHA_VERIFY_TIMEOUT = float(os.getenv("CAPTCHA_VERIFY_TIMEOUT", "5.0"))
+CAPTCHA_ALWAYS_ENFORCE = os.getenv("CAPTCHA_ALWAYS_ENFORCE", "true").lower() in ("true", "1", "yes")
+CAPTCHA_REQUIRE_AFTER_FAILURES = int(os.getenv("CAPTCHA_REQUIRE_AFTER_FAILURES", "0"))
+
 # SMTP & Transactional Email Configurations (#186, #298)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

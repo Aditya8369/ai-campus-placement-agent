@@ -408,6 +408,30 @@ When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inacti
 
 ---
 
+### Privacy-Friendly CAPTCHA Bot Protection (#653)
+
+To safeguard registration (`/register`), login (`/login`), and password recovery (`/forgot-password`) from automated credential stuffing, mass fake sign-ups, and email-flooding bots, the application supports Cloudflare Turnstile and hCaptcha:
+
+```env
+# Supported providers: 'turnstile' (Cloudflare Turnstile) or 'hcaptcha' (hCaptcha)
+CAPTCHA_PROVIDER=turnstile
+CAPTCHA_SITE_KEY=0x4AAAAAA...
+CAPTCHA_SECRET_KEY=0x4AAAAAA...
+
+# Fail-Open or Fail-Closed on provider outage (default: false = fail closed)
+CAPTCHA_FAIL_OPEN=false
+
+# Require CAPTCHA always (default: true) or only after N failed attempts (0 = always)
+CAPTCHA_ALWAYS_ENFORCE=true
+CAPTCHA_REQUIRE_AFTER_FAILURES=0
+```
+
+- **Zero Disruption When Unset**: With no keys configured, the CAPTCHA widget remains disabled and forms submit normally.
+- **Strict CSP Isolation**: The Content-Security-Policy automatically allows only the configured provider's domains (`challenges.cloudflare.com` or `hcaptcha.com`).
+- **Resilient Fallback**: By default, verification fails closed on invalid/missing tokens and provider downtime, with an optional `CAPTCHA_FAIL_OPEN=true` flag for high-availability setups.
+
+---
+
 ### Deployment & Cloud Hosting (Vercel)
 The project is configured for deployment on Vercel using Python Serverless Functions (`api/index.py` and `vercel.json`):
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.

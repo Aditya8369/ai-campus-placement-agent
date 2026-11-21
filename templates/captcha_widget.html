@@ -1,0 +1,13 @@
+{% if captcha_enabled %}
+    {% if captcha_provider == 'turnstile' %}
+        <div class="mb-3 text-center captcha-container">
+            <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+            <div class="cf-turnstile d-inline-block" data-sitekey="{{ captcha_site_key }}" data-theme="light"></div>
+        </div>
+    {% elif captcha_provider == 'hcaptcha' %}
+        <div class="mb-3 text-center captcha-container">
+            <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+            <div class="h-captcha d-inline-block" data-sitekey="{{ captcha_site_key }}"></div>
+        </div>
+    {% endif %}
+{% endif %}

@@ -103,6 +103,15 @@ def create_app(config_override=None) -> Flask:
     app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
 
+    # CAPTCHA Protection Settings (#653)
+    app.config["CAPTCHA_PROVIDER"] = getattr(config, "CAPTCHA_PROVIDER", "")
+    app.config["CAPTCHA_SITE_KEY"] = getattr(config, "CAPTCHA_SITE_KEY", "")
+    app.config["CAPTCHA_SECRET_KEY"] = getattr(config, "CAPTCHA_SECRET_KEY", "")
+    app.config["CAPTCHA_FAIL_OPEN"] = getattr(config, "CAPTCHA_FAIL_OPEN", False)
+    app.config["CAPTCHA_VERIFY_TIMEOUT"] = getattr(config, "CAPTCHA_VERIFY_TIMEOUT", 5.0)
+    app.config["CAPTCHA_ALWAYS_ENFORCE"] = getattr(config, "CAPTCHA_ALWAYS_ENFORCE", True)
+    app.config["CAPTCHA_REQUIRE_AFTER_FAILURES"] = getattr(config, "CAPTCHA_REQUIRE_AFTER_FAILURES", 0)
+
     if config_override:
         app.config.update(config_override)
 
@@ -348,6 +357,29 @@ def create_app(config_override=None) -> Flask:
         }
 
 
+    @app.context_processor
+    def inject_captcha_config():
+        """
+        Injects CAPTCHA configuration flags and evaluation helper into all templates (#653).
+        """
+        from utils.captcha import (
+            is_captcha_enabled,
+            get_captcha_provider,
+            get_captcha_site_key,
+            should_require_captcha,
+        )
+        return {
+            "captcha_enabled": is_captcha_enabled(),
+            "captcha_provider": get_captcha_provider(),
+            "captcha_site_key": get_captcha_site_key(),
+            "should_require_captcha": lambda form_type="login", identifier=None: should_require_captcha(
+                ip=request.remote_addr if request else None,
+                identifier=identifier,
+                form_type=form_type,
+            ),
+        }
+
+
     @app.before_request
     def assign_request_id():
         """Assign or extract an X-Request-ID for distributed tracing and structured correlation (#301)."""
@@ -567,13 +599,33 @@ def create_app(config_override=None) -> Flask:
         - Referrer-Policy: strict-origin-when-cross-origin
         - Permissions-Policy: camera=(), microphone=(), geolocation=()
         """
+        from utils.captcha import is_captcha_enabled, get_captcha_provider
+
+        script_sources = ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://va.vercel-scripts.com"]
+        style_sources = ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"]
+        connect_sources = ["'self'", "https://va.vercel-scripts.com", "https://vitals.vercel-insights.com"]
+        frame_sources = ["'self'"]
+
+        if is_captcha_enabled():
+            provider = get_captcha_provider()
+            if provider == "turnstile":
+                script_sources.append("https://challenges.cloudflare.com")
+                frame_sources.append("https://challenges.cloudflare.com")
+                connect_sources.append("https://challenges.cloudflare.com")
+            elif provider == "hcaptcha":
+                script_sources.extend(["https://js.hcaptcha.com", "https://newassets.hcaptcha.com"])
+                frame_sources.extend(["https://newassets.hcaptcha.com", "https://*.hcaptcha.com"])
+                connect_sources.extend(["https://api.hcaptcha.com", "https://newassets.hcaptcha.com"])
+                style_sources.append("https://newassets.hcaptcha.com")
+
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://va.vercel-scripts.com",
-            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://fonts.googleapis.com",
+            f"script-src {' '.join(script_sources)}",
+            f"style-src {' '.join(style_sources)}",
             "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com data:",
             "img-src 'self' data: https:",
-            "connect-src 'self' https://va.vercel-scripts.com https://vitals.vercel-insights.com",
+            f"connect-src {' '.join(connect_sources)}",
+            f"frame-src {' '.join(frame_sources)}",
             "frame-ancestors 'self'",
         ]
         response.headers["Content-Security-Policy"] = "; ".join(csp_directives)
