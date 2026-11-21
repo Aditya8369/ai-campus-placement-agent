@@ -237,9 +237,10 @@ def save_student_profile(
     linkedin_url: Optional[str] = None,
     github_url: Optional[str] = None,
     has_resume_uploaded: Optional[bool] = None,
+    college: Optional[str] = None,
     db_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Saves or updates a candidate's placement profile (#199)."""
+    """Saves or updates a candidate's placement profile (#199, #654)."""
     s_id = (student_id or "default_student").strip()
     skills_json = json.dumps(skills) if skills is not None else None
 
@@ -265,6 +266,7 @@ def save_student_profile(
                 if has_resume_uploaded is not None
                 else rec.get("has_resume_uploaded", 0)
             )
+            u_college = college if college is not None else rec.get("college")
 
             cursor.execute(
                 """
@@ -272,13 +274,13 @@ def save_student_profile(
                     full_name = ?, email = ?, phone = ?, department = ?,
                     grad_year = ?, cgpa = ?, target_role = ?, target_company = ?,
                     skills_json = ?, linkedin_url = ?, github_url = ?,
-                    has_resume_uploaded = ?, updated_at = CURRENT_TIMESTAMP
+                    has_resume_uploaded = ?, college = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE student_id = ?
                 """,
                 (
                     u_name, u_email, u_phone, u_dept,
                     u_year, u_cgpa, u_role, u_comp,
-                    u_skills, u_li, u_gh, u_resume, s_id,
+                    u_skills, u_li, u_gh, u_resume, u_college, s_id,
                 ),
             )
         else:
@@ -287,14 +289,16 @@ def save_student_profile(
                 INSERT INTO student_profiles (
                     student_id, full_name, email, phone, department,
                     grad_year, cgpa, target_role, target_company,
-                    skills_json, linkedin_url, github_url, has_resume_uploaded, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    skills_json, linkedin_url, github_url, has_resume_uploaded,
+                    college, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (
                     s_id, full_name, email, phone, department,
                     grad_year, cgpa, target_role, target_company,
                     skills_json, linkedin_url, github_url,
                     int(has_resume_uploaded or 0),
+                    college,
                 ),
             )
 

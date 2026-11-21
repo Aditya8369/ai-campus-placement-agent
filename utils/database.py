@@ -322,6 +322,7 @@ def init_db() -> None:
                 linkedin_url TEXT,
                 github_url TEXT,
                 has_resume_uploaded INTEGER DEFAULT 0,
+                college TEXT,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -574,6 +575,12 @@ def init_db() -> None:
             cursor.execute(
                 "ALTER TABLE email_notification_preferences ADD COLUMN output_language TEXT NOT NULL DEFAULT 'en'"
             )
+
+        # Schema migration for student_profiles table (#654)
+        cursor.execute("PRAGMA table_info(student_profiles)")
+        student_prof_cols = [col[1] for col in cursor.fetchall()]
+        if "college" not in student_prof_cols:
+            cursor.execute("ALTER TABLE student_profiles ADD COLUMN college TEXT")
 
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
@@ -3786,10 +3793,11 @@ def save_student_profile(
     skills: Optional[List[str]] = None,
     linkedin_url: Optional[str] = None,
     github_url: Optional[str] = None,
-    has_resume_uploaded: Optional[bool] = None
+    has_resume_uploaded: Optional[bool] = None,
+    college: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Saves or updates a candidate's placement profile (#199).
+    Saves or updates a candidate's placement profile (#199, #654).
     """
     conn = get_db_connection()
     try:
@@ -3814,31 +3822,34 @@ def save_student_profile(
             u_li = linkedin_url if linkedin_url is not None else rec.get("linkedin_url")
             u_gh = github_url if github_url is not None else rec.get("github_url")
             u_resume = int(has_resume_uploaded) if has_resume_uploaded is not None else rec.get("has_resume_uploaded", 0)
+            u_college = college if college is not None else rec.get("college")
 
             cursor.execute("""
                 UPDATE student_profiles SET
                     full_name = ?, email = ?, phone = ?, department = ?,
                     grad_year = ?, cgpa = ?, target_role = ?, target_company = ?,
                     skills_json = ?, linkedin_url = ?, github_url = ?,
-                    has_resume_uploaded = ?, updated_at = CURRENT_TIMESTAMP
+                    has_resume_uploaded = ?, college = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE student_id = ?
             """, (
                 u_name, u_email, u_phone, u_dept,
                 u_year, u_cgpa, u_role, u_comp,
-                u_skills, u_li, u_gh, u_resume, s_id
+                u_skills, u_li, u_gh, u_resume, u_college, s_id
             ))
         else:
             cursor.execute("""
                 INSERT INTO student_profiles (
                     student_id, full_name, email, phone, department,
                     grad_year, cgpa, target_role, target_company,
-                    skills_json, linkedin_url, github_url, has_resume_uploaded, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    skills_json, linkedin_url, github_url, has_resume_uploaded,
+                    college, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
                 s_id, full_name, email, phone, department,
                 grad_year, cgpa, target_role, target_company,
                 skills_json, linkedin_url, github_url,
-                int(has_resume_uploaded or 0)
+                int(has_resume_uploaded or 0),
+                college
             ))
         conn.commit()
 

@@ -409,6 +409,25 @@ When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inacti
 
 ---
 
+### Campus Self-Hosting & Email Domain Restrictions (#654)
+
+Colleges and universities deploying the platform for their campus can restrict registration and student account emails to approved institutional domains:
+
+```env
+# Restrict registration to one or more approved institutional domains (comma-separated):
+ALLOWED_EMAIL_DOMAINS=college.edu,univ.ac.in
+
+# Leave empty or unset (default) to permit registration from any email domain:
+ALLOWED_EMAIL_DOMAINS=
+```
+
+- **Subdomain Support**: Institutional subdomains are automatically permitted (e.g. setting `college.edu` permits `user@cs.college.edu` and `user@eng.college.edu`).
+- **Case-Insensitive**: Domain checks match regardless of letter casing (`Student@COLLEGE.EDU`).
+- **Student College Storage**: Students can record their college or university on registration or their candidate profile (`/profile`), with suggested options dynamically derived from `ALLOWED_EMAIL_DOMAINS`.
+- **Enforcement Scope**: The domain restriction automatically applies to new student registrations, profile email updates, password reset requests, and email verification re-sends.
+
+---
+
 ### Deployment & Cloud Hosting (Vercel)
 The project is configured for deployment on Vercel using Python Serverless Functions (`api/index.py` and `vercel.json`):
 - **Deployment Guide & Required Settings**: Refer to [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) for environment variables, architectural notes, and step-by-step instructions.
