@@ -1524,3 +1524,54 @@ def api_ctc_calculator_compare():
         }), 500
 
 
+# =====================================================================
+# BULK APPLICATION ACTIONS ROUTES (#522)
+# =====================================================================
+
+@tracker_bp.route("/api/tracker/applications/bulk-action", methods=["POST"])
+def api_execute_bulk_application_action():
+    """
+    Executes batch operations across student job applications (#522).
+    Supported actions: status_update, add_tag, archive, delete.
+    """
+    from utils.bulk_applications_service import BulkApplicationsService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    action = payload.get("action")
+    raw_ids = payload.get("application_ids", [])
+    if isinstance(raw_ids, str):
+        try:
+            raw_ids = json.loads(raw_ids)
+        except Exception:
+            raw_ids = [int(i.strip()) for i in raw_ids.split(",") if i.strip()]
+
+    app_ids = [int(i) for i in raw_ids if str(i).isdigit()]
+    parameters = payload.get("parameters", {})
+
+    try:
+        result = BulkApplicationsService.execute_bulk_action(
+            user_id=student_id,
+            application_ids=app_ids,
+            action=action,
+            parameters=parameters
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"success": False, "message": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error in bulk application action: {e}")
+        return jsonify({"success": False, "message": "Bulk action failed."}), 500
+
+
+@tracker_bp.route("/api/tracker/applications/bulk-history", methods=["GET"])
+def api_get_bulk_application_history():
+    """Returns audit log of recently executed bulk operations (#522)."""
+    from utils.bulk_applications_service import BulkApplicationsService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    logs = BulkApplicationsService.get_action_history(student_id)
+    return jsonify({"status": "success", "count": len(logs), "logs": logs}), 200
+
+
+
