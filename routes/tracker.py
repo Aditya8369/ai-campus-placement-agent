@@ -1525,74 +1525,61 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# LEARNING RESOURCE COMPLETION TRACKER ROUTES (#520)
+# DAILY PLACEMENT PREPARATION DASHBOARD ROUTES (#512)
 # =====================================================================
 
-@tracker_bp.route("/tracker/learning-resources", methods=["GET"])
-def learning_resource_tracker_view():
-    """Renders the student learning resource completion tracker (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
+@tracker_bp.route("/daily-prep", methods=["GET"])
+def daily_prep_view():
+    """Renders the Daily Placement Preparation Hub ('Today' view) (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
 
-    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
-    return render_template("learning_resource_tracker.html", data=metrics)
+    dashboard_data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return render_template("daily_prep_dashboard.html", data=dashboard_data)
 
 
-@tracker_bp.route("/api/learning-resources", methods=["GET"])
-def api_get_learning_resources():
-    """Returns all learning resources and progress metrics in JSON format (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
+@tracker_bp.route("/api/daily-prep/dashboard", methods=["GET"])
+def api_get_daily_prep_dashboard():
+    """Retrieves JSON representation of today's prep tasks and deadlines (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
 
-    metrics = LearningResourceTrackerService.get_progress_metrics(student_id)
-    return jsonify({"status": "success", "data": metrics}), 200
+    data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return jsonify({"status": "success", "dashboard": data}), 200
 
 
-@tracker_bp.route("/api/learning-resources", methods=["POST"])
-def api_add_learning_resource():
-    """Adds a custom learning resource (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
+@tracker_bp.route("/api/daily-prep/tasks/<int:task_id>/toggle", methods=["POST"])
+def api_toggle_daily_task(task_id):
+    """Toggles task completion status (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    try:
+        updated = DailyPrepDashboardService.toggle_task(student_id, task_id)
+        return jsonify({"status": "success", "task": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/daily-prep/tasks", methods=["POST"])
+def api_add_custom_daily_task():
+    """Adds a custom task for today (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
     title = payload.get("title")
     if not title:
-        return jsonify({"status": "error", "message": "title is required"}), 400
+        return jsonify({"status": "error", "message": "Task title is required"}), 400
 
-    resource = LearningResourceTrackerService.add_custom_resource(
+    task = DailyPrepDashboardService.add_custom_daily_task(
         user_id=student_id,
         title=title,
-        category=payload.get("category", "General"),
-        url=payload.get("url"),
-        estimated_minutes=int(payload.get("estimated_minutes", 45))
+        task_type=payload.get("task_type", "custom")
     )
-    return jsonify({"status": "success", "resource": resource}), 201
-
-
-@tracker_bp.route("/api/learning-resources/<resource_id>/status", methods=["POST"])
-def api_update_learning_resource_status(resource_id):
-    """Updates the status and time invested for a learning resource (#520)."""
-    from utils.resource_completion_service import LearningResourceTrackerService
-    student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
-
-    new_status = payload.get("status")
-    if not new_status:
-        return jsonify({"status": "error", "message": "status is required"}), 400
-
-    try:
-        updated = LearningResourceTrackerService.update_resource_status(
-            user_id=student_id,
-            resource_id=resource_id,
-            status=new_status,
-            time_spent_minutes=payload.get("time_spent_minutes"),
-            notes=payload.get("notes")
-        )
-        return jsonify({"status": "success", "resource": updated}), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "task": task}), 201
 
 
 

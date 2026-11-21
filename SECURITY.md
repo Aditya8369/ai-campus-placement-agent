@@ -62,6 +62,27 @@ For automated dependency scanning, consider using tools like:
 - `pip-audit` (Audits Python dependencies for known vulnerabilities)
 - `bandit` (Finds common security issues in Python code)
 
+### Dependency Vulnerability Management & CI Audits (#649)
+
+To ensure dependencies remain secure and reproducible:
+1. **Automated Audits in CI**: A scheduled and pull-request CI workflow executes `pip-audit -r requirements.txt`. The job fails on any unhandled known high/critical vulnerabilities.
+2. **Pinned Dependencies**: All direct runtime dependencies in `requirements.txt` are pinned to exact versions (`==`) to guarantee reproducible builds across developer machines and production environments.
+3. **Automated Grouped Updates**: Dependabot (`.github/dependabot.yml`) checks for updates to Python packages and GitHub Actions weekly, grouping minor and patch updates into batched pull requests.
+
+#### Handling Unfixable or Deferred Security Advisories
+When a vulnerability is detected in an upstream package where no immediate patch is available or where an upgrade would introduce breaking changes, maintainers may record a **time-limited exemption** in `.pip-audit-ignore.yml`.
+
+Every ignored advisory in `.pip-audit-ignore.yml` **strictly requires**:
+- `id`: The vulnerability identifier (e.g., `PYSEC-2026-2151` or `CVE-2026-XXXX`).
+- `package`: The name of the affected library.
+- `reason`: A clear, documented technical justification explaining why the advisory cannot be upgraded immediately and any mitigations in place.
+- `expiry`: A strict expiration date in `YYYY-MM-DD` (maximum recommended window: 90 days).
+
+**Enforcement Policy**:
+- The CI audit runner (`utils/dependency_audit.py`) strictly validates `.pip-audit-ignore.yml`.
+- Any exemption missing a `reason` or `expiry` date is immediately rejected, causing CI to fail.
+- Once the expiration date passes (`expiry < today`), the exemption automatically expires and the CI build fails until the dependency is upgraded or a renewed justification with a new expiration date is reviewed and merged.
+
 ### Security Resources
 
 - [OWASP Python Security](https://owasp.org/www-project-python-security/)
