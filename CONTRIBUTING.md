@@ -126,6 +126,52 @@ For NSoC Project Kernel consideration, the project maintainer is responsible for
 - **Variable naming**: Use descriptive, meaningful names
 - **Error handling**: Include proper error handling and logging
 
+### Subresource Integrity (SRI) for Frontend Libraries (#648)
+
+To protect users against Content Delivery Network (CDN) tampering or malicious resource manipulation, **all external scripts and stylesheets loaded in `templates/` must use Subresource Integrity (SRI)**.
+
+#### Requirements for External Resources:
+1. **Pinned Version**: URLs must reference an exact semantic version (e.g. `@5.3.0` or `@4.6.1`). Floating tags such as `latest`, major-only specifiers like `@5/`, or unversioned URLs are prohibited.
+2. **Integrity Attribute**: Tags must define `integrity="sha384-..."` (or `sha256-` / `sha512-`).
+3. **Crossorigin Attribute**: Tags must specify `crossorigin="anonymous"`.
+4. **CSP Compatibility**: External hostnames must already be permitted in the Content-Security-Policy (CSP) headers in `routes/__init__.py`. Currently allowed origins include `cdn.jsdelivr.net` and `cdnjs.cloudflare.com`.
+
+#### How to Compute an SRI Hash for a New Library:
+
+When introducing a new library or upgrading an existing one, compute the cryptographic SHA-384 digest of the exact file:
+
+- **Using cURL and OpenSSL (Linux / macOS / Git Bash)**:
+  ```bash
+  curl -sSL "https://cdn.jsdelivr.net/npm/package@1.2.3/dist/file.min.js" | openssl dgst -sha384 -binary | openssl base64 -A
+  ```
+
+- **Using Python**:
+  ```bash
+  python -c "import urllib.request, hashlib, base64; d = urllib.request.urlopen('https://cdn.jsdelivr.net/npm/package@1.2.3/dist/file.min.js').read(); print('sha384-' + base64.b64encode(hashlib.sha384(d).digest()).decode())"
+  ```
+
+- **Using Online Generators**:
+  You can also use tools like [SRI Hash Generator](https://www.srihash.org/) or the integrity string provided on [cdnjs.com](https://cdnjs.com/).
+
+#### Example Tag Usage:
+```html
+<!-- Script -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"
+        integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz"
+        crossorigin="anonymous"></script>
+
+<!-- Stylesheet -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM"
+      crossorigin="anonymous">
+```
+
+Run the validator locally to confirm compliance:
+```bash
+python utils/sri_validator.py
+```
+
 ### Route Organization & Where to Add New Routes (#553)
 
 The application has been refactored from a monolithic `app.py` into modular Flask Blueprints grouped by feature area inside the `routes/` package. **`app.py` is a thin entry point** exporting `app = create_app()` and should not have new routes added to it directly.
