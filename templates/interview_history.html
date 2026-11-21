@@ -176,7 +176,7 @@
               <td class="fw-semibold text-truncate" style="max-width: 150px;">
                 <i class="fa-solid fa-building text-secondary me-1"></i> {{ s.company_name }}
               </td>
-              <td class="small text-muted">{{ s.date[:10] if s.date else 'N/A' }}</td>
+              <td class="small text-muted">{{ s.date | format_date_ist if s.date else 'N/A' }}</td>
               <td>
                 <span class="small">{{ s.answered_questions }}/{{ s.total_questions }}</span>
               </td>

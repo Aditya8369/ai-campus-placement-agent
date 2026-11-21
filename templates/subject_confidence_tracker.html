@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Subject-Wise Confidence Tracker - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-speedometer2 text-primary me-2"></i>Subject-Wise Placement Confidence Tracker
+      </h2>
+      <p class="text-muted mb-0">Rate your readiness (1-5) across core placement subjects to identify focus gaps.</p>
+    </div>
+    <span class="badge bg-primary fs-6 px-3 py-2">Average Confidence: {{ data.average_confidence }}/5.0</span>
+  </div>
+
+  <!-- Weak Focus Areas Warning -->
+  {% if data.weak_areas %}
+  <div class="alert alert-warning border-0 shadow-sm rounded-3 p-3 mb-4">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <i class="bi bi-exclamation-triangle-fill fs-4 text-warning"></i>
+      <h6 class="mb-0 fw-bold">Priority Focus Gaps Detected (Confidence &le; 2)</h6>
+    </div>
+    <ul class="mb-0 small ps-4">
+      {% for weak in data.weak_areas %}
+      <li class="mb-1">
+        <strong>{{ weak.name }}:</strong> {{ weak.recommendation }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Subject Cards Grid -->
+  <div class="row g-3 mb-4">
+    {% for sub in data.subjects %}
+    <div class="col-md-6 col-lg-4">
+      <div class="card h-100 border-0 shadow-sm rounded-3 p-3 {{ 'border-start border-4 border-warning' if sub.is_weak else 'border-start border-4 border-success' }}">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <i class="bi {{ sub.icon }} fs-4 text-primary"></i>
+            <h6 class="mb-0 fw-bold">{{ sub.name }}</h6>
+          </div>
+          <span class="badge {{ 'bg-danger' if sub.score <= 2 else 'bg-success' if sub.score >= 4 else 'bg-warning text-dark' }}">
+            {{ sub.score }} / 5
+          </span>
+        </div>
+
+        <p class="small text-muted mb-3">{{ sub.recommendation }}</p>
+
+        <!-- Rating Buttons (1 to 5) -->
+        <div class="d-flex justify-content-between align-items-center pt-2 border-top">
+          <small class="text-muted fw-semibold">Self-Rating:</small>
+          <div class="btn-group btn-group-sm" role="group">
+            {% for star in range(1, 6) %}
+            <button type="button" class="btn {{ 'btn-primary' if sub.score == star else 'btn-outline-secondary' }}" onclick="updateConfidence('{{ sub.key }}', {{ star }})">
+              {{ star }}
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+async function updateConfidence(subjectKey, score) {
+  try {
+    const res = await fetch('/api/subject-confidence/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ subject_key: subjectKey, score: score })
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      alert('Failed to update rating.');
+    }
+  } catch (err) {
+    alert('Server error updating confidence.');
+  }
+}
+</script>
+{% endblock %}

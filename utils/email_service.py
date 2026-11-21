@@ -9,6 +9,7 @@ from utils.output_localization import (
     output_text,
     resolve_output_locale,
 )
+from utils.formatters import format_date_ist
 
 logger = logging.getLogger(__name__)
 
@@ -468,7 +469,8 @@ class EmailNotificationService:
         safe_name = html.escape(student_name or "Candidate")
         safe_company = html.escape(company_name or "Company")
         safe_title = html.escape(title or "Application Deadline")
-        safe_deadline = html.escape(deadline_date)
+        formatted_deadline = format_date_ist(deadline_date) or deadline_date
+        safe_deadline = html.escape(formatted_deadline)
 
         resolved_locale, _ = resolve_output_locale(locale)
         if days_remaining <= 0:

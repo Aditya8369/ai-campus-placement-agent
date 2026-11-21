@@ -2668,59 +2668,74 @@ api_preparation_note_item = api_note_operations
 
 
 # =====================================================================
-# VOICE RECORDING MOCK INTERVIEW ROUTES (#510)
+# SAVED QUESTION EXPLANATION ROUTES (#508)
 # =====================================================================
 
-@interview_bp.route("/api/interview/voice/submit", methods=["POST"])
-def api_submit_voice_interview():
+@interview_bp.route("/api/interview/questions/<question_id>/explanation", methods=["GET", "POST"])
+def api_question_explanation(question_id):
     """
-    Submits voice interview audio metadata and editable transcript (#510).
-    Computes words per minute, speaking duration, and filler word diagnostics.
+    Retrieves or creates a structured explanation breakdown for a saved interview question (#508).
+    Includes core concepts, key technical terms, common mistakes, structure, and sample answers.
     """
-    from utils.voice_interview_service import VoiceInterviewService
+    from utils.question_explanation_service import QuestionExplanationService
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
 
-    session_id = payload.get("session_id", "default_session")
-    question_id = payload.get("question_id", "q1")
-    question_text = payload.get("question_text", "Interview question")
-    raw_transcript = payload.get("raw_transcript", "")
-    edited_transcript = payload.get("edited_transcript", raw_transcript)
-    duration_seconds = float(payload.get("duration_seconds", 0.0))
-    audio_format = payload.get("audio_format", "webm")
-
-    try:
-        result = VoiceInterviewService.process_voice_submission(
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        question_text = data.get("question_text", f"Interview Question {question_id}")
+        topic = data.get("topic", "General")
+        difficulty = data.get("difficulty", "Intermediate")
+        
+        explanation = QuestionExplanationService.get_explanation(
             user_id=student_id,
-            session_id=session_id,
             question_id=question_id,
             question_text=question_text,
-            duration_seconds=duration_seconds,
-            raw_transcript=raw_transcript,
-            edited_transcript=edited_transcript,
-            audio_format=audio_format
+            topic=topic
         )
-        return jsonify({"status": "success", "voice_analysis": result}), 201
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
-    except Exception as e:
-        logger.error(f"Error in voice interview submission: {e}")
-        return jsonify({"status": "error", "message": "Failed to process voice submission."}), 500
+        return jsonify({
+            "status": "success",
+            "message": "Explanation retrieved successfully",
+            "explanation": explanation
+        }), 200
 
-
-@interview_bp.route("/api/interview/voice/<session_id>/summary", methods=["GET"])
-def api_get_voice_session_summary(session_id):
-    """Retrieves speaking pace and delivery analytics for a session (#510)."""
-    from utils.voice_interview_service import VoiceInterviewService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    summary = VoiceInterviewService.get_delivery_summary(student_id, session_id)
-    records = VoiceInterviewService.get_session_voice_records(student_id, session_id)
-
+    # GET request
+    q_text = request.args.get("question_text")
+    topic = request.args.get("topic")
+    explanation = QuestionExplanationService.get_explanation(
+        user_id=student_id,
+        question_id=question_id,
+        question_text=q_text,
+        topic=topic
+    )
     return jsonify({
         "status": "success",
-        "session_id": session_id,
-        "summary": summary,
-        "records": records
+        "explanation": explanation
     }), 200
+
+
+@interview_bp.route("/api/interview/questions/saved-explanations", methods=["GET"])
+def api_list_saved_question_explanations():
+    """Returns all saved question explanations for the current authenticated student (#508)."""
+    from utils.question_explanation_service import QuestionExplanationService
+    student_id = flask_session.get("user_id") or "default_student"
+    topic = request.args.get("topic")
+
+    explanations = QuestionExplanationService.list_saved_explanations(student_id, topic=topic)
+    return jsonify({
+        "status": "success",
+        "count": len(explanations),
+        "explanations": explanations
+    }), 200
+
+
+@interview_bp.route("/api/interview/questions/<question_id>/explanation", methods=["DELETE"])
+def api_delete_question_explanation(question_id):
+    """Deletes a saved question explanation for the current authenticated student (#508)."""
+    from utils.question_explanation_service import QuestionExplanationService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    deleted = QuestionExplanationService.delete_explanation(student_id, question_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Question explanation removed"}), 200
+    return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
