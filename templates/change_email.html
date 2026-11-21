@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Change Account Email - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 650px;">
+  <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+    <div class="d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-envelope-at-fill fs-3 text-primary"></i>
+      <div>
+        <h4 class="fw-bold mb-0">Change Account Email</h4>
+        <small class="text-muted">Update the email address associated with your student account.</small>
+      </div>
+    </div>
+
+    <!-- Security Advisory -->
+    <div class="alert alert-info border-0 rounded-3 small py-2 px-3 mb-4">
+      <i class="bi bi-shield-check me-1"></i>
+      <strong>Security Notice:</strong> A verification link will be sent to your new email address. Your current email address will remain active for logins and alerts until verification is completed.
+    </div>
+
+    <!-- Current Email Display -->
+    <div class="p-3 bg-light rounded-3 mb-4 d-flex justify-content-between align-items-center">
+      <div>
+        <small class="text-muted text-uppercase fw-bold d-block">Current Email</small>
+        <span class="fw-bold text-dark fs-6">{{ current_email }}</span>
+      </div>
+      <span class="badge bg-success-subtle text-success border border-success">Active</span>
+    </div>
+
+    <!-- Pending Request Banner -->
+    {% if pending_request %}
+    <div class="alert alert-warning border-0 rounded-3 p-3 mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <h6 class="fw-bold mb-0 text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending Email Verification</h6>
+        <span class="badge bg-warning text-dark">Awaiting Click</span>
+      </div>
+      <p class="small text-secondary mb-2">
+        Verification link was sent to <strong>{{ pending_request.pending_new_email }}</strong>. Please check your inbox or spam folder.
+      </p>
+      <form method="POST" action="{{ url_for('auth.cancel_email_change_request') }}" class="d-inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+        <button type="submit" class="btn btn-outline-danger btn-sm">
+          <i class="bi bi-x-circle me-1"></i> Cancel Pending Request
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+    <!-- Request Form -->
+    <form method="POST" action="{{ url_for('auth.request_email_change_view') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() if csrf_token else '' }}">
+      
+      <div class="mb-3">
+        <label for="new_email" class="form-label small fw-semibold">New Email Address *</label>
+        <input type="email" class="form-control" id="new_email" name="new_email" placeholder="name@domain.edu" required>
+        <div class="form-text">Must be a valid email you have access to.</div>
+      </div>
+
+      <div class="mb-4">
+        <label for="confirm_password" class="form-label small fw-semibold">Confirm Password *</label>
+        <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="Enter your current password to authorize" required>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Back to Dashboard</a>
+        <button type="submit" class="btn btn-primary px-4 fw-semibold">
+          <i class="bi bi-send-fill me-1"></i> Send Verification Link
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
