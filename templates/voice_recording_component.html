@@ -1,0 +1,142 @@
+<!-- Voice Recording Component for Mock Interviews (#510) -->
+<div class="card border-0 shadow-sm rounded-3 p-3 mb-3 voice-recorder-box" id="voiceRecorderBox">
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-mic-fill text-danger fs-5" id="micIconPulse"></i>
+      <h6 class="mb-0 fw-bold">Voice Answer Mode</h6>
+    </div>
+    <span class="badge bg-secondary-subtle text-secondary" id="recordingTimer">00:00</span>
+  </div>
+
+  <p class="small text-muted mb-3">
+    Click record to answer verbally. Your speech will be transcribed in real-time, and you can edit the transcript before submitting to the AI evaluator.
+  </p>
+
+  <!-- Controls -->
+  <div class="d-flex gap-2 mb-3">
+    <button type="button" class="btn btn-outline-danger btn-sm" id="btnStartVoiceRecord" onclick="startVoiceRecording()">
+      <i class="bi bi-record-circle me-1"></i> Start Recording
+    </button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnStopVoiceRecord" onclick="stopVoiceRecording()" disabled>
+      <i class="bi bi-stop-circle me-1"></i> Stop Recording
+    </button>
+    <button type="button" class="btn btn-outline-primary btn-sm" id="btnClearVoiceRecord" onclick="clearVoiceRecording()">
+      <i class="bi bi-arrow-counterclockwise me-1"></i> Clear
+    </button>
+  </div>
+
+  <!-- Real-time Editable Transcript -->
+  <div class="form-group mb-2">
+    <label for="voiceTranscriptInput" class="form-label small fw-semibold text-muted d-flex justify-content-between">
+      <span>Editable Transcript:</span>
+      <span class="text-primary small" id="voiceMetricsBadge">0 words | 0 WPM</span>
+    </label>
+    <textarea class="form-control font-monospace small" id="voiceTranscriptInput" rows="4" placeholder="Your speech will appear here. You can manually correct any errors or add extra points..."></textarea>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center">
+    <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Browser speech recognition fallback active.</small>
+    <button type="button" class="btn btn-primary btn-sm" id="btnApplyVoiceAnswer" onclick="applyVoiceToAnswerBox()">
+      <i class="bi bi-check-circle me-1"></i> Use Transcript as Answer
+    </button>
+  </div>
+</div>
+
+<script>
+let voiceRecognition = null;
+let recordingTimerInterval = null;
+let recordingSeconds = 0;
+let isRecording = false;
+
+function initVoiceRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    console.warn("SpeechRecognition API not supported on this browser.");
+    return null;
+  }
+  const recog = new SpeechRecognition();
+  recog.continuous = true;
+  recog.interimResults = true;
+  recog.lang = 'en-US';
+
+  recog.onresult = function(event) {
+    let interim = '';
+    let final = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+      if (event.results[i].isFinal) {
+        final += event.results[i][0].transcript;
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    const txtArea = document.getElementById('voiceTranscriptInput');
+    if (final) {
+      txtArea.value += (txtArea.value ? ' ' : '') + final;
+    }
+    updateVoiceMetrics();
+  };
+
+  recog.onerror = function(err) {
+    console.error("Speech recognition error:", err);
+  };
+  return recog;
+}
+
+function startVoiceRecording() {
+  if (!voiceRecognition) voiceRecognition = initVoiceRecognition();
+  if (voiceRecognition) {
+    try { voiceRecognition.start(); } catch (e) {}
+  }
+  isRecording = true;
+  recordingSeconds = 0;
+  document.getElementById('btnStartVoiceRecord').disabled = true;
+  document.getElementById('btnStopVoiceRecord').disabled = false;
+  document.getElementById('micIconPulse').classList.add('spinner-grow', 'spinner-grow-sm');
+
+  recordingTimerInterval = setInterval(() => {
+    recordingSeconds++;
+    const m = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
+    const s = String(recordingSeconds % 60).padStart(2, '0');
+    document.getElementById('recordingTimer').textContent = `${m}:${s}`;
+    updateVoiceMetrics();
+  }, 1000);
+}
+
+function stopVoiceRecording() {
+  if (voiceRecognition) {
+    try { voiceRecognition.stop(); } catch (e) {}
+  }
+  isRecording = false;
+  clearInterval(recordingTimerInterval);
+  document.getElementById('btnStartVoiceRecord').disabled = false;
+  document.getElementById('btnStopVoiceRecord').disabled = true;
+  document.getElementById('micIconPulse').classList.remove('spinner-grow', 'spinner-grow-sm');
+  updateVoiceMetrics();
+}
+
+function clearVoiceRecording() {
+  stopVoiceRecording();
+  document.getElementById('voiceTranscriptInput').value = '';
+  document.getElementById('recordingTimer').textContent = '00:00';
+  document.getElementById('voiceMetricsBadge').textContent = '0 words | 0 WPM';
+}
+
+function updateVoiceMetrics() {
+  const text = document.getElementById('voiceTranscriptInput').value.trim();
+  const words = text ? text.split(/\s+/).length : 0;
+  const mins = Math.max(recordingSeconds / 60, 0.1);
+  const wpm = Math.round(words / mins);
+  document.getElementById('voiceMetricsBadge').textContent = `${words} words | ${wpm} WPM`;
+}
+
+function applyVoiceToAnswerBox() {
+  const text = document.getElementById('voiceTranscriptInput').value.trim();
+  const targetBox = document.getElementById('answer') || document.getElementById('answerInput') || document.querySelector('textarea[name="answer"]');
+  if (targetBox) {
+    targetBox.value = text;
+    targetBox.focus();
+  }
+  // Store duration
+  window.lastRecordedVoiceDuration = recordingSeconds;
+}
+</script>

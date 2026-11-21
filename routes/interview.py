@@ -2668,44 +2668,59 @@ api_preparation_note_item = api_note_operations
 
 
 # =====================================================================
-# INTERVIEW COMMUNICATION FEEDBACK ROUTES (#511)
+# VOICE RECORDING MOCK INTERVIEW ROUTES (#510)
 # =====================================================================
 
-@interview_bp.route("/api/interview/communication/evaluate", methods=["POST"])
-def api_evaluate_communication():
+@interview_bp.route("/api/interview/voice/submit", methods=["POST"])
+def api_submit_voice_interview():
     """
-    Evaluates communication, articulation, pacing, and filler word density (#511).
-    Scores delivery separately from technical assessment.
+    Submits voice interview audio metadata and editable transcript (#510).
+    Computes words per minute, speaking duration, and filler word diagnostics.
     """
-    from utils.interview_communication_service import InterviewCommunicationService
+    from utils.voice_interview_service import VoiceInterviewService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    session_id = payload.get("session_id", "default_sess")
+    session_id = payload.get("session_id", "default_session")
     question_id = payload.get("question_id", "q1")
-    answer_text = payload.get("answer_text", "")
+    question_text = payload.get("question_text", "Interview question")
+    raw_transcript = payload.get("raw_transcript", "")
+    edited_transcript = payload.get("edited_transcript", raw_transcript)
+    duration_seconds = float(payload.get("duration_seconds", 0.0))
+    audio_format = payload.get("audio_format", "webm")
 
     try:
-        feedback = InterviewCommunicationService.evaluate_communication(
+        result = VoiceInterviewService.process_voice_submission(
             user_id=student_id,
             session_id=session_id,
             question_id=question_id,
-            answer_text=answer_text
+            question_text=question_text,
+            duration_seconds=duration_seconds,
+            raw_transcript=raw_transcript,
+            edited_transcript=edited_transcript,
+            audio_format=audio_format
         )
-        return jsonify({"status": "success", "communication_feedback": feedback}), 200
+        return jsonify({"status": "success", "voice_analysis": result}), 201
     except ValueError as ve:
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        logger.error(f"Error in communication evaluation: {e}")
-        return jsonify({"status": "error", "message": "Failed to evaluate communication."}), 500
+        logger.error(f"Error in voice interview submission: {e}")
+        return jsonify({"status": "error", "message": "Failed to process voice submission."}), 500
 
 
-@interview_bp.route("/api/interview/communication/<session_id>/audit", methods=["GET"])
-def api_get_communication_audit(session_id):
-    """Returns aggregated communication metrics for an interview session (#511)."""
-    from utils.interview_communication_service import InterviewCommunicationService
+@interview_bp.route("/api/interview/voice/<session_id>/summary", methods=["GET"])
+def api_get_voice_session_summary(session_id):
+    """Retrieves speaking pace and delivery analytics for a session (#510)."""
+    from utils.voice_interview_service import VoiceInterviewService
     student_id = flask_session.get("user_id") or "default_student"
 
-    audit = InterviewCommunicationService.get_session_communication_audit(student_id, session_id)
-    return jsonify({"status": "success", "audit": audit}), 200
+    summary = VoiceInterviewService.get_delivery_summary(student_id, session_id)
+    records = VoiceInterviewService.get_session_voice_records(student_id, session_id)
+
+    return jsonify({
+        "status": "success",
+        "session_id": session_id,
+        "summary": summary,
+        "records": records
+    }), 200
 
