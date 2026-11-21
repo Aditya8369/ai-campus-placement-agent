@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Peer Mock Interview Review - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 800px;">
+  <div class="text-center mb-4">
+    <span class="badge bg-primary-subtle text-primary mb-2">Peer Feedback Portal</span>
+    <h2 class="fw-bold">Peer Mock Interview Evaluation</h2>
+    <p class="text-muted">Target Role: <strong>{{ request_data.role_title }}</strong> &bull; Anonymous Student Submission</p>
+  </div>
+
+  <div class="alert alert-info border-0 shadow-sm rounded-3 small py-2 px-3 mb-4">
+    <i class="bi bi-shield-check me-1"></i> Personal identifiers have been sanitized for unbiased peer evaluation.
+  </div>
+
+  <!-- Interview Answers Review -->
+  <div class="card border-0 shadow-sm rounded-3 mb-4">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold">Interview Questions & Candidate Answers</h5>
+    </div>
+    <div class="card-body">
+      {% for item in request_data.transcript %}
+      <div class="mb-4 pb-3 border-bottom">
+        <h6 class="fw-bold text-dark">Q{{ loop.index }}: {{ item.question }}</h6>
+        <div class="p-3 bg-light rounded-3 text-secondary small font-monospace" style="white-space: pre-wrap;">
+          {{ item.answer }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Peer Feedback Scoring Form -->
+  <div class="card border-0 shadow-sm rounded-3 p-4">
+    <h5 class="fw-bold mb-3">Submit Your Peer Critique</h5>
+    <form id="peerFeedbackForm" onsubmit="submitFeedback(event)">
+      <div class="row g-3 mb-3">
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Technical Accuracy (1-5)</label>
+          <select class="form-select" id="fbTech" required>
+            <option value="5">5 - Outstanding</option>
+            <option value="4" selected>4 - Strong</option>
+            <option value="3">3 - Adequate</option>
+            <option value="2">2 - Needs Work</option>
+            <option value="1">1 - Inaccurate</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Communication Clarity (1-5)</label>
+          <select class="form-select" id="fbComm" required>
+            <option value="5">5 - Very Clear & Articulate</option>
+            <option value="4" selected>4 - Good Clarity</option>
+            <option value="3">3 - Understandable</option>
+            <option value="2">2 - Muddled / Hesitant</option>
+            <option value="1">1 - Hard to Follow</option>
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small fw-semibold">Conciseness & Pace (1-5)</label>
+          <select class="form-select" id="fbConcise" required>
+            <option value="5">5 - Perfectly Balanced</option>
+            <option value="4" selected>4 - Good Pacing</option>
+            <option value="3">3 - Slightly Verbose / Brief</option>
+            <option value="2">2 - Rambling</option>
+            <option value="1">1 - Far Too Short/Long</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label small fw-semibold">What did the candidate do well?</label>
+        <textarea class="form-control" id="fbPositive" rows="2" placeholder="e.g. Good structured examples, clear explanation of trade-offs..." required></textarea>
+      </div>
+
+      <div class="mb-4">
+        <label class="form-label small fw-semibold">Constructive Advice / Areas for Improvement</label>
+        <textarea class="form-control" id="fbCritique" rows="3" placeholder="e.g. Could explain time complexity more explicitly, reduce filler pauses..." required></textarea>
+      </div>
+
+      <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold">
+        <i class="bi bi-send-fill me-1"></i> Submit Peer Feedback
+      </button>
+    </form>
+  </div>
+</div>
+
+<script>
+async function submitFeedback(e) {
+  e.preventDefault();
+  const token = '{{ request_data.share_token }}';
+  const payload = {
+    share_token: token,
+    technical_rating: parseInt(document.getElementById('fbTech').value),
+    communication_rating: parseInt(document.getElementById('fbComm').value),
+    conciseness_rating: parseInt(document.getElementById('fbConcise').value),
+    positive_feedback: document.getElementById('fbPositive').value.trim(),
+    constructive_critique: document.getElementById('fbCritique').value.trim()
+  };
+
+  try {
+    const res = await fetch(`/api/interview/peer-review/${token}/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      alert('Thank you! Your peer feedback was submitted.');
+      window.location.href = '/';
+    } else {
+      alert('Failed to submit review.');
+    }
+  } catch (err) {
+    alert('Server error.');
+  }
+}
+</script>
+{% endblock %}
