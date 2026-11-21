@@ -763,6 +763,33 @@
                 </button>
               </div>
 
+              <!-- Rate Limit Remaining Indicator & Live Countdown Notice (#652) -->
+              {% set analyze_quota = rate_limit_status('analyze') %}
+              <div class="d-flex align-items-center justify-content-between mt-2 px-1 flex-wrap gap-2">
+                <div id="analyzeRateLimitIndicator" class="small text-muted d-flex align-items-center gap-1"
+                     data-scope="analyze"
+                     data-limit="{{ analyze_quota.limit }}"
+                     data-remaining="{{ analyze_quota.remaining }}"
+                     data-reset-seconds="{{ analyze_quota.reset_seconds }}"
+                     aria-live="polite">
+                  <i class="fa-solid fa-gauge-high text-primary"></i>
+                  <span class="rate-limit-text">
+                    <span class="rate-limit-remaining fw-bold text-dark">{{ analyze_quota.remaining }}</span>
+                    <span class="rate-limit-label">{{ _t('rate_limit_analyses_left', 'analyses left this hour') }}</span>
+                  </span>
+                </div>
+              </div>
+
+              <div id="analyzeRateLimitNotice" class="alert alert-warning border-warning-subtle rounded-3 mt-2 py-2 px-3 small {% if analyze_quota.remaining > 0 %}d-none{% endif %}" role="alert" aria-live="polite">
+                <div class="d-flex align-items-center gap-2">
+                  <i class="fa-solid fa-hourglass-half text-warning fs-5"></i>
+                  <div>
+                    <span id="analyzeRateLimitMessage" class="fw-medium">Rate limit reached.</span>
+                    <span id="analyzeCountdownWrapper" class="fw-bold ms-1">You can try again in <span id="analyzeCountdownTimer">{% if analyze_quota.reset_seconds > 0 %}{{ (analyze_quota.reset_seconds // 60) }}:{{ "%02d"|format(analyze_quota.reset_seconds % 60) }}{% else %}0:00{% endif %}</span></span>
+                  </div>
+                </div>
+              </div>
+
               <!-- Quick Demo Mode Callout (#435) -->
               <div class="text-center mt-3 pt-3 border-top" id="demoModeCallout">
                 <p class="text-muted small mb-2">Want to see what the platform looks like first?</p>
@@ -1351,6 +1378,7 @@
   </script>
   <!-- Custom JS -->
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/modules/rate_limit.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/analysis.js') }}"></script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
