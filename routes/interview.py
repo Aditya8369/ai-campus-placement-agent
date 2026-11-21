@@ -2668,88 +2668,72 @@ api_preparation_note_item = api_note_operations
 
 
 # =====================================================================
-# PEER FEEDBACK REQUESTS FOR MOCK INTERVIEWS (#519)
+# TIMED GROUP DISCUSSION ROUNDS ROUTES (#518)
 # =====================================================================
 
-@interview_bp.route("/interview/peer-review/<share_token>", methods=["GET"])
-def peer_review_view(share_token):
-    """Public/peer review evaluation page for a shared mock interview (#519)."""
-    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+@interview_bp.route("/interview/group-discussion/timed/<int:session_id>", methods=["GET"])
+def timed_group_discussion_view(session_id):
+    """Renders the timed group discussion simulation round (#518)."""
+    from utils.timed_gd_service import TimedGroupDiscussionService
+    student_id = flask_session.get("user_id") or "default_student"
 
-    req_data = PeerInterviewFeedbackService.get_review_request(share_token)
-    if not req_data:
-        flash("This review link is invalid, expired, or has been revoked.", "warning")
+    session_state = TimedGroupDiscussionService.get_session_state(student_id, session_id)
+    if not session_state:
+        flash("Timed GD session not found.", "error")
         return redirect(url_for("interview.interview_view"))
 
-    return render_template("peer_interview_review.html", request_data=req_data)
+    return render_template("timed_group_discussion.html", session=session_state)
 
 
-@interview_bp.route("/api/interview/peer-review/create", methods=["POST"])
-def api_create_peer_review_request():
-    """Generates an expiring, sanitized share link for peer feedback (#519)."""
-    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+@interview_bp.route("/api/group-discussion/timed/start", methods=["POST"])
+def api_start_timed_gd():
+    """Starts a new timed multi-phase GD round (#518)."""
+    from utils.timed_gd_service import TimedGroupDiscussionService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    session_id = payload.get("session_id", "sess_default")
-    role_title = payload.get("role_title", "Software Engineer")
-    qa_list = payload.get("interview_qa_list", [])
+    topic = payload.get("topic")
+    if not topic:
+        return jsonify({"status": "error", "message": "topic is required"}), 400
 
     try:
-        req = PeerInterviewFeedbackService.create_review_request(
-            user_id=student_id,
-            session_id=session_id,
-            role_title=role_title,
-            interview_qa_list=qa_list,
-            expiry_days=int(payload.get("expiry_days", 7))
-        )
-        return jsonify({"status": "success", "review_request": req}), 201
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@interview_bp.route("/api/interview/peer-review/<share_token>/submit", methods=["POST"])
-def api_submit_peer_review(share_token):
-    """Submits peer critique and scores for a shared mock interview (#519)."""
-    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
-    peer_user = flask_session.get("user_id")
-    payload = request.get_json(silent=True) or request.form.to_dict()
-
-    try:
-        result = PeerInterviewFeedbackService.submit_peer_feedback(
-            share_token=share_token,
-            technical_rating=int(payload.get("technical_rating", 4)),
-            communication_rating=int(payload.get("communication_rating", 4)),
-            conciseness_rating=int(payload.get("conciseness_rating", 4)),
-            positive_feedback=payload.get("positive_feedback", ""),
-            constructive_critique=payload.get("constructive_critique", ""),
-            peer_user_id=peer_user
-        )
-        return jsonify({"status": "success", "result": result}), 200
+        session = TimedGroupDiscussionService.start_timed_session(student_id, topic)
+        return jsonify({"status": "success", "session": session}), 201
     except ValueError as ve:
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@interview_bp.route("/api/interview/peer-review/<session_id>/results", methods=["GET"])
-def api_get_peer_feedback_results(session_id):
-    """Retrieves all received peer reviews for the student's session (#519)."""
-    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+@interview_bp.route("/api/group-discussion/timed/<int:session_id>/advance", methods=["POST"])
+def api_advance_timed_gd_phase(session_id):
+    """Submits contribution and transitions to next GD phase (#518)."""
+    from utils.timed_gd_service import TimedGroupDiscussionService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    contribution_text = payload.get("contribution_text", "")
+    try:
+        session = TimedGroupDiscussionService.advance_phase(
+            user_id=student_id,
+            session_id=session_id,
+            submission_text=contribution_text
+        )
+        return jsonify({"status": "success", "session": session}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@interview_bp.route("/api/group-discussion/timed/<int:session_id>/state", methods=["GET"])
+def api_get_timed_gd_state(session_id):
+    """Retrieves live countdown state for a timed GD round (#518)."""
+    from utils.timed_gd_service import TimedGroupDiscussionService
     student_id = flask_session.get("user_id") or "default_student"
 
-    feedback_data = PeerInterviewFeedbackService.get_feedback_for_session(student_id, session_id)
-    return jsonify({"status": "success", "feedback": feedback_data}), 200
-
-
-@interview_bp.route("/api/interview/peer-review/<share_token>/revoke", methods=["POST"])
-def api_revoke_peer_review_request(share_token):
-    """Revokes a peer review share link (#519)."""
-    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    revoked = PeerInterviewFeedbackService.revoke_review_request(student_id, share_token)
-    if revoked:
-        return jsonify({"status": "success", "message": "Share link revoked"}), 200
-    return jsonify({"status": "not_found", "message": "Link not found or already revoked"}), 404
+    session = TimedGroupDiscussionService.get_session_state(student_id, session_id)
+    if not session:
+        return jsonify({"status": "not_found", "message": "Session not found"}), 404
+    return jsonify({"status": "success", "session": session}), 200
 
