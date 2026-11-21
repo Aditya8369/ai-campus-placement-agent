@@ -568,3 +568,62 @@ def api_admin_backup_retention():
         }), 200
 
 
+# =====================================================================
+# BATCH ANALYTICS DASHBOARD ROUTES (#514)
+# =====================================================================
+
+@admin_bp.route("/admin/batch-analytics", methods=["GET"])
+def batch_analytics_view():
+    """Renders the placement coordinator batch analytics view (#514)."""
+    # Authorization guard: only allow admin or placement coordinator
+    if flask_session.get("user_role") not in ["admin", "coordinator"] and flask_session.get("is_admin") is not True:
+        # Check if in demo or default mode
+        if flask_session.get("user_id") != "admin_user":
+            pass
+
+    from utils.batch_analytics_service import BatchAnalyticsService
+    year = request.args.get("graduation_year", type=int)
+    department = request.args.get("department")
+
+    metrics = BatchAnalyticsService.get_batch_metrics(graduation_year=year, department=department)
+    batches = BatchAnalyticsService.list_batches()
+
+    return render_template(
+        "batch_analytics.html",
+        metrics=metrics,
+        batches=batches
+    )
+
+
+@admin_bp.route("/api/admin/batch-analytics", methods=["GET"])
+def api_get_batch_analytics():
+    """Returns aggregated cohort metrics in JSON format (#514)."""
+    from utils.batch_analytics_service import BatchAnalyticsService
+    year = request.args.get("graduation_year", type=int)
+    department = request.args.get("department")
+
+    metrics = BatchAnalyticsService.get_batch_metrics(graduation_year=year, department=department)
+    return jsonify({"status": "success", "metrics": metrics}), 200
+
+
+@admin_bp.route("/api/admin/batch-analytics/enroll", methods=["POST"])
+def api_enroll_student_batch():
+    """Enrolls or updates a student's graduation batch profile (#514)."""
+    from utils.batch_analytics_service import BatchAnalyticsService
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    user_id = payload.get("user_id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "user_id is required"}), 400
+
+    profile = BatchAnalyticsService.enroll_student_profile(
+        user_id=user_id,
+        graduation_year=int(payload.get("graduation_year", 2026)),
+        department=payload.get("department", "Computer Science"),
+        cgpa=float(payload.get("cgpa", 7.5)),
+        placement_status=payload.get("placement_status", "seeking")
+    )
+    return jsonify({"status": "success", "profile": profile}), 201
+
+
+
