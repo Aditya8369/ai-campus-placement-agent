@@ -32,7 +32,7 @@
                             </label>
                         </div>
                         <div class="text-muted small mt-2">
-                            <div><i class="fas fa-money-bill-wave me-1 text-success"></i> ${{ "{:,.0f}".format(off.total_compensation) }} / yr total</div>
+                            <div><i class="fas fa-money-bill-wave me-1 text-success"></i> ₹{{ off.total_compensation | format_inr }} / yr ({{ off.total_compensation | format_inr(lpa=True) }})</div>
                             <div><i class="fas fa-map-marker-alt me-1 text-primary"></i> {{ off.location }} ({{ off.work_mode }})</div>
                         </div>
                     </div>
@@ -85,17 +85,17 @@
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label small fw-semibold">Base Salary ($)</label>
-                            <input type="number" id="off-base" class="form-control" required>
+                            <label class="form-label small fw-semibold">Base Salary (₹)</label>
+                            <input type="number" id="off-base" class="form-control" placeholder="e.g. 1200000" required>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label small fw-semibold">Bonus ($)</label>
+                            <label class="form-label small fw-semibold">Bonus (₹)</label>
                             <input type="number" id="off-bonus" class="form-control" value="0">
                         </div>
                     </div>
                     <div class="row g-2 mb-3">
                         <div class="col-md-6">
-                            <label class="form-label small fw-semibold">Annual Equity ($)</label>
+                            <label class="form-label small fw-semibold">Annual Equity (₹)</label>
                             <input type="number" id="off-equity" class="form-control" value="0">
                         </div>
                         <div class="col-md-6">
@@ -201,7 +201,16 @@ function renderComparisonMatrix(matrix) {
         matrix.offers.forEach(o => {
             let val = o[attr.key] || '--';
             if (attr.format === 'currency' && val !== '--') {
-                val = '$' + Number(val).toLocaleString();
+                const num = Number(val);
+                const numStr = Math.round(num).toString();
+                let lastThree = numStr.substring(numStr.length - 3);
+                let otherNumbers = numStr.substring(0, numStr.length - 3);
+                if (otherNumbers !== '') {
+                    lastThree = ',' + lastThree;
+                }
+                const formatted = otherNumbers.replace(/\B(?=(\d{2})+(?!\d))/g, ",") + lastThree;
+                const lpaStr = (num >= 100000) ? ` (${(num / 100000).toFixed(2).replace(/\.00$/, '')} LPA)` : '';
+                val = '₹' + formatted + lpaStr;
             }
             rowHtml += `<td class="text-center">${val}</td>`;
         });

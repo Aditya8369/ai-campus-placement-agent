@@ -93,6 +93,14 @@
           <div class="col-md-4 text-md-end mt-3 mt-md-0">
             <span class="text-muted small d-block">Candidate Identifier</span>
             <span class="fw-bold text-dark font-monospace">{{ student_id }}</span>
+            {% if profile.college %}
+              <div class="mt-2" id="profileCollegeContainer">
+                <span class="text-muted small d-block">College / Institution</span>
+                <span class="badge bg-light text-dark border fw-medium" id="profileCollegeDisplay">
+                  <i class="fa-solid fa-building-columns text-primary me-1"></i>{{ profile.college }}
+                </span>
+              </div>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -121,9 +129,21 @@
 
               <div class="row g-3 mb-3">
                 <div class="col-md-6">
+                  <label for="profileCollege" class="form-label small fw-semibold">College / University</label>
+                  <input type="text" id="profileCollege" name="college" class="form-control" value="{{ profile.college or '' }}" placeholder="e.g. Stanford University" list="allowedCollegesList">
+                  {% if suggested_colleges %}
+                    <datalist id="allowedCollegesList">
+                      {% for col in suggested_colleges %}
+                        <option value="{{ col }}">
+                      {% endfor %}
+                    </datalist>
+                  {% endif %}
+                </div>
+                <div class="col-md-6">
                   <label for="profilePhone" class="form-label small fw-semibold">Phone Number</label>
                   <input type="tel" id="profilePhone" name="phone" class="form-control" value="{{ profile.phone or '' }}" placeholder="+91 98765 43210">
                 </div>
+              </div>
                 <div class="col-md-6">
                   <label for="profileDepartment" class="form-label small fw-semibold">Department / Major</label>
                   <input type="text" id="profileDepartment" name="department" class="form-control" value="{{ profile.department or '' }}" placeholder="Computer Science & Eng">

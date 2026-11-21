@@ -1053,3 +1053,20 @@ def delete_job_contact(
     except Exception as e:
         logger.error(f"Error deleting job contact {contact_id}: {e}")
         return False
+
+
+# Re-exports for Drive Day Practical Readiness Checklist (#651)
+from utils.drive_day_checklist import (
+    get_drive_day_checklist,
+    save_drive_day_checklist,
+    toggle_checklist_item,
+    add_checklist_item,
+    rename_checklist_item,
+    delete_checklist_item,
+    reset_drive_day_checklist,
+    switch_drive_mode,
+    calculate_checklist_progress,
+    get_default_checklist,
+    get_dashboard_drive_reminder,
+)
+

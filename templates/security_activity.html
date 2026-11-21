@@ -55,7 +55,7 @@
                                             {{ ev.status }}
                                         </span>
                                     </td>
-                                    <td class="pe-4 text-muted small">{{ ev.created_at }}</td>
+                                    <td class="pe-4 text-muted small">{{ ev.created_at | format_datetime_ist }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

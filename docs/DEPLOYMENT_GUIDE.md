@@ -58,6 +58,7 @@ Configure these variables in your **Vercel Project Settings > Environment Variab
 | `MAX_UPLOAD_SIZE_MB` | Optional | `5` | Maximum allowed file size for resume uploads in megabytes. |
 | `LOG_LEVEL` | Optional | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 | `SESSION_TIMEOUT_MINUTES` | Optional | `30` | Inactivity duration in minutes before user session automatically expires. |
+| `ALLOWED_EMAIL_DOMAINS` | Optional | `""` | Comma-separated list of approved college email domains (e.g. `college.edu,univ.ac.in`). Empty allows all. |
 
 ---
 

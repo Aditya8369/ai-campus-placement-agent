@@ -54,6 +54,30 @@ def reset_login_testing_state():
         app.config.pop("ENFORCE_STUDENT_ISOLATION", None)
 
 
+@pytest.fixture
+def client():
+    """Provides a fresh, isolated test client for each test."""
+    from app import app
+    with app.test_client() as c:
+        yield c
+
+
+@pytest.fixture(autouse=True)
+def reset_in_memory_session_comparisons():
+    """Ensure in-memory resume comparisons are reset between tests to prevent cross-test leakage."""
+    try:
+        from utils.session_resume_comparator import _SESSION_COMPARISON_CACHE
+        _SESSION_COMPARISON_CACHE.clear()
+    except (ImportError, AttributeError):
+        pass
+    yield
+    try:
+        from utils.session_resume_comparator import _SESSION_COMPARISON_CACHE
+        _SESSION_COMPARISON_CACHE.clear()
+    except (ImportError, AttributeError):
+        pass
+
+
 
 class MockGeminiResponse:
     """Mock of google.genai.types.GenerateContentResponse."""

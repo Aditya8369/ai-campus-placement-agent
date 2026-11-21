@@ -591,3 +591,58 @@ def api_apply_report_watermark():
     }), 200
 
 
+# =====================================================================
+# WEEKLY PREPARATION SUMMARY EMAIL ROUTES (#521)
+# =====================================================================
+
+@reports_bp.route("/reports/weekly-summary", methods=["GET"])
+def weekly_summary_email_view():
+    """Renders the HTML email preview and preferences panel (#521)."""
+    from utils.weekly_summary_email_service import WeeklySummaryEmailService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    summary = WeeklySummaryEmailService.compile_weekly_summary(student_id)
+    email_html = WeeklySummaryEmailService.generate_html_email(summary)
+
+    return render_template(
+        "weekly_summary_email.html",
+        summary=summary,
+        email_html=email_html
+    )
+
+
+@reports_bp.route("/api/weekly-summary/digest", methods=["GET"])
+def api_get_weekly_summary_digest():
+    """Returns the weekly summary metrics in JSON format (#521)."""
+    from utils.weekly_summary_email_service import WeeklySummaryEmailService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    summary = WeeklySummaryEmailService.compile_weekly_summary(student_id)
+    return jsonify({"status": "success", "summary": summary}), 200
+
+
+@reports_bp.route("/api/weekly-summary/send-now", methods=["POST"])
+def api_trigger_weekly_summary_email():
+    """Triggers and logs a weekly summary email delivery (#521)."""
+    from utils.weekly_summary_email_service import WeeklySummaryEmailService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    result = WeeklySummaryEmailService.send_or_log_summary(student_id, is_preview=False)
+    return jsonify(result), 200
+
+
+@reports_bp.route("/api/weekly-summary/preferences", methods=["POST"])
+def api_update_weekly_summary_preferences():
+    """Updates opt-in/opt-out status for weekly digests (#521)."""
+    from utils.weekly_summary_email_service import WeeklySummaryEmailService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    is_enabled = bool(payload.get("is_enabled", True))
+    email = payload.get("recipient_email")
+
+    WeeklySummaryEmailService.update_preference(student_id, is_enabled, email)
+    return jsonify({"status": "success", "is_enabled": is_enabled}), 200
+
+
+

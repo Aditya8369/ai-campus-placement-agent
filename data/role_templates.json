@@ -1,0 +1,279 @@
+[
+  {
+    "id": "software_developer",
+    "name": "Software Developer",
+    "description": "General software engineering role focusing on object-oriented programming, core algorithms, application development, and problem solving.",
+    "core_skills": [
+      "Data Structures",
+      "Algorithms",
+      "Python",
+      "Java",
+      "SQL",
+      "Git"
+    ],
+    "good_to_have_skills": [
+      "System Design",
+      "REST APIs",
+      "Docker",
+      "Linux",
+      "CI/CD"
+    ],
+    "typical_tools": [
+      "Git",
+      "VS Code",
+      "IntelliJ IDEA",
+      "Linux",
+      "Postman"
+    ]
+  },
+  {
+    "id": "backend_developer",
+    "name": "Backend Developer",
+    "description": "Focuses on server-side logic, microservices architecture, database design, RESTful APIs, and performant backend services.",
+    "core_skills": [
+      "Python",
+      "SQL",
+      "REST APIs",
+      "Data Structures",
+      "Relational Databases"
+    ],
+    "good_to_have_skills": [
+      "Docker",
+      "Redis",
+      "Microservices",
+      "CI/CD",
+      "Linux",
+      "Message Queues"
+    ],
+    "typical_tools": [
+      "Docker",
+      "PostgreSQL",
+      "Redis",
+      "Postman",
+      "Git",
+      "Linux"
+    ]
+  },
+  {
+    "id": "frontend_developer",
+    "name": "Frontend Developer",
+    "description": "Builds interactive, responsive user interfaces, accessible web applications, and seamless client-side user experiences.",
+    "core_skills": [
+      "JavaScript",
+      "HTML",
+      "CSS",
+      "React",
+      "TypeScript"
+    ],
+    "good_to_have_skills": [
+      "Tailwind CSS",
+      "Next.js",
+      "Redux",
+      "Web Performance Optimization",
+      "Responsive Design"
+    ],
+    "typical_tools": [
+      "Webpack",
+      "Vite",
+      "Chrome DevTools",
+      "Figma",
+      "Git",
+      "npm"
+    ]
+  },
+  {
+    "id": "full_stack_developer",
+    "name": "Full Stack Developer",
+    "description": "Works across the entire technology stack from frontend user interfaces to backend microservices, authentication, and databases.",
+    "core_skills": [
+      "JavaScript",
+      "Python",
+      "React",
+      "Node.js",
+      "SQL",
+      "HTML",
+      "CSS"
+    ],
+    "good_to_have_skills": [
+      "TypeScript",
+      "Docker",
+      "REST APIs",
+      "MongoDB",
+      "PostgreSQL",
+      "GraphQL"
+    ],
+    "typical_tools": [
+      "Git",
+      "Docker",
+      "VS Code",
+      "Postman",
+      "Vite",
+      "Linux"
+    ]
+  },
+  {
+    "id": "data_analyst",
+    "name": "Data Analyst",
+    "description": "Transforms raw datasets into business insights through statistical queries, data visualization dashboards, and quantitative reporting.",
+    "core_skills": [
+      "SQL",
+      "Python",
+      "Excel",
+      "Data Visualization",
+      "Statistics"
+    ],
+    "good_to_have_skills": [
+      "Power BI",
+      "Tableau",
+      "Pandas",
+      "Data Cleaning",
+      "Exploratory Data Analysis"
+    ],
+    "typical_tools": [
+      "Power BI",
+      "Tableau",
+      "Excel",
+      "Jupyter Notebook",
+      "PostgreSQL",
+      "Git"
+    ]
+  },
+  {
+    "id": "data_scientist",
+    "name": "Data Scientist",
+    "description": "Leverages statistical modeling, machine learning algorithms, and predictive analytics to solve complex data-driven problems.",
+    "core_skills": [
+      "Python",
+      "Machine Learning",
+      "Statistics",
+      "SQL",
+      "Data Preprocessing"
+    ],
+    "good_to_have_skills": [
+      "Scikit-Learn",
+      "Deep Learning",
+      "Natural Language Processing",
+      "Pandas",
+      "NumPy",
+      "Model Evaluation"
+    ],
+    "typical_tools": [
+      "Jupyter Notebook",
+      "PyTorch",
+      "TensorFlow",
+      "Git",
+      "Scikit-Learn",
+      "Docker"
+    ]
+  },
+  {
+    "id": "devops_engineer",
+    "name": "DevOps Engineer",
+    "description": "Automates continuous integration, infrastructure provisioning, container orchestration, and system reliability monitoring.",
+    "core_skills": [
+      "Linux",
+      "Docker",
+      "CI/CD",
+      "Git",
+      "Shell Scripting"
+    ],
+    "good_to_have_skills": [
+      "Kubernetes",
+      "Terraform",
+      "Cloud Infrastructure",
+      "AWS",
+      "Monitoring & Logging",
+      "Ansible"
+    ],
+    "typical_tools": [
+      "GitHub Actions",
+      "Docker",
+      "Kubernetes",
+      "Terraform",
+      "Prometheus",
+      "Grafana"
+    ]
+  },
+  {
+    "id": "qa_engineer",
+    "name": "QA / Test Automation Engineer",
+    "description": "Ensures software quality and stability through automated test frameworks, regression suites, API verification, and performance testing.",
+    "core_skills": [
+      "Test Automation",
+      "Manual Testing",
+      "Python",
+      "Selenium",
+      "API Testing"
+    ],
+    "good_to_have_skills": [
+      "Cypress",
+      "Postman",
+      "Performance Testing",
+      "JMeter",
+      "CI/CD Integration",
+      "Bug Tracking"
+    ],
+    "typical_tools": [
+      "Selenium",
+      "Postman",
+      "Jira",
+      "JMeter",
+      "Git",
+      "Pytest"
+    ]
+  },
+  {
+    "id": "android_developer",
+    "name": "Android Developer",
+    "description": "Designs and develops native mobile applications for Android devices with responsive layouts, local persistence, and background sync.",
+    "core_skills": [
+      "Kotlin",
+      "Java",
+      "Android SDK",
+      "Data Structures",
+      "REST APIs"
+    ],
+    "good_to_have_skills": [
+      "Jetpack Compose",
+      "MVVM Architecture",
+      "Coroutines",
+      "Room Database",
+      "Material Design"
+    ],
+    "typical_tools": [
+      "Android Studio",
+      "Gradle",
+      "Git",
+      "Postman",
+      "Firebase"
+    ]
+  },
+  {
+    "id": "cloud_engineer",
+    "name": "Cloud Engineer",
+    "description": "Deploys, secures, and manages scalable cloud computing architecture, storage solutions, virtual networks, and serverless compute.",
+    "core_skills": [
+      "Cloud Computing",
+      "AWS",
+      "Linux",
+      "Networking Fundamentals",
+      "Security Best Practices"
+    ],
+    "good_to_have_skills": [
+      "Azure",
+      "GCP",
+      "Serverless Architecture",
+      "Docker",
+      "IAM & Access Management",
+      "Cost Optimization"
+    ],
+    "typical_tools": [
+      "AWS Console",
+      "AWS CLI",
+      "Docker",
+      "Terraform",
+      "CloudWatch",
+      "Linux"
+    ]
+  }
+]
