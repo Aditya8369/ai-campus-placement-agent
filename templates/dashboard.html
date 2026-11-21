@@ -112,6 +112,7 @@
   <!-- Dashboard Content -->
   <main class="container py-5 fade-in" id="dashboardContainer" tabindex="-1" data-analysis-id="{{ analysis_id }}"
     data-company="{{ analysis.company_name }}" data-date="{{ analysis.created_at }}">
+    {% set result = (analysis.results if (analysis is defined and analysis.results is mapping) else (analysis if (analysis is defined and analysis is mapping) else {})) %}
 
     <!-- Demo Data Banner (#435) -->
     {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or
@@ -910,6 +911,87 @@
           </div>
           {% endfor %}
         </div>
+
+        <!-- Page-Level PDF Issue Diagnostics (#597) -->
+        {% if format_compat.page_level_issues and format_compat.page_level_issues.pages %}
+        <div class="mt-4 pt-3 border-top" id="pdfPageIssuesDiagnostics">
+          <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+            <div>
+              <h5 class="fw-bold mb-1 fs-6">
+                <i class="fa-solid fa-file-circle-exclamation text-primary me-2"></i> Page-Level Extraction & Layout Diagnostics
+              </h5>
+              <p class="small text-muted mb-0">
+                Detailed page-by-page breakdown of parsing challenges, scrambled reading orders, and untracked elements.
+              </p>
+            </div>
+            {% if format_compat.page_level_issues.problem_page_count > 0 %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-2 small" id="badgePageIssuesCount">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Issues on Page(s): {{ format_compat.page_level_issues.problem_page_numbers|join(', ') }}
+            </span>
+            {% else %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-2 small" id="badgePageIssuesClean">
+              <i class="fa-solid fa-circle-check me-1"></i> All {{ format_compat.page_level_issues.total_pages }} Pages Clean
+            </span>
+            {% endif %}
+          </div>
+
+          <div class="row g-3">
+            {% for pg in format_compat.page_level_issues.pages %}
+            <div class="col-md-6 col-lg-4">
+              <div class="card h-100 rounded-3 border p-3 shadow-sm {{ 'border-warning-subtle bg-light' if pg.has_issues else 'border-success-subtle bg-white' }}">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <div class="d-flex align-items-center gap-2">
+                    <div class="badge {{ 'bg-warning text-dark' if pg.has_issues else 'bg-primary text-white' }} rounded-circle p-2 fs-6" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+                      {{ pg.page_number }}
+                    </div>
+                    <div>
+                      <span class="fw-bold text-dark small">Page {{ pg.page_number }}</span>
+                      <div class="text-muted" style="font-size: 0.7rem;">{{ pg.word_count }} words &bull; {{ pg.char_count }} chars</div>
+                    </div>
+                  </div>
+                  {% if pg.has_issues %}
+                  <span class="badge bg-warning text-dark rounded-pill" style="font-size: 0.65rem;">{{ pg.issue_count }} issue{{ 's' if pg.issue_count != 1 else '' }}</span>
+                  {% else %}
+                  <span class="badge bg-success text-white rounded-pill" style="font-size: 0.65rem;">Clean</span>
+                  {% endif %}
+                </div>
+
+                {% if pg.snippet %}
+                <div class="bg-body-secondary p-2 rounded small text-muted font-monospace mb-2" style="font-size: 0.72rem; max-height: 48px; overflow: hidden;" title="Extracted page text thumbnail">
+                  {{ pg.snippet }}
+                </div>
+                {% endif %}
+
+                {% if pg.has_issues %}
+                <div class="mt-2">
+                  {% for issue in pg.issues %}
+                  <div class="mb-2 p-2 rounded bg-white border border-warning-subtle">
+                    <div class="fw-semibold text-danger small" style="font-size: 0.75rem;">
+                      <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ issue.type }}
+                    </div>
+                    <div class="text-secondary small mt-1" style="font-size: 0.73rem; line-height: 1.3;">
+                      {{ issue.description }}
+                    </div>
+                    <div class="text-muted small mt-1" style="font-size: 0.7rem;">
+                      <strong>Undetected content:</strong> {{ issue.undistributed_info }}
+                    </div>
+                    <div class="text-primary small mt-1" style="font-size: 0.7rem;">
+                      <strong>Fix suggestion:</strong> {{ issue.suggested_layout }}
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-success small mt-auto" style="font-size: 0.75rem;">
+                  <i class="fa-solid fa-check me-1"></i> Text reads sequentially in a single column without tables or graphics.
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
       </div>
       {% endif %}
 
@@ -942,8 +1024,76 @@
                 aria-hidden="true"></i>
               <span>{{ breakdown.rating }}</span>
             </span>
+            {% if ats_confidence %}
+            <span
+              class="badge {{ ats_confidence.badge_class }} border fs-6 px-3 py-2 rounded-pill d-inline-flex align-items-center gap-1"
+              id="atsConfidenceBadge"
+              title="Parsing confidence: {{ ats_confidence.confidence_level }} ({{ ats_confidence.confidence_score }}%)">
+              <i class="fa-solid {{ 'fa-shield-halved' if ats_confidence.confidence_level == 'High' else ('fa-triangle-exclamation' if ats_confidence.confidence_level == 'Medium' else 'fa-circle-exclamation') }}"></i>
+              <span>Confidence: {{ ats_confidence.confidence_level }}</span>
+            </span>
+            {% endif %}
           </div>
         </div>
+
+        
+
+        <!-- ATS Confidence Explanation & Callout Banner (#598) -->
+        {% if ats_confidence %}
+        <div class="card border-0 mb-4 rounded-4 shadow-sm {{ 'bg-danger-subtle bg-opacity-25 border border-danger-subtle' if ats_confidence.is_low_confidence else 'bg-light' }}" id="atsConfidenceCard">
+          <div class="card-body p-3">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid {{ 'fa-circle-check text-success' if ats_confidence.confidence_level == 'High' else ('fa-triangle-exclamation text-warning' if ats_confidence.confidence_level == 'Medium' else 'fa-circle-exclamation text-danger') }} fs-5"></i>
+                <h6 class="mb-0 fw-bold text-dark">
+                  ATS Score Confidence: <span class="badge {{ ats_confidence.badge_class }} rounded-pill ms-1">{{ ats_confidence.confidence_level }} ({{ ats_confidence.confidence_score }}/100)</span>
+                </h6>
+              </div>
+              <div>
+                <a href="{{ ats_confidence.recheck_url }}?analysis_id={{ analysis_id }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                  <i class="fa-solid fa-pen-to-square me-1"></i> Review / Edit Extracted Resume
+                </a>
+              </div>
+            </div>
+            
+            <p class="small text-secondary mb-2" id="atsConfidenceExplanation">
+              {{ ats_confidence.plain_explanation }}
+            </p>
+
+            {% if ats_confidence.is_low_confidence %}
+            <div class="alert alert-warning border-0 rounded-3 py-2 px-3 mb-2 small text-dark d-flex align-items-center gap-2">
+              <i class="fa-solid fa-bell text-warning"></i>
+              <span><strong>Notice:</strong> This ATS score is an estimate. Low confidence indicates significant text parsing or structural issues. Please recheck your uploaded resume or review extracted data to see your true readiness.</span>
+            </div>
+            {% endif %}
+
+            <!-- Confidence Factors List -->
+            {% if ats_confidence.factors %}
+            <div class="mt-2 pt-2 border-top">
+              <span class="d-block small text-muted text-uppercase fw-semibold mb-2" style="font-size: 0.72rem;">Confidence Diagnostic Factors:</span>
+              <div class="row g-2">
+                {% for factor in ats_confidence.factors %}
+                <div class="col-md-6 col-12">
+                  <div class="p-2 rounded-3 bg-white border small d-flex align-items-start gap-2 h-100">
+                    <i class="fa-solid {{ 'fa-circle-check text-success' if factor.impact == 'positive' else ('fa-circle-exclamation text-danger' if factor.impact == 'critical' or factor.impact == 'high' else 'fa-triangle-exclamation text-warning') }} mt-1"></i>
+                    <div>
+                      <div class="fw-semibold text-dark">{{ factor.factor }}</div>
+                      <div class="text-secondary" style="font-size: 0.8rem;">{{ factor.description }}</div>
+                      {% if factor.remedy %}
+                      <div class="text-primary mt-1" style="font-size: 0.78rem;">
+                        <strong>Tip:</strong> {{ factor.remedy }}
+                      </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
 
         <!-- "Hurts Most" Callout Banner -->
         {% if breakdown.hurts_most %}
