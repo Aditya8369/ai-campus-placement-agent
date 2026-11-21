@@ -2665,3 +2665,91 @@ def api_get_gd_history():
 preparation_notes_view = interview_notes_view
 api_preparation_notes = api_notes_collection
 api_preparation_note_item = api_note_operations
+
+
+# =====================================================================
+# PEER FEEDBACK REQUESTS FOR MOCK INTERVIEWS (#519)
+# =====================================================================
+
+@interview_bp.route("/interview/peer-review/<share_token>", methods=["GET"])
+def peer_review_view(share_token):
+    """Public/peer review evaluation page for a shared mock interview (#519)."""
+    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+
+    req_data = PeerInterviewFeedbackService.get_review_request(share_token)
+    if not req_data:
+        flash("This review link is invalid, expired, or has been revoked.", "warning")
+        return redirect(url_for("interview.interview_view"))
+
+    return render_template("peer_interview_review.html", request_data=req_data)
+
+
+@interview_bp.route("/api/interview/peer-review/create", methods=["POST"])
+def api_create_peer_review_request():
+    """Generates an expiring, sanitized share link for peer feedback (#519)."""
+    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    session_id = payload.get("session_id", "sess_default")
+    role_title = payload.get("role_title", "Software Engineer")
+    qa_list = payload.get("interview_qa_list", [])
+
+    try:
+        req = PeerInterviewFeedbackService.create_review_request(
+            user_id=student_id,
+            session_id=session_id,
+            role_title=role_title,
+            interview_qa_list=qa_list,
+            expiry_days=int(payload.get("expiry_days", 7))
+        )
+        return jsonify({"status": "success", "review_request": req}), 201
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@interview_bp.route("/api/interview/peer-review/<share_token>/submit", methods=["POST"])
+def api_submit_peer_review(share_token):
+    """Submits peer critique and scores for a shared mock interview (#519)."""
+    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+    peer_user = flask_session.get("user_id")
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    try:
+        result = PeerInterviewFeedbackService.submit_peer_feedback(
+            share_token=share_token,
+            technical_rating=int(payload.get("technical_rating", 4)),
+            communication_rating=int(payload.get("communication_rating", 4)),
+            conciseness_rating=int(payload.get("conciseness_rating", 4)),
+            positive_feedback=payload.get("positive_feedback", ""),
+            constructive_critique=payload.get("constructive_critique", ""),
+            peer_user_id=peer_user
+        )
+        return jsonify({"status": "success", "result": result}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@interview_bp.route("/api/interview/peer-review/<session_id>/results", methods=["GET"])
+def api_get_peer_feedback_results(session_id):
+    """Retrieves all received peer reviews for the student's session (#519)."""
+    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    feedback_data = PeerInterviewFeedbackService.get_feedback_for_session(student_id, session_id)
+    return jsonify({"status": "success", "feedback": feedback_data}), 200
+
+
+@interview_bp.route("/api/interview/peer-review/<share_token>/revoke", methods=["POST"])
+def api_revoke_peer_review_request(share_token):
+    """Revokes a peer review share link (#519)."""
+    from utils.peer_interview_feedback_service import PeerInterviewFeedbackService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    revoked = PeerInterviewFeedbackService.revoke_review_request(student_id, share_token)
+    if revoked:
+        return jsonify({"status": "success", "message": "Share link revoked"}), 200
+    return jsonify({"status": "not_found", "message": "Link not found or already revoked"}), 404
+
