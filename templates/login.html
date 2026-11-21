@@ -70,6 +70,10 @@
                     </div>
                 </div>
 
+                {% if captcha_enabled and should_require_captcha('login') %}
+                    {% include 'captcha_widget.html' %}
+                {% endif %}
+
                 <button type="submit" class="btn btn-primary w-100 rounded-pill py-2">
                     Login
                 </button>
