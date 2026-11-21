@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block title %}Recruiter Contact & Follow-Up Tracker - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-person-lines-fill text-primary me-2"></i>Recruiter Directory & Follow-Up Hub
+      </h2>
+      <p class="text-muted mb-0">Track conversations, recruiter contact channels, and stay on top of scheduled follow-ups.</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newRecruiterModal">
+      <i class="bi bi-person-plus-fill me-1"></i> Add Recruiter Contact
+    </button>
+  </div>
+
+  <!-- Overdue Follow-ups Alert -->
+  {% if overdue_contacts %}
+  <div class="alert alert-danger border-0 shadow-sm rounded-3 p-3 mb-4">
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <i class="bi bi-bell-fill fs-4 text-danger"></i>
+      <h6 class="mb-0 fw-bold">Follow-Up Reminders Due or Overdue ({{ overdue_contacts|length }})</h6>
+    </div>
+    <ul class="mb-0 small ps-4">
+      {% for c in overdue_contacts %}
+      <li>
+        <strong>{{ c.recruiter_name }} ({{ c.company_name }}):</strong> Follow-up was due on {{ c.next_followup_date }}. Channel: {{ c.interaction_channel }}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Contacts Table -->
+  <div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 fw-bold">Tracked Recruiter Contacts</h5>
+      <span class="badge bg-secondary rounded-pill">{{ contacts|length }} Total</span>
+    </div>
+    <div class="card-body p-0">
+      {% if contacts %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Recruiter & Company</th>
+              <th>Channel & Contact</th>
+              <th>Status</th>
+              <th>Last Touchpoint</th>
+              <th>Next Follow-Up</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in contacts %}
+            <tr id="contact-row-{{ c.id }}">
+              <td>
+                <div class="fw-bold">{{ c.recruiter_name }}</div>
+                <small class="text-muted">{{ c.company_name }} &bull; {{ c.role_or_department }}</small>
+              </td>
+              <td>
+                <span class="badge bg-light text-dark border">{{ c.interaction_channel }}</span>
+                {% if c.email %}
+                <div class="small text-muted">{{ c.email }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge {{ 'bg-warning text-dark' if c.status == 'awaiting_reply' else 'bg-success' if c.status == 'in_discussion' else 'bg-secondary' }}">
+                  {{ c.status|replace('_', ' ')|capitalize }}
+                </span>
+              </td>
+              <td class="small text-muted">{{ c.last_contacted_date or 'N/A' }}</td>
+              <td>
+                {% if c.next_followup_date %}
+                <span class="badge {{ 'bg-danger' if c.is_overdue else 'bg-primary-subtle text-primary' }}">
+                  {{ c.next_followup_date }}
+                </span>
+                {% else %}
+                <span class="text-muted small">None</span>
+                {% endif %}
+              </td>
+              <td>
+                <button class="btn btn-outline-danger btn-sm" onclick="deleteContact({{ c.id }})">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-5 text-center text-muted">
+        <i class="bi bi-people fs-1 text-primary mb-2"></i>
+        <h5>No recruiter contacts logged yet</h5>
+        <p class="small mb-3">Keep track of every campus recruiter and HR representative who reached out to you.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="newRecruiterModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">Add Recruiter Contact</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Recruiter Name *</label>
+          <input type="text" class="form-control" id="rcName" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Company Name *</label>
+          <input type="text" class="form-control" id="rcCompany" required>
+        </div>
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Email</label>
+            <input type="email" class="form-control" id="rcEmail">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Interaction Channel</label>
+            <select class="form-select" id="rcChannel">
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="Email">Email</option>
+              <option value="Campus Talk">Campus Talk</option>
+              <option value="Phone Call">Phone Call</option>
+            </select>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Next Follow-Up Date</label>
+          <input type="date" class="form-control" id="rcFollowup">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Notes</label>
+          <textarea class="form-control" id="rcNotes" rows="2" placeholder="e.g. Sent customized resume for backend opening."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="submitRecruiterForm()">Save Contact</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function submitRecruiterForm() {
+  const name = document.getElementById('rcName').value.trim();
+  const company = document.getElementById('rcCompany').value.trim();
+  if (!name || !company) return alert('Name and Company are required.');
+
+  const payload = {
+    recruiter_name: name,
+    company_name: company,
+    email: document.getElementById('rcEmail').value.trim() || null,
+    interaction_channel: document.getElementById('rcChannel').value,
+    next_followup_date: document.getElementById('rcFollowup').value || null,
+    notes: document.getElementById('rcNotes').value.trim()
+  };
+
+  try {
+    const res = await fetch('/api/recruiter-contacts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) location.reload();
+    else alert('Error saving contact.');
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+
+async function deleteContact(id) {
+  if (!confirm('Remove this recruiter contact?')) return;
+  const res = await fetch(`/api/recruiter-contacts/${id}`, { method: 'DELETE' });
+  if (res.ok) location.reload();
+}
+</script>
+{% endblock %}

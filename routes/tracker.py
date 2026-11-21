@@ -1794,38 +1794,60 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# BULK APPLICATION ACTIONS ROUTES (#522)
+# RECRUITER CONTACT & FOLLOW-UP TRACKING ROUTES (#516)
 # =====================================================================
 
-@tracker_bp.route("/api/tracker/applications/bulk-action", methods=["POST"])
-def api_execute_bulk_application_action():
-    """
-    Executes batch operations across student job applications (#522).
-    Supported actions: status_update, add_tag, archive, delete.
-    """
-    from utils.bulk_applications_service import BulkApplicationsService
+@tracker_bp.route("/tracker/recruiter-contacts", methods=["GET"])
+def recruiter_contacts_view():
+    """Renders the recruiter directory and scheduled follow-ups hub (#516)."""
+    from utils.recruiter_contact_service import RecruiterContactService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    contacts = RecruiterContactService.list_contacts(student_id)
+    overdue = RecruiterContactService.get_followup_reminders(student_id)
+
+    return render_template(
+        "recruiter_contact_tracker.html",
+        contacts=contacts,
+        overdue_contacts=overdue
+    )
+
+
+@tracker_bp.route("/api/recruiter-contacts", methods=["GET"])
+def api_list_recruiter_contacts():
+    """Returns list of recruiter contacts in JSON format (#516)."""
+    from utils.recruiter_contact_service import RecruiterContactService
+    student_id = flask_session.get("user_id") or "default_student"
+    status = request.args.get("status")
+
+    contacts = RecruiterContactService.list_contacts(student_id, status=status)
+    return jsonify({"status": "success", "count": len(contacts), "contacts": contacts}), 200
+
+
+@tracker_bp.route("/api/recruiter-contacts", methods=["POST"])
+def api_create_recruiter_contact():
+    """Creates a new recruiter contact (#516)."""
+    from utils.recruiter_contact_service import RecruiterContactService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    action = payload.get("action")
-    raw_ids = payload.get("application_ids", [])
-    if isinstance(raw_ids, str):
-        try:
-            raw_ids = json.loads(raw_ids)
-        except Exception:
-            raw_ids = [int(i.strip()) for i in raw_ids.split(",") if i.strip()]
-
-    app_ids = [int(i) for i in raw_ids if str(i).isdigit()]
-    parameters = payload.get("parameters", {})
-
     try:
-        result = BulkApplicationsService.execute_bulk_action(
+        contact = RecruiterContactService.save_contact(
             user_id=student_id,
-            application_ids=app_ids,
-            action=action,
-            parameters=parameters
+            recruiter_name=payload.get("recruiter_name", ""),
+            company_name=payload.get("company_name", ""),
+            email=payload.get("email"),
+            phone=payload.get("phone"),
+            linkedin_url=payload.get("linkedin_url"),
+            role_or_department=payload.get("role_or_department", "Talent Acquisition"),
+            last_contacted_date=payload.get("last_contacted_date"),
+            next_followup_date=payload.get("next_followup_date"),
+            interaction_channel=payload.get("interaction_channel", "LinkedIn"),
+            status=payload.get("status", "awaiting_reply"),
+            notes=payload.get("notes", ""),
+            contact_id=payload.get("contact_id")
         )
-        return jsonify(result), 200
+        return jsonify({"status": "success", "contact": contact}), 201
     except ValueError as ve:
         return jsonify({"success": False, "message": str(ve)}), 400
     except Exception as e:
@@ -1833,14 +1855,16 @@ def api_execute_bulk_application_action():
         return jsonify({"success": False, "message": "Bulk action failed."}), 500
 
 
-@tracker_bp.route("/api/tracker/applications/bulk-history", methods=["GET"])
-def api_get_bulk_application_history():
-    """Returns audit log of recently executed bulk operations (#522)."""
-    from utils.bulk_applications_service import BulkApplicationsService
+@tracker_bp.route("/api/recruiter-contacts/<int:contact_id>", methods=["DELETE"])
+def api_delete_recruiter_contact(contact_id):
+    """Deletes a recruiter contact (#516)."""
+    from utils.recruiter_contact_service import RecruiterContactService
     student_id = flask_session.get("user_id") or "default_student"
 
-    logs = BulkApplicationsService.get_action_history(student_id)
-    return jsonify({"status": "success", "count": len(logs), "logs": logs}), 200
+    deleted = RecruiterContactService.delete_contact(student_id, contact_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Recruiter contact deleted"}), 200
+    return jsonify({"status": "not_found", "message": "Contact not found"}), 404
 
 
 
