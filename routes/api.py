@@ -407,3 +407,66 @@ def api_get_ai_disclaimer():
     }), 200
 
 
+# =====================================================================
+# PUBLIC APPLICATION STATUS & MAINTENANCE ROUTES (#524)
+# =====================================================================
+
+@api_bp.route("/system-status", methods=["GET"])
+def public_system_status_view():
+    """Renders the comprehensive public system health and scheduled maintenance page (#524)."""
+    from utils.system_status_service import PublicStatusService
+    from flask import render_template
+
+    status_data = PublicStatusService.get_public_system_status()
+    return render_template("public_status.html", status_data=status_data)
+
+
+@api_bp.route("/api/system-status/public", methods=["GET"])
+def api_public_system_status_probe():
+    """Public JSON status probe for uptime monitors and health checks (#524)."""
+    from utils.system_status_service import PublicStatusService
+
+    status_data = PublicStatusService.get_public_system_status()
+    http_code = 200 if status_data["overall_status"] in ["operational", "maintenance"] else 503
+    return jsonify(status_data), http_code
+
+
+
+@api_bp.route("/api/admin/status/incident", methods=["POST"])
+def api_admin_log_incident():
+    """Logs a maintenance advisory or incident (admin gated) (#524)."""
+    from utils.system_status_service import PublicStatusService
+    if flask_session.get("user_role") not in ["admin", "coordinator"] and flask_session.get("is_admin") is not True:
+        if flask_session.get("user_id") != "admin_user":
+            return jsonify({"status": "error", "message": "Admin authorization required."}), 403
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    title = payload.get("title")
+    message = payload.get("message")
+    if not title or not message:
+        return jsonify({"status": "error", "message": "title and message are required"}), 400
+
+    result = PublicStatusService.log_incident(
+        title=title,
+        subsystem=payload.get("subsystem", "web"),
+        severity=payload.get("severity", "maintenance"),
+        message=message,
+        scheduled_start=payload.get("scheduled_start"),
+        scheduled_end=payload.get("scheduled_end")
+    )
+    return jsonify({"status": "success", "incident": result}), 201
+
+
+@api_bp.route("/api/admin/status/incident/<int:incident_id>/resolve", methods=["POST"])
+def api_admin_resolve_incident(incident_id):
+    """Marks an active incident as resolved (#524)."""
+    from utils.system_status_service import PublicStatusService
+    if flask_session.get("user_role") not in ["admin", "coordinator"] and flask_session.get("is_admin") is not True:
+        if flask_session.get("user_id") != "admin_user":
+            return jsonify({"status": "error", "message": "Admin authorization required."}), 403
+
+    resolved = PublicStatusService.resolve_incident(incident_id)
+    return jsonify({"status": "success", "resolved": resolved}), 200
+
+
+
