@@ -328,7 +328,7 @@
         <div class="col-sm-6 col-md-3">
           <div class="p-3 bg-light rounded-3 border text-center h-100">
             <span class="text-muted small d-block mb-1">Standard Deduction</span>
-            <strong class="fs-5 text-dark">₹{{ "{:,}".format(assumptions.standard_deduction|int) }}</strong>
+            <strong class="fs-5 text-dark">₹{{ assumptions.standard_deduction | format_inr }}</strong>
             <span class="d-block small text-muted mt-1">Section 16 (ia)</span>
           </div>
         </div>
@@ -349,8 +349,8 @@
         <div class="col-sm-6 col-md-3">
           <div class="p-3 bg-light rounded-3 border text-center h-100">
             <span class="text-muted small d-block mb-1">Professional Tax</span>
-            <strong class="fs-5 text-dark">₹{{ assumptions.professional_tax_monthly }}/mo</strong>
-            <span class="d-block small text-muted mt-1">₹{{ "{:,}".format(assumptions.professional_tax_annual|int) }}/year</span>
+            <strong class="fs-5 text-dark">₹{{ assumptions.professional_tax_monthly | format_inr }}/mo</strong>
+            <span class="d-block small text-muted mt-1">₹{{ assumptions.professional_tax_annual | format_inr }}/year</span>
           </div>
         </div>
       </div>
@@ -373,7 +373,7 @@
               <td><span class="badge {% if slab.rate == 0 %}bg-success-subtle text-success{% else %}bg-primary-subtle text-primary{% endif %}">{{ slab.rate }}%</span></td>
               <td class="text-muted">
                 {% if slab.from < assumptions.tax_rebate_limit_87a and (slab.to is none or slab.to <= assumptions.tax_rebate_limit_87a) %}
-                  Rebate u/s 87A applies if total taxable income &le; ₹{{ "{:,}".format(assumptions.tax_rebate_limit_87a|int) }}
+                  Rebate u/s 87A applies if total taxable income &le; ₹{{ assumptions.tax_rebate_limit_87a | format_inr }}
                 {% elif slab.from == 0 %}
                   Exempt slab
                 {% else %}

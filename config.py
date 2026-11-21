@@ -124,6 +124,11 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 SESSION_TIMEOUT_SECONDS = int(os.getenv("SESSION_TIMEOUT_SECONDS", str(SESSION_TIMEOUT_MINUTES * 60)))
 SESSION_WARNING_SECONDS = int(os.getenv("SESSION_WARNING_SECONDS", "120"))
 
+# Allowed Student Email Domains for Registration & Authentication (#654)
+# Comma-separated list of approved college domains (e.g. "college.edu,univ.ac.in").
+# Empty or unset allows sign-ups from any domain (default).
+ALLOWED_EMAIL_DOMAINS = os.getenv("ALLOWED_EMAIL_DOMAINS", "").strip()
+
 # SMTP & Transactional Email Configurations (#186, #298)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -147,6 +152,13 @@ SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
 SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", os.getenv("FLASK_ENV", "production")).strip()
 SENTRY_RELEASE = os.getenv("SENTRY_RELEASE", f"ai-campus-placement-agent@{__version__}").strip()
 SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
+
+# Timezone & Regional Localization Settings (#650)
+# Default display timezone for all dates and times shown across pages and alerts.
+# Database timestamps remain strictly in UTC.
+DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", os.getenv("TIMEZONE", "Asia/Kolkata")).strip() or "Asia/Kolkata"
+TIMEZONE = DISPLAY_TIMEZONE
+
 
 
 

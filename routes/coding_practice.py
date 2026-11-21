@@ -591,3 +591,96 @@ def move_coding_bookmark_endpoint(problem_id: str):
         return jsonify({"status": "error", "message": f"Move failed: {str(e)}"}), 500
 
 
+# =====================================================================
+# CODING SPACED REPETITION ROUTES (#509)
+# =====================================================================
+
+@coding_practice_bp.route("/coding-practice/spaced-repetition", methods=["GET"])
+def coding_spaced_repetition_view():
+    """Renders the student coding spaced-repetition review queue dashboard (#509)."""
+    from utils.coding_spaced_repetition_service import CodingSpacedRepetitionService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    due_problems = CodingSpacedRepetitionService.get_due_reviews(student_id)
+    all_problems = CodingSpacedRepetitionService.get_all_enrolled(student_id)
+    metrics = CodingSpacedRepetitionService.get_summary_metrics(student_id)
+
+    return render_template(
+        "coding_spaced_repetition.html",
+        due_problems=due_problems,
+        all_problems=all_problems,
+        metrics=metrics
+    )
+
+
+@coding_practice_bp.route("/api/coding-practice/spaced-repetition/enroll", methods=["POST"])
+def api_enroll_spaced_repetition():
+    """Enrolls a coding problem into the student's spaced repetition schedule (#509)."""
+    from utils.coding_spaced_repetition_service import CodingSpacedRepetitionService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    problem_id = payload.get("problem_id")
+    title = payload.get("title")
+    if not problem_id or not title:
+        return jsonify({"status": "error", "message": "problem_id and title are required"}), 400
+
+    topic = payload.get("topic", "Data Structures")
+    difficulty = payload.get("difficulty", "Medium")
+    rating = payload.get("rating", "good")
+
+    record = CodingSpacedRepetitionService.enroll_problem(
+        user_id=student_id,
+        problem_id=problem_id,
+        title=title,
+        topic=topic,
+        difficulty=difficulty,
+        initial_rating=rating
+    )
+    return jsonify({"status": "success", "record": record}), 201
+
+
+@coding_practice_bp.route("/api/coding-practice/spaced-repetition/<problem_id>/review", methods=["POST"])
+def api_record_spaced_repetition_review(problem_id):
+    """Submits a performance review score for a scheduled coding problem (#509)."""
+    from utils.coding_spaced_repetition_service import CodingSpacedRepetitionService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    rating = payload.get("rating")
+    if not rating:
+        return jsonify({"status": "error", "message": "Rating is required"}), 400
+
+    try:
+        updated = CodingSpacedRepetitionService.record_review(student_id, problem_id, rating)
+        return jsonify({"status": "success", "record": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@coding_practice_bp.route("/api/coding-practice/spaced-repetition/<problem_id>/pause", methods=["POST"])
+def api_toggle_pause_spaced_repetition(problem_id):
+    """Toggles active/paused status for an enrolled problem (#509)."""
+    from utils.coding_spaced_repetition_service import CodingSpacedRepetitionService
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        updated = CodingSpacedRepetitionService.toggle_pause_schedule(student_id, problem_id)
+        return jsonify({"status": "success", "record": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+
+
+@coding_practice_bp.route("/api/coding-practice/spaced-repetition/<problem_id>/reset", methods=["POST"])
+def api_reset_spaced_repetition(problem_id):
+    """Resets repetition level back to Day 1 interval (#509)."""
+    from utils.coding_spaced_repetition_service import CodingSpacedRepetitionService
+    student_id = flask_session.get("user_id") or "default_student"
+    try:
+        updated = CodingSpacedRepetitionService.reset_schedule(student_id, problem_id)
+        return jsonify({"status": "success", "record": updated}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+

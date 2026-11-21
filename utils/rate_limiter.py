@@ -71,8 +71,39 @@ class InMemoryRateLimiter:
             fresh_timestamps.append(now)
             self._records[key] = fresh_timestamps
             remaining = max(0, max_requests - len(fresh_timestamps))
-            reset_seconds = float(window_seconds)
+            earliest_active_ts = fresh_timestamps[0]
+            reset_seconds = max(1.0, (earliest_active_ts + window_seconds) - now)
             return True, remaining, reset_seconds
+
+    def get_remaining(
+        self, key: str, max_requests: int, window_seconds: int
+    ) -> Tuple[int, int, float]:
+        """
+        Calculates remaining permitted requests and reset seconds without consuming an attempt (#652).
+
+        Returns:
+            Tuple[int, int, float]:
+                - remaining: Number of permitted requests left in current window
+                - max_requests: Configured ceiling for window
+                - reset_seconds: Seconds until earliest timestamp in window expires (0.0 if empty)
+        """
+        now = time.time()
+        cutoff = now - window_seconds
+
+        with self._lock:
+            timestamps = self._records.get(key, [])
+            fresh_timestamps = [ts for ts in timestamps if ts > cutoff]
+            self._records[key] = fresh_timestamps
+
+            used = len(fresh_timestamps)
+            remaining = max(0, max_requests - used)
+            if fresh_timestamps:
+                earliest_active_ts = fresh_timestamps[0]
+                reset_seconds = max(1.0, (earliest_active_ts + window_seconds) - now)
+            else:
+                reset_seconds = 0.0
+
+            return remaining, max_requests, reset_seconds
 
     def reset(self):
         """Clears all in-memory rate limit records (useful for test isolation)."""
@@ -197,6 +228,35 @@ def get_limit_for_scope(
     )
 
 
+def get_rate_limit_status(
+    scope: str = "analyze", client_ip: Optional[str] = None
+) -> Dict[str, Any]:
+    """
+    Returns current rate limit quota status and remaining requests for a scope (#652).
+    Allows server-rendered templates and frontend status polls to check usage without consuming quota.
+    """
+    effective_max, effective_window = get_limit_for_scope(scope=scope)
+    if not client_ip:
+        try:
+            client_ip = limiter.get_client_ip()
+        except Exception:
+            client_ip = "127.0.0.1"
+
+    bucket_key = f"{scope}:{client_ip}"
+    remaining, max_requests, reset_seconds = limiter.get_remaining(
+        bucket_key, effective_max, effective_window
+    )
+    reset_secs_int = int(reset_seconds) + 1 if (remaining < max_requests and reset_seconds > 0) else 0
+
+    return {
+        "scope": scope,
+        "limit": max_requests,
+        "remaining": remaining,
+        "reset_seconds": reset_secs_int,
+        "window_seconds": effective_window,
+    }
+
+
 def rate_limit(
     max_requests: Optional[int] = None,
     window_seconds: Optional[int] = None,
@@ -205,9 +265,9 @@ def rate_limit(
     redirect_endpoint: str = "index",
 ):
     """
-    Decorator for Flask view endpoints enforcing request throttling (#160).
+    Decorator for Flask view endpoints enforcing request throttling (#160, #652).
     Dynamically loads configurable limits from config.py / environment variables.
-    Returns HTTP 429 with Retry-After headers, a friendly message, and a 'try again in X minutes' hint.
+    Returns HTTP 429 with Retry-After and X-RateLimit-* headers, a friendly message, and live countdown data.
 
     Parameters:
         max_requests: Optional override for max requests within window_seconds.
@@ -246,7 +306,8 @@ def rate_limit(
 
             if not allowed:
                 retry_hint = format_time_hint(reset_seconds)
-                retry_after_str = str(int(reset_seconds) + 1)
+                retry_after_val = int(reset_seconds) + 1
+                retry_after_str = str(retry_after_val)
                 friendly_message = (
                     f"You have temporarily exceeded the request rate limit for this action. "
                     f"Please {retry_hint}."
@@ -273,13 +334,17 @@ def rate_limit(
                         "success": False,
                         "error": "Too Many Requests",
                         "message": friendly_message,
-                        "retry_after_seconds": int(reset_seconds) + 1,
+                        "retry_after": retry_after_val,
+                        "retry_after_seconds": retry_after_val,
                         "retry_after_hint": retry_hint,
+                        "limit": effective_max,
+                        "remaining": 0,
                     })
                     response.status_code = 429
                     response.headers["Retry-After"] = retry_after_str
                     response.headers["X-RateLimit-Limit"] = str(effective_max)
                     response.headers["X-RateLimit-Remaining"] = "0"
+                    response.headers["X-RateLimit-Reset"] = retry_after_str
                     return response
 
                 # Non-API / Browser UI: render friendly 429 page
@@ -288,7 +353,8 @@ def rate_limit(
                         "429.html",
                         message=friendly_message,
                         retry_hint=retry_hint,
-                        retry_after_seconds=int(reset_seconds) + 1,
+                        retry_after=retry_after_val,
+                        retry_after_seconds=retry_after_val,
                         scope=scope or f.__name__,
                     )
                     resp = make_response(html_content, 429)
@@ -306,9 +372,16 @@ def rate_limit(
                 resp.headers["Retry-After"] = retry_after_str
                 resp.headers["X-RateLimit-Limit"] = str(effective_max)
                 resp.headers["X-RateLimit-Remaining"] = "0"
+                resp.headers["X-RateLimit-Reset"] = retry_after_str
                 return resp
 
-            return f(*args, **kwargs)
+            # Successful allowed request: append X-RateLimit headers (#652)
+            result = f(*args, **kwargs)
+            resp = make_response(result)
+            resp.headers["X-RateLimit-Limit"] = str(effective_max)
+            resp.headers["X-RateLimit-Remaining"] = str(remaining)
+            resp.headers["X-RateLimit-Reset"] = str(int(reset_seconds) + 1)
+            return resp
 
         return wrapped
     return decorator

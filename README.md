@@ -111,6 +111,7 @@ The system is engineered as a modular, decoupled pipeline designed for efficienc
 13. **Campus Group Discussion (GD) Practice & AI Feedback Coach**: Master high-stakes campus placement GD rounds with an interactive practice module (`/group-discussion`). Access curated topics across **Current Affairs**, **Technology**, and **Abstract** categories, spin for random topics, write 150–250 word contributions (Opening Statement, Rebuttal, or Conclusion), and receive comprehensive multi-criteria AI feedback scoring **Content**, **Structure**, **Balance**, and **Clarity** (0–100 each). Includes high-impact alternative opening statements, key missed counter-points / blind spots, concrete strengths and improvement areas, resilient deterministic fallback evaluation, and longitudinal practice history tracking in SQLite.
 14. **CTC to In-Hand Salary & Offer Comparison Calculator**: Demystifies multi-component campus placement offers by breaking down headline CTC figures into guaranteed monthly take-home pay. Evaluates fixed pay, variable incentives, joining bonuses, and employer PF across up to three offers side-by-side. Deductions are calculated using a clearly labeled, configurable assumption set stored in `data/salary_calculator_assumptions.json` (EPF @ 12% of basic, professional tax @ ₹200/mo, standard deduction of ₹75,000, and New Tax Regime slabs with Section 87A rebate and 4% cess). Highlights the Highest Monthly In-Hand Pay and Highest Guaranteed Pay to prevent students from being misled by inflated variable bonuses, rejects negative/invalid inputs, and includes a prominent disclaimer that calculations are estimates and not certified tax advice.
 15. **Company-Specific Interview Preparation Tips & Contributor Data File (#541)**: Contributor-maintained company interview preparation guides stored in `data/company_interview_prep.json`. Features an interactive company selector in the mock interview preparation view, step-by-step typical hiring rounds, commonly tested technical topics, strategic preparation tips, and verified last-updated dates. All entries are clearly labeled as community-contributed, and unknown companies automatically fall back to comprehensive general placement preparation tips. New companies can be added simply by editing the JSON data file using the template in `data/company_contribution_template.json` without modifying any code.
+16. **Role Skill Templates for Instant Skill Gap Analysis (#646)**: First- and second-year students who do not have a specific company job description to paste can benchmark their resume directly against standardized campus role templates (e.g. Software Developer, Backend Developer, Frontend Developer, Full Stack Developer, Data Analyst, Data Scientist, DevOps Engineer, QA Engineer, Android Developer, Cloud Engineer). Each template defines core skills, good-to-have skills, and typical industry tools in `data/role_templates.json`. Results seamlessly generate ATS scoring, skill gap prioritization, and personalized 6-week roadmaps using the existing analysis engine. New roles can be added simply by editing `data/role_templates.json` with strict schema validation enforcing required fields in CI.
 
 ---
 
@@ -405,6 +406,25 @@ To uphold strict student privacy guarantees, Sentry's `before_send` and `before_
 * **HTTP Metadata**: Request method (`GET`, `POST`), endpoint URL path, and coarse user agent (browser/OS).
 
 When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inactive, makes zero network requests, and introduces zero performance overhead.
+
+---
+
+### Campus Self-Hosting & Email Domain Restrictions (#654)
+
+Colleges and universities deploying the platform for their campus can restrict registration and student account emails to approved institutional domains:
+
+```env
+# Restrict registration to one or more approved institutional domains (comma-separated):
+ALLOWED_EMAIL_DOMAINS=college.edu,univ.ac.in
+
+# Leave empty or unset (default) to permit registration from any email domain:
+ALLOWED_EMAIL_DOMAINS=
+```
+
+- **Subdomain Support**: Institutional subdomains are automatically permitted (e.g. setting `college.edu` permits `user@cs.college.edu` and `user@eng.college.edu`).
+- **Case-Insensitive**: Domain checks match regardless of letter casing (`Student@COLLEGE.EDU`).
+- **Student College Storage**: Students can record their college or university on registration or their candidate profile (`/profile`), with suggested options dynamically derived from `ALLOWED_EMAIL_DOMAINS`.
+- **Enforcement Scope**: The domain restriction automatically applies to new student registrations, profile email updates, password reset requests, and email verification re-sends.
 
 ---
 

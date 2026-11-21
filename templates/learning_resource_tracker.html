@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block title %}Learning Resource Completion Tracker - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-book-half text-primary me-2"></i>Learning Resource Completion Tracker
+      </h2>
+      <p class="text-muted mb-0">Track your progress through recommended placement roadmaps, guides, and technical tutorials.</p>
+    </div>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#newResourceModal">
+      <i class="bi bi-plus-circle me-1"></i> Add Custom Resource
+    </button>
+  </div>
+
+  <!-- Progress Bar & Summary Stats -->
+  <div class="card border-0 shadow-sm rounded-3 p-4 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="fw-bold mb-0">Curriculum Mastery</h5>
+      <span class="badge bg-primary fs-6">{{ data.completion_percentage }}% Complete</span>
+    </div>
+    <div class="progress mb-3" style="height: 12px;">
+      <div class="progress-bar progress-bar-striped bg-success" role="progressbar" style="width: {{ data.completion_percentage }}%;"></div>
+    </div>
+    <div class="row g-2 text-center small text-muted">
+      <div class="col-3">
+        <strong class="text-dark d-block fs-6">{{ data.completed }} / {{ data.total_resources }}</strong> Completed
+      </div>
+      <div class="col-3">
+        <strong class="text-dark d-block fs-6">{{ data.in_progress }}</strong> In Progress
+      </div>
+      <div class="col-3">
+        <strong class="text-dark d-block fs-6">{{ data.total_time_spent_minutes }} min</strong> Invested
+      </div>
+      <div class="col-3">
+        <strong class="text-dark d-block fs-6">{{ data.needs_replacement }}</strong> Needs Replacement
+      </div>
+    </div>
+  </div>
+
+  <!-- Resources Table -->
+  <div class="card border-0 shadow-sm rounded-3">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold">Assigned Learning Materials</h5>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Resource Title</th>
+              <th>Category</th>
+              <th>Est. Duration</th>
+              <th>Status</th>
+              <th>Update Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for res in data.resources %}
+            <tr>
+              <td>
+                <div class="fw-bold">{{ res.title }}</div>
+                {% if res.url %}
+                <a href="{{ res.url }}" target="_blank" rel="noopener" class="small text-decoration-none">
+                  <i class="bi bi-box-arrow-up-right me-1"></i> Open Tutorial
+                </a>
+                {% endif %}
+              </td>
+              <td><span class="badge bg-light text-dark border">{{ res.category }}</span></td>
+              <td class="small">{{ res.estimated_minutes }} mins</td>
+              <td>
+                {% if res.status == 'completed' %}
+                <span class="badge bg-success">Completed</span>
+                {% elif res.status == 'in_progress' %}
+                <span class="badge bg-warning text-dark">In Progress</span>
+                {% elif res.status == 'skipped' %}
+                <span class="badge bg-secondary">Skipped</span>
+                {% elif res.status == 'needs_replacement' %}
+                <span class="badge bg-danger">Needs Alternative</span>
+                {% else %}
+                <span class="badge bg-light text-muted border">Not Started</span>
+                {% endif %}
+              </td>
+              <td>
+                <select class="form-select form-select-sm" style="width: 170px;" onchange="updateStatus('{{ res.resource_id }}', this.value)">
+                  <option value="not_started" {{ 'selected' if res.status == 'not_started' else '' }}>Not Started</option>
+                  <option value="in_progress" {{ 'selected' if res.status == 'in_progress' else '' }}>In Progress</option>
+                  <option value="completed" {{ 'selected' if res.status == 'completed' else '' }}>Mark Completed</option>
+                  <option value="skipped" {{ 'selected' if res.status == 'skipped' else '' }}>Skip</option>
+                  <option value="needs_replacement" {{ 'selected' if res.status == 'needs_replacement' else '' }}>Needs Alternative</option>
+                </select>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="newResourceModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">Add Custom Learning Resource</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Title *</label>
+          <input type="text" class="form-control" id="resTitle" required placeholder="e.g. NeetCode 150 Video Walkthrough">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Category</label>
+          <input type="text" class="form-control" id="resCat" value="Algorithms">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">URL / Link</label>
+          <input type="url" class="form-control" id="resUrl" placeholder="https://...">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Estimated Time (Minutes)</label>
+          <input type="number" class="form-control" id="resMins" value="60">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="submitCustomResource()">Add Resource</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function updateStatus(resourceId, newStatus) {
+  try {
+    const res = await fetch(`/api/learning-resources/${resourceId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: newStatus })
+    });
+    if (res.ok) location.reload();
+    else alert('Failed to update resource status.');
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+
+async function submitCustomResource() {
+  const title = document.getElementById('resTitle').value.trim();
+  if (!title) return alert('Title is required.');
+
+  const payload = {
+    title: title,
+    category: document.getElementById('resCat').value.trim(),
+    url: document.getElementById('resUrl').value.trim() || null,
+    estimated_minutes: parseInt(document.getElementById('resMins').value) || 45
+  };
+
+  try {
+    const res = await fetch('/api/learning-resources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) location.reload();
+    else alert('Error adding resource.');
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Drive Day Practical Checklist - AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem("theme") || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-bs-theme", savedTheme);
+    })();
+  </script>
+  <style>
+    .checklist-item-row {
+      transition: background-color 0.15s ease, border-color 0.15s ease;
+      border-radius: 0.75rem;
+    }
+    .checklist-item-row:hover {
+      background-color: var(--bs-tertiary-bg, rgba(0, 0, 0, 0.02));
+    }
+    .checklist-item-row.is-completed .item-text {
+      text-decoration: line-through;
+      color: var(--bs-secondary-color, #6c757d);
+    }
+    .mode-pill-active {
+      box-shadow: 0 4px 12px rgba(13, 110, 253, 0.25);
+    }
+    .category-header-icon {
+      width: 42px;
+      height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 0.75rem;
+    }
+  </style>
+</head>
+
+<body class="bg-body-tertiary min-vh-100 d-flex flex-column text-body">
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg bg-body border-bottom py-2 py-md-3 sticky-top">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/applications" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-clipboard-list me-1"></i> Applications
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <button class="btn btn-outline-secondary btn-sm rounded-circle p-2 theme-toggle-btn" title="Toggle theme" aria-label="Toggle theme mode" id="themeToggleBtn">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content Container -->
+  <main class="container py-4 py-md-5 flex-grow-1" id="main-content" tabindex="-1">
+    
+    <!-- Page Header & Badges -->
+    <div class="row align-items-center mb-4">
+      <div class="col-lg-8">
+        <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
+          <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1 small fw-semibold">
+            <i class="fa-solid fa-clipboard-check me-1"></i> Practical Drive Readiness
+          </span>
+          {% if attached_application %}
+          <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1 small fw-semibold">
+            <i class="fa-solid fa-building me-1"></i> Attached: {{ attached_application.company_name }} ({{ attached_application.role_title }})
+          </span>
+          {% endif %}
+        </div>
+        <h2 class="fw-bold mb-1">Drive Day Readiness Checklist</h2>
+        <p class="text-secondary mb-0">
+          Ensure you have all critical documents, hardware setups, logistics details, and mindset strategies verified before entering your placement drive.
+        </p>
+      </div>
+      <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+        <div class="d-inline-flex flex-column align-items-lg-end gap-1">
+          <span class="badge bg-secondary-subtle text-secondary border rounded-pill px-3 py-1 small">
+            <i class="fa-solid fa-user me-1"></i> Student: {{ student_id }}
+          </span>
+          {% if attached_application and attached_application.deadline_date %}
+          <span class="small text-danger fw-semibold">
+            <i class="fa-regular fa-calendar-check me-1"></i> Drive Date: {{ attached_application.deadline_date }}
+          </span>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Application Binding & Drive Mode Controls Toolbar -->
+    <div class="card bg-body border-0 shadow-sm rounded-4 p-3 p-md-4 mb-4">
+      <div class="row g-3 align-items-center">
+        <!-- Application Selector -->
+        <div class="col-md-6 col-lg-5">
+          <label for="selectApplication" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-paperclip text-primary me-1"></i> Attach Checklist to Tracked Application
+          </label>
+          <select id="selectApplication" class="form-select rounded-pill">
+            <option value="" {% if not selected_application_id %}selected{% endif %}>
+              General Checklist (Standalone / All Drives)
+            </option>
+            {% for app in applications %}
+            <option value="{{ app.id }}" {% if app.id == selected_application_id %}selected{% endif %}>
+              {{ app.company_name }} &bull; {{ app.role_title }} ({{ app.status }})
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Drive Mode Switcher (Offline vs Online) -->
+        <div class="col-md-6 col-lg-4">
+          <label class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-sliders text-primary me-1"></i> Drive Mode Preset
+          </label>
+          <div class="btn-group w-100" role="group" aria-label="Drive Mode Selection">
+            <button type="button" class="btn btn-outline-primary rounded-start-pill py-2 mode-switcher-btn {% if active_mode == 'offline' %}active mode-pill-active{% endif %}" data-mode="offline">
+              <i class="fa-solid fa-building me-1"></i> Offline / In-Person
+            </button>
+            <button type="button" class="btn btn-outline-primary rounded-end-pill py-2 mode-switcher-btn {% if active_mode == 'online' %}active mode-pill-active{% endif %}" data-mode="online">
+              <i class="fa-solid fa-video me-1"></i> Online / Remote
+            </button>
+          </div>
+        </div>
+
+        <!-- Reset Button -->
+        <div class="col-lg-3 text-lg-end mt-3 mt-lg-0 pt-lg-3">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-3 py-2 w-100 w-lg-auto" id="btnResetChecklist" title="Reset current checklist to default template">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset to Defaults
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Overall Progress Banner -->
+    <div class="card bg-body border-0 shadow-sm rounded-4 p-4 mb-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div class="d-flex align-items-center gap-2">
+          <span class="fs-5 fw-bold" id="overallReadinessLabel">Overall Readiness:</span>
+          <span class="badge bg-primary rounded-pill px-3 py-1 fs-6" id="progressReadyText">
+            {{ checklist.progress_label }}
+          </span>
+        </div>
+        <span class="fw-bold fs-5 text-primary" id="progressPercentageText">
+          {{ checklist.completion_percentage }}%
+        </span>
+      </div>
+
+      <div class="progress rounded-pill mb-3" style="height: 14px;">
+        <div id="overallProgressBar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+             role="progressbar"
+             style="width: {{ checklist.completion_percentage }}%;"
+             aria-valuenow="{{ checklist.completion_percentage }}"
+             aria-valuemin="0"
+             aria-valuemax="100"></div>
+      </div>
+
+      <!-- Category Quick Stats Pills -->
+      <div class="row g-2 pt-2 border-top">
+        {% for cat_key, cat_data in checklist.category_stats.items() %}
+        <div class="col-6 col-md-3">
+          <div class="p-2 rounded-3 bg-body-secondary text-center small">
+            <div class="fw-semibold text-truncate mb-1">
+              <i class="fa-solid {{ cat_data.meta.icon }} me-1"></i> {{ cat_data.meta.title }}
+            </div>
+            <span class="badge bg-body text-secondary border category-pill-count" data-cat="{{ cat_key }}">
+              {{ cat_data.ready_label }}
+            </span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Categorized Checklist Cards -->
+    <div class="row g-4" id="checklistCategoriesContainer"
+         data-application-id="{{ selected_application_id }}"
+         data-mode="{{ active_mode }}">
+
+      {% set categories_order = ['documents', 'technical_setup', 'logistics', 'mindset'] %}
+      {% for cat in categories_order %}
+      {% set cat_meta = checklist.category_stats[cat].meta %}
+      {% set cat_stat = checklist.category_stats[cat] %}
+      {% set items = checklist.checklist[cat] %}
+
+      <div class="col-lg-6" id="categoryCard_{{ cat }}">
+        <div class="card bg-body border-0 shadow-sm rounded-4 h-100 p-4 d-flex flex-column">
+          
+          <!-- Category Header -->
+          <div class="d-flex align-items-start justify-content-between gap-2 mb-3">
+            <div class="d-flex align-items-center gap-3">
+              <div class="category-header-icon {{ cat_meta.badge_class }}">
+                <i class="fa-solid {{ cat_meta.icon }} fs-5"></i>
+              </div>
+              <div>
+                <h5 class="fw-bold mb-0 text-body">{{ cat_meta.title }}</h5>
+                <small class="text-secondary">{{ cat_meta.description }}</small>
+              </div>
+            </div>
+            <span class="badge {{ cat_meta.badge_class }} rounded-pill px-3 py-1 category-ready-badge" id="badgeCat_{{ cat }}">
+              {{ cat_stat.ready_label }}
+            </span>
+          </div>
+
+          <!-- Items List Container -->
+          <div class="checklist-items-list flex-grow-1 mb-3" id="itemsList_{{ cat }}" data-category="{{ cat }}">
+            {% for item in items %}
+            <div class="checklist-item-row p-2 px-3 mb-2 border d-flex align-items-center justify-content-between gap-2 {% if item.completed %}is-completed bg-body-tertiary{% endif %}"
+                 id="itemRow_{{ item.id }}"
+                 data-item-id="{{ item.id }}"
+                 data-category="{{ cat }}">
+              
+              <div class="form-check d-flex align-items-center gap-2 m-0 flex-grow-1">
+                <input class="form-check-input item-checkbox fs-5 m-0"
+                       type="checkbox"
+                       id="check_{{ item.id }}"
+                       {% if item.completed %}checked{% endif %}
+                       aria-label="{{ item.text }}">
+                
+                <span class="item-text ms-1 fw-normal" id="itemTextSpan_{{ item.id }}">
+                  {{ item.text }}
+                </span>
+              </div>
+
+              <!-- Item Action Buttons (Rename / Delete) -->
+              <div class="d-flex align-items-center gap-1 item-actions">
+                <button type="button" class="btn btn-sm btn-link text-secondary p-1 btn-rename-item"
+                        data-item-id="{{ item.id }}"
+                        title="Rename task description"
+                        aria-label="Rename task {{ item.text }}">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </button>
+                <button type="button" class="btn btn-sm btn-link text-danger p-1 btn-delete-item"
+                        data-item-id="{{ item.id }}"
+                        title="Delete task item"
+                        aria-label="Delete task {{ item.text }}">
+                  <i class="fa-regular fa-trash-can"></i>
+                </button>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+
+          <!-- Add Item Form Accordion / Trigger -->
+          <div class="mt-auto pt-2 border-top">
+            <button type="button" class="btn btn-outline-primary btn-sm rounded-pill w-100 py-2 btn-show-add-form" data-category="{{ cat }}">
+              <i class="fa-solid fa-plus me-1"></i> Add Custom Item
+            </button>
+            <div class="add-item-form-container d-none mt-2" id="addFormContainer_{{ cat }}">
+              <div class="input-group">
+                <input type="text" class="form-control rounded-start-pill add-item-input"
+                       placeholder="Enter item description..."
+                       aria-label="Enter description for new {{ cat_meta.title }} item">
+                <button class="btn btn-primary rounded-end-pill px-3 btn-submit-add-item" type="button" data-category="{{ cat }}">
+                  Add
+                </button>
+              </div>
+              <div class="text-end mt-1">
+                <button type="button" class="btn btn-link btn-sm text-secondary p-0 btn-cancel-add" data-category="{{ cat }}">Cancel</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      {% endfor %}
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-body border-top py-3 text-center text-secondary small">
+    <div class="container">
+      &copy; 2026 AI Campus Placement Agent &bull; Drive Day Readiness Toolkit
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Drive Checklist Module JS -->
+  <script type="module" src="{{ url_for('static', filename='js/modules/drive_checklist.js') }}"></script>
+</body>
+
+</html>
