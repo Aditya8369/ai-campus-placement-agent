@@ -163,12 +163,12 @@
                 <input type="checkbox" class="form-check-input calendar-event-checkbox" value="{{ evt.id }}" aria-label="Select {{ evt.title }} for export">
               </td>
               <td class="fw-semibold text-nowrap">
-                <i class="fa-regular fa-calendar text-muted me-1"></i> {{ evt.event_date }}
+                <i class="fa-regular fa-calendar text-muted me-1"></i> {{ evt.event_date | format_date_ist }}
                 {% if evt.event_date == today_date %}
                 <span class="badge bg-primary rounded-pill ms-1">Today</span>
                 {% endif %}
                 {% if evt.event_time %}
-                <div class="small text-muted"><i class="fa-regular fa-clock me-1"></i> {{ evt.event_time }}</div>
+                <div class="small text-muted"><i class="fa-regular fa-clock me-1"></i> {{ evt.event_time | format_time_ist }}</div>
                 {% endif %}
               </td>
               <td>

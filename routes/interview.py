@@ -2665,3 +2665,77 @@ def api_get_gd_history():
 preparation_notes_view = interview_notes_view
 api_preparation_notes = api_notes_collection
 api_preparation_note_item = api_note_operations
+
+
+# =====================================================================
+# SAVED QUESTION EXPLANATION ROUTES (#508)
+# =====================================================================
+
+@interview_bp.route("/api/interview/questions/<question_id>/explanation", methods=["GET", "POST"])
+def api_question_explanation(question_id):
+    """
+    Retrieves or creates a structured explanation breakdown for a saved interview question (#508).
+    Includes core concepts, key technical terms, common mistakes, structure, and sample answers.
+    """
+    from utils.question_explanation_service import QuestionExplanationService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        question_text = data.get("question_text", f"Interview Question {question_id}")
+        topic = data.get("topic", "General")
+        difficulty = data.get("difficulty", "Intermediate")
+        
+        explanation = QuestionExplanationService.get_explanation(
+            user_id=student_id,
+            question_id=question_id,
+            question_text=question_text,
+            topic=topic
+        )
+        return jsonify({
+            "status": "success",
+            "message": "Explanation retrieved successfully",
+            "explanation": explanation
+        }), 200
+
+    # GET request
+    q_text = request.args.get("question_text")
+    topic = request.args.get("topic")
+    explanation = QuestionExplanationService.get_explanation(
+        user_id=student_id,
+        question_id=question_id,
+        question_text=q_text,
+        topic=topic
+    )
+    return jsonify({
+        "status": "success",
+        "explanation": explanation
+    }), 200
+
+
+@interview_bp.route("/api/interview/questions/saved-explanations", methods=["GET"])
+def api_list_saved_question_explanations():
+    """Returns all saved question explanations for the current authenticated student (#508)."""
+    from utils.question_explanation_service import QuestionExplanationService
+    student_id = flask_session.get("user_id") or "default_student"
+    topic = request.args.get("topic")
+
+    explanations = QuestionExplanationService.list_saved_explanations(student_id, topic=topic)
+    return jsonify({
+        "status": "success",
+        "count": len(explanations),
+        "explanations": explanations
+    }), 200
+
+
+@interview_bp.route("/api/interview/questions/<question_id>/explanation", methods=["DELETE"])
+def api_delete_question_explanation(question_id):
+    """Deletes a saved question explanation for the current authenticated student (#508)."""
+    from utils.question_explanation_service import QuestionExplanationService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    deleted = QuestionExplanationService.delete_explanation(student_id, question_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Question explanation removed"}), 200
+    return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
+
