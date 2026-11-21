@@ -1525,85 +1525,61 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# APPLICATION STAGE HISTORY & FILTERS ROUTES (#517)
+# DAILY PLACEMENT PREPARATION DASHBOARD ROUTES (#512)
 # =====================================================================
 
-@tracker_bp.route("/tracker/stage-history", methods=["GET"])
-def application_stage_filters_view():
-    """Renders application stage history timeline with filters (#517)."""
-    from utils.application_stage_filters import ApplicationStageFilterService
+@tracker_bp.route("/daily-prep", methods=["GET"])
+def daily_prep_view():
+    """Renders the Daily Placement Preparation Hub ('Today' view) (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
 
-    company = request.args.get("company")
-    stage = request.args.get("stage")
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    stagnant_only = request.args.get("stagnant_only") == "true"
-
-    result = ApplicationStageFilterService.filter_stage_history(
-        user_id=student_id,
-        company=company,
-        stage=stage,
-        start_date=start_date,
-        end_date=end_date,
-        stagnant_only=stagnant_only
-    )
-
-    return render_template(
-        "application_stage_filters.html",
-        result=result,
-        company=company,
-        stage=stage,
-        start_date=start_date,
-        end_date=end_date
-    )
+    dashboard_data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return render_template("daily_prep_dashboard.html", data=dashboard_data)
 
 
-@tracker_bp.route("/api/stage-history/filter", methods=["GET"])
-def api_filter_stage_history():
-    """Returns filtered application stage history in JSON format (#517)."""
-    from utils.application_stage_filters import ApplicationStageFilterService
+@tracker_bp.route("/api/daily-prep/dashboard", methods=["GET"])
+def api_get_daily_prep_dashboard():
+    """Retrieves JSON representation of today's prep tasks and deadlines (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
 
-    company = request.args.get("company")
-    stage = request.args.get("stage")
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-    stagnant_only = request.args.get("stagnant_only") == "true"
-
-    result = ApplicationStageFilterService.filter_stage_history(
-        user_id=student_id,
-        company=company,
-        stage=stage,
-        start_date=start_date,
-        end_date=end_date,
-        stagnant_only=stagnant_only
-    )
-    return jsonify({"status": "success", "result": result}), 200
+    data = DailyPrepDashboardService.get_today_dashboard(student_id)
+    return jsonify({"status": "success", "dashboard": data}), 200
 
 
-@tracker_bp.route("/api/stage-history/transition", methods=["POST"])
-def api_record_stage_transition():
-    """Logs a new application stage transition (#517)."""
-    from utils.application_stage_filters import ApplicationStageFilterService
+@tracker_bp.route("/api/daily-prep/tasks/<int:task_id>/toggle", methods=["POST"])
+def api_toggle_daily_task(task_id):
+    """Toggles task completion status (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    try:
+        updated = DailyPrepDashboardService.toggle_task(student_id, task_id)
+        return jsonify({"status": "success", "task": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@tracker_bp.route("/api/daily-prep/tasks", methods=["POST"])
+def api_add_custom_daily_task():
+    """Adds a custom task for today (#512)."""
+    from utils.daily_prep_service import DailyPrepDashboardService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    app_id = payload.get("application_id")
-    to_stage = payload.get("to_stage")
-    if not app_id or not to_stage:
-        return jsonify({"status": "error", "message": "application_id and to_stage are required"}), 400
+    title = payload.get("title")
+    if not title:
+        return jsonify({"status": "error", "message": "Task title is required"}), 400
 
-    record = ApplicationStageFilterService.record_stage_transition(
+    task = DailyPrepDashboardService.add_custom_daily_task(
         user_id=student_id,
-        application_id=int(app_id),
-        company_name=payload.get("company_name", "Company"),
-        job_title=payload.get("job_title", "Software Engineer"),
-        to_stage=to_stage,
-        from_stage=payload.get("from_stage"),
-        notes=payload.get("notes", "")
+        title=title,
+        task_type=payload.get("task_type", "custom")
     )
-    return jsonify({"status": "success", "record": record}), 201
+    return jsonify({"status": "success", "task": task}), 201
 
 
 
