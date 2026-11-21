@@ -407,3 +407,93 @@ def api_get_ai_disclaimer():
     }), 200
 
 
+# ---------------------------------------------------------
+# Placement-Readiness Setup Checklist Endpoints (#506)
+# ---------------------------------------------------------
+@api_bp.route("/api/checklist", methods=["GET"])
+def api_get_setup_checklist():
+    """
+    Returns the student placement readiness checklist status and progress (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or request.args.get("student_id") or "default_student"
+    checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
+        "success": True,
+        "checklist": checklist
+    }), 200
+
+
+@api_bp.route("/api/checklist/task", methods=["POST"])
+def api_update_checklist_task():
+    """
+    Updates completion status of a specific checklist task (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    task_id = payload.get("task_id")
+    is_completed = payload.get("is_completed")
+    notes = payload.get("notes")
+
+    if not task_id:
+        return jsonify({"success": False, "error": "task_id is required"}), 400
+
+    placement_checklist_service.update_task_status(
+        student_id=student_id,
+        task_id=task_id,
+        is_completed=bool(is_completed),
+        notes=notes
+    )
+
+    updated_checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
+        "success": True,
+        "task_id": task_id,
+        "is_completed": bool(is_completed),
+        "checklist": updated_checklist
+    }), 200
+
+
+@api_bp.route("/api/checklist/dismiss", methods=["POST"])
+def api_dismiss_checklist():
+    """
+    Temporarily or permanently dismisses the checklist banner (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    is_dismissed = payload.get("is_dismissed", True)
+    hours = int(payload.get("hours", 24))
+
+    placement_checklist_service.set_dismissal(student_id, bool(is_dismissed), hours)
+    return jsonify({
+        "success": True,
+        "is_dismissed": bool(is_dismissed),
+        "message": "Checklist display preference updated."
+    }), 200
+
+
+@api_bp.route("/api/checklist/reset", methods=["POST"])
+def api_reset_checklist():
+    """
+    Resets the student checklist to initial setup state (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    placement_checklist_service.reset_checklist(student_id)
+    checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
+        "success": True,
+        "message": "Checklist reset successfully.",
+        "checklist": checklist
+    }), 200
+
+
+

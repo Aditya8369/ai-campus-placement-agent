@@ -19,6 +19,12 @@ from utils.format_checker import (
     check_resume_format_compatibility,
     get_or_compute_format_compatibility,
 )
+from utils.text_cleaner import (
+    normalize_resume_text,
+    get_last_raw_resume_text,
+    get_raw_resume_text,
+    clear_raw_text_cache,
+)
 
 try:
     import docx
@@ -310,12 +316,20 @@ def extract_text_from_pdf(pdf_path: str) -> str:
                 "Please upload a standard concise campus placement resume."
             )
 
+        pages_text: List[str] = []
         for page_idx, page in enumerate(reader.pages):
             page_text = page.extract_text()
             if page_text:
+                pages_text.append(page_text)
                 text_content += page_text + "\n"
 
-        cleaned_text = text_content.strip()
+        # Apply artifact normalization (ligatures, hyphenated wraps, bullets, headers) (#645)
+        cleaned_text = normalize_resume_text(
+            text_content,
+            pages_text=pages_text if len(pages_text) > 1 else None,
+            store_raw=True,
+            text_id=pdf_path,
+        )
 
         # Detect empty or scanned/image-only PDFs (< min_chars characters)
         if len(cleaned_text) < min_chars:
@@ -504,7 +518,12 @@ def extract_text_from_docx(docx_source: Union[str, io.BytesIO, bytes, bytearray]
             except Exception as hdr_err:
                 logger.debug(f"Could not read section header: {hdr_err}")
 
-        combined_text = "\n".join(extracted_lines).strip()
+        raw_combined_text = "\n".join(extracted_lines).strip()
+        combined_text = normalize_resume_text(
+            raw_combined_text,
+            store_raw=True,
+            text_id=str(docx_source),
+        )
 
         # Validate extracted text content
         if not combined_text:

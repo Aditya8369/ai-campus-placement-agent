@@ -5,6 +5,8 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: '0 4 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -30,6 +32,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov
+
+          - name: Run Linting Checks
+        run: |
+          flake8 .
+          black --check .
+
+      - name: Run Automated Accessibility Regression Tests
+        env:
+          FLASK_SECRET_KEY: ci-test-secret-key
+          RATE_LIMIT_ENABLED: "false"
+        run: |
+          pytest tests/test_accessibility.py -v
+
+      - name: Run Full Test Suite
+        env:
+          FLASK_SECRET_KEY: ci-test-secret-key
+          RATE_LIMIT_ENABLED: "false"
+        run: |
+          pytest -v
 
       - name: Run CI Pipeline Validator
         run: |
@@ -103,6 +124,39 @@ jobs:
 
       - name: Run Safety Dependency Check
         run: safety check || true
+
+  dependency-audit:
+    name: Dependency Vulnerability Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install pip-audit & Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit pyyaml
+
+      - name: Run Dependency Vulnerability Audit
+        run: |
+          python utils/dependency_audit.py -r requirements.txt --ignore-file .pip-audit-ignore.yml
+
+      - name: Verify Audit Fails on Vulnerable Package
+        run: |
+          echo "urllib3==1.26.4" > test-vulnerable-req.txt
+          if python utils/dependency_audit.py -r test-vulnerable-req.txt --ignore-file .pip-audit-ignore.yml; then
+            echo "Expected audit to fail on vulnerable package urllib3==1.26.4, but it passed!"
+            exit 1
+          else
+            echo "Verified: Dependency audit correctly detected vulnerability and exited with non-zero code."
+          fi
+          rm test-vulnerable-req.txt
 
   syntax-validation:
     name: Syntax & Bytecode Compilation

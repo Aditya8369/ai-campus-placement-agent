@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Coding Spaced-Repetition Review Queue - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="bi bi-arrow-repeat text-primary me-2"></i>Coding Spaced-Repetition Queue
+      </h2>
+      <p class="text-muted mb-0">Retain solved DSA patterns with optimized review cycles (1d, 3d, 1w, 2w, 1mo).</p>
+    </div>
+    <a href="{{ url_for('coding_practice.coding_practice_view') }}" class="btn btn-outline-secondary">
+      <i class="bi bi-code-slash me-1"></i> Back to Coding Practice
+    </a>
+  </div>
+
+  <!-- Metric Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm bg-primary text-white p-3 rounded-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fs-4 fw-bold" id="metricDueCount">{{ metrics.due_today }}</div>
+            <div class="small opacity-75">Problems Due Today</div>
+          </div>
+          <i class="bi bi-clock-history fs-1 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm bg-success text-white p-3 rounded-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fs-4 fw-bold" id="metricMasteredCount">{{ metrics.mastered }}</div>
+            <div class="small opacity-75">Mastered (30d+ cycle)</div>
+          </div>
+          <i class="bi bi-trophy-fill fs-1 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm bg-info text-white p-3 rounded-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fs-4 fw-bold" id="metricTotalCount">{{ metrics.total_enrolled }}</div>
+            <div class="small opacity-75">Total Enrolled</div>
+          </div>
+          <i class="bi bi-collection-fill fs-1 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm bg-warning text-dark p-3 rounded-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fs-4 fw-bold" id="metricRetentionRate">{{ metrics.retention_rate_pct }}%</div>
+            <div class="small opacity-75">Retention Rate</div>
+          </div>
+          <i class="bi bi-graph-up-arrow fs-1 opacity-50"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Problems Due Table -->
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 fw-bold text-dark">
+        <i class="bi bi-fire text-danger me-2"></i>Due for Review
+      </h5>
+      <span class="badge bg-danger rounded-pill">{{ due_problems|length }} Pending</span>
+    </div>
+    <div class="card-body p-0">
+      {% if due_problems %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Problem</th>
+              <th>Topic</th>
+              <th>Difficulty</th>
+              <th>Current Interval</th>
+              <th>Action / Grade Recall</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for prob in due_problems %}
+            <tr id="row-{{ prob.problem_id }}">
+              <td>
+                <div class="fw-bold">{{ prob.title }}</div>
+                <small class="text-muted">ID: {{ prob.problem_id }}</small>
+              </td>
+              <td><span class="badge bg-light text-dark border">{{ prob.topic }}</span></td>
+              <td>
+                {% if prob.difficulty == 'Easy' %}
+                <span class="badge bg-success-subtle text-success">Easy</span>
+                {% elif prob.difficulty == 'Hard' %}
+                <span class="badge bg-danger-subtle text-danger">Hard</span>
+                {% else %}
+                <span class="badge bg-warning-subtle text-warning">Medium</span>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge bg-primary-subtle text-primary">{{ prob.interval_days }} days</span>
+                <div class="small text-muted">Level {{ prob.repetition_level }}</div>
+              </td>
+              <td>
+                <div class="btn-group btn-group-sm" role="group">
+                  <button type="button" class="btn btn-outline-danger" onclick="submitReview('{{ prob.problem_id }}', 'forgot')" title="Forgot completely">Forgot (1d)</button>
+                  <button type="button" class="btn btn-outline-warning" onclick="submitReview('{{ prob.problem_id }}', 'difficult')" title="Struggled to remember">Difficult (1d)</button>
+                  <button type="button" class="btn btn-outline-primary" onclick="submitReview('{{ prob.problem_id }}', 'good')" title="Remembered with effort">Good (+tier)</button>
+                  <button type="button" class="btn btn-outline-success" onclick="submitReview('{{ prob.problem_id }}', 'easy')" title="Trivial recall">Easy (Skip ahead)</button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-4 text-center text-muted">
+        <i class="bi bi-check-circle-fill text-success fs-1 d-block mb-2"></i>
+        <h6>All caught up! No coding problems due for review today.</h6>
+        <p class="small mb-0">New reviews will appear automatically as their spaced intervals elapse.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- All Enrolled Schedule -->
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-white py-3">
+      <h5 class="mb-0 fw-bold text-dark">
+        <i class="bi bi-list-stars text-secondary me-2"></i>All Enrolled Problems
+      </h5>
+    </div>
+    <div class="card-body p-0">
+      {% if all_problems %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Problem</th>
+              <th>Topic</th>
+              <th>Interval</th>
+              <th>Status</th>
+              <th>Next Review</th>
+              <th>Controls</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for prob in all_problems %}
+            <tr>
+              <td>
+                <span class="fw-semibold">{{ prob.title }}</span>
+                <span class="text-muted small d-block">Reviewed {{ prob.review_count }} time(s)</span>
+              </td>
+              <td><span class="badge bg-light text-dark border">{{ prob.topic }}</span></td>
+              <td>{{ prob.interval_days }} days (Level {{ prob.repetition_level }})</td>
+              <td>
+                {% if prob.status == 'mastered' %}
+                <span class="badge bg-success">Mastered</span>
+                {% elif prob.status == 'paused' %}
+                <span class="badge bg-secondary">Paused</span>
+                {% else %}
+                <span class="badge bg-info text-dark">Active</span>
+                {% endif %}
+              </td>
+              <td class="small">{{ prob.next_review_at[:10] }}</td>
+              <td>
+                <div class="btn-group btn-group-sm">
+                  <button class="btn btn-sm btn-outline-secondary" onclick="togglePause('{{ prob.problem_id }}')">
+                    {{ 'Resume' if prob.status == 'paused' else 'Pause' }}
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger" onclick="resetProblem('{{ prob.problem_id }}')">
+                    Reset
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">No problems enrolled yet. Solve or bookmark coding problems to add them to your spaced repetition plan.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+async function submitReview(problemId, rating) {
+  try {
+    const res = await fetch(`/api/coding-practice/spaced-repetition/${problemId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rating: rating })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const row = document.getElementById(`row-${problemId}`);
+      if (row) {
+        row.style.transition = 'all 0.5s';
+        row.style.opacity = '0';
+        setTimeout(() => row.remove(), 500);
+      }
+    } else {
+      alert(data.message || 'Error updating review.');
+    }
+  } catch (err) {
+    alert('Failed to connect to review server.');
+  }
+}
+
+async function togglePause(problemId) {
+  const res = await fetch(`/api/coding-practice/spaced-repetition/${problemId}/pause`, { method: 'POST' });
+  if (res.ok) location.reload();
+}
+
+async function resetProblem(problemId) {
+  if (!confirm('Reset this problem back to Day 1 interval?')) return;
+  const res = await fetch(`/api/coding-practice/spaced-repetition/${problemId}/reset`, { method: 'POST' });
+  if (res.ok) location.reload();
+}
+</script>
+{% endblock %}

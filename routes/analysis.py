@@ -3743,3 +3743,67 @@ def api_get_analysis_feedback(analysis_id: str):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# =====================================================================
+# CUSTOM RESUME COMPARISON LABELS ROUTES (#523)
+# =====================================================================
+
+@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["GET"])
+def api_get_resume_label(resume_id):
+    """Retrieves custom version nickname and notes for a resume (#523)."""
+    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    label_data = ResumeComparisonLabelsService.get_label(student_id, resume_id)
+    return jsonify({"status": "success", "label": label_data}), 200
+
+
+@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["POST"])
+def api_set_resume_label(resume_id):
+    """Assigns or updates a custom version label/nickname (#523)."""
+    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    custom_label = payload.get("custom_label")
+    if not custom_label:
+        return jsonify({"status": "error", "message": "custom_label is required"}), 400
+
+    color_tag = payload.get("color_tag", "primary")
+    change_notes = payload.get("change_notes", "")
+
+    try:
+        updated = ResumeComparisonLabelsService.set_label(
+            user_id=student_id,
+            resume_id=resume_id,
+            custom_label=custom_label,
+            color_tag=color_tag,
+            change_notes=change_notes
+        )
+        return jsonify({"status": "success", "label": updated}), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "message": str(ve)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@analysis_bp.route("/api/analysis/resume/<resume_id>/label", methods=["DELETE"])
+def api_delete_resume_label(resume_id):
+    """Deletes custom label, reverting to default (#523)."""
+    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    deleted = ResumeComparisonLabelsService.delete_label(student_id, resume_id)
+    return jsonify({"status": "success", "deleted": deleted}), 200
+
+
+@analysis_bp.route("/api/analysis/resume/labels", methods=["GET"])
+def api_list_user_resume_labels():
+    """Lists all custom labels configured by the student (#523)."""
+    from utils.resume_comparison_labels_service import ResumeComparisonLabelsService
+    student_id = flask_session.get("user_id") or "default_student"
+
+    labels = ResumeComparisonLabelsService.list_user_labels(student_id)
+    return jsonify({"status": "success", "count": len(labels), "labels": labels}), 200
+
+
+

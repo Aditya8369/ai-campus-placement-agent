@@ -42,6 +42,7 @@ from utils.pdf_reader import (
     validate_resume_file,
     validate_file_size,
     validate_pdf_content,
+    normalize_resume_text,
     ScannedPDFError,
     PasswordProtectedPDFError,
     MAX_RESUME_TEXT_CHARS,
@@ -403,6 +404,7 @@ def _extract_and_validate_resume(req):
         register_sensitive_text(jd_text)
 
     if pasted_text:
+        pasted_text = normalize_resume_text(pasted_text, store_raw=True, text_id=file_uuid)
         is_valid, validation_msg = validate_resume_text(pasted_text)
         if not is_valid:
             return None, None, None, validation_msg
