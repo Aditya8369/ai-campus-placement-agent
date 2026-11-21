@@ -381,6 +381,14 @@ def check_pdf_format_compatibility(file_input: Union[str, bytes, io.BytesIO, Pat
         overall_status = "warn" if warn_count > 0 else "pass"
         score_percentage = round((passed_count / len(checks)) * 100)
 
+        # Include page-level diagnostics if available (#597)
+        page_issues_report = None
+        try:
+            from utils.pdf_page_issue_detector import analyze_pdf_page_issues
+            page_issues_report = analyze_pdf_page_issues(file_input)
+        except Exception as p_err:
+            logger.debug(f"Could not compute page level issues: {p_err}")
+
         return {
             "overall_status": overall_status,
             "passed_count": passed_count,
@@ -388,6 +396,7 @@ def check_pdf_format_compatibility(file_input: Union[str, bytes, io.BytesIO, Pat
             "total_checks": len(checks),
             "score_percentage": score_percentage,
             "checks": checks,
+            "page_level_issues": page_issues_report,
         }
 
     except Exception as exc:

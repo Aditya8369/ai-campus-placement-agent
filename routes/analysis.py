@@ -2240,56 +2240,6 @@ def api_get_analysis_pdf_page_issues(analysis_id: str):
     }), 200
 
 
-
-
-
-@analysis_bp.route("/api/analysis/<analysis_id>/ats-confidence", methods=["GET"])
-def api_get_analysis_ats_confidence(analysis_id: str):
-    """
-    Returns the ATS Score Confidence Indicator and factor breakdown (#598).
-    Evaluates extracted text characteristics, formatting alerts, and section completeness.
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
-
-    results = analysis_record.get("results") or {}
-    raw_resume = (
-        analysis_record.get("resume_text")
-        or results.get("extracted_resume_text")
-        or results.get("resume_text")
-        or ""
-    )
-
-    format_compat = None
-    try:
-        format_compat = get_or_compute_format_compatibility(analysis_record)
-    except Exception:
-        pass
-
-    ats_breakdown = results.get("ats_breakdown")
-    if not ats_breakdown:
-        try:
-            from utils.ats_score_service import evaluate_resume_ats_score
-            ats_breakdown = evaluate_resume_ats_score(raw_resume)
-        except Exception:
-            ats_breakdown = None
-
-    from utils.ats_confidence_service import calculate_ats_score_confidence
-    confidence_data = calculate_ats_score_confidence(
-        resume_text=raw_resume,
-        format_compat=format_compat,
-        ats_breakdown=ats_breakdown
-    )
-
-    return jsonify({
-        "status": "success",
-        "success": True,
-        "analysis_id": analysis_id,
-        "confidence": confidence_data
-    }), 200
-
-
 @analysis_bp.route("/api/resume/format-compatibility", methods=["POST"])
 def api_evaluate_resume_format_compatibility():
     """
