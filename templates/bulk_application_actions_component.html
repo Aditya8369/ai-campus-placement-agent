@@ -1,0 +1,125 @@
+<!-- Bulk Application Actions Floating Toolbar Component (#522) -->
+<div class="card border-0 shadow-lg position-fixed bottom-0 start-50 translate-middle-x mb-4 bulk-action-bar" id="bulkActionBar" style="display: none; z-index: 1050; width: 90%; max-width: 800px; background-color: #1e293b; color: white;">
+  <div class="card-body py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge bg-primary fs-6" id="bulkSelectedCount">0 selected</span>
+      <span class="small opacity-75">Applications selected</span>
+    </div>
+
+    <!-- Actions Group -->
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <!-- Status Change Dropdown -->
+      <select class="form-select form-select-sm bg-dark text-white border-secondary" id="bulkStatusSelect" style="width: 170px;">
+        <option value="">Change Status...</option>
+        <option value="applied">Mark as Applied</option>
+        <option value="online_assessment">Online Assessment</option>
+        <option value="interview_scheduled">Interview Scheduled</option>
+        <option value="offer">Offer Received</option>
+        <option value="rejected">Mark Rejected</option>
+        <option value="archived">Archive</option>
+      </select>
+      <button class="btn btn-sm btn-primary" onclick="applyBulkStatus()">Apply Status</button>
+
+      <!-- Tag Add Input -->
+      <div class="input-group input-group-sm" style="width: 200px;">
+        <input type="text" class="form-control bg-dark text-white border-secondary" id="bulkTagInput" placeholder="Add Tag (e.g. Dream)">
+        <button class="btn btn-outline-light" onclick="applyBulkTag()">Tag</button>
+      </div>
+
+      <!-- Delete Button -->
+      <button class="btn btn-sm btn-danger" onclick="applyBulkDelete()">
+        <i class="bi bi-trash"></i>
+      </button>
+
+      <button class="btn btn-sm btn-outline-secondary" onclick="clearBulkSelection()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let selectedApplicationIds = new Set();
+
+function toggleSelectApplication(appId, isChecked) {
+  if (isChecked) {
+    selectedApplicationIds.add(appId);
+  } else {
+    selectedApplicationIds.delete(appId);
+  }
+  updateBulkBar();
+}
+
+function selectAllApplications(checkbox) {
+  const itemChecks = document.querySelectorAll('.app-select-checkbox');
+  itemChecks.forEach(cb => {
+    cb.checked = checkbox.checked;
+    const id = parseInt(cb.getAttribute('data-app-id'));
+    if (checkbox.checked) selectedApplicationIds.add(id);
+    else selectedApplicationIds.delete(id);
+  });
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = document.getElementById('bulkActionBar');
+  const countBadge = document.getElementById('bulkSelectedCount');
+  if (!bar) return;
+
+  if (selectedApplicationIds.size > 0) {
+    bar.style.display = 'block';
+    countBadge.textContent = `${selectedApplicationIds.size} selected`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearBulkSelection() {
+  selectedApplicationIds.clear();
+  document.querySelectorAll('.app-select-checkbox').forEach(cb => cb.checked = false);
+  const master = document.getElementById('selectAllAppsCheckbox');
+  if (master) master.checked = false;
+  updateBulkBar();
+}
+
+async function executeBulkRequest(action, parameters) {
+  const ids = Array.from(selectedApplicationIds);
+  if (ids.length === 0) return alert('No applications selected.');
+
+  try {
+    const res = await fetch('/api/tracker/applications/bulk-action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        application_ids: ids,
+        action: action,
+        parameters: parameters
+      })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message || 'Bulk operation completed.');
+      location.reload();
+    } else {
+      alert(data.message || 'Failed to execute bulk action.');
+    }
+  } catch (err) {
+    alert('Server error executing bulk action.');
+  }
+}
+
+function applyBulkStatus() {
+  const status = document.getElementById('bulkStatusSelect').value;
+  if (!status) return alert('Select a status.');
+  executeBulkRequest('status_update', { status: status });
+}
+
+function applyBulkTag() {
+  const tag = document.getElementById('bulkTagInput').value.trim();
+  if (!tag) return alert('Enter a tag.');
+  executeBulkRequest('add_tag', { tag: tag });
+}
+
+function applyBulkDelete() {
+  if (!confirm(`Delete ${selectedApplicationIds.size} selected application(s)? This cannot be undone.`)) return;
+  executeBulkRequest('delete', {});
+}
+</script>

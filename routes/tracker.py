@@ -1849,9 +1849,10 @@ def api_create_offer_note():
         )
         return jsonify({"status": "success", "offer_note": note}), 201
     except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
+        return jsonify({"success": False, "message": str(ve)}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Error in bulk application action: {e}")
+        return jsonify({"success": False, "message": "Bulk action failed."}), 500
 
 
 @tracker_bp.route("/api/offer-notes/<int:note_id>", methods=["DELETE"])

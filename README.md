@@ -409,22 +409,27 @@ When `SENTRY_DSN` is unset or empty, Sentry monitoring remains completely inacti
 
 ---
 
-### Campus Self-Hosting & Email Domain Restrictions (#654)
+### Privacy-Friendly CAPTCHA Bot Protection (#653)
 
-Colleges and universities deploying the platform for their campus can restrict registration and student account emails to approved institutional domains:
+To safeguard registration (`/register`), login (`/login`), and password recovery (`/forgot-password`) from automated credential stuffing, mass fake sign-ups, and email-flooding bots, the application supports Cloudflare Turnstile and hCaptcha:
 
 ```env
-# Restrict registration to one or more approved institutional domains (comma-separated):
-ALLOWED_EMAIL_DOMAINS=college.edu,univ.ac.in
+# Supported providers: 'turnstile' (Cloudflare Turnstile) or 'hcaptcha' (hCaptcha)
+CAPTCHA_PROVIDER=turnstile
+CAPTCHA_SITE_KEY=0x4AAAAAA...
+CAPTCHA_SECRET_KEY=0x4AAAAAA...
 
-# Leave empty or unset (default) to permit registration from any email domain:
-ALLOWED_EMAIL_DOMAINS=
+# Fail-Open or Fail-Closed on provider outage (default: false = fail closed)
+CAPTCHA_FAIL_OPEN=false
+
+# Require CAPTCHA always (default: true) or only after N failed attempts (0 = always)
+CAPTCHA_ALWAYS_ENFORCE=true
+CAPTCHA_REQUIRE_AFTER_FAILURES=0
 ```
 
-- **Subdomain Support**: Institutional subdomains are automatically permitted (e.g. setting `college.edu` permits `user@cs.college.edu` and `user@eng.college.edu`).
-- **Case-Insensitive**: Domain checks match regardless of letter casing (`Student@COLLEGE.EDU`).
-- **Student College Storage**: Students can record their college or university on registration or their candidate profile (`/profile`), with suggested options dynamically derived from `ALLOWED_EMAIL_DOMAINS`.
-- **Enforcement Scope**: The domain restriction automatically applies to new student registrations, profile email updates, password reset requests, and email verification re-sends.
+- **Zero Disruption When Unset**: With no keys configured, the CAPTCHA widget remains disabled and forms submit normally.
+- **Strict CSP Isolation**: The Content-Security-Policy automatically allows only the configured provider's domains (`challenges.cloudflare.com` or `hcaptcha.com`).
+- **Resilient Fallback**: By default, verification fails closed on invalid/missing tokens and provider downtime, with an optional `CAPTCHA_FAIL_OPEN=true` flag for high-availability setups.
 
 ---
 
