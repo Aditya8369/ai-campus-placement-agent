@@ -31,6 +31,25 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
+          - name: Run Linting Checks
+        run: |
+          flake8 .
+          black --check .
+
+      - name: Run Automated Accessibility Regression Tests
+        env:
+          FLASK_SECRET_KEY: ci-test-secret-key
+          RATE_LIMIT_ENABLED: "false"
+        run: |
+          pytest tests/test_accessibility.py -v
+
+      - name: Run Full Test Suite
+        env:
+          FLASK_SECRET_KEY: ci-test-secret-key
+          RATE_LIMIT_ENABLED: "false"
+        run: |
+          pytest -v
+
       - name: Run CI Pipeline Validator
         run: |
           python utils/ci_pipeline_validator.py
