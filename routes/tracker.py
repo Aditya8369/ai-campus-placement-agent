@@ -1794,61 +1794,66 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# DAILY PLACEMENT PREPARATION DASHBOARD ROUTES (#512)
+# SUBJECT-WISE CONFIDENCE TRACKER ROUTES (#513)
 # =====================================================================
 
-@tracker_bp.route("/daily-prep", methods=["GET"])
-def daily_prep_view():
-    """Renders the Daily Placement Preparation Hub ('Today' view) (#512)."""
-    from utils.daily_prep_service import DailyPrepDashboardService
+@tracker_bp.route("/subject-confidence", methods=["GET"])
+def subject_confidence_view():
+    """Renders the subject-wise confidence self-rating tracker (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
     student_id = flask_session.get("user_id") or "default_student"
 
-    dashboard_data = DailyPrepDashboardService.get_today_dashboard(student_id)
-    return render_template("daily_prep_dashboard.html", data=dashboard_data)
+    data = SubjectConfidenceService.get_subject_ratings(student_id)
+    return render_template("subject_confidence_tracker.html", data=data)
 
 
-@tracker_bp.route("/api/daily-prep/dashboard", methods=["GET"])
-def api_get_daily_prep_dashboard():
-    """Retrieves JSON representation of today's prep tasks and deadlines (#512)."""
-    from utils.daily_prep_service import DailyPrepDashboardService
+@tracker_bp.route("/api/subject-confidence", methods=["GET"])
+def api_get_subject_confidence():
+    """Retrieves JSON confidence scores and recommendations (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
     student_id = flask_session.get("user_id") or "default_student"
 
-    data = DailyPrepDashboardService.get_today_dashboard(student_id)
-    return jsonify({"status": "success", "dashboard": data}), 200
+    data = SubjectConfidenceService.get_subject_ratings(student_id)
+    return jsonify({"status": "success", "ratings": data}), 200
 
 
-@tracker_bp.route("/api/daily-prep/tasks/<int:task_id>/toggle", methods=["POST"])
-def api_toggle_daily_task(task_id):
-    """Toggles task completion status (#512)."""
-    from utils.daily_prep_service import DailyPrepDashboardService
+@tracker_bp.route("/api/subject-confidence/update", methods=["POST"])
+def api_update_subject_confidence():
+    """Updates the confidence self-rating (1-5) for a topic (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
     student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form.to_dict()
+
+    subject_key = payload.get("subject_key")
+    score = payload.get("score")
+    notes = payload.get("notes", "")
+
+    if not subject_key or score is None:
+        return jsonify({"status": "error", "message": "subject_key and score are required"}), 400
 
     try:
-        updated = DailyPrepDashboardService.toggle_task(student_id, task_id)
-        return jsonify({"status": "success", "task": updated}), 200
+        updated = SubjectConfidenceService.update_rating(
+            user_id=student_id,
+            subject_key=subject_key,
+            score=int(score),
+            notes=notes
+        )
+        return jsonify({"status": "success", "ratings": updated}), 200
     except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 404
+        return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@tracker_bp.route("/api/daily-prep/tasks", methods=["POST"])
-def api_add_custom_daily_task():
-    """Adds a custom task for today (#512)."""
-    from utils.daily_prep_service import DailyPrepDashboardService
+@tracker_bp.route("/api/subject-confidence/history", methods=["GET"])
+def api_get_subject_confidence_history():
+    """Returns historical progression audit (#513)."""
+    from utils.subject_confidence_service import SubjectConfidenceService
     student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
+    subject_key = request.args.get("subject_key")
 
-    title = payload.get("title")
-    if not title:
-        return jsonify({"status": "error", "message": "Task title is required"}), 400
-
-    task = DailyPrepDashboardService.add_custom_daily_task(
-        user_id=student_id,
-        title=title,
-        task_type=payload.get("task_type", "custom")
-    )
-    return jsonify({"status": "success", "task": task}), 201
+    history = SubjectConfidenceService.get_confidence_history(student_id, subject_key=subject_key)
+    return jsonify({"status": "success", "history": history}), 200
 
 
 
