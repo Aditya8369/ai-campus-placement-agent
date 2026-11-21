@@ -124,6 +124,11 @@ SESSION_TIMEOUT_MINUTES = int(os.getenv("SESSION_TIMEOUT_MINUTES", "30"))
 SESSION_TIMEOUT_SECONDS = int(os.getenv("SESSION_TIMEOUT_SECONDS", str(SESSION_TIMEOUT_MINUTES * 60)))
 SESSION_WARNING_SECONDS = int(os.getenv("SESSION_WARNING_SECONDS", "120"))
 
+# Allowed Student Email Domains for Registration & Authentication (#654)
+# Comma-separated list of approved college domains (e.g. "college.edu,univ.ac.in").
+# Empty or unset allows sign-ups from any domain (default).
+ALLOWED_EMAIL_DOMAINS = os.getenv("ALLOWED_EMAIL_DOMAINS", "").strip()
+
 # SMTP & Transactional Email Configurations (#186, #298)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

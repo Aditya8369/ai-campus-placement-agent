@@ -105,6 +105,11 @@ from utils.output_localization import (
 )
 from utils.csrf import csrf, CSRFError, generate_csrf
 from utils.totp import *
+from utils.email_domain_validator import (
+    is_email_domain_allowed,
+    get_email_domain_error_message,
+    get_suggested_colleges,
+)
 from utils.logger_config import (
     configure_logging,
     get_current_request_id,
@@ -768,6 +773,7 @@ def profile_view():
     if request.method == "POST":
         full_name = request.form.get("full_name", "").strip()
         email = request.form.get("email", "").strip()
+        college = request.form.get("college", "").strip()
         phone = request.form.get("phone", "").strip()
         department = request.form.get("department", "").strip()
         grad_year_raw = request.form.get("grad_year", "").strip()
@@ -777,6 +783,11 @@ def profile_view():
         skills_raw = request.form.get("skills", "").strip()
         linkedin_url = request.form.get("linkedin_url", "").strip()
         github_url = request.form.get("github_url", "").strip()
+
+        # Check email domain restriction (#654)
+        if email and not is_email_domain_allowed(email):
+            flash(get_email_domain_error_message(), "error")
+            return redirect("/profile")
 
         try:
             grad_year = int(grad_year_raw) if grad_year_raw else None
@@ -802,7 +813,8 @@ def profile_view():
             target_company=target_company,
             skills=skills,
             linkedin_url=linkedin_url,
-            github_url=github_url
+            github_url=github_url,
+            college=college,
         )
         flash("Profile information updated successfully!", "success")
         return redirect("/profile")
@@ -1142,6 +1154,10 @@ def forgot_password():
             flash(generic_message, "success")
             return redirect(url_for("forgot_password"))
 
+        if not is_email_domain_allowed(email):
+            flash(get_email_domain_error_message(), "error")
+            return render_template("forgot_password.html")
+
         user = get_user_by_email(email)
 
         if user:
@@ -1256,14 +1272,19 @@ def register():
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        college = request.form.get("college", "").strip()
 
         if not name or not email or not password:
             flash("All fields are required.", "error")
-            return render_template("register.html")
+            return render_template("register.html", name=name, email=email, college=college)
+
+        if not is_email_domain_allowed(email):
+            flash(get_email_domain_error_message(), "error")
+            return render_template("register.html", name=name, email=email, college=college)
 
         if len(password) < 8:
             flash("Password must be at least 8 characters long.", "error")
-            return render_template("register.html")
+            return render_template("register.html", name=name, email=email, college=college)
 
         password_hash = generate_password_hash(password)
         user_id = str(uuid.uuid4())
@@ -1272,7 +1293,15 @@ def register():
 
         if not created:
             flash("An account with this email already exists.", "error")
-            return render_template("register.html")
+            return render_template("register.html", name=name, email=email, college=college)
+
+        # Initialize student profile with optional college (#654)
+        save_student_profile(
+            student_id=user_id,
+            full_name=name,
+            email=email,
+            college=college if college else None,
+        )
 
         # Initialize email preferences and verification token (#186, #206)
         update_email_notification_preferences(student_id=user_id, email=email, email_enabled=True)
@@ -1336,6 +1365,10 @@ def resend_verification():
             flash("Please enter your registered email address.", "error")
             return render_template("resend_verification.html")
 
+        if not is_email_domain_allowed(email):
+            flash(get_email_domain_error_message(), "error")
+            return render_template("resend_verification.html")
+
         user = get_user_by_email(email)
         if not user:
             # For security, avoid leaking whether the email exists
@@ -1374,6 +1407,10 @@ def notification_settings_view():
 
     if request.method == "POST":
         email = request.form.get("email", "").strip()
+        if email and not is_email_domain_allowed(email):
+            flash(get_email_domain_error_message(), "error")
+            return redirect(url_for("notification_settings_view", student_id=student_id))
+
         email_enabled = request.form.get("email_enabled") == "on"
         notify_welcome = request.form.get("notify_welcome") == "on"
         notify_application_created = request.form.get("notify_application_created") == "on"

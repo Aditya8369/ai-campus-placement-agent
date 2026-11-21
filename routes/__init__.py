@@ -102,6 +102,7 @@ def create_app(config_override=None) -> Flask:
     app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
     app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+    app.config["ALLOWED_EMAIL_DOMAINS"] = getattr(config, "ALLOWED_EMAIL_DOMAINS", "")
 
     if config_override:
         app.config.update(config_override)
@@ -345,6 +346,18 @@ def create_app(config_override=None) -> Flask:
             "session_timeout_seconds": current_app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)),
             "session_warning_seconds": current_app.config.get("SESSION_WARNING_SECONDS", getattr(config, "SESSION_WARNING_SECONDS", 120)),
             "is_authenticated": bool(flask_session.get("user_id")),
+        }
+
+
+    @app.context_processor
+    def inject_email_domain_helpers():
+        """
+        Injects allowed email domains and suggested college list into all Jinja templates (#654).
+        """
+        from utils.email_domain_validator import get_suggested_colleges, get_allowed_email_domains
+        return {
+            "suggested_colleges": get_suggested_colleges(),
+            "allowed_email_domains": get_allowed_email_domains(),
         }
 
 

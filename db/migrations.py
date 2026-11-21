@@ -296,6 +296,7 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             linkedin_url TEXT,
             github_url TEXT,
             has_resume_uploaded INTEGER DEFAULT 0,
+            college TEXT,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -637,6 +638,14 @@ def _migration_008_reports_and_sharing(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_secure_shared_reports_student ON secure_shared_reports (student_id, created_at DESC)")
 
 
+def _migration_009_student_profile_college(cursor: sqlite3.Cursor) -> None:
+    """Add college column to student_profiles table (#654)."""
+    cursor.execute("PRAGMA table_info(student_profiles)")
+    cols = [col[1] for col in cursor.fetchall()]
+    if "college" not in cols:
+        cursor.execute("ALTER TABLE student_profiles ADD COLUMN college TEXT")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -647,6 +656,7 @@ MIGRATIONS: List[Migration] = [
     Migration("006_tokens_and_streaks", "Create email/password reset tokens, activity log, student streaks, feedback", _migration_006_tokens_and_streaks),
     Migration("007_monitoring_and_practice", "Create analysis cache, aptitude, gd attempts, gemini logs, telemetry", _migration_007_monitoring_and_practice),
     Migration("008_reports_and_sharing", "Create shared reports and view logs for mentor reviews", _migration_008_reports_and_sharing),
+    Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
 ]
 
 
