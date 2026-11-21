@@ -1794,66 +1794,53 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# SUBJECT-WISE CONFIDENCE TRACKER ROUTES (#513)
+# BULK APPLICATION ACTIONS ROUTES (#522)
 # =====================================================================
 
-@tracker_bp.route("/subject-confidence", methods=["GET"])
-def subject_confidence_view():
-    """Renders the subject-wise confidence self-rating tracker (#513)."""
-    from utils.subject_confidence_service import SubjectConfidenceService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    data = SubjectConfidenceService.get_subject_ratings(student_id)
-    return render_template("subject_confidence_tracker.html", data=data)
-
-
-@tracker_bp.route("/api/subject-confidence", methods=["GET"])
-def api_get_subject_confidence():
-    """Retrieves JSON confidence scores and recommendations (#513)."""
-    from utils.subject_confidence_service import SubjectConfidenceService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    data = SubjectConfidenceService.get_subject_ratings(student_id)
-    return jsonify({"status": "success", "ratings": data}), 200
-
-
-@tracker_bp.route("/api/subject-confidence/update", methods=["POST"])
-def api_update_subject_confidence():
-    """Updates the confidence self-rating (1-5) for a topic (#513)."""
-    from utils.subject_confidence_service import SubjectConfidenceService
+@tracker_bp.route("/api/tracker/applications/bulk-action", methods=["POST"])
+def api_execute_bulk_application_action():
+    """
+    Executes batch operations across student job applications (#522).
+    Supported actions: status_update, add_tag, archive, delete.
+    """
+    from utils.bulk_applications_service import BulkApplicationsService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    subject_key = payload.get("subject_key")
-    score = payload.get("score")
-    notes = payload.get("notes", "")
+    action = payload.get("action")
+    raw_ids = payload.get("application_ids", [])
+    if isinstance(raw_ids, str):
+        try:
+            raw_ids = json.loads(raw_ids)
+        except Exception:
+            raw_ids = [int(i.strip()) for i in raw_ids.split(",") if i.strip()]
 
-    if not subject_key or score is None:
-        return jsonify({"status": "error", "message": "subject_key and score are required"}), 400
+    app_ids = [int(i) for i in raw_ids if str(i).isdigit()]
+    parameters = payload.get("parameters", {})
 
     try:
-        updated = SubjectConfidenceService.update_rating(
+        result = BulkApplicationsService.execute_bulk_action(
             user_id=student_id,
-            subject_key=subject_key,
-            score=int(score),
-            notes=notes
+            application_ids=app_ids,
+            action=action,
+            parameters=parameters
         )
-        return jsonify({"status": "success", "ratings": updated}), 200
+        return jsonify(result), 200
     except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 400
+        return jsonify({"success": False, "message": str(ve)}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Error in bulk application action: {e}")
+        return jsonify({"success": False, "message": "Bulk action failed."}), 500
 
 
-@tracker_bp.route("/api/subject-confidence/history", methods=["GET"])
-def api_get_subject_confidence_history():
-    """Returns historical progression audit (#513)."""
-    from utils.subject_confidence_service import SubjectConfidenceService
+@tracker_bp.route("/api/tracker/applications/bulk-history", methods=["GET"])
+def api_get_bulk_application_history():
+    """Returns audit log of recently executed bulk operations (#522)."""
+    from utils.bulk_applications_service import BulkApplicationsService
     student_id = flask_session.get("user_id") or "default_student"
-    subject_key = request.args.get("subject_key")
 
-    history = SubjectConfidenceService.get_confidence_history(student_id, subject_key=subject_key)
-    return jsonify({"status": "success", "history": history}), 200
+    logs = BulkApplicationsService.get_action_history(student_id)
+    return jsonify({"status": "success", "count": len(logs), "logs": logs}), 200
 
 
 
