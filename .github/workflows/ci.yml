@@ -104,6 +104,9 @@ jobs:
       - name: Run Safety Dependency Check
         run: safety check || true
 
+      - name: Run Subresource Integrity (SRI) Check
+        run: python utils/sri_validator.py
+
   syntax-validation:
     name: Syntax & Bytecode Compilation
     runs-on: ubuntu-latest
