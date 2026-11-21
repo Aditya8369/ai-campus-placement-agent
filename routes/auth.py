@@ -105,10 +105,10 @@ from utils.output_localization import (
 )
 from utils.csrf import csrf, CSRFError, generate_csrf
 from utils.totp import *
-from utils.email_domain_validator import (
-    is_email_domain_allowed,
-    get_email_domain_error_message,
-    get_suggested_colleges,
+from utils.captcha import (
+    verify_captcha,
+    record_failed_attempt,
+    reset_failed_attempts,
 )
 from utils.logger_config import (
     configure_logging,
@@ -274,6 +274,11 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
+        is_valid_captcha, captcha_error = verify_captcha(request, form_type="login", identifier=email)
+        if not is_valid_captcha:
+            flash(captcha_error, "error")
+            return render_template("login.html")
+
         if not email or not password:
             flash("Email and password are required.", "error")
             return render_template("login.html")
@@ -281,8 +286,11 @@ def login():
         user = get_user_by_email(email)
 
         if not user or not check_password_hash(user["password_hash"], password):
+            record_failed_attempt(request.remote_addr, email)
             flash("Invalid email or password.", "error")
             return render_template("login.html")
+
+        reset_failed_attempts(request.remote_addr, email)
 
         # Email verification enforcement (#206)
         # Note: If email verification is enabled, users must verify before full session login,
@@ -1144,6 +1152,11 @@ def forgot_password():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
 
+        is_valid_captcha, captcha_error = verify_captcha(request, form_type="forgot_password", identifier=email)
+        if not is_valid_captcha:
+            flash(captcha_error, "error")
+            return render_template("forgot_password.html")
+
         # Always show the same response to prevent email enumeration
         generic_message = (
             "If an account with that email exists, "
@@ -1273,6 +1286,11 @@ def register():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         college = request.form.get("college", "").strip()
+
+        is_valid_captcha, captcha_error = verify_captcha(request, form_type="register", identifier=email)
+        if not is_valid_captcha:
+            flash(captcha_error, "error")
+            return render_template("register.html")
 
         if not name or not email or not password:
             flash("All fields are required.", "error")

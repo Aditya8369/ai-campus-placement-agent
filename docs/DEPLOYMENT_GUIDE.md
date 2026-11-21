@@ -58,7 +58,10 @@ Configure these variables in your **Vercel Project Settings > Environment Variab
 | `MAX_UPLOAD_SIZE_MB` | Optional | `5` | Maximum allowed file size for resume uploads in megabytes. |
 | `LOG_LEVEL` | Optional | `INFO` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
 | `SESSION_TIMEOUT_MINUTES` | Optional | `30` | Inactivity duration in minutes before user session automatically expires. |
-| `ALLOWED_EMAIL_DOMAINS` | Optional | `""` | Comma-separated list of approved college email domains (e.g. `college.edu,univ.ac.in`). Empty allows all. |
+| `CAPTCHA_PROVIDER` | Optional | `""` | Privacy-friendly CAPTCHA provider (`turnstile` or `hcaptcha`). Disabled when unset. |
+| `CAPTCHA_SITE_KEY` | Optional | `""` | Public site key for Turnstile or hCaptcha widget rendering. |
+| `CAPTCHA_SECRET_KEY` | Optional | `""` | Secret server key for backend token verification. |
+| `CAPTCHA_FAIL_OPEN` | Optional | `false` | Whether to allow requests to proceed if the CAPTCHA verification service is unreachable. |
 
 ---
 
