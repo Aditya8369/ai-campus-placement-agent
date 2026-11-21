@@ -25,12 +25,14 @@ from utils.session_resume_comparator import (
     store_session_comparison,
     get_session_comparison,
     clear_session_comparison,
+    _SESSION_COMPARISON_CACHE,
 )
 
 
 @pytest.fixture
 def client():
     """Provides a Flask test client with an isolated SQLite database."""
+    _SESSION_COMPARISON_CACHE.clear()
     with tempfile.TemporaryDirectory() as tmpdir:
         test_db = Path(tmpdir) / "test_session_compare.db"
         config.DATABASE_PATH = test_db
@@ -44,6 +46,7 @@ def client():
         app.config["WTF_CSRF_ENABLED"] = False
         with app.test_client() as client:
             yield client
+    _SESSION_COMPARISON_CACHE.clear()
 
 
 # ==============================================================================

@@ -112,6 +112,22 @@ from utils.logger_config import (
     register_sensitive_text,
     clear_sensitive_texts,
 )
+from utils.roadmap_calendar import generate_roadmap_ics
+from agents.roadmap_agent import generate_learning_roadmap, roadmap_agent
+from utils.session_resume_comparator import (
+    compare_resume_versions,
+    get_session_comparison,
+    store_session_comparison,
+    clear_session_comparison,
+)
+from utils.resume_generator import (
+    DEFAULT_SAMPLE_RESUME,
+    TEMPLATES,
+    get_available_templates,
+    generate_resume_preview_html,
+    generate_resume_docx,
+    generate_resume_pdf,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -576,6 +592,27 @@ def rerun_analysis(analysis_id: str):
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
 
+    # Ensure required nested dictionary structure in results
+    results_raw = analysis_record.get("results")
+    results = results_raw if isinstance(results_raw, dict) else {}
+    if "resume_analysis" not in results or not isinstance(results.get("resume_analysis"), dict):
+        results["resume_analysis"] = {
+            "ats_score": 0,
+            "strengths": [],
+            "weaknesses": [],
+            "formatting_suggestions": [],
+            "grammar_suggestions": [],
+            "project_feedback": "",
+            "experience_feedback": "",
+        }
+    if "job_match" not in results or not isinstance(results.get("job_match"), dict):
+        results["job_match"] = {
+            "match_percentage": 0,
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+    analysis_record["results"] = results
+
     student_id = flask_session.get("user_id") or analysis_record.get("student_id") or "default_student"
     resume_text = (request.form.get("resume_text") or analysis_record.get("resume_text") or "").strip()
     job_description = (request.form.get("job_description") or analysis_record.get("job_description") or "").strip()
@@ -990,6 +1027,27 @@ def dashboard(analysis_id: str) -> str:
     if not analysis_record or not _is_student_authorized(analysis_record):
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
+
+    # Ensure required nested dictionary structure in results
+    results_raw = analysis_record.get("results")
+    results = results_raw if isinstance(results_raw, dict) else {}
+    if "resume_analysis" not in results or not isinstance(results.get("resume_analysis"), dict):
+        results["resume_analysis"] = {
+            "ats_score": 0,
+            "strengths": [],
+            "weaknesses": [],
+            "formatting_suggestions": [],
+            "grammar_suggestions": [],
+            "project_feedback": "",
+            "experience_feedback": "",
+        }
+    if "job_match" not in results or not isinstance(results.get("job_match"), dict):
+        results["job_match"] = {
+            "match_percentage": 0,
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+    analysis_record["results"] = results
 
     student_id = analysis_record.get("student_id") or "default_student"
     all_versions = get_student_versions(student_id)
@@ -1422,6 +1480,26 @@ def dashboard(analysis_id: str) -> str:
             "checks": []
         }
 
+    # Prepare Timeline-Driven Learning Roadmap for Missing Skills (#536)
+    try:
+        initial_timeline_roadmap = generate_learning_roadmap(
+            missing_skills=clean_missing,
+            weeks=6,
+            hours_per_week=10,
+            target_role=analysis_record.get("target_role") or "Target Role"
+        )
+    except Exception as tl_err:
+        logger.warning(f"Error generating initial timeline learning roadmap: {tl_err}")
+        initial_timeline_roadmap = {
+            "success": True,
+            "weeks": 6,
+            "hours_per_week": 10,
+            "is_zero_missing": len(clean_missing) == 0,
+            "congratulatory_message": "Congratulations! You have zero missing skills for this target role." if len(clean_missing) == 0 else None,
+            "plan": [],
+            "deferred_skills": []
+        }
+
     return render_template(
         "dashboard.html",
         analysis=analysis_record,
@@ -1437,6 +1515,8 @@ def dashboard(analysis_id: str) -> str:
         initial_outreach_json=json.dumps(initial_outreach),
         initial_role_prep=initial_role_prep,
         initial_role_prep_json=json.dumps(initial_role_prep),
+        initial_timeline_roadmap=initial_timeline_roadmap,
+        initial_timeline_roadmap_json=json.dumps(initial_timeline_roadmap),
         supported_roles=SUPPORTED_ROLES,
         available_roles=available_roles,
         selected_role_id=selected_role_id,
@@ -1474,6 +1554,36 @@ def api_get_analysis_linkedin_suggestions(analysis_id: str):
     analysis_record = get_analysis(analysis_id)
     if not analysis_record or not _is_student_authorized(analysis_record):
         return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
+    # Allow overriding target_role from query param or request JSON/form
+    target_role = (
+        request.args.get("target_role")
+        or (request.get_json(silent=True) or {}).get("target_role")
+        or request.form.get("target_role")
+        or analysis_record.get("target_role")
+        or results.get("target_role")
+        or "Software Engineer"
+    ).strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=raw_resume,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "suggestions": suggestions
+    }), 200
 
 
 @analysis_bp.route("/cover-letter", methods=["GET"])
@@ -1568,49 +1678,6 @@ def api_analysis_tailored_cover_letter(analysis_id: str):
         or ""
     )
 
-    # Allow overriding target_role from query param or request JSON/form
-    target_role = (
-        request.args.get("target_role")
-        or (request.get_json(silent=True) or {}).get("target_role")
-        or request.form.get("target_role")
-        or analysis_record.get("target_role")
-        or results.get("target_role")
-        or "Software Engineer"
-    ).strip()
-
-    suggestions = linkedin_agent.generate_linkedin_suggestions(
-        resume_text=raw_resume,
-        target_role=target_role
-    )
-
-    return jsonify({
-        "status": "success",
-        "success": True,
-        "analysis_id": analysis_id,
-        "suggestions": suggestions
-    }), 200
-
-
-@analysis_bp.route("/api/linkedin/suggestions", methods=["POST"])
-def api_generate_linkedin_suggestions():
-    """
-    Direct API endpoint to generate LinkedIn suggestions from raw resume text (#538).
-    Accepts JSON: { "resume_text": "...", "target_role": "..." }
-    """
-    payload = request.get_json(silent=True) or {}
-    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
-    target_role = (payload.get("target_role") or request.form.get("target_role") or "Software Engineer").strip()
-
-    suggestions = linkedin_agent.generate_linkedin_suggestions(
-        resume_text=resume_text,
-        target_role=target_role
-    )
-
-    return jsonify({
-        "status": "success",
-        "success": True,
-        "suggestions": suggestions
-    }), 200
     payload = request.get_json(silent=True) or {}
     job_description = (payload.get("job_description") or request.form.get("job_description") or "").strip()
     company_name = (
@@ -1637,6 +1704,276 @@ def api_generate_linkedin_suggestions():
 
     status_code = 200 if result.get("success") else 400
     return jsonify(result), status_code
+
+
+@analysis_bp.route("/api/linkedin/suggestions", methods=["POST"])
+def api_generate_linkedin_suggestions():
+    """
+    Direct API endpoint to generate LinkedIn suggestions from raw resume text (#538).
+    Accepts JSON: { "resume_text": "...", "target_role": "..." }
+    """
+    payload = request.get_json(silent=True) or {}
+    resume_text = (payload.get("resume_text") or request.form.get("resume_text") or "").strip()
+    target_role = (payload.get("target_role") or request.form.get("target_role") or "Software Engineer").strip()
+
+    suggestions = linkedin_agent.generate_linkedin_suggestions(
+        resume_text=resume_text,
+        target_role=target_role
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "suggestions": suggestions
+    }), 200
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/custom-roadmap", methods=["POST"])
+def api_generate_custom_analysis_roadmap(analysis_id: str):
+    """
+    Generates a personalized week-by-week learning roadmap for missing skills (#536).
+    Accepts student timeline choice (weeks) and weekly study hours commitment.
+    Orders missing skills by prerequisites and importance.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        weeks = int(payload.get("weeks", 6))
+    except (ValueError, TypeError):
+        weeks = 6
+    try:
+        hours_per_week = int(payload.get("hours_per_week", 10))
+    except (ValueError, TypeError):
+        hours_per_week = 10
+
+    # Gather missing skills from analysis record
+    results = analysis_record.get("results") or {}
+    job_match = results.get("job_match") or results.get("job_compatibility") or {}
+    missing_skills = []
+
+    raw_missing = job_match.get("missing_skills") or []
+    if isinstance(raw_missing, list):
+        missing_skills.extend(raw_missing)
+    elif isinstance(raw_missing, str) and raw_missing.strip():
+        missing_skills.extend([s.strip() for s in raw_missing.split(",") if s.strip()])
+
+    if results.get("skill_gap") and isinstance(results["skill_gap"], list):
+        for sg in results["skill_gap"]:
+            if isinstance(sg, dict):
+                skill_name = sg.get("skill") or sg.get("missing_skill")
+                if skill_name:
+                    missing_skills.append({
+                        "skill": skill_name,
+                        "importance": sg.get("importance") or sg.get("priority", "Medium"),
+                        "difficulty": sg.get("difficulty", "Medium")
+                    })
+            elif isinstance(sg, str) and sg.strip():
+                missing_skills.append(sg.strip())
+
+    target_role = analysis_record.get("target_role") or "Target Role"
+
+    roadmap_data = generate_learning_roadmap(
+        missing_skills=missing_skills,
+        weeks=weeks,
+        hours_per_week=hours_per_week,
+        target_role=target_role
+    )
+    return jsonify(roadmap_data), 200
+
+
+@analysis_bp.route("/api/roadmap/generate", methods=["POST"])
+def api_generate_roadmap_standalone():
+    """
+    Direct endpoint to generate a personalized learning roadmap for missing skills (#536).
+    Takes missing_skills list, weeks, and hours_per_week.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    missing_skills = payload.get("missing_skills", [])
+    try:
+        weeks = int(payload.get("weeks", 6))
+    except (ValueError, TypeError):
+        weeks = 6
+    try:
+        hours_per_week = int(payload.get("hours_per_week", 10))
+    except (ValueError, TypeError):
+        hours_per_week = 10
+    target_role = payload.get("target_role", "Target Role")
+
+    roadmap_data = generate_learning_roadmap(
+        missing_skills=missing_skills,
+        weeks=weeks,
+        hours_per_week=hours_per_week,
+        target_role=target_role
+    )
+    return jsonify(roadmap_data), 200
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/roadmap/calendar.ics", methods=["GET", "POST"])
+def api_export_roadmap_calendar(analysis_id: str):
+    """
+    Exports a personalised week-by-week study roadmap as an RFC 5545 iCalendar (.ics) file (#647).
+    Allows choosing preparation start date and daily study time (default 19:00 / 1 hour).
+    Generates deterministic UIDs so re-importing into Google Calendar or Apple Calendar updates
+    existing events rather than creating duplicates. Contains zero personal data.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or access denied."}), 404
+
+    payload = request.get_json(silent=True) or {}
+    if not payload and request.form:
+        payload = request.form.to_dict()
+
+    start_date = payload.get("start_date") or request.args.get("start_date")
+    daily_study_time = (
+        payload.get("study_time")
+        or payload.get("daily_study_time")
+        or request.args.get("study_time")
+        or request.args.get("daily_study_time")
+        or "19:00"
+    )
+    duration_val = (
+        payload.get("duration")
+        or payload.get("duration_minutes")
+        or request.args.get("duration")
+        or request.args.get("duration_minutes")
+        or 60
+    )
+    try:
+        duration_minutes = int(duration_val)
+    except (ValueError, TypeError):
+        duration_minutes = 60
+
+    all_day_raw = payload.get("all_day") if "all_day" in payload else request.args.get("all_day")
+    all_day = str(all_day_raw).lower() in ("true", "1", "yes")
+
+    roadmap_data = payload.get("custom_roadmap") or payload.get("roadmap") or payload.get("plan")
+    if not roadmap_data:
+        results = analysis_record.get("results") or {}
+        job_match = results.get("job_match") or results.get("job_compatibility") or {}
+        missing_skills = []
+
+        raw_missing = job_match.get("missing_skills") or []
+        if isinstance(raw_missing, list):
+            missing_skills.extend(raw_missing)
+        elif isinstance(raw_missing, str) and raw_missing.strip():
+            missing_skills.extend([s.strip() for s in raw_missing.split(",") if s.strip()])
+
+        if results.get("skill_gap") and isinstance(results["skill_gap"], list):
+            for sg in results["skill_gap"]:
+                if isinstance(sg, dict):
+                    skill_name = sg.get("skill") or sg.get("missing_skill")
+                    if skill_name:
+                        missing_skills.append({
+                            "skill": skill_name,
+                            "importance": sg.get("importance") or sg.get("priority", "Medium"),
+                            "difficulty": sg.get("difficulty", "Medium")
+                        })
+                elif isinstance(sg, str) and sg.strip():
+                    missing_skills.append(sg.strip())
+
+        try:
+            weeks = int(payload.get("weeks") or request.args.get("weeks") or 6)
+        except (ValueError, TypeError):
+            weeks = 6
+        try:
+            hours_per_week = int(payload.get("hours_per_week") or request.args.get("hours_per_week") or 10)
+        except (ValueError, TypeError):
+            hours_per_week = 10
+
+        target_role = analysis_record.get("target_role") or "Target Role"
+        roadmap_data = generate_learning_roadmap(
+            missing_skills=missing_skills,
+            weeks=weeks,
+            hours_per_week=hours_per_week,
+            target_role=target_role
+        )
+
+    company_name = analysis_record.get("company_name", "Target Company")
+    target_role = analysis_record.get("target_role")
+
+    ics_content = generate_roadmap_ics(
+        roadmap_data=roadmap_data,
+        start_date=start_date,
+        daily_study_time=daily_study_time,
+        duration_minutes=duration_minutes,
+        all_day=all_day,
+        analysis_id=analysis_id,
+        company_name=company_name,
+        target_role=target_role,
+        app_base_url=request.host_url.rstrip("/"),
+    )
+
+    clean_comp = re.sub(r"[^a-zA-Z0-9_-]", "_", company_name or "placement")
+    filename = f"placement-roadmap-{clean_comp}.ics"
+
+    response = make_response(ics_content)
+    response.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
+
+
+@analysis_bp.route("/api/roadmap/calendar.ics", methods=["POST"])
+def api_export_roadmap_calendar_standalone():
+    """
+    Direct endpoint to export a roadmap plan as an RFC 5545 iCalendar (.ics) file (#647).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    roadmap_data = payload.get("roadmap") or payload.get("plan") or payload
+    start_date = payload.get("start_date")
+    daily_study_time = payload.get("study_time") or payload.get("daily_study_time") or "19:00"
+    duration_val = payload.get("duration") or payload.get("duration_minutes") or 60
+    try:
+        duration_minutes = int(duration_val)
+    except (ValueError, TypeError):
+        duration_minutes = 60
+
+    all_day_raw = payload.get("all_day")
+    all_day = str(all_day_raw).lower() in ("true", "1", "yes")
+    analysis_id = payload.get("analysis_id", "custom")
+    company_name = payload.get("company_name")
+    target_role = payload.get("target_role")
+
+    if not roadmap_data or (isinstance(roadmap_data, dict) and not roadmap_data.get("plan")):
+        missing_skills = payload.get("missing_skills", [])
+        try:
+            weeks = int(payload.get("weeks", 6))
+        except (ValueError, TypeError):
+            weeks = 6
+        try:
+            hours_per_week = int(payload.get("hours_per_week", 10))
+        except (ValueError, TypeError):
+            hours_per_week = 10
+
+        roadmap_data = generate_learning_roadmap(
+            missing_skills=missing_skills,
+            weeks=weeks,
+            hours_per_week=hours_per_week,
+            target_role=target_role or "Target Role"
+        )
+
+    ics_content = generate_roadmap_ics(
+        roadmap_data=roadmap_data,
+        start_date=start_date,
+        daily_study_time=daily_study_time,
+        duration_minutes=duration_minutes,
+        all_day=all_day,
+        analysis_id=analysis_id,
+        company_name=company_name,
+        target_role=target_role,
+        app_base_url=request.host_url.rstrip("/"),
+    )
+
+    clean_comp = re.sub(r"[^a-zA-Z0-9_-]", "_", company_name or "study")
+    filename = f"placement-roadmap-{clean_comp}.ics"
+
+    response = make_response(ics_content)
+    response.headers["Content-Type"] = "text/calendar; charset=utf-8"
+    response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @analysis_bp.route("/api/cover-letter/download", methods=["POST"])
@@ -1844,6 +2181,27 @@ def save_analysis_annotation_view(analysis_id: str):
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
 
+    # Ensure required nested dictionary structure in results
+    results_raw = analysis_record.get("results")
+    results = results_raw if isinstance(results_raw, dict) else {}
+    if "resume_analysis" not in results or not isinstance(results.get("resume_analysis"), dict):
+        results["resume_analysis"] = {
+            "ats_score": 0,
+            "strengths": [],
+            "weaknesses": [],
+            "formatting_suggestions": [],
+            "grammar_suggestions": [],
+            "project_feedback": "",
+            "experience_feedback": "",
+        }
+    if "job_match" not in results or not isinstance(results.get("job_match"), dict):
+        results["job_match"] = {
+            "match_percentage": 0,
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+    analysis_record["results"] = results
+
     student_id = analysis_record.get("student_id") or "default_student"
     annotation_id = (request.form.get("annotation_id") or "").strip()
     annotation_type = request.form.get("annotation_type", "note").strip()
@@ -1881,6 +2239,27 @@ def delete_analysis_annotation_view(analysis_id: str, annotation_id: str):
     if not analysis_record or not _is_student_authorized(analysis_record):
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
+
+    # Ensure required nested dictionary structure in results
+    results_raw = analysis_record.get("results")
+    results = results_raw if isinstance(results_raw, dict) else {}
+    if "resume_analysis" not in results or not isinstance(results.get("resume_analysis"), dict):
+        results["resume_analysis"] = {
+            "ats_score": 0,
+            "strengths": [],
+            "weaknesses": [],
+            "formatting_suggestions": [],
+            "grammar_suggestions": [],
+            "project_feedback": "",
+            "experience_feedback": "",
+        }
+    if "job_match" not in results or not isinstance(results.get("job_match"), dict):
+        results["job_match"] = {
+            "match_percentage": 0,
+            "matched_skills": [],
+            "missing_skills": [],
+        }
+    analysis_record["results"] = results
 
     student_id = analysis_record.get("student_id") or "default_student"
     deleted = delete_analysis_annotation(student_id, analysis_id, annotation_id)
@@ -2721,6 +3100,343 @@ def compare_resumes_view():
             return jsonify({"success": False, "error": err_msg}), 500
         flash(err_msg, "error")
         return redirect(url_for("compare_resumes_view"))
+
+
+@analysis_bp.route("/session-resume-compare", methods=["GET", "POST"], endpoint="session_resume_compare_view")
+@analysis_bp.route("/resume/session-compare", methods=["GET", "POST"])
+def session_resume_compare_view():
+    """
+    In-session side-by-side resume revision comparator (#535).
+    Allows uploading a second version of the resume in the same session.
+    Keeps both versions in memory for the session only with zero database writes.
+    Highlights improvements, regressions, added/removed skills, and added/removed sections.
+    """
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.cookies.get("session")
+        or "default_student_session"
+    )
+
+    if request.method == "GET":
+        comparison = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        active_resume_name = flask_session.get("active_resume_filename", "")
+        active_text_sample = flask_session.get("active_resume_text", "")
+        target_role = flask_session.get("active_target_role", "Software Engineer")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=active_resume_name,
+            active_resume_text_sample=active_text_sample,
+            target_role=target_role
+        )
+
+    # POST Handling
+    try:
+        file_v1 = request.files.get("resume_v1")
+        file_v2 = request.files.get("resume_v2")
+        text_v1 = request.form.get("text_v1", "").strip()
+        text_v2 = request.form.get("text_v2", "").strip()
+        target_role = (request.form.get("target_role") or flask_session.get("active_target_role") or "Software Engineer").strip()
+        job_description = request.form.get("job_description", "").strip()
+        name_v1 = "Version 1"
+        name_v2 = "Version 2"
+
+        # If file_v1 provided, extract text and clean up
+        if file_v1 and file_v1.filename:
+            name_v1 = secure_filename(file_v1.filename)
+            temp_path_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v1_{name_v1}")
+            file_v1.save(temp_path_v1)
+            try:
+                text_v1 = extract_text_from_file(temp_path_v1)
+            finally:
+                if os.path.exists(temp_path_v1):
+                    os.remove(temp_path_v1)
+
+        # If text_v1 not provided, fallback to active session resume
+        if not text_v1 and flask_session.get("active_resume_text"):
+            text_v1 = flask_session["active_resume_text"]
+            name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+        # If file_v2 provided, extract text and clean up
+        if file_v2 and file_v2.filename:
+            name_v2 = secure_filename(file_v2.filename)
+            temp_path_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_sess_v2_{name_v2}")
+            file_v2.save(temp_path_v2)
+            try:
+                text_v2 = extract_text_from_file(temp_path_v2)
+            finally:
+                if os.path.exists(temp_path_v2):
+                    os.remove(temp_path_v2)
+
+        if not text_v1:
+            err_msg = "Please provide Version 1 (Baseline) content or upload a baseline resume."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        if not text_v2:
+            err_msg = "Please provide Version 2 (Revised) content to compare against Version 1."
+            if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"success": False, "error": err_msg}), 400
+            flash(err_msg, "error")
+            return redirect(url_for("session_resume_compare_view"))
+
+        comparison = compare_resume_versions(
+            text_v1=text_v1,
+            text_v2=text_v2,
+            filename_v1=name_v1,
+            filename_v2=name_v2,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+        # Keep strictly in memory for the session only
+        store_session_comparison(session_key, comparison)
+        flask_session["session_resume_comparison"] = comparison
+
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": True, "comparison": comparison}), 200
+
+        active_analysis_id = flask_session.get("active_analysis_id", "")
+        return render_template(
+            "session_resume_compare.html",
+            comparison=comparison,
+            active_analysis_id=active_analysis_id,
+            active_resume_name=name_v1,
+            target_role=target_role,
+            job_description=job_description
+        )
+
+    except (ValueError, ScannedPDFError) as ve:
+        err_msg = str(ve)
+        logger.warning(f"Validation error in session resume comparison: {err_msg}")
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 400
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
+    except Exception as exc:
+        logger.error(f"Error in session resume comparison: {exc}")
+        err_msg = f"Failed to compare resume versions: {str(exc)}"
+        if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"success": False, "error": err_msg}), 500
+        flash(err_msg, "error")
+        return redirect(url_for("session_resume_compare_view"))
+
+
+@analysis_bp.route("/api/resume/session-compare", methods=["GET", "POST"])
+def api_session_resume_compare():
+    """
+    REST API endpoint for in-session resume comparison (#535).
+    Keeps both versions in memory for the session only.
+    Returns side-by-side score, detected skills, missing skills, and section changes.
+    """
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.headers.get("X-Session-ID")
+        or "default_student_session"
+    )
+
+    if request.method == "GET":
+        comp = get_session_comparison(session_key) or flask_session.get("session_resume_comparison")
+        if not comp:
+            return jsonify({"status": "success", "has_comparison": False, "comparison": None}), 200
+        return jsonify({"status": "success", "has_comparison": True, "comparison": comp}), 200
+
+    # POST
+    payload = request.get_json(silent=True) or {}
+    file_v1 = request.files.get("resume_v1")
+    file_v2 = request.files.get("resume_v2")
+
+    text_v1 = (payload.get("text_v1") or request.form.get("text_v1") or "").strip()
+    text_v2 = (payload.get("text_v2") or request.form.get("text_v2") or "").strip()
+    name_v1 = payload.get("filename_v1") or request.form.get("filename_v1") or "Version 1"
+    name_v2 = payload.get("filename_v2") or request.form.get("filename_v2") or "Version 2"
+    target_role = payload.get("target_role") or request.form.get("target_role") or flask_session.get("active_target_role", "Software Engineer")
+    job_description = payload.get("job_description") or request.form.get("job_description")
+
+    if file_v1 and file_v1.filename:
+        name_v1 = secure_filename(file_v1.filename)
+        temp_v1 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v1_{name_v1}")
+        file_v1.save(temp_v1)
+        try:
+            text_v1 = extract_text_from_file(temp_v1)
+        finally:
+            if os.path.exists(temp_v1):
+                os.remove(temp_v1)
+
+    if not text_v1 and flask_session.get("active_resume_text"):
+        text_v1 = flask_session["active_resume_text"]
+        name_v1 = flask_session.get("active_resume_filename", "Session Baseline Resume")
+
+    if file_v2 and file_v2.filename:
+        name_v2 = secure_filename(file_v2.filename)
+        temp_v2 = os.path.join(config.UPLOAD_FOLDER, f"temp_api_v2_{name_v2}")
+        file_v2.save(temp_v2)
+        try:
+            text_v2 = extract_text_from_file(temp_v2)
+        finally:
+            if os.path.exists(temp_v2):
+                os.remove(temp_v2)
+
+    if not text_v1 or not text_v2:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Both Version 1 and Version 2 resume contents are required for comparison."
+        }), 400
+
+    comparison = compare_resume_versions(
+        text_v1=text_v1,
+        text_v2=text_v2,
+        filename_v1=name_v1,
+        filename_v2=name_v2,
+        target_role=target_role,
+        job_description=job_description
+    )
+
+    store_session_comparison(session_key, comparison)
+    flask_session["session_resume_comparison"] = comparison
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "comparison": comparison
+    }), 200
+
+
+@analysis_bp.route("/resume/session-compare/reset", methods=["GET", "POST"])
+def session_resume_compare_reset():
+    """Resets in-memory comparison state for the current session (#535)."""
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.cookies.get("session")
+        or "default_student_session"
+    )
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    flash("Session comparison reset successfully.", "info")
+    return redirect(url_for("session_resume_compare_view"))
+
+
+@analysis_bp.route("/api/resume/session-compare/reset", methods=["POST"])
+def api_session_resume_compare_reset():
+    """Resets the in-memory session comparison (#535)."""
+    session_key = (
+        flask_session.get("auth_session_id")
+        or flask_session.get("user_id")
+        or request.headers.get("X-Session-ID")
+        or "default_student_session"
+    )
+    clear_session_comparison(session_key)
+    flask_session.pop("session_resume_comparison", None)
+    return jsonify({"status": "success", "cleared": True}), 200
+
+
+@analysis_bp.route("/resume/templates", methods=["GET"], endpoint="resume_templates_gallery")
+@analysis_bp.route("/resume/templates/<file_uuid>", methods=["GET"], endpoint="resume_templates_gallery_by_uuid")
+def resume_templates_gallery(file_uuid: Optional[str] = None):
+    """
+    Renders the ATS-friendly Resume Template Gallery (#561).
+    Displays 3 single-column templates (classic, compact, project-focused),
+    section selection toggles, and live in-browser preview.
+    """
+    uuid_param = file_uuid or request.args.get("file_uuid")
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+
+    if not resume_data:
+        # Fallback to realistic demo candidate resume data
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    selected_template = request.args.get("template", "classic").strip().lower()
+    if selected_template not in TEMPLATES:
+        selected_template = "classic"
+
+    preview_html = generate_resume_preview_html(resume_data, template=selected_template)
+
+    return render_template(
+        "resume_templates.html",
+        templates=get_available_templates(),
+        selected_template=selected_template,
+        preview_html=preview_html,
+        file_uuid=uuid_param,
+        resume_data=resume_data,
+    )
+
+
+@analysis_bp.route("/api/resume/preview", methods=["POST"], endpoint="api_resume_preview")
+@csrf.exempt
+def api_resume_preview():
+    """
+    Returns updated HTML preview of the ATS single-column resume (#561)
+    based on selected template and included sections.
+    """
+    data = request.get_json(silent=True) or request.form
+    file_uuid = data.get("file_uuid")
+    template = (data.get("template") or "classic").strip().lower()
+    sections = data.get("sections")
+
+    resume_data = None
+    if file_uuid:
+        resume_data = get_resume_review_cache(file_uuid)
+    if not resume_data:
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    preview_html = generate_resume_preview_html(resume_data, template=template, sections=sections)
+    return jsonify({"success": True, "html": preview_html}), 200
+
+
+@analysis_bp.route("/resume/download", methods=["POST", "GET"], endpoint="resume_template_download")
+@analysis_bp.route("/resume/download/<file_uuid>", methods=["POST", "GET"], endpoint="resume_template_download_by_uuid")
+def resume_template_download(file_uuid: Optional[str] = None):
+    """
+    Generates and downloads a clean single-column ATS resume in DOCX or PDF format (#561).
+    Generated in-memory on demand without persisting student files on disk.
+    """
+    params = request.form if request.method == "POST" else request.args
+
+    uuid_param = file_uuid or params.get("file_uuid")
+    fmt = (params.get("format") or "docx").strip().lower()
+    template = (params.get("template") or "classic").strip().lower()
+
+    if request.method == "POST":
+        sections = request.form.getlist("sections") or None
+    else:
+        sections_str = params.get("sections")
+        sections = [s.strip() for s in sections_str.split(",") if s.strip()] if sections_str else None
+
+    resume_data = None
+    if uuid_param:
+        resume_data = get_resume_review_cache(uuid_param)
+    if not resume_data:
+        resume_data = dict(DEFAULT_SAMPLE_RESUME)
+
+    candidate_name = resume_data.get("candidate_name") or "Candidate"
+    safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", candidate_name).strip("_") or "Resume"
+
+    if fmt == "pdf":
+        file_bytes = generate_resume_pdf(resume_data, template=template, sections=sections)
+        mimetype = "application/pdf"
+        download_name = f"{safe_name}_{template.capitalize()}_ATS_Resume.pdf"
+    else:
+        file_bytes = generate_resume_docx(resume_data, template=template, sections=sections)
+        mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        download_name = f"{safe_name}_{template.capitalize()}_ATS_Resume.docx"
+
+    buffer = io.BytesIO(file_bytes)
+    return send_file(
+        buffer,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=download_name,
+    )
 
 
 @analysis_bp.route("/history", methods=["GET"])

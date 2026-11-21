@@ -3834,6 +3834,79 @@ function initRoadmapExport() {
       URL.revokeObjectURL(url);
     });
   }
+
+  // 3. Export study plan to iCalendar (.ics) file (#647)
+  const calendarModal = document.getElementById("roadmapCalendarModal");
+  const startDateInput = document.getElementById("calendarStartDate");
+  const radioTimed = document.getElementById("calendarTypeTimed");
+  const radioAllDay = document.getElementById("calendarTypeAllDay");
+  const timedContainer = document.getElementById("calendarTimedOptionsContainer");
+  const downloadCalendarBtn = document.getElementById("btnDownloadRoadmapCalendar");
+
+  const setDefaultStartDate = () => {
+    if (startDateInput && !startDateInput.value) {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const yyyy = tomorrow.getFullYear();
+      const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+      const dd = String(tomorrow.getDate()).padStart(2, "0");
+      startDateInput.value = `${yyyy}-${mm}-${dd}`;
+      startDateInput.min = new Date().toISOString().split("T")[0];
+    }
+  };
+
+  if (calendarModal) {
+    calendarModal.addEventListener("show.bs.modal", setDefaultStartDate);
+  }
+  setDefaultStartDate();
+
+  if (radioTimed && radioAllDay && timedContainer) {
+    const updateTimedVisibility = () => {
+      timedContainer.style.display = radioAllDay.checked ? "none" : "";
+    };
+    radioTimed.addEventListener("change", updateTimedVisibility);
+    radioAllDay.addEventListener("change", updateTimedVisibility);
+  }
+
+  if (downloadCalendarBtn) {
+    downloadCalendarBtn.addEventListener("click", () => {
+      const analysisId = container.getAttribute("data-analysis-id") || "";
+      const startDate = startDateInput ? startDateInput.value : "";
+      const isAllDay = radioAllDay && radioAllDay.checked ? "1" : "0";
+      const studyTimeInput = document.getElementById("calendarStudyTime");
+      const durationSelect = document.getElementById("calendarDurationSelect");
+      const studyTime = studyTimeInput ? studyTimeInput.value : "19:00";
+      const duration = durationSelect ? durationSelect.value : "60";
+
+      const queryParams = new URLSearchParams({
+        start_date: startDate,
+        all_day: isAllDay,
+        study_time: studyTime,
+        duration: duration,
+      });
+
+      const exportUrl = analysisId
+        ? `/api/analysis/${encodeURIComponent(analysisId)}/roadmap/calendar.ics?${queryParams.toString()}`
+        : `/api/roadmap/calendar.ics?${queryParams.toString()}`;
+
+      // Trigger file download
+      const tempLink = document.createElement("a");
+      tempLink.href = exportUrl;
+      tempLink.setAttribute("download", `placement-roadmap-${companyName.replace(/[^a-zA-Z0-9_-]/g, "_")}.ics`);
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      document.body.removeChild(tempLink);
+
+      // Feedback state
+      const originalHtml = downloadCalendarBtn.innerHTML;
+      downloadCalendarBtn.innerHTML = '<i class="fa-solid fa-check me-1"></i> Downloaded!';
+      downloadCalendarBtn.classList.replace("btn-success", "btn-outline-success");
+      setTimeout(() => {
+        downloadCalendarBtn.innerHTML = originalHtml;
+        downloadCalendarBtn.classList.replace("btn-outline-success", "btn-success");
+      }, 2500);
+    });
+  }
 }
 
 /**
