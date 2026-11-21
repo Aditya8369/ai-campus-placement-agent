@@ -2668,72 +2668,44 @@ api_preparation_note_item = api_note_operations
 
 
 # =====================================================================
-# TIMED GROUP DISCUSSION ROUNDS ROUTES (#518)
+# INTERVIEW COMMUNICATION FEEDBACK ROUTES (#511)
 # =====================================================================
 
-@interview_bp.route("/interview/group-discussion/timed/<int:session_id>", methods=["GET"])
-def timed_group_discussion_view(session_id):
-    """Renders the timed group discussion simulation round (#518)."""
-    from utils.timed_gd_service import TimedGroupDiscussionService
-    student_id = flask_session.get("user_id") or "default_student"
-
-    session_state = TimedGroupDiscussionService.get_session_state(student_id, session_id)
-    if not session_state:
-        flash("Timed GD session not found.", "error")
-        return redirect(url_for("interview.interview_view"))
-
-    return render_template("timed_group_discussion.html", session=session_state)
-
-
-@interview_bp.route("/api/group-discussion/timed/start", methods=["POST"])
-def api_start_timed_gd():
-    """Starts a new timed multi-phase GD round (#518)."""
-    from utils.timed_gd_service import TimedGroupDiscussionService
+@interview_bp.route("/api/interview/communication/evaluate", methods=["POST"])
+def api_evaluate_communication():
+    """
+    Evaluates communication, articulation, pacing, and filler word density (#511).
+    Scores delivery separately from technical assessment.
+    """
+    from utils.interview_communication_service import InterviewCommunicationService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
-    topic = payload.get("topic")
-    if not topic:
-        return jsonify({"status": "error", "message": "topic is required"}), 400
+    session_id = payload.get("session_id", "default_sess")
+    question_id = payload.get("question_id", "q1")
+    answer_text = payload.get("answer_text", "")
 
     try:
-        session = TimedGroupDiscussionService.start_timed_session(student_id, topic)
-        return jsonify({"status": "success", "session": session}), 201
+        feedback = InterviewCommunicationService.evaluate_communication(
+            user_id=student_id,
+            session_id=session_id,
+            question_id=question_id,
+            answer_text=answer_text
+        )
+        return jsonify({"status": "success", "communication_feedback": feedback}), 200
     except ValueError as ve:
         return jsonify({"status": "error", "message": str(ve)}), 400
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        logger.error(f"Error in communication evaluation: {e}")
+        return jsonify({"status": "error", "message": "Failed to evaluate communication."}), 500
 
 
-@interview_bp.route("/api/group-discussion/timed/<int:session_id>/advance", methods=["POST"])
-def api_advance_timed_gd_phase(session_id):
-    """Submits contribution and transitions to next GD phase (#518)."""
-    from utils.timed_gd_service import TimedGroupDiscussionService
-    student_id = flask_session.get("user_id") or "default_student"
-    payload = request.get_json(silent=True) or request.form.to_dict()
-
-    contribution_text = payload.get("contribution_text", "")
-    try:
-        session = TimedGroupDiscussionService.advance_phase(
-            user_id=student_id,
-            session_id=session_id,
-            submission_text=contribution_text
-        )
-        return jsonify({"status": "success", "session": session}), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "message": str(ve)}), 404
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-@interview_bp.route("/api/group-discussion/timed/<int:session_id>/state", methods=["GET"])
-def api_get_timed_gd_state(session_id):
-    """Retrieves live countdown state for a timed GD round (#518)."""
-    from utils.timed_gd_service import TimedGroupDiscussionService
+@interview_bp.route("/api/interview/communication/<session_id>/audit", methods=["GET"])
+def api_get_communication_audit(session_id):
+    """Returns aggregated communication metrics for an interview session (#511)."""
+    from utils.interview_communication_service import InterviewCommunicationService
     student_id = flask_session.get("user_id") or "default_student"
 
-    session = TimedGroupDiscussionService.get_session_state(student_id, session_id)
-    if not session:
-        return jsonify({"status": "not_found", "message": "Session not found"}), 404
-    return jsonify({"status": "success", "session": session}), 200
+    audit = InterviewCommunicationService.get_session_communication_audit(student_id, session_id)
+    return jsonify({"status": "success", "audit": audit}), 200
 
