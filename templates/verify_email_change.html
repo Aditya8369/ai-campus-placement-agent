@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Verify Email Change - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-5" style="max-width: 600px;">
+  <div class="card border-0 shadow-sm rounded-3 p-5 text-center">
+    {% if result.success %}
+    <div class="mb-3 text-success">
+      <i class="bi bi-check-circle-fill display-3"></i>
+    </div>
+    <h3 class="fw-bold mb-2">Email Address Updated!</h3>
+    <p class="text-secondary mb-4">
+      {{ result.message }}
+    </p>
+    <div class="p-3 bg-light rounded-3 mb-4 text-start small">
+      <div class="d-flex justify-content-between py-1">
+        <span class="text-muted">Previous Address:</span>
+        <span class="text-secondary text-decoration-line-through">{{ result.old_email }}</span>
+      </div>
+      <div class="d-flex justify-content-between py-1">
+        <span class="text-muted">Verified Address:</span>
+        <strong class="text-success">{{ result.new_email }}</strong>
+      </div>
+    </div>
+    <a href="{{ url_for('login') }}" class="btn btn-primary px-4 py-2 fw-semibold">
+      Continue to Login / Dashboard &rarr;
+    </a>
+
+    {% else %}
+    <div class="mb-3 text-danger">
+      <i class="bi bi-exclamation-octagon-fill display-3"></i>
+    </div>
+    <h3 class="fw-bold mb-2">Verification Failed</h3>
+    <div class="alert alert-danger border-0 rounded-3 small p-3 mb-4 text-start">
+      <strong>Error:</strong> {{ result.message }}
+    </div>
+    <p class="text-muted small mb-4">
+      If this link has expired or has already been used, please sign in to your account and request a fresh email change link.
+    </p>
+    <div class="d-flex justify-content-center gap-2">
+      <a href="{{ url_for('auth.request_email_change_view') }}" class="btn btn-outline-primary">
+        Request New Email Change
+      </a>
+      <a href="{{ url_for('index') }}" class="btn btn-secondary">
+        Return Home
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

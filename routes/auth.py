@@ -1672,3 +1672,116 @@ def api_user_storage_quota():
     return jsonify(summary), 200
 
 
+# =====================================================================
+# EMAIL ADDRESS CHANGE WITH VERIFICATION ROUTES (#405)
+# =====================================================================
+
+@auth_bp.route("/settings/email", methods=["GET", "POST"])
+def request_email_change_view():
+    """
+    Renders and handles email address change requests for authenticated users (#405).
+    Sends a verification link to the new address. The old email remains active until confirmed.
+    """
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        flash("Please log in to update your account email.", "warning")
+        return redirect(url_for("login", next=request.path))
+
+    from utils.email_change_service import EmailChangeService
+    from db.users import get_user_by_id
+
+    user = get_user_by_id(user_id)
+    current_email = user.get("email") if user else "Unknown"
+
+    if request.method == "POST":
+        new_email = (request.form.get("new_email") or "").strip()
+        confirm_password = (request.form.get("confirm_password") or "").strip()
+
+        # Check password authorization if user has password
+        if user and user.get("password_hash"):
+            if not confirm_password or not check_password_hash(user["password_hash"], confirm_password):
+                flash("Incorrect password. Please enter your current password to authorize this change.", "error")
+                pending = EmailChangeService.get_pending_request(user_id)
+                return render_template("change_email.html", current_email=current_email, pending_request=pending)
+
+        success, msg, raw_token = EmailChangeService.request_email_change(user_id, new_email)
+        if success:
+            flash(msg, "success")
+        else:
+            flash(msg, "error")
+
+        return redirect(url_for("auth.request_email_change_view"))
+
+    pending = EmailChangeService.get_pending_request(user_id)
+    return render_template("change_email.html", current_email=current_email, pending_request=pending)
+
+
+@auth_bp.route("/settings/email/cancel", methods=["POST"])
+def cancel_email_change_request():
+    """Cancels any pending unverified email change request (#405)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return redirect(url_for("login"))
+
+    from utils.email_change_service import EmailChangeService
+    EmailChangeService.cancel_pending_request(user_id)
+    flash("Pending email change request cancelled.", "info")
+    return redirect(url_for("auth.request_email_change_view"))
+
+
+@auth_bp.route("/verify-email-change/<token>", methods=["GET"])
+def verify_email_change_token(token):
+    """
+    Validates email change token and updates user's email upon success (#405).
+    Shows clear messages for expired or already-used tokens.
+    """
+    from utils.email_change_service import EmailChangeService
+    result = EmailChangeService.verify_email_change(token)
+
+    return render_template("verify_email_change.html", result=result)
+
+
+@auth_bp.route("/api/user/email-change/request", methods=["POST"])
+def api_request_email_change():
+    """API endpoint to request an email change (#405)."""
+    user_id = flask_session.get("user_id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    new_email = payload.get("new_email")
+    confirm_password = payload.get("confirm_password")
+
+    from db.users import get_user_by_id
+    from utils.email_change_service import EmailChangeService
+
+    user = get_user_by_id(user_id)
+    if user and user.get("password_hash") and confirm_password:
+        if not check_password_hash(user["password_hash"], confirm_password):
+            return jsonify({"success": False, "error": "Incorrect password"}), 403
+
+    success, msg, raw_token = EmailChangeService.request_email_change(user_id, new_email)
+    if not success:
+        return jsonify({"success": False, "error": msg}), 400
+
+    return jsonify({
+        "success": True,
+        "message": msg,
+        "verification_token": raw_token
+    }), 200
+
+
+@auth_bp.route("/api/user/email-change/verify", methods=["POST"])
+def api_verify_email_change():
+    """API endpoint to confirm and verify email change token (#405)."""
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    token = payload.get("token")
+
+    from utils.email_change_service import EmailChangeService
+    result = EmailChangeService.verify_email_change(token)
+    status_code = 200 if result["success"] else 400
+
+    return jsonify(result), status_code
+
+
+
