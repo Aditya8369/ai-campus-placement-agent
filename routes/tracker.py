@@ -1794,60 +1794,60 @@ def api_ctc_calculator_compare():
 
 
 # =====================================================================
-# RECRUITER CONTACT & FOLLOW-UP TRACKING ROUTES (#516)
+# APPLICATION OFFER DECISION NOTES ROUTES (#515)
 # =====================================================================
 
-@tracker_bp.route("/tracker/recruiter-contacts", methods=["GET"])
-def recruiter_contacts_view():
-    """Renders the recruiter directory and scheduled follow-ups hub (#516)."""
-    from utils.recruiter_contact_service import RecruiterContactService
+@tracker_bp.route("/tracker/offer-notes", methods=["GET"])
+def offer_decision_notes_view():
+    """Renders private offer decision notes comparison matrix (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
     student_id = flask_session.get("user_id") or "default_student"
 
-    contacts = RecruiterContactService.list_contacts(student_id)
-    overdue = RecruiterContactService.get_followup_reminders(student_id)
-
-    return render_template(
-        "recruiter_contact_tracker.html",
-        contacts=contacts,
-        overdue_contacts=overdue
-    )
+    offers = OfferDecisionNotesService.list_offer_notes(student_id)
+    return render_template("offer_decision_notes.html", offers=offers)
 
 
-@tracker_bp.route("/api/recruiter-contacts", methods=["GET"])
-def api_list_recruiter_contacts():
-    """Returns list of recruiter contacts in JSON format (#516)."""
-    from utils.recruiter_contact_service import RecruiterContactService
+@tracker_bp.route("/api/offer-notes", methods=["GET"])
+def api_list_offer_notes():
+    """Lists all private offer decision records for the student (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
     student_id = flask_session.get("user_id") or "default_student"
-    status = request.args.get("status")
 
-    contacts = RecruiterContactService.list_contacts(student_id, status=status)
-    return jsonify({"status": "success", "count": len(contacts), "contacts": contacts}), 200
+    offers = OfferDecisionNotesService.list_offer_notes(student_id)
+    return jsonify({"status": "success", "count": len(offers), "offers": offers}), 200
 
 
-@tracker_bp.route("/api/recruiter-contacts", methods=["POST"])
-def api_create_recruiter_contact():
-    """Creates a new recruiter contact (#516)."""
-    from utils.recruiter_contact_service import RecruiterContactService
+@tracker_bp.route("/api/offer-notes", methods=["POST"])
+def api_create_offer_note():
+    """Creates a new private offer decision note (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
     student_id = flask_session.get("user_id") or "default_student"
     payload = request.get_json(silent=True) or request.form.to_dict()
 
     try:
-        contact = RecruiterContactService.save_contact(
+        note = OfferDecisionNotesService.save_offer_notes(
             user_id=student_id,
-            recruiter_name=payload.get("recruiter_name", ""),
             company_name=payload.get("company_name", ""),
-            email=payload.get("email"),
-            phone=payload.get("phone"),
-            linkedin_url=payload.get("linkedin_url"),
-            role_or_department=payload.get("role_or_department", "Talent Acquisition"),
-            last_contacted_date=payload.get("last_contacted_date"),
-            next_followup_date=payload.get("next_followup_date"),
-            interaction_channel=payload.get("interaction_channel", "LinkedIn"),
-            status=payload.get("status", "awaiting_reply"),
-            notes=payload.get("notes", ""),
-            contact_id=payload.get("contact_id")
+            role_title=payload.get("role_title", ""),
+            ctc_lpa=float(payload.get("ctc_lpa", 0.0)),
+            work_location=payload.get("work_location", "Hybrid"),
+            bond_terms=payload.get("bond_terms", "None"),
+            bond_duration_months=int(payload.get("bond_duration_months", 0)),
+            probation_period_months=int(payload.get("probation_period_months", 3)),
+            travel_required_pct=int(payload.get("travel_required_pct", 0)),
+            growth_potential_rating=int(payload.get("growth_potential_rating", 3)),
+            work_life_balance_rating=int(payload.get("work_life_balance_rating", 3)),
+            culture_and_team_notes=payload.get("culture_and_team_notes", ""),
+            concerns_and_risks=payload.get("concerns_and_risks", ""),
+            hr_contact_info=payload.get("hr_contact_info", ""),
+            offer_deadline=payload.get("offer_deadline"),
+            joining_date=payload.get("joining_date"),
+            decision_status=payload.get("decision_status", "under_review"),
+            decision_rationale=payload.get("decision_rationale", ""),
+            application_id=payload.get("application_id"),
+            note_id=payload.get("note_id")
         )
-        return jsonify({"status": "success", "contact": contact}), 201
+        return jsonify({"status": "success", "offer_note": note}), 201
     except ValueError as ve:
         return jsonify({"success": False, "message": str(ve)}), 400
     except Exception as e:
@@ -1855,16 +1855,16 @@ def api_create_recruiter_contact():
         return jsonify({"success": False, "message": "Bulk action failed."}), 500
 
 
-@tracker_bp.route("/api/recruiter-contacts/<int:contact_id>", methods=["DELETE"])
-def api_delete_recruiter_contact(contact_id):
-    """Deletes a recruiter contact (#516)."""
-    from utils.recruiter_contact_service import RecruiterContactService
+@tracker_bp.route("/api/offer-notes/<int:note_id>", methods=["DELETE"])
+def api_delete_offer_note(note_id):
+    """Deletes an offer decision note (#515)."""
+    from utils.offer_decision_notes_service import OfferDecisionNotesService
     student_id = flask_session.get("user_id") or "default_student"
 
-    deleted = RecruiterContactService.delete_contact(student_id, contact_id)
+    deleted = OfferDecisionNotesService.delete_offer_note(student_id, note_id)
     if deleted:
-        return jsonify({"status": "success", "message": "Recruiter contact deleted"}), 200
-    return jsonify({"status": "not_found", "message": "Contact not found"}), 404
+        return jsonify({"status": "success", "message": "Offer decision note removed"}), 200
+    return jsonify({"status": "not_found", "message": "Offer note not found"}), 404
 
 
 
