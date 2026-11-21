@@ -407,25 +407,136 @@ def api_get_ai_disclaimer():
     }), 200
 
 
-@api_bp.route("/api/rate-limit/status", methods=["GET"], endpoint="api_rate_limit_status")
-def api_rate_limit_status():
+# ---------------------------------------------------------
+# Placement-Readiness Setup Checklist Endpoints (#506)
+# ---------------------------------------------------------
+@api_bp.route("/api/checklist", methods=["GET"])
+def api_get_setup_checklist():
     """
-    Returns current rate limit quota and remaining requests for a requested scope (#652).
-    Allows client-side countdowns and usage badges to synchronize with server counters.
-    Query parameters:
-        scope: Target rate limit scope ('analyze', 'interview_eval', etc. Default: 'analyze')
+    Returns the student placement readiness checklist status and progress (#506).
     """
-    scope = request.args.get("scope", "analyze").strip()
-    from utils.rate_limiter import get_rate_limit_status
-    status = get_rate_limit_status(scope=scope)
-    resp = jsonify({
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or request.args.get("student_id") or "default_student"
+    checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
         "success": True,
-        **status,
-    })
-    resp.headers["X-RateLimit-Limit"] = str(status["limit"])
-    resp.headers["X-RateLimit-Remaining"] = str(status["remaining"])
-    resp.headers["X-RateLimit-Reset"] = str(status["reset_seconds"])
-    return resp
+        "checklist": checklist
+    }), 200
+
+
+@api_bp.route("/api/checklist/task", methods=["POST"])
+def api_update_checklist_task():
+    """
+    Updates completion status of a specific checklist task (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    task_id = payload.get("task_id")
+    is_completed = payload.get("is_completed")
+    notes = payload.get("notes")
+
+    if not task_id:
+        return jsonify({"success": False, "error": "task_id is required"}), 400
+
+    placement_checklist_service.update_task_status(
+        student_id=student_id,
+        task_id=task_id,
+        is_completed=bool(is_completed),
+        notes=notes
+    )
+
+    updated_checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
+        "success": True,
+        "task_id": task_id,
+        "is_completed": bool(is_completed),
+        "checklist": updated_checklist
+    }), 200
+
+
+@api_bp.route("/api/checklist/dismiss", methods=["POST"])
+def api_dismiss_checklist():
+    """
+    Temporarily or permanently dismisses the checklist banner (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    payload = request.get_json(silent=True) or request.form
+
+    is_dismissed = payload.get("is_dismissed", True)
+    hours = int(payload.get("hours", 24))
+
+    placement_checklist_service.set_dismissal(student_id, bool(is_dismissed), hours)
+    return jsonify({
+        "success": True,
+        "is_dismissed": bool(is_dismissed),
+        "message": "Checklist display preference updated."
+    }), 200
+
+
+@api_bp.route("/api/checklist/reset", methods=["POST"])
+def api_reset_checklist():
+    """
+    Resets the student checklist to initial setup state (#506).
+    """
+    from utils.placement_checklist_service import placement_checklist_service
+
+    student_id = flask_session.get("user_id") or "default_student"
+    placement_checklist_service.reset_checklist(student_id)
+    checklist = placement_checklist_service.get_student_checklist(student_id)
+    return jsonify({
+        "success": True,
+        "message": "Checklist reset successfully.",
+        "checklist": checklist
+    }), 200
+
+
+# ---------------------------------------------------------
+# Drag-and-Drop File Validation Feedback Endpoint (#507)
+# ---------------------------------------------------------
+@api_bp.route("/api/upload/validate-file", methods=["POST"])
+def api_validate_upload_file():
+    """
+    Validates uploaded or dropped resume files and returns plain-language feedback (#507).
+    Guarantees no unsupported or corrupted files proceed to heavy AI analysis pipelines.
+    """
+    from utils.file_validation_service import file_validation_service
+
+    has_existing = request.form.get("has_existing_file", "false").lower() in ("true", "1")
+    existing_filename = request.form.get("existing_filename")
+
+    if "file" in request.files:
+        uploaded_file = request.files["file"]
+        filename = uploaded_file.filename or "unknown"
+        file_bytes = uploaded_file.read()
+    else:
+        payload = request.get_json(silent=True) or request.form
+        filename = payload.get("filename", "resume.txt")
+        content = payload.get("content", "")
+        file_bytes = content.encode("utf-8") if isinstance(content, str) else b""
+
+    if not filename:
+        return jsonify({
+            "success": False,
+            "error": "No file or filename provided for validation."
+        }), 400
+
+    feedback = file_validation_service.validate_file(
+        filename=filename,
+        file_bytes=file_bytes,
+        has_existing_file=has_existing,
+        existing_filename=existing_filename
+    )
+
+    return jsonify({
+        "success": feedback["is_valid"],
+        "feedback": feedback
+    }), 200
 
 
 
