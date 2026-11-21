@@ -52,6 +52,17 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 from utils.api_versioning import register_api_versioning
+from utils.formatters import (
+    format_date_ist,
+    format_datetime_ist,
+    format_time_ist,
+    format_inr,
+    format_lpa,
+    format_crore,
+    format_inr_words,
+    format_indian_number,
+    get_display_timezone,
+)
 import config
 
 from .common import (
@@ -102,6 +113,17 @@ def create_app(config_override=None) -> Flask:
     app.config["SESSION_TIMEOUT_SECONDS"] = getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)
     app.config["SESSION_WARNING_SECONDS"] = getattr(config, "SESSION_WARNING_SECONDS", 120)
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(seconds=app.config["SESSION_TIMEOUT_SECONDS"])
+    app.config["DISPLAY_TIMEZONE"] = getattr(config, "DISPLAY_TIMEZONE", "Asia/Kolkata")
+    app.config["TIMEZONE"] = getattr(config, "TIMEZONE", "Asia/Kolkata")
+
+    # Register shared Indian localization and formatting filters (#650)
+    app.jinja_env.filters["format_date_ist"] = format_date_ist
+    app.jinja_env.filters["format_datetime_ist"] = format_datetime_ist
+    app.jinja_env.filters["format_time_ist"] = format_time_ist
+    app.jinja_env.filters["format_inr"] = format_inr
+    app.jinja_env.filters["format_lpa"] = format_lpa
+    app.jinja_env.filters["format_crore"] = format_crore
+    app.jinja_env.filters["format_inr_words"] = format_inr_words
 
     if config_override:
         app.config.update(config_override)
@@ -345,6 +367,23 @@ def create_app(config_override=None) -> Flask:
             "session_timeout_seconds": current_app.config.get("SESSION_TIMEOUT_SECONDS", getattr(config, "SESSION_TIMEOUT_SECONDS", 1800)),
             "session_warning_seconds": current_app.config.get("SESSION_WARNING_SECONDS", getattr(config, "SESSION_WARNING_SECONDS", 120)),
             "is_authenticated": bool(flask_session.get("user_id")),
+        }
+
+
+    @app.context_processor
+    def inject_localization_formatters():
+        """
+        Injects regional date/time and currency formatting helpers into all Jinja templates (#650).
+        """
+        return {
+            "format_date_ist": format_date_ist,
+            "format_datetime_ist": format_datetime_ist,
+            "format_time_ist": format_time_ist,
+            "format_inr": format_inr,
+            "format_lpa": format_lpa,
+            "format_crore": format_crore,
+            "format_inr_words": format_inr_words,
+            "display_timezone": current_app.config.get("DISPLAY_TIMEZONE", getattr(config, "DISPLAY_TIMEZONE", "Asia/Kolkata")),
         }
 
 

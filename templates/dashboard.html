@@ -336,7 +336,7 @@
           </div>
           <h2 class="fw-bold mt-1 mb-1">Placement Readiness Summary: {{ analysis.company_name }}</h2>
           <p class="text-secondary small mb-0">
-            Uploaded Resume: <b>{{ analysis.resume_filename }}</b> &bull; Evaluated: {{ analysis.created_at }}
+            Uploaded Resume: <b>{{ analysis.resume_filename }}</b> &bull; Evaluated: {{ analysis.created_at | format_datetime_ist }}
           </p>
         </div>
         <div class="d-flex gap-2 align-items-center flex-wrap">
@@ -1116,7 +1116,7 @@
         <span class="small fw-bold text-secondary ms-2 me-1"><i class="fa-solid fa-code-branch text-primary me-1"></i> Iteration Versions:</span>
         {% for v in versions %}
           {% set is_active = (v.id == analysis_id) %}
-          <a href="/dashboard/{{ v.id }}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary shadow-sm' if is_active else 'btn-outline-secondary border-0' }}" title="Uploaded on {{ v.created_at }}">
+          <a href="/dashboard/{{ v.id }}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary shadow-sm' if is_active else 'btn-outline-secondary border-0' }}" title="Uploaded on {{ v.created_at | format_datetime_ist }}">
             <i class="fa-solid fa-file-lines me-1"></i> Version {{ v.version_number|default(loop.index) }}
             <span class="badge bg-white text-dark rounded-pill ms-1">{{ v.ats_score }}/100</span>
           </a>

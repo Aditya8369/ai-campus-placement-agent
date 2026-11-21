@@ -313,11 +313,16 @@ def _session_client_label() -> str:
 
 
 def _format_session_timestamp(timestamp: Any) -> str:
-    """Format registry timestamps consistently without exposing more than date and time."""
+    """Format registry timestamps consistently in IST without exposing more than date and time."""
     try:
-        return datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    except (TypeError, ValueError, OSError, OverflowError):
-        return "Unknown"
+        from utils.formatters import format_datetime_ist
+        formatted = format_datetime_ist(timestamp)
+        return formatted if formatted else "Unknown"
+    except Exception:
+        try:
+            return datetime.fromtimestamp(float(timestamp), tz=timezone.utc).strftime("%d %b %Y, %I:%M %p IST")
+        except (TypeError, ValueError, OSError, OverflowError):
+            return "Unknown"
 
 
 def get_available_companies() -> list:
