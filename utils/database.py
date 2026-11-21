@@ -5,6 +5,7 @@ import uuid
 import hashlib
 import secrets
 import time
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Union
 from db.connection import create_connection, get_connection, transaction
 import config
@@ -17,12 +18,95 @@ def get_db_connection() -> sqlite3.Connection:
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
     """
-    conn = sqlite3.connect(config.DATABASE_PATH, timeout=10.0)
+    conn = sqlite3.connect(Config.DATABASE_PATH)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT * FROM analyses WHERE id = ?",
+            (analysis_id,),
+        ).fetchone()
+        if not row:
+            return None
+
+        record = dict(row)
+        raw_result = record.get("result_json")
+        if isinstance(raw_result, str) and raw_result.strip():
+            try:
+                record["result"] = json.loads(raw_result)
+            except json.JSONDecodeError:
+                record["result"] = {}
+        elif isinstance(raw_result, dict):
+            record["result"] = raw_result
+        else:
+            record["result"] = {}
+        return record
+    finally:
+        conn.close()
+
+
+def update_analysis_section(
+    analysis_id: str,
+    section_db_key: str,
+    section_payload: Any,
+    section_key: str,
+) -> Dict[str, Any]:
+    """
+    Atomically updates ONLY `section_db_key` inside the stored analysis JSON payload,
+    clears the failure marker for `section_key`, and preserves all other sections untouched.
+    """
+    conn = get_db_connection()
+    try:
+        row = conn.execute(
+            "SELECT result_json FROM analyses WHERE id = ?",
+            (analysis_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError(f"Analysis record '{analysis_id}' not found.")
+
+        existing_json = row["result_json"]
+        if isinstance(existing_json, str) and existing_json.strip():
+            payload = json.loads(existing_json)
+        elif isinstance(existing_json, dict):
+            payload = dict(existing_json)
+        else:
+            payload = {}
+
+        # Preserve all existing keys; replace ONLY the retried section
+        payload[section_db_key] = section_payload
+
+        # Clear failure tracking metadata for the recovered section
+        failed_sections = payload.get("failed_sections")
+        if isinstance(failed_sections, dict):
+            failed_sections.pop(section_key, None)
+            failed_sections.pop(section_db_key, None)
+            payload["failed_sections"] = failed_sections
+        elif isinstance(failed_sections, list):
+            payload["failed_sections"] = [
+                s for s in failed_sections if s not in (section_key, section_db_key)
+            ]
+
+        section_status = payload.get("section_status")
+        if isinstance(section_status, dict):
+            section_status[section_key] = "completed"
+            payload["section_status"] = section_status
+
+        payload["last_section_retry"] = {
+            "section": section_key,
+            "retried_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        conn.execute(
+            "UPDATE analyses SET result_json = ? WHERE id = ?",
+            (json.dumps(payload, ensure_ascii=False), analysis_id),
+        )
+        conn.commit()
+        return payload
+    finally:
+        conn.close()    
 
 def init_db() -> None:
     """

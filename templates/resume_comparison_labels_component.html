@@ -1,0 +1,101 @@
+<!-- Custom Resume Label Badge & Rename Component (#523) -->
+<div class="d-inline-flex align-items-center gap-2 resume-custom-label-chip" id="resumeLabelChip-{{ resume_id }}">
+  <span class="badge bg-{{ label_info.color_tag or 'primary' }} px-2 py-1" id="labelBadge-{{ resume_id }}">
+    <i class="bi bi-tag-fill me-1"></i>
+    <span id="labelText-{{ resume_id }}">{{ label_info.custom_label }}</span>
+  </span>
+
+  <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none text-muted" onclick="openLabelModal('{{ resume_id }}', '{{ label_info.custom_label }}', '{{ label_info.color_tag or 'primary' }}', '{{ label_info.change_notes }}')" title="Edit resume version nickname">
+    <i class="bi bi-pencil-square"></i>
+  </button>
+</div>
+
+<!-- Modal for editing nickname -->
+<div class="modal fade" id="editResumeLabelModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">Edit Resume Version Nickname</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="modalResumeId">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Version Nickname *</label>
+          <input type="text" class="form-control" id="modalCustomLabel" placeholder="e.g. Google Backend Tailored v2" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Color Tag</label>
+          <select class="form-select" id="modalColorTag">
+            <option value="primary">Blue (Primary)</option>
+            <option value="success">Green (Verified)</option>
+            <option value="warning">Amber (In Progress)</option>
+            <option value="info">Teal (Targeted)</option>
+            <option value="dark">Dark (Final Draft)</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Revision / Change Notes</label>
+          <textarea class="form-control" id="modalChangeNotes" rows="2" placeholder="e.g. Added quantified cloud metrics; highlighted Docker & CI/CD"></textarea>
+          <small class="text-muted d-block mt-1">These notes are private and never sent to external AI prompts.</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger me-auto" onclick="deleteResumeLabel()">Reset</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveResumeLabel()">Save Nickname</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let activeEditResumeId = null;
+
+function openLabelModal(resumeId, currentLabel, currentColor, currentNotes) {
+  activeEditResumeId = resumeId;
+  document.getElementById('modalResumeId').value = resumeId;
+  document.getElementById('modalCustomLabel').value = currentLabel || '';
+  document.getElementById('modalColorTag').value = currentColor || 'primary';
+  document.getElementById('modalChangeNotes').value = currentNotes || '';
+
+  const modal = new bootstrap.Modal(document.getElementById('editResumeLabelModal'));
+  modal.show();
+}
+
+async function saveResumeLabel() {
+  const lbl = document.getElementById('modalCustomLabel').value.trim();
+  if (!lbl) return alert('Nickname cannot be empty.');
+
+  const payload = {
+    custom_label: lbl,
+    color_tag: document.getElementById('modalColorTag').value,
+    change_notes: document.getElementById('modalChangeNotes').value.trim()
+  };
+
+  try {
+    const res = await fetch(`/api/analysis/resume/${activeEditResumeId}/label`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      location.reload();
+    } else {
+      alert('Failed to save nickname.');
+    }
+  } catch (e) {
+    alert('Server error.');
+  }
+}
+
+async function deleteResumeLabel() {
+  if (!confirm('Revert this version back to default identifier?')) return;
+  try {
+    const res = await fetch(`/api/analysis/resume/${activeEditResumeId}/label`, { method: 'DELETE' });
+    if (res.ok) location.reload();
+  } catch (e) {
+    alert('Failed to reset nickname.');
+  }
+}
+</script>
