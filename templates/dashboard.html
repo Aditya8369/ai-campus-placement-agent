@@ -4231,6 +4231,74 @@
           </div>
         </div>
       </div>
+
+      <!-- Preparation Task Dependency View (#606) -->
+      <div class="card glass-card p-4 border-0 mb-4 mt-4" id="taskDependencyViewCard">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">Prerequisite Hierarchy</span>
+            <h4 class="fw-bold mb-1">
+              <i class="fa-solid fa-diagram-project text-primary me-2"></i> Preparation Task Dependencies
+            </h4>
+            <p class="text-secondary small mb-0">
+              Complete prerequisite topics before unlocking advanced topics. Circular dependencies are rejected.
+            </p>
+          </div>
+          <div class="d-flex gap-2">
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1" id="depCompletedBadge">0 Done</span>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1" id="depAvailableBadge">2 Available</span>
+            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-3 py-1" id="depLockedBadge">6 Locked</span>
+          </div>
+        </div>
+
+        <div id="dependencyTasksGrid" class="row g-3">
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 bg-white rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-success">
+              <div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong class="text-dark small">Arrays & Two-Pointer Basics</strong>
+                  <span class="badge bg-success-subtle text-success rounded-pill">Available</span>
+                </div>
+                <p class="small text-muted mb-2">Master array operations and two-pointer techniques.</p>
+                <div class="small text-secondary mb-2"><i class="fa-solid fa-link-slash me-1"></i> No prerequisites</div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 btn-mark-dep-complete" data-task-id="task_arrays">
+                <i class="fa-solid fa-check me-1"></i> Mark as Completed
+              </button>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 bg-light rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-secondary opacity-75">
+              <div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong class="text-dark small">Linked Lists & Pointers</strong>
+                  <span class="badge bg-secondary rounded-pill"><i class="fa-solid fa-lock me-1"></i>Locked</span>
+                </div>
+                <p class="small text-muted mb-2">Singly & doubly linked lists, fast/slow pointers.</p>
+                <div class="small text-danger mb-2"><i class="fa-solid fa-lock me-1"></i> Prerequisite: Arrays & Two-Pointer Basics</div>
+              </div>
+              <button type="button" class="btn btn-sm btn-secondary rounded-pill w-100 disabled" disabled>
+                <i class="fa-solid fa-lock me-1"></i> Complete Prerequisite First
+              </button>
+            </div>
+          </div>
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 bg-white rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-success">
+              <div>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong class="text-dark small">Relational Databases & SQL</strong>
+                  <span class="badge bg-success-subtle text-success rounded-pill">Available</span>
+                </div>
+                <p class="small text-muted mb-2">CRUD, Joins, Group By, Primary & Foreign Keys.</p>
+                <div class="small text-secondary mb-2"><i class="fa-solid fa-link-slash me-1"></i> No prerequisites</div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 btn-mark-dep-complete" data-task-id="task_sql_basics">
+                <i class="fa-solid fa-check me-1"></i> Mark as Completed
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Add Roadmap to Calendar Modal (#647) -->
