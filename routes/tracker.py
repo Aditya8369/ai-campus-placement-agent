@@ -612,6 +612,19 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/preparation/streak", methods=["POST"])
+def api_calculate_preparation_streak():
+    """Calculates student practice streak with optional grace period (#626)."""
+    from utils.streak_grace_service import calculate_streak_with_grace
+    data = request.get_json(silent=True) or {}
+    activity_dates = data.get("activity_dates", [])
+    current_date = data.get("current_date")
+    grace_days = int(data.get("grace_days", 1))
+
+    streak_res = calculate_streak_with_grace(activity_dates, current_date, grace_days_allowed=grace_days)
+    return jsonify({"status": "success", "streak": streak_res}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
