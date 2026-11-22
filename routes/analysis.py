@@ -1570,6 +1570,21 @@ def dashboard(analysis_id: str) -> str:
             "recheck_url": "/resume/review"
         }
 
+        # Prepare Resume Evidence Cards (#599)
+    try:
+        from utils.resume_evidence_service import build_resume_evidence_cards
+        resume_evidence = build_resume_evidence_cards(analysis_record)
+    except Exception as ev_err:
+        logger.warning(f"Error building resume evidence cards: {ev_err}")
+        resume_evidence = {
+            "has_evidence_cards": False,
+            "total_cards": 0,
+            "direct_evidence_count": 0,
+            "missing_info_count": 0,
+            "grouped_cards": [],
+            "summary": "Evidence cards could not be loaded."
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1613,7 +1628,9 @@ def dashboard(analysis_id: str) -> str:
         format_compatibility=format_compatibility,
         format_compatibility_json=json.dumps(format_compatibility),
         ats_confidence=ats_confidence,
-        ats_confidence_json=json.dumps(ats_confidence)
+        ats_confidence_json=json.dumps(ats_confidence),
+        resume_evidence=resume_evidence,
+        resume_evidence_json=json.dumps(resume_evidence)
     )
 
 
@@ -2160,6 +2177,29 @@ def api_evaluate_resume_ats_score():
     except Exception as exc:
         logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/resume-evidence", methods=["GET"])
+def api_get_analysis_resume_evidence(analysis_id: str):
+    """
+    Returns structured Resume Evidence Cards connecting AI suggestions to original resume text (#599).
+    Flags unmentioned content as missing information rather than confirmed defects.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    from utils.resume_evidence_service import build_resume_evidence_cards
+    evidence_cards = build_resume_evidence_cards(analysis_record)
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "evidence": evidence_cards
+    }), 200
 
 
 @analysis_bp.route("/api/analysis/<analysis_id>/format-compatibility", methods=["GET"])
