@@ -612,6 +612,25 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/notifications/previews", methods=["GET"])
+def api_get_notification_previews():
+    """Lists notification templates and sample messages (#633)."""
+    from utils.notification_preview_service import get_notification_previews
+    return jsonify({"status": "success", "previews": get_notification_previews()}), 200
+
+
+@tracker_bp.route("/api/notifications/test-delivery", methods=["POST"])
+def api_test_notification_delivery():
+    """Dispatches a simulated test alert with synthetic non-private content (#633)."""
+    from utils.notification_preview_service import generate_test_notification
+    data = request.get_json(silent=True) or {}
+    ntype = data.get("notification_type", "status_change")
+    recipient = data.get("recipient")
+
+    test_payload = generate_test_notification(ntype, recipient)
+    return jsonify({"status": "success", "notification": test_payload}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
