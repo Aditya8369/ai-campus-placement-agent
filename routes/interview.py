@@ -499,6 +499,39 @@ def api_get_interview_difficulty_options():
     }), 200
 
 
+@interview_bp.route("/api/interview/outline-mode/template", methods=["GET"])
+def api_get_outline_template():
+    """
+    Returns answer outline headings (Introduction, Main Point, Example, Conclusion)
+    and question-type checklist (#608).
+    """
+    q_type = request.args.get("question_type", "General")
+    from utils.interview_outline_service import get_outline_template
+    template = get_outline_template(q_type)
+    return jsonify({"status": "success", "template": template}), 200
+
+
+@interview_bp.route("/api/interview/outline-mode/convert", methods=["POST"])
+def api_convert_outline_to_draft():
+    """
+    Converts structured outline fields into a draft answer and returns completeness score (#608).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    sections = payload.get("sections") or {}
+    checked_items = payload.get("checked_items") or []
+
+    from utils.interview_outline_service import convert_outline_to_draft, score_outline_completeness
+    draft_text = convert_outline_to_draft(sections)
+    score_data = score_outline_completeness(sections, checked_items)
+
+    return jsonify({
+        "status": "success",
+        "draft": draft_text,
+        "score_data": score_data
+    }), 200
+
+
+
 @interview_bp.route("/api/interview/difficulty/generate", methods=["POST"])
 def api_generate_difficulty_questions():
     """
