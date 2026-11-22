@@ -2739,3 +2739,18 @@ def api_delete_question_explanation(question_id):
         return jsonify({"status": "success", "message": "Question explanation removed"}), 200
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
+
+@interview_bp.route("/api/interview/speech-metrics", methods=["POST"])
+def api_speech_metrics():
+    """Analyzes transcript for filler words, hesitations, repetitions, and pacing (#609)."""
+    from utils.speech_analysis_service import analyze_speech_metrics
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript", "")
+    pauses = data.get("pauses")
+
+    result = analyze_speech_metrics(transcript, pauses=pauses)
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result), 200
+
+
