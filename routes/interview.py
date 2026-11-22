@@ -2739,3 +2739,39 @@ def api_delete_question_explanation(question_id):
         return jsonify({"status": "success", "message": "Question explanation removed"}), 200
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["POST"])
+def api_save_interview_checkpoint():
+    """Saves active interview progress and draft answer (#613)."""
+    from utils.interview_recovery_service import save_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or {}
+    analysis_id = data.get("analysis_id", "demo")
+    q_index = data.get("question_index", 0)
+    q_text = data.get("question_text", "")
+    draft = data.get("draft_answer", "")
+
+    result = save_session_checkpoint(user_id, analysis_id, q_index, q_text, draft)
+    return jsonify({"status": "success", "result": result}), 200
+
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["GET"])
+def api_get_interview_checkpoint():
+    """Retrieves saved checkpoint for the given session (#613)."""
+    from utils.interview_recovery_service import get_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    analysis_id = request.args.get("analysis_id", "demo")
+    checkpoint = get_session_checkpoint(user_id, analysis_id)
+    return jsonify({"status": "success", "checkpoint": checkpoint}), 200
+
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["DELETE"])
+def api_clear_interview_checkpoint():
+    """Clears saved checkpoint upon interview completion or cancellation (#613)."""
+    from utils.interview_recovery_service import clear_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    analysis_id = request.args.get("analysis_id", "demo")
+    cleared = clear_session_checkpoint(user_id, analysis_id)
+    return jsonify({"status": "success", "cleared": cleared}), 200
+
+
