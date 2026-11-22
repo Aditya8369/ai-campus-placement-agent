@@ -2304,6 +2304,43 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
+@analysis_bp.route("/api/role-difficulty-estimate", methods=["POST"])
+def api_get_role_difficulty_estimate():
+    """
+    Computes Role-Based Preparation Difficulty (Easy, Moderate, Challenging),
+    factors, and estimated practice weeks based on candidate skills and selected role (#604).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    analysis_id = payload.get("analysis_id")
+    candidate_skills = payload.get("skills") or []
+    role_id = payload.get("role_id") or "software_developer"
+    hours_per_week = payload.get("hours_per_week") or 15
+
+    # If analysis_id provided, extract skills from the saved report
+    if analysis_id and not candidate_skills:
+        record = get_analysis(analysis_id)
+        if record and _is_student_authorized(record):
+            from utils.role_skill_gap_service import extract_candidate_skills
+            candidate_skills = extract_candidate_skills(record)
+
+    from utils.prep_difficulty_service import calculate_preparation_difficulty
+    try:
+        difficulty_report = calculate_preparation_difficulty(
+            candidate_skills=candidate_skills,
+            role_id_or_profile=role_id,
+            hours_per_week=int(hours_per_week)
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "difficulty": difficulty_report
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error calculating preparation difficulty: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+
 @analysis_bp.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
 def save_analysis_annotation_view(analysis_id: str):
     """Create or edit a private annotation attached to an owned analysis."""

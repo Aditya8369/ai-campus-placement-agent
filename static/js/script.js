@@ -638,6 +638,37 @@ function initRoleSkillGapSelector() {
       newUrl.searchParams.set("role", selectedRoleId);
       window.history.replaceState({}, "", newUrl.toString());
 
+      // 6. Update Role Preparation Difficulty Estimate (#604)
+      const diffBadge = document.getElementById("roleDifficultyBadge");
+      const weeksBadge = document.getElementById("rolePracticeWeeksBadge");
+      const diffExpl = document.getElementById("roleDifficultyExplanation");
+      if (diffBadge || weeksBadge || diffExpl) {
+        try {
+          const diffResp = await fetch("/api/role-difficulty-estimate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ analysis_id: analysisId, role_id: selectedRoleId })
+          });
+          const diffJson = await diffResp.json();
+          if (diffJson.success && diffJson.difficulty) {
+            const diff = diffJson.difficulty;
+            if (diffBadge) {
+              diffBadge.textContent = diff.difficulty_tier;
+              diffBadge.className = "badge rounded-pill px-3 py-1 border " +
+                (diff.difficulty_tier === "Easy" ? "bg-success text-white" : (diff.difficulty_tier === "Moderate" ? "bg-warning text-dark" : "bg-danger text-white"));
+            }
+            if (weeksBadge) {
+              weeksBadge.textContent = `~${diff.estimated_weeks} Practice Weeks`;
+            }
+            if (diffExpl) {
+              diffExpl.textContent = diff.explanation;
+            }
+          }
+        } catch (e) {
+          console.debug("Difficulty estimate update error", e);
+        }
+      }
+
     } catch (err) {
       console.error("Error switching target role benchmark:", err);
       if (scoreBadge) scoreBadge.textContent = "Error";
