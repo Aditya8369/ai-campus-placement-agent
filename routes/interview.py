@@ -2739,3 +2739,32 @@ def api_delete_question_explanation(question_id):
         return jsonify({"status": "success", "message": "Question explanation removed"}), 200
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
+
+@interview_bp.route("/api/interview/interviewer-styles", methods=["GET"])
+def api_get_interviewer_styles():
+    """Lists available interviewer personality styles (#612)."""
+    from utils.interviewer_style_service import get_available_styles, DEFAULT_STYLE
+    current_style = flask_session.get("interviewer_style", DEFAULT_STYLE)
+    return jsonify({
+        "status": "success",
+        "current_style": current_style,
+        "styles": get_available_styles()
+    }), 200
+
+
+@interview_bp.route("/api/interview/interviewer-style", methods=["POST"])
+def api_set_interviewer_style():
+    """Saves user preferred interviewer style in session (#612)."""
+    from utils.interviewer_style_service import get_style_config
+    data = request.get_json(silent=True) or {}
+    style_id = data.get("style", "friendly")
+    config = get_style_config(style_id)
+    flask_session["interviewer_style"] = config["id"]
+    return jsonify({
+        "status": "success",
+        "selected_style": config["id"],
+        "name": config["name"],
+        "tone": config["tone"]
+    }), 200
+
+
