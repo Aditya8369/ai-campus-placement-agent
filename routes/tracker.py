@@ -612,6 +612,16 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/profile/completion-checklist", methods=["POST"])
+def api_profile_completion_checklist():
+    """Calculates profile completion score and actionable checklists (#627)."""
+    from utils.profile_completion_service import calculate_profile_completion
+    data = request.get_json(silent=True) or {}
+    profile = data.get("profile", {})
+    result = calculate_profile_completion(profile)
+    return jsonify({"status": "success", "result": result}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
