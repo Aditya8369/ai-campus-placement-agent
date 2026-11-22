@@ -612,6 +612,19 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/preparation/burnout-check", methods=["POST"])
+def api_check_preparation_burnout():
+    """Evaluates recent study hours to identify potential burnout and suggest recovery (#625)."""
+    from utils.burnout_warning_service import evaluate_burnout_risk
+    data = request.get_json(silent=True) or {}
+    daily_hours = data.get("daily_hours", [])
+    threshold = float(data.get("max_daily_threshold", 7.0))
+    enabled = bool(data.get("reminders_enabled", True))
+
+    evaluation = evaluate_burnout_risk(daily_hours, threshold, reminders_enabled=enabled)
+    return jsonify({"status": "success", "evaluation": evaluation}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
