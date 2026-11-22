@@ -683,4 +683,22 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@coding_practice_bp.route("/api/coding/recommendations", methods=["POST"])
+def api_get_coding_recommendations():
+    """Generates problem recommendations with explicit justifications (#618)."""
+    from utils.coding_recommendation_service import recommend_problems_with_reasons
+    data = request.get_json(silent=True) or {}
+    weak_topics = data.get("weak_topics", [])
+    recent_failed = data.get("recent_failed", [])
+    dismissed = data.get("dismissed", [])
+
+    recs = recommend_problems_with_reasons(
+        weak_topics=weak_topics,
+        recent_failed_attempts=recent_failed,
+        dismissed_problem_ids=dismissed
+    )
+    return jsonify({"status": "success", "recommendations": recs}), 200
+
+
+
 
