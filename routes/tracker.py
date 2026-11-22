@@ -612,6 +612,29 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/notifications/sync-state", methods=["POST"])
+def api_set_notification_sync_state():
+    """Sets notification read or dismissed state across devices (#632)."""
+    from utils.notification_sync_service import set_notification_state
+    student_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or {}
+    nid = data.get("notification_id", "")
+    is_read = data.get("is_read")
+    is_dismissed = data.get("is_dismissed")
+
+    res = set_notification_state(student_id, nid, is_read=is_read, is_dismissed=is_dismissed)
+    return jsonify({"status": "success", "result": res}), 200
+
+
+@tracker_bp.route("/api/notifications/sync-states", methods=["GET"])
+def api_get_notification_sync_states():
+    """Retrieves all notification sync states for the current candidate (#632)."""
+    from utils.notification_sync_service import get_user_notification_states
+    student_id = flask_session.get("user_id") or "default_student"
+    states = get_user_notification_states(student_id)
+    return jsonify({"status": "success", "states": states}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
