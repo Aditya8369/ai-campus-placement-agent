@@ -28,6 +28,7 @@ import { initCodingBookmarks, initInterviewBookmarks } from "./modules/bookmarks
 import { initCompanyExplorer } from "./modules/tracker.js";
 import { initStreakTracker } from "./modules/streaks.js";
 import { initPasswordToggle, initPasswordStrengthIndicator } from "./modules/auth.js";
+import { OKABE_ITO, createAccessiblePattern, getChartThemeTokens } from "./modules/chart_palette.js";
 import { initSelfIntroductionStudio } from "./modules/self_intro.js";
 import { initProjectDeepDive } from "./modules/project_deep_dive.js";
 import { initTailoredCoverLetterStudio } from "./modules/cover_letter.js";
@@ -4099,8 +4100,12 @@ function initProgressTracker() {
   const canvas = document.getElementById("progressTrendChart");
   if (canvas && window.Chart && trendData && Array.isArray(trendData.labels) && trendData.labels.length > 0) {
     const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
-    const textColor = isDark ? "#c4c7c5" : "#444746";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+    const tokens = getChartThemeTokens ? getChartThemeTokens(isDark) : {
+      textColor: isDark ? "#f0f2f5" : "#1f1f1f",
+      gridColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      surfaceBg: isDark ? "#1e2022" : "#ffffff",
+      borderColor: isDark ? "#444746" : "#dadce0",
+    };
 
     const ctx = canvas.getContext("2d");
     const progressChart = new window.Chart(ctx, {
@@ -4111,40 +4116,49 @@ function initProgressTracker() {
           {
             label: "ATS Profile Score",
             data: trendData.ats_scores,
-            borderColor: "#1a73e8",
-            backgroundColor: "rgba(26, 115, 232, 0.12)",
+            borderColor: OKABE_ITO.blue,
+            backgroundColor: "rgba(0, 114, 178, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#1a73e8",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.blue,
+            pointBorderColor: "#ffffff",
+            pointStyle: "circle",
+            borderDash: [],
             yAxisID: "y"
           },
           {
             label: "Job Match %",
             data: trendData.match_scores,
-            borderColor: "#34a853",
-            backgroundColor: "rgba(52, 168, 83, 0.08)",
+            borderColor: OKABE_ITO.bluishGreen,
+            backgroundColor: "rgba(0, 158, 115, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#34a853",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.bluishGreen,
+            pointBorderColor: "#ffffff",
+            pointStyle: "rectRot",
+            borderDash: [6, 4],
             yAxisID: "y"
           },
           {
             label: "Skill Gaps Count",
             data: trendData.gap_counts,
-            borderColor: "#ea4335",
-            borderDash: [5, 5],
+            borderColor: OKABE_ITO.vermilion,
             backgroundColor: "transparent",
             fill: false,
             tension: 0.3,
-            borderWidth: 2,
-            pointRadius: 4,
-            pointBackgroundColor: "#ea4335",
+            borderWidth: 2.5,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.vermilion,
+            pointBorderColor: "#ffffff",
+            pointStyle: "triangle",
+            borderDash: [3, 3],
             yAxisID: "y1"
           }
         ]
@@ -4160,16 +4174,28 @@ function initProgressTracker() {
           legend: {
             position: "top",
             labels: {
-              boxWidth: 14,
-              font: { size: 12, family: "'Outfit', sans-serif" },
-              color: textColor
+              usePointStyle: true,
+              boxWidth: 12,
+              font: { size: 12, family: "'Outfit', sans-serif", weight: "500" },
+              color: tokens.textColor,
+              generateLabels: function(chart) {
+                const markers = ["●", "◆", "▲"];
+                return chart.data.datasets.map((ds, i) => ({
+                  text: `${markers[i] || "■"} ${ds.label}`,
+                  fillStyle: ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  pointStyle: ds.pointStyle,
+                  datasetIndex: i,
+                  fontColor: tokens.textColor,
+                }));
+              }
             }
           },
           tooltip: {
-            backgroundColor: isDark ? "#282a2c" : "#ffffff",
-            titleColor: isDark ? "#e3e3e3" : "#1f1f1f",
-            bodyColor: isDark ? "#c4c7c5" : "#444746",
-            borderColor: isDark ? "#444746" : "#dadce0",
+            backgroundColor: tokens.surfaceBg,
+            titleColor: tokens.textColor,
+            bodyColor: tokens.textColor,
+            borderColor: tokens.borderColor,
             borderWidth: 1,
             padding: 10,
             callbacks: {
@@ -4178,14 +4204,20 @@ function initProgressTracker() {
                 const date = trendData.dates && trendData.dates[idx] ? trendData.dates[idx] : "";
                 const filename = trendData.filenames && trendData.filenames[idx] ? trendData.filenames[idx] : "";
                 return `Iteration ${trendData.labels[idx]} (${date}) - ${filename}`;
+              },
+              label: function (context) {
+                const markers = ["●", "◆", "▲"];
+                const sym = markers[context.datasetIndex] || "■";
+                const suffix = context.datasetIndex === 2 ? "" : "%";
+                return ` ${sym} ${context.dataset.label}: ${context.raw}${suffix}`;
               }
             }
           }
         },
         scales: {
           x: {
-            grid: { color: gridColor },
-            ticks: { color: textColor, font: { family: "'Outfit', sans-serif" } }
+            grid: { color: tokens.gridColor },
+            ticks: { color: tokens.textColor, font: { family: "'Outfit', sans-serif" } }
           },
           y: {
             type: "linear",
@@ -4193,9 +4225,9 @@ function initProgressTracker() {
             position: "left",
             min: 0,
             max: 100,
-            grid: { color: gridColor },
+            grid: { color: tokens.gridColor },
             ticks: {
-              color: textColor,
+              color: tokens.textColor,
               callback: val => `${val}%`,
               font: { family: "'Outfit', sans-serif" }
             }
@@ -4208,9 +4240,9 @@ function initProgressTracker() {
             suggestedMax: 8,
             grid: { drawOnChartArea: false },
             ticks: {
-              color: "#ea4335",
+              color: OKABE_ITO.vermilion,
               precision: 0,
-              font: { family: "'Outfit', sans-serif" }
+              font: { family: "'Outfit', sans-serif", weight: "600" }
             }
           }
         }
@@ -4220,15 +4252,17 @@ function initProgressTracker() {
     // Theme toggle listener to update chart colors
     const observer = new MutationObserver(() => {
       const darkNow = document.documentElement.getAttribute("data-bs-theme") === "dark";
-      const newTextColor = darkNow ? "#c4c7c5" : "#444746";
-      const newGridColor = darkNow ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+      const newTokens = getChartThemeTokens ? getChartThemeTokens(darkNow) : {
+        textColor: darkNow ? "#f0f2f5" : "#1f1f1f",
+        gridColor: darkNow ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      };
 
       if (progressChart) {
-        progressChart.options.scales.x.ticks.color = newTextColor;
-        progressChart.options.scales.x.grid.color = newGridColor;
-        progressChart.options.scales.y.ticks.color = newTextColor;
-        progressChart.options.scales.y.grid.color = newGridColor;
-        progressChart.options.plugins.legend.labels.color = newTextColor;
+        progressChart.options.scales.x.ticks.color = newTokens.textColor;
+        progressChart.options.scales.x.grid.color = newTokens.gridColor;
+        progressChart.options.scales.y.ticks.color = newTokens.textColor;
+        progressChart.options.scales.y.grid.color = newTokens.gridColor;
+        progressChart.options.plugins.legend.labels.color = newTokens.textColor;
         progressChart.update();
       }
     });
@@ -5506,6 +5540,15 @@ function initSkillsComparisonChart() {
   const missingPct = 100 - matchPct;
 
   const ctx = canvas.getContext("2d");
+
+  // Create accessible patterns for non-color differentiation (diagonal-stripes vs cross-hatch)
+  const matchedPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "diagonal-stripes", OKABE_ITO.bluishGreen, isDark ? "rgba(0, 158, 115, 0.35)" : "rgba(0, 158, 115, 0.20)")
+    : OKABE_ITO.bluishGreen;
+  const missingPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "cross-hatch", OKABE_ITO.vermilion, isDark ? "rgba(213, 94, 0, 0.35)" : "rgba(213, 94, 0, 0.20)")
+    : OKABE_ITO.vermilion;
+
   const chartInstance = new window.Chart(ctx, {
     type: "doughnut",
     data: {
@@ -5513,10 +5556,7 @@ function initSkillsComparisonChart() {
       datasets: [
         {
           data: [matchedCount, missingCount],
-          backgroundColor: [
-            isDark ? "#2ea043" : "#198754", // Green / Success
-            isDark ? "#f85149" : "#dc3545"  // Red / Danger
-          ],
+          backgroundColor: [matchedPattern, missingPattern],
           borderColor: isDark ? "#161b22" : "#ffffff",
           borderWidth: 3,
           hoverOffset: 6
@@ -5529,7 +5569,7 @@ function initSkillsComparisonChart() {
       cutout: "70%",
       plugins: {
         legend: {
-          display: false // We render custom interactive badges and tooltips
+          display: false // Custom accessible legend rendered in HTML with check/cross icons
         },
         tooltip: {
           backgroundColor: isDark ? "rgba(22, 27, 34, 0.95)" : "rgba(33, 37, 41, 0.95)",
@@ -5541,7 +5581,8 @@ function initSkillsComparisonChart() {
             label: function (context) {
               const count = context.raw || 0;
               const pct = context.dataIndex === 0 ? matchPct : missingPct;
-              return ` ${context.label}: ${count} (${pct}%)`;
+              const icon = context.dataIndex === 0 ? "✔" : "✖";
+              return ` ${icon} ${context.label}: ${count} (${pct}%)`;
             }
           }
         }
