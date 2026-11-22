@@ -138,6 +138,14 @@ def get_company_profile(company_name: str):
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
 
 
+@jobs_bp.route("/api/company/<company_name>/process-timeline", methods=["GET"])
+def api_get_company_process_timeline(company_name: str):
+    """Returns typical stages, average durations, and official/community split (#624)."""
+    from utils.company_timeline_service import get_company_process_timeline
+    timeline = get_company_process_timeline(company_name)
+    return jsonify({"status": "success", "timeline": timeline}), 200
+
+
 @jobs_bp.route("/company/<company_name>/cheat-sheet", methods=["GET"])
 def download_company_cheat_sheet(company_name: str):
     """
