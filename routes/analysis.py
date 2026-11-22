@@ -2304,6 +2304,32 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
+@analysis_bp.route("/api/timetable/generate", methods=["POST"])
+def api_generate_timetable():
+    """
+    Generates personalized weekly preparation timetable based on daily hours (#605).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    availability = payload.get("availability") or {}
+    preferred_slot = payload.get("preferred_slot", "Evening (18:00 - 21:00)")
+    custom_tasks = payload.get("custom_tasks")
+
+    from utils.prep_timetable_service import generate_weekly_timetable
+    try:
+        result = generate_weekly_timetable(
+            availability=availability,
+            preferred_slot=preferred_slot,
+            custom_tasks=custom_tasks
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+    except Exception as exc:
+        logger.error(f"Error generating timetable: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+
 @analysis_bp.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
 def save_analysis_annotation_view(analysis_id: str):
     """Create or edit a private annotation attached to an owned analysis."""
