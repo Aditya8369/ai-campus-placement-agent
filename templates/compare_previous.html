@@ -263,14 +263,65 @@
             <i class="fa-solid fa-chart-line text-primary me-2"></i> ATS Score Across Versions
           </h5>
         </div>
-        <div class="text-muted small">
-          Tracking {{ comparison.target_role }} ({{ comparison.company_name }})
+        <div class="d-flex align-items-center gap-2">
+          <div class="text-muted small d-none d-md-inline">
+            Tracking {{ comparison.target_role }} ({{ comparison.company_name }})
+          </div>
+          {% if comparison.trend_chart and comparison.trend_chart|length > 0 %}
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+            id="btnToggleAtsTrendTable"
+            data-target-chart="atsTrendCanvasWrapper"
+            data-target-table="atsTrendTableWrapper"
+            aria-expanded="false"
+            aria-controls="atsTrendTableWrapper"
+            title="Switch to accessible data table view">
+            <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+          </button>
+          {% endif %}
         </div>
       </div>
 
-      <!-- Trend Canvas -->
-      <div class="p-3 bg-light rounded-4 border mb-3" style="position: relative; height: 220px; width: 100%;">
+      {% if comparison.trend_chart and comparison.trend_chart|length > 0 %}
+      <!-- Trend Canvas Wrapper -->
+      <div id="atsTrendCanvasWrapper" class="p-3 bg-light rounded-4 border mb-3" style="position: relative; height: 220px; width: 100%;">
         <canvas id="atsTrendCanvas" role="img" aria-label="ATS score progression line chart across resume revisions"></canvas>
+      </div>
+
+      <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+      <div id="atsTrendTableWrapper" class="d-none chart-data-table-wrapper bg-white rounded-4 p-3 border mb-3" tabindex="0" role="region" aria-label="ATS score revision progression data table">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped table-hover align-middle mb-0" id="atsTrendTable">
+            <caption class="small text-muted py-2">
+              <i class="fa-solid fa-table me-1"></i> ATS score progression across resume revision versions.
+            </caption>
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Version</th>
+                <th scope="col">Evaluation Date</th>
+                <th scope="col">ATS Score (0-100 pts)</th>
+                <th scope="col">Comparison Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for pt in comparison.trend_chart %}
+              <tr>
+                <th scope="row" class="fw-semibold">{{ pt.version }}</th>
+                <td>{{ pt.date }}</td>
+                <td><span class="badge bg-primary-subtle text-primary fw-bold">{{ pt.ats_score }} pts</span></td>
+                <td>
+                  {% if pt.version == 'v' ~ comparison.current_version or pt.version == comparison.current_version %}
+                    <span class="badge bg-success-subtle text-success">Current (After)</span>
+                  {% elif pt.version == 'v' ~ comparison.previous_version or pt.version == comparison.previous_version %}
+                    <span class="badge bg-secondary-subtle text-secondary">Previous (Before)</span>
+                  {% else %}
+                    <span class="badge bg-light text-muted border">Iteration</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Version Points Pills -->
@@ -278,10 +329,18 @@
         <span class="small fw-bold text-secondary ms-2 me-1">Iteration Points:</span>
         {% for pt in comparison.trend_chart %}
           <span class="badge bg-white text-dark border rounded-pill px-3 py-1">
-            <strong>{{ pt.version }}</strong>: {{ pt.ats_score }}/100 <small class="text-muted">({{ pt.date }})</small>
+            <strong>{{ pt.version }}</strong>: {{ pt.ats_score }} pts <small class="text-muted">({{ pt.date }})</small>
           </span>
         {% endfor %}
       </div>
+      {% else %}
+      <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+      <div class="chart-empty-state text-center py-4 bg-light rounded-4 border mb-3" role="status" aria-live="polite" id="atsTrendEmptyState">
+        <i class="fa-solid fa-chart-line fa-2x mb-2 text-secondary opacity-50"></i>
+        <h6 class="fw-bold mb-1 text-dark">No Historical Revisions Available</h6>
+        <p class="small text-muted mb-0">No previous version trend points recorded for this role.</p>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Bottom Actions -->
@@ -357,6 +416,6 @@
       }
     });
   </script>
-
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
 </body>
 </html>

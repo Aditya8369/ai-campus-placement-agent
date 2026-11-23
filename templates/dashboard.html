@@ -1972,23 +1972,80 @@
         </div>
       </div>
 
-      <!-- Longitudinal Trend Visualization (Chart.js) -->
+      <!-- Longitudinal Trend Visualization (Chart.js & Accessible Data Table) -->
       <div class="p-3 bg-light rounded-4 border mb-3">
         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
           <span class="small fw-bold text-dark">
             <i class="fa-solid fa-chart-line text-primary me-1"></i> ATS Compatibility &amp; Match Progression (v1 - v{{
             versions|length }})
           </span>
-          <span class="small text-muted">
-            <i class="fa-regular fa-calendar me-1"></i> {{ trend_series.dates[0] }} to {{ trend_series.dates[-1] }}
-          </span>
+          <div class="d-flex align-items-center gap-2">
+            {% if trend_series and trend_series.dates and trend_series.dates|length > 0 %}
+              <span class="small text-muted d-none d-md-inline">
+                <i class="fa-regular fa-calendar me-1"></i> {{ trend_series.dates[0] }} to {{ trend_series.dates[-1] }}
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+                id="btnToggleProgressTrendTable"
+                data-target-chart="progressTrendChartWrapper"
+                data-target-table="progressTrendTableWrapper"
+                aria-expanded="false"
+                aria-controls="progressTrendTableWrapper"
+                title="Switch to accessible data table view">
+                <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+              </button>
+            {% endif %}
+          </div>
         </div>
-        <div style="position: relative; height: 220px; width: 100%;">
-          <canvas id="progressTrendChart" role="img"
-            aria-label="Placement readiness progress and score trend chart across recent evaluations">
-            <p>Placement readiness progress trend chart visualization</p>
-          </canvas>
-        </div>
+
+        {% if trend_series and trend_series.labels and trend_series.labels|length > 0 %}
+          <!-- Chart View Container -->
+          <div id="progressTrendChartWrapper" style="position: relative; height: 220px; width: 100%;">
+            <canvas id="progressTrendChart" role="img"
+              aria-label="Placement readiness progress and score trend chart across recent evaluations">
+              <p>Placement readiness progress trend chart visualization</p>
+            </canvas>
+          </div>
+
+          <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+          <div id="progressTrendTableWrapper" class="d-none chart-data-table-wrapper bg-white rounded-3 p-2 border" tabindex="0" role="region" aria-label="Placement readiness progress trend data table">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped table-hover align-middle mb-0" id="progressTrendTable">
+                <caption class="small text-muted py-2">
+                  <i class="fa-solid fa-table me-1"></i> Placement readiness ATS scores and skill gaps progression across resume versions.
+                </caption>
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Version</th>
+                    <th scope="col">Date Evaluated</th>
+                    <th scope="col">ATS Profile Score (0-100 pts)</th>
+                    <th scope="col">Job Match Score (%)</th>
+                    <th scope="col">Skill Gaps (count)</th>
+                    <th scope="col">Resume File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for i in range(trend_series.labels|length) %}
+                  <tr>
+                    <th scope="row" class="fw-semibold">{{ trend_series.labels[i] }}</th>
+                    <td>{{ trend_series.dates[i] }}</td>
+                    <td><span class="badge bg-primary-subtle text-primary fw-bold">{{ trend_series.ats_scores[i] }} pts</span></td>
+                    <td><span class="badge bg-success-subtle text-success fw-bold">{{ trend_series.match_scores[i] }}%</span></td>
+                    <td><span class="badge bg-danger-subtle text-danger fw-bold">{{ trend_series.gap_counts[i] }} gaps</span></td>
+                    <td class="small text-muted text-truncate" style="max-width: 180px;">{{ trend_series.filenames[i] if trend_series.filenames else 'Resume' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% else %}
+          <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+          <div class="chart-empty-state text-center py-4 bg-white rounded-3 border" role="status" aria-live="polite" id="progressTrendEmptyState">
+            <i class="fa-solid fa-chart-line fa-2x mb-2 text-secondary opacity-50"></i>
+            <h6 class="fw-bold mb-1 text-dark">No Historical Progress Data Available</h6>
+            <p class="small text-muted mb-0">Longitudinal score and skill progression trends will appear here as you evaluate multiple resume iterations.</p>
+          </div>
+        {% endif %}
       </div>
 
       <!-- Incremental Keywords & Resolved Gaps Breakdown -->
@@ -3594,35 +3651,103 @@
         <div class="col-lg-5 col-12 text-center">
           <div
             class="p-3 bg-light rounded-4 border h-100 d-flex flex-column align-items-center justify-content-center position-relative">
-            <div class="d-flex justify-content-between w-100 small text-secondary mb-2 px-2">
+            <div class="d-flex justify-content-between align-items-center w-100 small text-secondary mb-2 px-2 flex-wrap gap-1">
               <span class="fw-bold"><i class="fa-solid fa-chart-pie me-1 text-primary"></i> Skills Proportion</span>
-              <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills }} Total Evaluated</span>
-            </div>
-
-            <!-- Chart.js Canvas Container -->
-            <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
-              <canvas id="skillsComparisonChart" role="img"
-                aria-label="Visual skills comparison chart comparing candidate skills against role requirements">
-                <p>Visual skills comparison chart visualization</p>
-              </canvas>
-              <!-- Center Metric Overlay -->
-              <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
-                <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
-                <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills|default(0) }} Total Evaluated</span>
+                {% if sc and sc.total_skills and sc.total_skills > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 chart-table-toggle-btn"
+                  id="btnToggleSkillsComparisonTable"
+                  data-target-chart="skillsChartContainer"
+                  data-target-table="skillsTableWrapper"
+                  aria-expanded="false"
+                  aria-controls="skillsTableWrapper"
+                  title="Switch to accessible data table view">
+                  <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Table</span>
+                </button>
+                {% endif %}
               </div>
             </div>
 
-            <!-- Chart Legend Badges -->
-            <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
-              <div class="d-flex align-items-center gap-1">
-                <i class="fa-solid fa-circle-check me-1" style="color: #009E73;" aria-hidden="true"></i>
-                <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }})</span>
+            {% if sc and sc.total_skills and sc.total_skills > 0 %}
+            <!-- Chart Container -->
+            <div id="skillsChartContainer" class="w-100 d-flex flex-column align-items-center">
+              <!-- Chart.js Canvas Container -->
+              <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
+                <canvas id="skillsComparisonChart" role="img"
+                  aria-label="Visual skills comparison chart comparing candidate skills against role requirements">
+                  <p>Visual skills comparison chart visualization</p>
+                </canvas>
+                <!-- Center Metric Overlay -->
+                <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
+                  <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
+                  <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+                </div>
               </div>
-              <div class="d-flex align-items-center gap-1">
-                <i class="fa-solid fa-circle-xmark me-1" style="color: #D55E00;" aria-hidden="true"></i>
-                <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }})</span>
+
+              <!-- Chart Legend Badges -->
+              <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
+                <div class="d-flex align-items-center gap-1">
+                  <span class="legend-indicator bg-success rounded-circle"
+                    style="width: 10px; height: 10px; display: inline-block;"></span>
+                  <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }} skills)</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                  <span class="legend-indicator bg-danger rounded-circle"
+                    style="width: 10px; height: 10px; display: inline-block;"></span>
+                  <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }} skills)</span>
+                </div>
               </div>
             </div>
+
+            <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+            <div id="skillsTableWrapper" class="d-none chart-data-table-wrapper w-100 bg-white rounded-3 p-2 border my-2" tabindex="0" role="region" aria-label="Skills proportion comparison data table">
+              <div class="table-responsive">
+                <table class="table table-sm table-striped table-hover align-middle mb-0" id="skillsComparisonTable">
+                  <caption class="small text-muted py-2">
+                    <i class="fa-solid fa-table me-1"></i> Proportion and counts of matched versus missing skills against role criteria.
+                  </caption>
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col">Skill Category</th>
+                      <th scope="col">Skill Count</th>
+                      <th scope="col">Requirement Share (%)</th>
+                      <th scope="col">Alignment Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row" class="fw-semibold text-success"><i class="fa-solid fa-circle-check me-1"></i> Matching Skills</th>
+                      <td><span class="badge bg-success-subtle text-success fw-bold">{{ sc.matched_count }} skills</span></td>
+                      <td>{{ sc.match_percentage }}%</td>
+                      <td><span class="badge bg-success">Aligned</span></td>
+                    </tr>
+                    <tr>
+                      <th scope="row" class="fw-semibold text-danger"><i class="fa-solid fa-circle-xmark me-1"></i> Missing Skills</th>
+                      <td><span class="badge bg-danger-subtle text-danger fw-bold">{{ sc.missing_count }} skills</span></td>
+                      <td>{{ sc.missing_percentage }}%</td>
+                      <td><span class="badge bg-danger">Action Required</span></td>
+                    </tr>
+                  </tbody>
+                  <tfoot class="table-light fw-bold">
+                    <tr>
+                      <th scope="row">Total Evaluated</th>
+                      <td>{{ sc.total_skills }} skills</td>
+                      <td>100%</td>
+                      <td>-</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            {% else %}
+            <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+            <div class="chart-empty-state text-center py-4 bg-white rounded-3 border w-100 my-2" role="status" aria-live="polite" id="skillsComparisonEmptyState">
+              <i class="fa-solid fa-chart-pie fa-2x mb-2 text-secondary opacity-50"></i>
+              <h6 class="fw-bold mb-1 text-dark">No Skills Comparison Data</h6>
+              <p class="small text-muted mb-0">No matching or missing skills identified for this role.</p>
+            </div>
+            {% endif %}
           </div>
         </div>
 

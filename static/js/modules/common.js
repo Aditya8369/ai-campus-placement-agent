@@ -11,13 +11,7 @@
 
 import { escapeHtml, initCsrfFetch } from "./utils.js";
 import { initThemeToggle } from "./theme.js";
-import {
-  initKeyboardShortcuts,
-  openShortcutsModal,
-  closeShortcutsModal,
-} from "./keyboard_shortcuts.js";
-
-export { initKeyboardShortcuts, openShortcutsModal, closeShortcutsModal };
+import { initChartAccessibility, toggleChartTableView } from "./chart_accessibility.js";
 
 /**
  * Clear all interview draft answers from browser storage (#475).
@@ -678,6 +672,7 @@ export function initCommon() {
   initMotionPreference();
   initBackToTop();
   initAccessibility();
+  initChartAccessibility();
   initRecentAnalysesDrawer();
   initSessionTimeout();
   initInterviewDraftLogoutCleanup();

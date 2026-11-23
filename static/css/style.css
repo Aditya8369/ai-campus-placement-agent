@@ -3768,24 +3768,74 @@ footer a:hover {
     color: var(--home-heading);
 }
 
-/* Keyboard Shortcuts Help Dialog (#691) */
-.shortcut-kbd {
-    display: inline-block;
-    padding: 0.2rem 0.5rem;
-    font-size: 0.825rem;
-    font-weight: 600;
-    line-height: 1.25;
-    color: #0f172a;
-    background-color: #f1f5f9;
-    border: 1px solid #cbd5e1;
-    border-radius: 4px;
-    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+/* =====================================================
+   ACCESSIBLE CHART DATA TABLES (#task-accessible-chart-tables)
+   ===================================================== */
+
+.chart-table-toggle-btn {
+  font-size: 0.8125rem;
+  transition: all 0.2s ease-in-out;
+  border-color: #cbd5e1;
 }
 
-[data-bs-theme="dark"] .shortcut-kbd {
-    color: #f8fafc;
-    background-color: #1e293b;
-    border-color: #475569;
-    box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.1);
+.chart-table-toggle-btn:hover,
+.chart-table-toggle-btn:focus-visible {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  outline: 2px solid var(--primary-blue, #1a73e8);
+  outline-offset: 2px;
 }
+
+.chart-data-table-wrapper {
+  animation: fadeIn 0.2s ease-in-out;
+  outline: none;
+}
+
+.chart-data-table-wrapper:focus,
+.chart-data-table-wrapper:focus-visible {
+  outline: 2px solid var(--primary-blue, #1a73e8);
+  outline-offset: 2px;
+}
+
+.chart-data-table-wrapper table caption {
+  caption-side: top;
+  font-weight: 500;
+}
+
+.chart-empty-state {
+  animation: fadeIn 0.2s ease-in-out;
+}
+
+[data-bs-theme="dark"] .chart-table-toggle-btn {
+  border-color: #475569;
+  color: #e2e8f0;
+}
+
+[data-bs-theme="dark"] .chart-table-toggle-btn:hover,
+[data-bs-theme="dark"] .chart-table-toggle-btn:focus-visible {
+  background-color: #334155;
+  border-color: #64748b;
+}
+
+[data-bs-theme="dark"] .chart-data-table-wrapper {
+  background-color: var(--home-surface, #1e293b) !important;
+  border-color: var(--home-border, #334155) !important;
+}
+
+[data-bs-theme="dark"] .chart-data-table-wrapper table thead th {
+  background-color: #0f172a;
+  color: #f1f5f9;
+  border-color: #334155;
+}
+
+[data-bs-theme="dark"] .chart-data-table-wrapper table td,
+[data-bs-theme="dark"] .chart-data-table-wrapper table th {
+  color: #cbd5e1;
+  border-color: #334155;
+}
+
+[data-bs-theme="dark"] .chart-empty-state {
+  background-color: var(--home-surface, #1e293b) !important;
+  border-color: var(--home-border, #334155) !important;
+}
+
