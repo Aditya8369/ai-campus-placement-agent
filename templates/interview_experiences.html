@@ -105,6 +105,55 @@
       </form>
     </div>
 
+    <!-- Frequently Asked Interview Questions (#694) -->
+    {% if frequently_asked_questions and frequently_asked_questions|length > 0 %}
+    <div class="card border-0 shadow-sm rounded-4 mb-4 bg-white overflow-hidden" id="frequentlyAskedSection">
+      <div class="card-header bg-primary-subtle border-0 p-3 p-md-4">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+          <div>
+            <span class="badge bg-primary text-white rounded-pill px-3 py-1 text-uppercase small fw-semibold">
+              <i class="fa-solid fa-fire me-1"></i> Frequently Asked Questions
+            </span>
+            <h5 class="fw-bold text-dark mt-2 mb-1">Top Questions for {{ company_filter }}</h5>
+            <p class="small text-muted mb-0">Compiled from verified student interview experiences. Repeated across multiple campus hiring rounds.</p>
+          </div>
+          <span class="badge bg-white text-primary border rounded-pill px-3 py-1.5 fw-semibold shadow-sm">
+            Top {{ frequently_asked_questions|length }} Questions
+          </span>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="list-group list-group-flush">
+          {% for faq in frequently_asked_questions %}
+          <div class="list-group-item d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-2 p-3 bg-white">
+            <div class="d-flex align-items-start gap-3">
+              <span class="badge bg-light text-dark border rounded-circle d-flex align-items-center justify-content-center fw-bold" style="width: 28px; height: 28px;">
+                {{ loop.index }}
+              </span>
+              <div>
+                <div class="fw-semibold text-dark">{{ faq.question }}</div>
+                <div class="d-flex align-items-center gap-2 mt-1">
+                  <span class="badge bg-secondary-subtle text-secondary border rounded-pill small">
+                    {{ faq.round }}
+                  </span>
+                  <span class="text-muted small">
+                    <i class="fa-solid fa-users me-1 text-primary"></i>Asked in {{ faq.count }} {% if faq.count == 1 %}experience{% else %}experiences{% endif %}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div class="mt-2 mt-md-0 ms-auto">
+              <a href="{{ faq.practice_url }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 text-nowrap">
+                <i class="fa-solid fa-play me-1"></i> Practice Question
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Experiences Stream -->
     <div class="row g-4">
       {% for exp in experiences %}

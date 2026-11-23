@@ -51,11 +51,7 @@ from utils.bookmark_folders import *
 from utils.interview_moderation import *
 from utils.deadline_reminders import *
 from utils.company_profile_manager import *
-from utils.interview_helpful_service import (
-    toggle_helpful_vote,
-    get_user_helpful_votes,
-    check_voting_rate_limit,
-)
+from utils.interview_faq_service import get_frequently_asked_questions
 from utils.progress_tracker import *
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
@@ -1336,6 +1332,8 @@ def interview_experiences_view():
         base_url="/interview-experiences"
     )
 
+    frequently_asked = get_frequently_asked_questions(company_filter) if company_filter else []
+
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
             "success": True,
@@ -1343,7 +1341,8 @@ def interview_experiences_view():
             "total": len(experiences),
             "sort_by": sort_by,
             "experiences": pagination.items,
-            "pagination": pagination.to_dict()
+            "pagination": pagination.to_dict(),
+            "frequently_asked_questions": frequently_asked,
         }), 200
 
     return render_template(
@@ -1353,8 +1352,8 @@ def interview_experiences_view():
         company_filter=company_filter,
         category_filter=category_filter,
         search_query=search_query,
-        sort_by=sort_by,
-        student_id=student_id
+        student_id=student_id,
+        frequently_asked_questions=frequently_asked,
     )
 
 
@@ -2273,11 +2272,14 @@ def export_interview_bookmarks():
 
 
 @interview_bp.route("/interview/bookmarks/practice", methods=["GET"])
+@interview_bp.route("/interview/practice", methods=["GET"])
+@interview_bp.route("/interview/practice-mode", methods=["GET"])
 def interview_saved_practice_view():
     """
-    Focused Practice Mode for Bookmarked Interview Questions (#359).
-    Presents saved questions one-by-one with answer recording, optional
+    Focused Practice Mode for Bookmarked & Frequently Asked Interview Questions (#359, #694).
+    Presents questions one-by-one with answer recording, optional
     AI evaluation, and practice completion tracking.
+    Supports deep-linking via ?question_id=... or ?question_text=...
     """
     student_id = request.args.get("student_id") or _get_current_student_id()
     active_category = request.args.get("category", "All").strip()
@@ -2298,6 +2300,52 @@ def interview_saved_practice_view():
         filtered = [b for b in filtered if not b.get("is_practiced")]
 
     target_question_id = request.args.get("question_id", "").strip()
+
+    # Support direct question practice deep-linking (?question_text=... or ?question=...)
+    practice_q_text = (request.args.get("question_text") or request.args.get("question") or "").strip()
+    if practice_q_text:
+        practice_company = (request.args.get("company") or "General").strip()
+        practice_cat = (request.args.get("category") or "Technical").strip()
+        import hashlib
+        q_hash = hashlib.sha256(practice_q_text.encode("utf-8")).hexdigest()[:12]
+        generated_id = f"faq-{q_hash}"
+
+        matched_bm = next(
+            (
+                b for b in all_bookmarks
+                if b.get("question_id") == generated_id
+                or b.get("question_text", "").strip().lower() == practice_q_text.lower()
+            ),
+            None,
+        )
+        if matched_bm:
+            target_question_id = matched_bm.get("question_id")
+        else:
+            save_interview_bookmark(
+                student_id=student_id,
+                question_id=generated_id,
+                question_text=practice_q_text,
+                category=practice_cat,
+                company_name=practice_company,
+                notes=f"Frequently asked in {practice_company} campus interviews.",
+            )
+            adhoc_entry = {
+                "id": generated_id,
+                "student_id": student_id,
+                "question_id": generated_id,
+                "question_text": practice_q_text,
+                "category": practice_cat,
+                "company_name": practice_company,
+                "notes": f"Frequently asked in {practice_company} campus interviews.",
+                "is_practiced": False,
+                "practice_answer": "",
+                "practice_evaluation": {},
+                "created_at": datetime.now().isoformat(),
+            }
+            all_bookmarks.insert(0, adhoc_entry)
+            filtered.insert(0, adhoc_entry)
+            target_question_id = generated_id
+            stats = get_interview_bookmark_practice_stats(student_id)
 
     if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return jsonify({
