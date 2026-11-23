@@ -20,6 +20,7 @@
 
 import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
 import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
+import { initMotionPreference, isReducedMotion, getMotionPreference, setMotionPreference } from "./modules/motion.js";
 import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
 import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
 import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
@@ -28,6 +29,7 @@ import { initCodingBookmarks, initInterviewBookmarks } from "./modules/bookmarks
 import { initCompanyExplorer } from "./modules/tracker.js";
 import { initStreakTracker } from "./modules/streaks.js";
 import { initPasswordToggle, initPasswordStrengthIndicator } from "./modules/auth.js";
+import { OKABE_ITO, createAccessiblePattern, getChartThemeTokens } from "./modules/chart_palette.js";
 import { initSelfIntroductionStudio } from "./modules/self_intro.js";
 import { initProjectDeepDive } from "./modules/project_deep_dive.js";
 import { initTailoredCoverLetterStudio } from "./modules/cover_letter.js";
@@ -74,7 +76,11 @@ export {
   initPasswordStrengthIndicator,
   initSelfIntroductionStudio,
   initProjectDeepDive,
-  initTailoredCoverLetterStudio
+  initTailoredCoverLetterStudio,
+  initMotionPreference,
+  isReducedMotion,
+  getMotionPreference,
+  setMotionPreference
 };
 
 // Expose public API on window for backwards compatibility with inline templates
@@ -84,6 +90,9 @@ if (typeof window !== "undefined") {
   window.showToast = showToast;
   window.copyToClipboard = copyToClipboard;
   window.clearAllInterviewDrafts = clearAllInterviewDrafts;
+  window.getMotionPreference = getMotionPreference;
+  window.setMotionPreference = setMotionPreference;
+  window.isReducedMotion = isReducedMotion;
 }
 
 // Bootstrap on DOMContentLoaded
@@ -1005,7 +1014,103 @@ function initCompanyExplorer() {
               <i class="fa-solid fa-download me-1"></i>Download Cheat Sheet
             </a>
           </div>
+
+          <!-- Company Eligibility Calculator (#603) -->
+          <div class="card border border-primary-subtle rounded-3 mt-3 p-3 bg-body" id="companyEligibilityCalculatorCard">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <h6 class="fw-bold mb-0 text-primary">
+                <i class="fa-solid fa-calculator me-1"></i> Eligibility Calculator
+              </h6>
+              <span class="badge bg-secondary-subtle text-secondary border rounded-pill small">Private Profile</span>
+            </div>
+            <p class="small text-muted mb-3" style="font-size: 0.8rem;">
+              Compare your academic scores against verified requirements. Unknown or unconfirmed rules are marked clearly as uncertain.
+            </p>
+            <div class="row g-2 mb-3">
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Your CGPA:</label>
+                <input type="number" step="0.01" min="0" max="10" class="form-control form-control-sm" id="calcCgpaInput" placeholder="e.g. 7.5">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Active Backlogs:</label>
+                <input type="number" min="0" max="20" class="form-control form-control-sm" id="calcBacklogsInput" placeholder="e.g. 0">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Branch / Degree:</label>
+                <input type="text" class="form-control form-control-sm" id="calcBranchInput" placeholder="e.g. CSE / IT">
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mb-2">
+              <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" id="btnCalculateEligibility">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> Check Eligibility
+              </button>
+            </div>
+            <div id="eligibilityResultsContainer" class="d-none mt-2">
+              <div class="alert alert-light border rounded-3 p-3 mb-2" id="eligibilityStatusAlert">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong id="eligibilityStatusTitle">Eligibility Status</strong>
+                  <span class="badge" id="eligibilityStatusBadge">Eligible</span>
+                </div>
+                <div id="eligibilityEvaluationsList" class="d-flex flex-column gap-1 small mt-2"></div>
+              </div>
+            </div>
+          </div>
         `;
+
+        // Attach event listener for company eligibility calculator
+        const btnCalc = modalBody.querySelector("#btnCalculateEligibility");
+        if (btnCalc) {
+          btnCalc.addEventListener("click", async () => {
+            const cgpaInput = modalBody.querySelector("#calcCgpaInput");
+            const backlogsInput = modalBody.querySelector("#calcBacklogsInput");
+            const branchInput = modalBody.querySelector("#calcBranchInput");
+            const resultsBox = modalBody.querySelector("#eligibilityResultsContainer");
+            const badgeEl = modalBody.querySelector("#eligibilityStatusBadge");
+            const titleEl = modalBody.querySelector("#eligibilityStatusTitle");
+            const listEl = modalBody.querySelector("#eligibilityEvaluationsList");
+
+            const payload = {
+              cgpa: cgpaInput && cgpaInput.value ? parseFloat(cgpaInput.value) : null,
+              backlogs: backlogsInput && backlogsInput.value !== "" ? parseInt(backlogsInput.value, 10) : null,
+              branch: branchInput && branchInput.value ? branchInput.value.trim() : null
+            };
+
+            btnCalc.disabled = true;
+            try {
+              const elResp = await fetch(`/api/company/${encodeURIComponent(company)}/eligibility`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+              });
+              const elData = await elResp.json();
+              if (elData.success && elData.eligibility) {
+                const el = elData.eligibility;
+                if (resultsBox) resultsBox.classList.remove("d-none");
+                if (titleEl) titleEl.textContent = `${company} Eligibility: ${el.overall_status}`;
+                if (badgeEl) {
+                  badgeEl.textContent = el.overall_status;
+                  badgeEl.className = "badge rounded-pill px-3 py-1 " + 
+                    (el.overall_status === "Eligible" ? "bg-success" : (el.overall_status === "Not Eligible" ? "bg-danger" : "bg-warning text-dark"));
+                }
+                if (listEl) {
+                  listEl.innerHTML = el.evaluations.map(ev => `
+                    <div class="p-2 rounded border bg-white">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <strong>${escapeHtml(ev.criteria)}</strong>
+                        <span class="badge ${ev.status === 'Met' ? 'bg-success-subtle text-success' : (ev.status === 'Unmet' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning-emphasis')} border rounded-pill">${escapeHtml(ev.status)}</span>
+                      </div>
+                      <div class="text-secondary">${escapeHtml(ev.explanation)}</div>
+                    </div>
+                  `).join("");
+                }
+              }
+            } catch (calcErr) {
+              console.error("Eligibility check error", calcErr);
+            } finally {
+              btnCalc.disabled = false;
+            }
+          });
+        }
       } else {
         modalBody.innerHTML = `<div class="alert alert-warning">No details found for ${company}.</div>`;
       }
@@ -1287,6 +1392,16 @@ function initFormUpload() {
   const btnSubmitAnalysis = document.getElementById("btnSubmitAnalysis");
   const submitBtnSpan = document.getElementById("submitBtnSpan");
   const submitBtnIcon = document.getElementById("submitBtnIcon");
+  const btnCancelAnalysis = document.getElementById("btnCancelAnalysis");
+  const streamedSectionsContainer = document.getElementById("streamedSectionsContainer");
+  const streamedSectionsCounter = document.getElementById("streamedSectionsCounter");
+  const streamedSectionsCards = document.getElementById("streamedSectionsCards");
+  const btnViewPartialDashboard = document.getElementById("btnViewPartialDashboard");
+
+  let currentTaskId = null;
+  let currentAnalysisId = null;
+  let cancelUrl = null;
+  const receivedSections = new Map();
 
   let isAnalysisRunning = false;
 
@@ -1338,6 +1453,125 @@ function initFormUpload() {
     });
   }
 
+  // Handle Cancel Button Action (#465, #764)
+  if (btnCancelAnalysis) {
+    btnCancelAnalysis.addEventListener("click", () => {
+      if (!currentTaskId) return;
+      btnCancelAnalysis.disabled = true;
+      btnCancelAnalysis.classList.add("disabled");
+      btnCancelAnalysis.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Cancelling...';
+
+      const targetCancelUrl = cancelUrl || `/api/analysis/cancel/${currentTaskId}`;
+      fetch(targetCancelUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: currentTaskId }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (progressTitle) progressTitle.textContent = "Analysis Cancelled";
+          if (progressSubtitle) {
+            progressSubtitle.textContent =
+              receivedSections.size > 0
+                ? `Cancelled by user. ${receivedSections.size} generated section(s) have been kept below.`
+                : "Analysis was cancelled. You can adjust your inputs and try again.";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+          if (btnViewPartialDashboard && currentAnalysisId && receivedSections.size > 0) {
+            btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+            btnViewPartialDashboard.classList.remove("d-none");
+          }
+          enableSubmitButton();
+        })
+        .catch((err) => {
+          console.warn("Cancel request failed:", err);
+          enableSubmitButton();
+        });
+    });
+  }
+
+  // Render streamed section card incrementally as each completes (#764)
+  function renderStreamedSection(secName, secData) {
+    if (!secName || receivedSections.has(secName)) return;
+    receivedSections.set(secName, secData);
+
+    if (streamedSectionsContainer) {
+      streamedSectionsContainer.classList.remove("d-none");
+    }
+    if (streamedSectionsCounter) {
+      streamedSectionsCounter.textContent = `${receivedSections.size} ready`;
+    }
+
+    if (!streamedSectionsCards) return;
+
+    const card = document.createElement("div");
+    card.className = "card border-0 shadow-sm p-3 bg-light rounded-3 text-start mb-2";
+    card.id = `streamedCard_${secName}`;
+
+    let title = secName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    let badgeHtml = '<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small"><i class="fa-solid fa-check me-1"></i> Ready</span>';
+    let contentHtml = "";
+
+    if (secName === "resume_analysis") {
+      title = "Resume Analysis & ATS";
+      const score = secData.ats_score || (secData.ats_breakdown && secData.ats_breakdown.total_score) || 75;
+      const strengthsCount = Array.isArray(secData.strengths) ? secData.strengths.length : 0;
+      const summary = secData.summary || secData.overall_feedback || "Analysis completed.";
+      contentHtml = `
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="small fw-semibold text-dark">ATS Score: <strong>${score}/100</strong></span>
+          <span class="small text-muted">${strengthsCount} strengths identified</span>
+        </div>
+        <p class="small text-secondary mb-0 text-truncate" title="${summary}">${summary}</p>
+      `;
+    } else if (secName === "job_match") {
+      title = "Job Description Match";
+      const matchPct = secData.match_percentage || 0;
+      const matchedCount = Array.isArray(secData.matched_skills) ? secData.matched_skills.length : 0;
+      const missingCount = Array.isArray(secData.missing_skills) ? secData.missing_skills.length : 0;
+      contentHtml = `
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="small fw-semibold text-dark">Role Match: <strong>${matchPct}%</strong></span>
+          <span class="small text-muted">${matchedCount} matched, ${missingCount} gaps</span>
+        </div>
+      `;
+    } else if (secName === "skill_gap") {
+      title = "Skill Gap Assessment";
+      const gapsCount = Array.isArray(secData) ? secData.length : 0;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${gapsCount} prioritized skill gaps identified with resources</span>
+      `;
+    } else if (secName === "learning_roadmap") {
+      title = "6-Week Preparation Roadmap";
+      const weeksCount = Array.isArray(secData) ? secData.length : 6;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${weeksCount}-week structured preparation roadmap with coding tasks</span>
+      `;
+    } else if (secName === "interview_questions") {
+      title = "Company Interview Questions";
+      const hrCount = secData.hr ? secData.hr.length : 0;
+      const techCount = secData.technical ? secData.technical.length : 0;
+      const behCount = secData.behavioral ? secData.behavioral.length : 0;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${hrCount + techCount + behCount} customized interview questions (Technical, HR, Behavioral) generated</span>
+      `;
+    } else {
+      contentHtml = `<p class="small text-secondary mb-0">${typeof secData === "string" ? secData : "Section generated."}</p>`;
+    }
+
+    card.innerHTML = `
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <strong class="small text-primary"><i class="fa-solid fa-file-lines me-1"></i> ${title}</strong>
+        ${badgeHtml}
+      </div>
+      ${contentHtml}
+    `;
+
+    streamedSectionsCards.appendChild(card);
+    streamedSectionsCards.scrollTop = streamedSectionsCards.scrollHeight;
+  }
+
   const stepOrder = ["step1", "step2", "step3", "step4", "step5", "step6"];
   const stepNamesMap = {
     "step1": "Reading resume",
@@ -1349,6 +1583,17 @@ function initFormUpload() {
   };
 
   function resetProgressPanel() {
+    if (streamedSectionsCards) streamedSectionsCards.innerHTML = "";
+    if (streamedSectionsContainer) streamedSectionsContainer.classList.add("d-none");
+    if (streamedSectionsCounter) streamedSectionsCounter.textContent = "0 ready";
+    if (btnViewPartialDashboard) btnViewPartialDashboard.classList.add("d-none");
+    if (btnCancelAnalysis) {
+      btnCancelAnalysis.disabled = false;
+      btnCancelAnalysis.classList.remove("disabled");
+      btnCancelAnalysis.innerHTML = '<i class="fa-solid fa-ban me-1"></i> Cancel Analysis';
+    }
+    receivedSections.clear();
+
     if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
     if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
@@ -1717,6 +1962,47 @@ function initFormUpload() {
       const stepName = milestone.current_step_name || stepNamesMap[step] || step;
       const completedSteps = milestone.completed_steps || [];
 
+      // Check for streaming section completed event (#764)
+      if (
+        milestone.event === "section_completed" ||
+        milestone.step === "section_stream" ||
+        milestone.section ||
+        (milestone.extra && (milestone.extra.section || milestone.extra.event === "section_completed"))
+      ) {
+        const secName =
+          milestone.section ||
+          (milestone.extra && (milestone.extra.section || milestone.extra.section_name));
+        const secData =
+          milestone.data ||
+          milestone.section_data ||
+          (milestone.extra && (milestone.extra.data || milestone.extra.section_data));
+        if (secName && secData) {
+          renderStreamedSection(secName, secData);
+        }
+      }
+
+      if (status === "cancelled" || step === "cancelled") {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (progressTitle) progressTitle.textContent = "Analysis Cancelled";
+        if (progressSubtitle) {
+          progressSubtitle.textContent =
+            receivedSections.size > 0
+              ? `Analysis stopped. ${receivedSections.size} generated section(s) are preserved below.`
+              : (milestone.message || "Analysis was cancelled by the user.");
+        }
+        if (progressSpinner) progressSpinner.classList.add("d-none");
+        if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+        if (btnViewPartialDashboard && currentAnalysisId && receivedSections.size > 0) {
+          btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+          btnViewPartialDashboard.classList.remove("d-none");
+        }
+        enableSubmitButton();
+        return;
+      }
+
       if (analysisProgressBar) {
         analysisProgressBar.style.width = `${progress}%`;
         analysisProgressBar.setAttribute("aria-valuenow", String(progress));
@@ -1857,11 +2143,25 @@ function initFormUpload() {
       if (progressErrorStepName) {
         progressErrorStepName.textContent = stepLabel;
       }
+
+      // Errors never discard content that was already shown (#764)
+      let displayMsg = errMsg;
+      if (receivedSections.size > 0) {
+        displayMsg = `${errMsg} (${receivedSections.size} section(s) generated before this issue are kept below).`;
+        if (progressSubtitle) {
+          progressSubtitle.textContent = `Interrupted, but ${receivedSections.size} completed section(s) are preserved below.`;
+        }
+        if (btnViewPartialDashboard && currentAnalysisId) {
+          btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+          btnViewPartialDashboard.classList.remove("d-none");
+        }
+      }
+
       if (progressErrorAlert && progressErrorMessage) {
-        progressErrorMessage.textContent = errMsg;
+        progressErrorMessage.textContent = displayMsg;
         progressErrorAlert.classList.remove("d-none");
       } else {
-        alert(`Failed at ${stepLabel}: ${errMsg}`);
+        alert(`Failed at ${stepLabel}: ${displayMsg}`);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
       setActionButtonsProcessing(false);
@@ -1875,6 +2175,10 @@ function initFormUpload() {
     })
       .then(async (response) => {
         const data = await response.json();
+        currentTaskId = data.task_id;
+        currentAnalysisId = data.analysis_id;
+        cancelUrl = data.cancel_url || `/api/analysis/cancel/${data.task_id}`;
+
         if (!response.ok || !data.success) {
           throw new Error(data.error || "Failed to initiate background analysis.");
         }
@@ -4130,8 +4434,12 @@ function initProgressTracker() {
   const canvas = document.getElementById("progressTrendChart");
   if (canvas && window.Chart && trendData && Array.isArray(trendData.labels) && trendData.labels.length > 0) {
     const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
-    const textColor = isDark ? "#c4c7c5" : "#444746";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+    const tokens = getChartThemeTokens ? getChartThemeTokens(isDark) : {
+      textColor: isDark ? "#f0f2f5" : "#1f1f1f",
+      gridColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      surfaceBg: isDark ? "#1e2022" : "#ffffff",
+      borderColor: isDark ? "#444746" : "#dadce0",
+    };
 
     const ctx = canvas.getContext("2d");
     const progressChart = new window.Chart(ctx, {
@@ -4142,40 +4450,49 @@ function initProgressTracker() {
           {
             label: "ATS Profile Score",
             data: trendData.ats_scores,
-            borderColor: "#1a73e8",
-            backgroundColor: "rgba(26, 115, 232, 0.12)",
+            borderColor: OKABE_ITO.blue,
+            backgroundColor: "rgba(0, 114, 178, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#1a73e8",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.blue,
+            pointBorderColor: "#ffffff",
+            pointStyle: "circle",
+            borderDash: [],
             yAxisID: "y"
           },
           {
             label: "Job Match %",
             data: trendData.match_scores,
-            borderColor: "#34a853",
-            backgroundColor: "rgba(52, 168, 83, 0.08)",
+            borderColor: OKABE_ITO.bluishGreen,
+            backgroundColor: "rgba(0, 158, 115, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#34a853",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.bluishGreen,
+            pointBorderColor: "#ffffff",
+            pointStyle: "rectRot",
+            borderDash: [6, 4],
             yAxisID: "y"
           },
           {
             label: "Skill Gaps Count",
             data: trendData.gap_counts,
-            borderColor: "#ea4335",
-            borderDash: [5, 5],
+            borderColor: OKABE_ITO.vermilion,
             backgroundColor: "transparent",
             fill: false,
             tension: 0.3,
-            borderWidth: 2,
-            pointRadius: 4,
-            pointBackgroundColor: "#ea4335",
+            borderWidth: 2.5,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.vermilion,
+            pointBorderColor: "#ffffff",
+            pointStyle: "triangle",
+            borderDash: [3, 3],
             yAxisID: "y1"
           }
         ]
@@ -4191,16 +4508,28 @@ function initProgressTracker() {
           legend: {
             position: "top",
             labels: {
-              boxWidth: 14,
-              font: { size: 12, family: "'Outfit', sans-serif" },
-              color: textColor
+              usePointStyle: true,
+              boxWidth: 12,
+              font: { size: 12, family: "'Outfit', sans-serif", weight: "500" },
+              color: tokens.textColor,
+              generateLabels: function(chart) {
+                const markers = ["●", "◆", "▲"];
+                return chart.data.datasets.map((ds, i) => ({
+                  text: `${markers[i] || "■"} ${ds.label}`,
+                  fillStyle: ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  pointStyle: ds.pointStyle,
+                  datasetIndex: i,
+                  fontColor: tokens.textColor,
+                }));
+              }
             }
           },
           tooltip: {
-            backgroundColor: isDark ? "#282a2c" : "#ffffff",
-            titleColor: isDark ? "#e3e3e3" : "#1f1f1f",
-            bodyColor: isDark ? "#c4c7c5" : "#444746",
-            borderColor: isDark ? "#444746" : "#dadce0",
+            backgroundColor: tokens.surfaceBg,
+            titleColor: tokens.textColor,
+            bodyColor: tokens.textColor,
+            borderColor: tokens.borderColor,
             borderWidth: 1,
             padding: 10,
             callbacks: {
@@ -4209,14 +4538,20 @@ function initProgressTracker() {
                 const date = trendData.dates && trendData.dates[idx] ? trendData.dates[idx] : "";
                 const filename = trendData.filenames && trendData.filenames[idx] ? trendData.filenames[idx] : "";
                 return `Iteration ${trendData.labels[idx]} (${date}) - ${filename}`;
+              },
+              label: function (context) {
+                const markers = ["●", "◆", "▲"];
+                const sym = markers[context.datasetIndex] || "■";
+                const suffix = context.datasetIndex === 2 ? "" : "%";
+                return ` ${sym} ${context.dataset.label}: ${context.raw}${suffix}`;
               }
             }
           }
         },
         scales: {
           x: {
-            grid: { color: gridColor },
-            ticks: { color: textColor, font: { family: "'Outfit', sans-serif" } }
+            grid: { color: tokens.gridColor },
+            ticks: { color: tokens.textColor, font: { family: "'Outfit', sans-serif" } }
           },
           y: {
             type: "linear",
@@ -4224,9 +4559,9 @@ function initProgressTracker() {
             position: "left",
             min: 0,
             max: 100,
-            grid: { color: gridColor },
+            grid: { color: tokens.gridColor },
             ticks: {
-              color: textColor,
+              color: tokens.textColor,
               callback: val => `${val}%`,
               font: { family: "'Outfit', sans-serif" }
             }
@@ -4239,9 +4574,9 @@ function initProgressTracker() {
             suggestedMax: 8,
             grid: { drawOnChartArea: false },
             ticks: {
-              color: "#ea4335",
+              color: OKABE_ITO.vermilion,
               precision: 0,
-              font: { family: "'Outfit', sans-serif" }
+              font: { family: "'Outfit', sans-serif", weight: "600" }
             }
           }
         }
@@ -4251,15 +4586,17 @@ function initProgressTracker() {
     // Theme toggle listener to update chart colors
     const observer = new MutationObserver(() => {
       const darkNow = document.documentElement.getAttribute("data-bs-theme") === "dark";
-      const newTextColor = darkNow ? "#c4c7c5" : "#444746";
-      const newGridColor = darkNow ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+      const newTokens = getChartThemeTokens ? getChartThemeTokens(darkNow) : {
+        textColor: darkNow ? "#f0f2f5" : "#1f1f1f",
+        gridColor: darkNow ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      };
 
       if (progressChart) {
-        progressChart.options.scales.x.ticks.color = newTextColor;
-        progressChart.options.scales.x.grid.color = newGridColor;
-        progressChart.options.scales.y.ticks.color = newTextColor;
-        progressChart.options.scales.y.grid.color = newGridColor;
-        progressChart.options.plugins.legend.labels.color = newTextColor;
+        progressChart.options.scales.x.ticks.color = newTokens.textColor;
+        progressChart.options.scales.x.grid.color = newTokens.gridColor;
+        progressChart.options.scales.y.ticks.color = newTokens.textColor;
+        progressChart.options.scales.y.grid.color = newTokens.gridColor;
+        progressChart.options.plugins.legend.labels.color = newTokens.textColor;
         progressChart.update();
       }
     });
@@ -5537,6 +5874,15 @@ function initSkillsComparisonChart() {
   const missingPct = 100 - matchPct;
 
   const ctx = canvas.getContext("2d");
+
+  // Create accessible patterns for non-color differentiation (diagonal-stripes vs cross-hatch)
+  const matchedPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "diagonal-stripes", OKABE_ITO.bluishGreen, isDark ? "rgba(0, 158, 115, 0.35)" : "rgba(0, 158, 115, 0.20)")
+    : OKABE_ITO.bluishGreen;
+  const missingPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "cross-hatch", OKABE_ITO.vermilion, isDark ? "rgba(213, 94, 0, 0.35)" : "rgba(213, 94, 0, 0.20)")
+    : OKABE_ITO.vermilion;
+
   const chartInstance = new window.Chart(ctx, {
     type: "doughnut",
     data: {
@@ -5544,10 +5890,7 @@ function initSkillsComparisonChart() {
       datasets: [
         {
           data: [matchedCount, missingCount],
-          backgroundColor: [
-            isDark ? "#2ea043" : "#198754", // Green / Success
-            isDark ? "#f85149" : "#dc3545"  // Red / Danger
-          ],
+          backgroundColor: [matchedPattern, missingPattern],
           borderColor: isDark ? "#161b22" : "#ffffff",
           borderWidth: 3,
           hoverOffset: 6
@@ -5560,7 +5903,7 @@ function initSkillsComparisonChart() {
       cutout: "70%",
       plugins: {
         legend: {
-          display: false // We render custom interactive badges and tooltips
+          display: false // Custom accessible legend rendered in HTML with check/cross icons
         },
         tooltip: {
           backgroundColor: isDark ? "rgba(22, 27, 34, 0.95)" : "rgba(33, 37, 41, 0.95)",
@@ -5572,7 +5915,8 @@ function initSkillsComparisonChart() {
             label: function (context) {
               const count = context.raw || 0;
               const pct = context.dataIndex === 0 ? matchPct : missingPct;
-              return ` ${context.label}: ${count} (${pct}%)`;
+              const icon = context.dataIndex === 0 ? "✔" : "✖";
+              return ` ${icon} ${context.label}: ${count} (${pct}%)`;
             }
           }
         }

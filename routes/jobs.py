@@ -51,6 +51,7 @@ from utils.bookmark_folders import *
 from utils.interview_moderation import *
 from utils.deadline_reminders import *
 from utils.company_profile_manager import *
+from utils.interview_faq_service import get_frequently_asked_questions
 from utils.progress_tracker import *
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
@@ -122,20 +123,55 @@ jobs_bp = Blueprint("jobs", __name__)
 def get_company_profile(company_name: str):
     """
     Returns company hiring details from data/companies.json for the preview explorer modal.
-    Enriched with source metadata, verification status, and freshness indicators.
+    Enriched with source metadata, verification status, freshness indicators,
+    and frequently asked interview questions (#694).
     """
     companies_file = Path(config.BASE_DIR) / "data" / "companies.json"
     try:
+        faqs = get_frequently_asked_questions(company_name)
         if companies_file.exists():
             with open(companies_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if company_name in data:
                     raw_details = data[company_name]
                     enriched_details = enrich_company_hiring_guide(company_name, raw_details)
-                    return jsonify({"success": True, "company": company_name, "details": enriched_details})
+                    enriched_details["frequently_asked_questions"] = faqs
+                    return jsonify({
+                        "success": True,
+                        "company": company_name,
+                        "details": enriched_details,
+                        "frequently_asked_questions": faqs,
+                    })
     except Exception as e:
         logger.error(f"Error fetching company details for {company_name}: {e}")
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
+
+
+@jobs_bp.route("/api/company/<company_name>/faq", methods=["GET"])
+@jobs_bp.route("/api/company/<company_name>/frequently-asked-questions", methods=["GET"])
+def api_company_frequently_asked_questions(company_name: str):
+    """
+    Returns the top frequently asked questions for a company derived from
+    approved interview experiences (#694).
+    """
+    min_exp = request.args.get("min_experiences", 3, type=int)
+    limit = request.args.get("limit", 10, type=int)
+    faqs = get_frequently_asked_questions(company_name, min_experiences=min_exp, limit=limit)
+    return jsonify({
+        "success": True,
+        "company": company_name,
+        "total_questions": len(faqs),
+        "frequently_asked_questions": faqs,
+    }), 200
+
+
+@jobs_bp.route("/company/<company_name>", methods=["GET"])
+def company_profile_direct_view(company_name: str):
+    """
+    Direct company page route (#694).
+    Redirects to the companies directory pre-filtered to the target company.
+    """
+    return redirect(url_for("companies_search_view", search=company_name))
 
 
 @jobs_bp.route("/company/<company_name>/cheat-sheet", methods=["GET"])
@@ -223,6 +259,7 @@ def api_job_recommendations(analysis_id: str):
 
         location = request.args.get("location", "all").strip()
         role_type = request.args.get("role_type", "all").strip()
+        experience_level = request.args.get("experience_level", "all").strip()
         search_query = request.args.get("search", "").strip()
         force_refresh = request.args.get("force_refresh", "false").lower() in ("true", "1")
 
@@ -238,18 +275,29 @@ def api_job_recommendations(analysis_id: str):
         except (ValueError, TypeError):
             limit = None
 
-        feed_service = JobFeedService()
-        active_jobs = feed_service.get_all_jobs(force_refresh=force_refresh)
-
         matcher_agent = JobRecommendationAgent()
+        active_jobs = matcher_agent.data_source.get_jobs()
+
         recommendations = matcher_agent.recommend_jobs(
             analysis_record=analysis_record,
             jobs=active_jobs,
             location=location,
             role_type=role_type,
+            experience_level=experience_level,
             min_match=min_match,
             search_query=search_query
         )
+
+        suggestions_to_broaden = []
+        if len(recommendations) == 0:
+            suggestions_to_broaden = matcher_agent.get_broaden_suggestions(
+                total_available=len(active_jobs),
+                filtered_count=len(recommendations),
+                location=location,
+                role_type=role_type,
+                experience_level=experience_level,
+                search_query=search_query
+            )
 
         if limit and limit > 0:
             recommendations = recommendations[:limit]
@@ -263,9 +311,11 @@ def api_job_recommendations(analysis_id: str):
             "filters_applied": {
                 "location": location,
                 "role_type": role_type,
+                "experience_level": experience_level,
                 "min_match": min_match,
                 "search": search_query
             },
+            "suggestions_to_broaden": suggestions_to_broaden,
             "jobs": recommendations
         }), 200
 
@@ -546,6 +596,7 @@ def companies_search_view():
     for c in companies:
         c_copy = dict(c)
         c_copy["enriched"] = enrich_company_hiring_guide(c.get("company_name", ""), c)
+        c_copy["frequently_asked_questions"] = get_frequently_asked_questions(c.get("company_name", ""))
         enriched_companies.append(c_copy)
 
     # Check if AJAX or JSON response is requested

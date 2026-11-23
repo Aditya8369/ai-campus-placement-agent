@@ -160,6 +160,7 @@
           <thead class="table-light">
             <tr>
               <th>Target Company</th>
+              <th>Persona</th>
               <th>Date</th>
               <th>Progress</th>
               <th>Avg Score</th>
@@ -175,6 +176,11 @@
             <tr>
               <td class="fw-semibold text-truncate" style="max-width: 150px;">
                 <i class="fa-solid fa-building text-secondary me-1"></i> {{ s.company_name }}
+              </td>
+              <td>
+                <span class="badge {{ s.interviewer_style_badge or 'bg-success-subtle text-success border border-success-subtle' }} rounded-pill small">
+                  <i class="fa-solid {{ s.interviewer_style_icon or 'fa-face-smile' }} me-1"></i>{{ s.interviewer_style_name or 'Friendly HR' }}
+                </span>
               </td>
               <td class="small text-muted">{{ s.date | format_date_ist if s.date else 'N/A' }}</td>
               <td>
@@ -228,15 +234,17 @@
       data: {
         labels: trendData.map(d => `${d.company} (${d.date})`),
         datasets: [{
-          label: 'Interview Score',
+          label: '◆ Interview Score',
           data: trendData.map(d => d.score),
-          borderColor: '#4f46e5',
-          backgroundColor: 'rgba(79, 70, 229, 0.1)',
+          borderColor: '#0072B2',
+          backgroundColor: 'rgba(0, 114, 178, 0.12)',
           fill: true,
           tension: 0.35,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: '#4f46e5'
+          pointStyle: 'rectRot',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#0072B2',
+          pointBorderColor: '#ffffff'
         }]
       },
       options: {
