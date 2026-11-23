@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 from typing import Any, Optional, Tuple, Union
 
 try:
@@ -259,17 +260,24 @@ def format_indian_number(
         except ValueError:
             return str(num)
 
+    if isinstance(num, (int, float)) and (math.isnan(num) or not math.isfinite(num)):
+        return str(num)
+
     is_negative = num < 0
     abs_num = abs(num)
 
     if decimals is not None:
         formatted_float = f"{abs_num:.{decimals}f}"
-        int_part, frac_part = formatted_float.split(".")
+        if "." in formatted_float:
+            int_part, frac_part = formatted_float.split(".", 1)
+        else:
+            int_part = formatted_float
+            frac_part = ""
     else:
         if isinstance(abs_num, float) and not abs_num.is_integer():
             formatted_float = f"{abs_num:.2f}".rstrip("0").rstrip(".")
             if "." in formatted_float:
-                int_part, frac_part = formatted_float.split(".")
+                int_part, frac_part = formatted_float.split(".", 1)
             else:
                 int_part = formatted_float
                 frac_part = ""
@@ -325,6 +333,9 @@ def format_inr(
     else:
         return str(val)
 
+    if isinstance(num, (int, float)) and (math.isnan(num) or not math.isfinite(num)):
+        return str(num)
+
     is_negative = num < 0
     abs_num = abs(num)
     currency_prefix = "₹" if symbol else ""
@@ -371,6 +382,9 @@ def format_inr_words(val: Any, symbol: bool = False, default: str = "") -> str:
         num = float(str(val).replace("₹", "").replace(",", "").replace("$", "").strip())
     except (ValueError, TypeError):
         return str(val)
+
+    if isinstance(num, (int, float)) and (math.isnan(num) or not math.isfinite(num)):
+        return str(num)
 
     is_negative = num < 0
     abs_num = abs(num)
