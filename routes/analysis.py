@@ -2441,29 +2441,61 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
-@analysis_bp.route("/api/timetable/generate", methods=["POST"])
-def api_generate_timetable():
+@analysis_bp.route("/api/snapshots", methods=["GET", "POST"])
+def api_snapshots_collection():
     """
-    Generates personalized weekly preparation timetable based on daily hours (#605).
+    Lists student preparation progress snapshots or creates a new manual/automatic snapshot (#607).
     """
-    payload = request.get_json(silent=True) or request.form.to_dict()
-    availability = payload.get("availability") or {}
-    preferred_slot = payload.get("preferred_slot", "Evening (18:00 - 21:00)")
-    custom_tasks = payload.get("custom_tasks")
+    student_id = flask_session.get("user_id") or "default_student"
+    from utils.prep_snapshot_service import (
+        create_progress_snapshot,
+        list_student_snapshots,
+        compare_two_snapshots
+    )
 
-    from utils.prep_timetable_service import generate_weekly_timetable
-    try:
-        result = generate_weekly_timetable(
-            availability=availability,
-            preferred_slot=preferred_slot,
-            custom_tasks=custom_tasks
-        )
-        return jsonify(result), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
-    except Exception as exc:
-        logger.error(f"Error generating timetable: {exc}")
-        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+    if request.method == "GET":
+        compare_a = request.args.get("compare_a")
+        compare_b = request.args.get("compare_b")
+        snapshots = list_student_snapshots(student_id)
+
+        if compare_a and compare_b:
+            snap_map = {s["id"]: s for s in snapshots}
+            if compare_a in snap_map and compare_b in snap_map:
+                comparison = compare_two_snapshots(snap_map[compare_a], snap_map[compare_b])
+                return jsonify({"status": "success", "comparison": comparison}), 200
+            return jsonify({"status": "error", "message": "One or both snapshots not found."}), 404
+
+        return jsonify({"status": "success", "snapshots": snapshots}), 200
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    label = payload.get("label", "Manual Snapshot")
+    ats_score = payload.get("ats_score")
+    coding_score = payload.get("coding_score")
+    interview_score = payload.get("interview_score")
+    skill_gaps_count = payload.get("skill_gaps_count")
+    matched_skills_count = payload.get("matched_skills_count")
+
+    new_snap = create_progress_snapshot(
+        student_id=student_id,
+        label=label,
+        ats_score=int(ats_score) if ats_score is not None else None,
+        coding_score=int(coding_score) if coding_score is not None else None,
+        interview_score=int(interview_score) if interview_score is not None else None,
+        skill_gaps_count=int(skill_gaps_count) if skill_gaps_count is not None else None,
+        matched_skills_count=int(matched_skills_count) if matched_skills_count is not None else None
+    )
+    return jsonify({"status": "success", "snapshot": new_snap}), 201
+
+
+@analysis_bp.route("/api/snapshots/<snapshot_id>", methods=["DELETE"])
+def api_delete_snapshot(snapshot_id: str):
+    """Deletes an owned preparation progress snapshot (#607)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    from utils.prep_snapshot_service import delete_student_snapshot
+    deleted = delete_student_snapshot(student_id, snapshot_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Snapshot deleted."}), 200
+    return jsonify({"status": "error", "message": "Snapshot not found or unauthorized."}), 404
 
 
 
