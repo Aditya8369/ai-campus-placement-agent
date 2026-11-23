@@ -1642,7 +1642,9 @@ def dashboard(analysis_id: str) -> str:
         ats_confidence=ats_confidence,
         ats_confidence_json=json.dumps(ats_confidence),
         resume_evidence=resume_evidence,
-        resume_evidence_json=json.dumps(resume_evidence)
+        resume_evidence_json=json.dumps(resume_evidence),
+        initial_recommended_jobs=initial_recommended_jobs,
+        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
     )
 
 

@@ -6675,6 +6675,12 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from db.connection import (
+    create_connection,
+    get_connection,
+    transaction,
+)
+
 from db.reports import (
     create_secure_share_link,
     create_shared_report,
