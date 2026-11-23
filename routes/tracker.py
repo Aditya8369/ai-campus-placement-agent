@@ -612,14 +612,14 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
-@tracker_bp.route("/api/deadlines/digest", methods=["GET"])
-def api_get_placement_deadlines_digest():
-    """Aggregates placement and application deadlines into Today, This Week, Later, and Overdue (#621)."""
-    from utils.placement_deadline_digest_service import get_placement_deadline_digest
-    student_id = flask_session.get("user_id") or "default_student"
-    as_of = request.args.get("as_of_date")
-    digest = get_placement_deadline_digest(student_id, as_of)
-    return jsonify({"status": "success", "digest": digest}), 200
+@tracker_bp.route("/api/profile/completion-checklist", methods=["POST"])
+def api_profile_completion_checklist():
+    """Calculates profile completion score and actionable checklists (#627)."""
+    from utils.profile_completion_service import calculate_profile_completion
+    data = request.get_json(silent=True) or {}
+    profile = data.get("profile", {})
+    result = calculate_profile_completion(profile)
+    return jsonify({"status": "success", "result": result}), 200
 
 
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
