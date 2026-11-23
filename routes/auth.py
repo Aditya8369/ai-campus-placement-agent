@@ -1839,4 +1839,30 @@ def api_verify_email_change():
     return jsonify(result), status_code
 
 
+@auth_bp.route("/api/account/merge/preview", methods=["POST"])
+def api_preview_account_merge():
+    """Previews transferable records between two candidate accounts (#630)."""
+    from utils.account_merge_service import preview_account_merge
+    data = request.get_json(silent=True) or {}
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    preview = preview_account_merge(p_id, s_id)
+    return jsonify({"status": "success", "preview": preview}), 200
+
+
+@auth_bp.route("/api/account/merge/execute", methods=["POST"])
+def api_execute_account_merge():
+    """Executes verified account merge (#630)."""
+    from utils.account_merge_service import execute_account_merge
+    data = request.get_json(silent=True) or {}
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    token_verified = bool(data.get("verified_token", False))
+    res = execute_account_merge(p_id, s_id, verified_token=token_verified)
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error")}), 400
+    return jsonify({"status": "success", "result": res}), 200
+
+
+
 
