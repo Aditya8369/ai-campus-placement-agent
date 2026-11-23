@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}Placement Cell Batch Analysis - AI Placement Agent{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2 class="fw-bold mb-1">
+        <i class="fa-solid fa-users-viewfinder text-primary me-2"></i>Placement Cell: Batch Analysis
+      </h2>
+      <p class="text-muted mb-0">Evaluate whole cohorts with anonymized aggregate statistics, score distributions, and skill deficit breakdowns.</p>
+    </div>
+    <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-2 fs-6">
+      <i class="fa-solid fa-user-tie me-1"></i> Placement Officer View
+    </span>
+  </div>
+
+  <div class="row g-4">
+    <!-- Upload Form Card -->
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm rounded-3 h-100">
+        <div class="card-header bg-white py-3 border-bottom">
+          <h5 class="card-title mb-0 fw-bold">
+            <i class="fa-solid fa-cloud-arrow-up text-primary me-2"></i>New Batch Evaluation
+          </h5>
+        </div>
+        <div class="card-body p-4">
+          <form id="batchUploadForm" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label for="batchNameInput" class="form-label fw-semibold">Batch Name / Identifier</label>
+              <input type="text" class="form-control" id="batchNameInput" name="batch_name" placeholder="e.g. 2026 CS Placement Drive - Batch A">
+              <div class="form-text">Optional descriptive name for your cohort analysis report.</div>
+            </div>
+
+            <div class="mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <label for="resumesInput" class="form-label fw-semibold mb-0">Upload Resumes (.pdf, .docx, .txt)</label>
+                <span class="badge bg-secondary-subtle text-secondary" id="batchLimitBadge">
+                  Max Limit: {{ max_batch_size }} Resumes
+                </span>
+              </div>
+              <input type="file" class="form-control" id="resumesInput" name="resumes" multiple accept=".pdf,.docx,.txt" required>
+              <div class="form-text" id="selectedFileCount">Select multiple candidate resumes for batch analysis.</div>
+            </div>
+
+            <!-- Mandatory Consent Notice (#763) -->
+            <div class="card bg-light border-warning border-start border-4 p-3 mb-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="consentCheckbox" name="consent" value="1" required>
+                <label class="form-check-label small fw-medium" for="consentCheckbox">
+                  <span class="text-dark fw-bold d-block mb-1">Mandatory Student Consent Notice:</span>
+                  I confirm that verified student consent has been obtained for batch placement readiness analysis and anonymized statistical reporting in accordance with institutional data governance policies.
+                </label>
+              </div>
+            </div>
+
+            <div id="batchUploadAlert" class="alert d-none" role="alert"></div>
+
+            <button type="submit" class="btn btn-primary w-100 py-2 fw-semibold" id="btnSubmitBatch">
+              <i class="fa-solid fa-play me-2"></i>Start Batch Analysis
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Batch Overview / Results Card -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm rounded-3 h-100" id="batchResultsCard">
+        <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+          <h5 class="card-title mb-0 fw-bold" id="batchTitleHeader">
+            <i class="fa-solid fa-chart-pie text-success me-2"></i>Aggregate Batch Overview
+          </h5>
+          <a href="#" class="btn btn-sm btn-outline-success d-none" id="btnExportCsv" download>
+            <i class="fa-solid fa-file-csv me-1"></i> Export Aggregate CSV
+          </a>
+        </div>
+        <div class="card-body p-4">
+          <!-- Initial Placeholder -->
+          <div id="resultsPlaceholder" class="text-center py-5">
+            <i class="fa-solid fa-folder-open text-muted opacity-50 display-3 mb-3"></i>
+            <h6 class="text-muted fw-semibold">No batch currently selected</h6>
+            <p class="text-muted small mb-0">Upload a batch on the left or select a previously processed cohort below to review anonymized readiness metrics.</p>
+          </div>
+
+          <!-- Loading State -->
+          <div id="resultsLoading" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+              <span class="visually-hidden">Processing...</span>
+            </div>
+            <h5 class="fw-bold">Evaluating Batch Resumes in Background...</h5>
+            <p class="text-muted small mb-0" id="processingStatusText">Extracting skills, evaluating ATS score distribution, and cataloging missing competencies.</p>
+          </div>
+
+          <!-- Active Results Content (Hidden by default) -->
+          <div id="resultsContent" class="d-none">
+            <!-- Summary Stats -->
+            <div class="row g-3 mb-4">
+              <div class="col-sm-4">
+                <div class="p-3 bg-primary bg-opacity-10 rounded-3 border border-primary border-opacity-25 text-center">
+                  <div class="text-primary small fw-semibold text-uppercase">Average ATS Score</div>
+                  <div class="fs-2 fw-bold text-primary" id="statAverageScore">--</div>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <div class="p-3 bg-success bg-opacity-10 rounded-3 border border-success border-opacity-25 text-center">
+                  <div class="text-success small fw-semibold text-uppercase">Evaluated Resumes</div>
+                  <div class="fs-2 fw-bold text-success" id="statProcessedCount">--</div>
+                </div>
+              </div>
+              <div class="col-sm-4">
+                <div class="p-3 bg-danger bg-opacity-10 rounded-3 border border-danger border-opacity-25 text-center">
+                  <div class="text-danger small fw-semibold text-uppercase">Failed / Unreadable</div>
+                  <div class="fs-2 fw-bold text-danger" id="statFailedCount">--</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Score Distribution -->
+            <div class="mb-4">
+              <h6 class="fw-bold mb-3"><i class="fa-solid fa-chart-simple text-primary me-2"></i>Score Distribution</h6>
+              <div class="vstack gap-2" id="scoreDistributionBars">
+                <!-- Populated via JavaScript -->
+              </div>
+            </div>
+
+            <!-- Top Missing Skills -->
+            <div class="mb-4">
+              <h6 class="fw-bold mb-3"><i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>Most Common Missing Skills</h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col" style="width: 10%;">#</th>
+                      <th scope="col" style="width: 45%;">Skill</th>
+                      <th scope="col" style="width: 25%;">Students Missing</th>
+                      <th scope="col" style="width: 20%;">% of Batch</th>
+                    </tr>
+                  </thead>
+                  <tbody id="missingSkillsTableBody">
+                    <!-- Populated via JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Failed Files Section (Reported individually, NO names or PII) -->
+            <div id="failedFilesSection" class="d-none">
+              <h6 class="fw-bold text-danger mb-2">
+                <i class="fa-solid fa-circle-exclamation me-2"></i>Failed Files Report (<span id="failedFilesBadgeCount">0</span>)
+              </h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-bordered text-danger small mb-0">
+                  <thead class="table-light text-dark">
+                    <tr>
+                      <th>Filename</th>
+                      <th>Failure Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody id="failedFilesTableBody">
+                    <!-- Populated via JavaScript -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="alert alert-info mt-4 mb-0 small d-flex align-items-center">
+              <i class="fa-solid fa-shield-halved fs-4 me-3 text-info"></i>
+              <div>
+                <strong>Privacy & Data Retention Guarantee:</strong> All individual resume documents are immediately purged from server storage after batch processing. This report and its CSV export contain only aggregate statistical metrics with zero names or personal contact details.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Batches Section -->
+  <div class="card border-0 shadow-sm rounded-3 mt-4">
+    <div class="card-header bg-white py-3 border-bottom">
+      <h5 class="card-title mb-0 fw-bold">
+        <i class="fa-solid fa-clock-rotate-left text-secondary me-2"></i>Recent Batch Reports
+      </h5>
+    </div>
+    <div class="card-body p-0">
+      {% if batches %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr>
+              <th scope="col" class="ps-4">Batch Name</th>
+              <th scope="col">Status</th>
+              <th scope="col">Processed / Total</th>
+              <th scope="col">Average Score</th>
+              <th scope="col">Created</th>
+              <th scope="col" class="text-end pe-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in batches %}
+            <tr>
+              <td class="ps-4 fw-semibold text-dark">{{ b.batch_name }}</td>
+              <td>
+                {% if b.status == 'completed' %}
+                <span class="badge bg-success-subtle text-success">Completed</span>
+                {% elif b.status == 'processing' %}
+                <span class="badge bg-warning-subtle text-warning">Processing</span>
+                {% else %}
+                <span class="badge bg-secondary-subtle text-secondary">{{ b.status|capitalize }}</span>
+                {% endif %}
+              </td>
+              <td>{{ b.processed_count }} / {{ b.total_files }}</td>
+              <td class="fw-bold text-primary">{{ b.average_score }}</td>
+              <td class="small text-muted">{{ b.created_at }}</td>
+              <td class="text-end pe-4">
+                <button class="btn btn-sm btn-outline-primary me-1 btn-load-batch" data-batch-id="{{ b.id }}">
+                  <i class="fa-solid fa-eye me-1"></i>View
+                </button>
+                <a href="/admin/placement-cell/batch/{{ b.id }}/export.csv" class="btn btn-sm btn-outline-success">
+                  <i class="fa-solid fa-download me-1"></i>CSV
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-4 text-muted small">
+        No previous batches recorded. Upload your first batch of resumes above.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const uploadForm = document.getElementById("batchUploadForm");
+  const fileInput = document.getElementById("resumesInput");
+  const selectedCountLabel = document.getElementById("selectedFileCount");
+  const uploadAlert = document.getElementById("batchUploadAlert");
+  const btnSubmit = document.getElementById("btnSubmitBatch");
+
+  const resultsPlaceholder = document.getElementById("resultsPlaceholder");
+  const resultsLoading = document.getElementById("resultsLoading");
+  const resultsContent = document.getElementById("resultsContent");
+  const btnExportCsv = document.getElementById("btnExportCsv");
+  const batchTitleHeader = document.getElementById("batchTitleHeader");
+
+  const statAverageScore = document.getElementById("statAverageScore");
+  const statProcessedCount = document.getElementById("statProcessedCount");
+  const statFailedCount = document.getElementById("statFailedCount");
+  const scoreDistributionBars = document.getElementById("scoreDistributionBars");
+  const missingSkillsTableBody = document.getElementById("missingSkillsTableBody");
+  const failedFilesSection = document.getElementById("failedFilesSection");
+  const failedFilesTableBody = document.getElementById("failedFilesTableBody");
+  const failedFilesBadgeCount = document.getElementById("failedFilesBadgeCount");
+
+  const maxBatchLimit = parseInt("{{ max_batch_size }}", 10) || 50;
+
+  // Update file count display and quick validation on file selection
+  fileInput.addEventListener("change", function () {
+    const count = fileInput.files ? fileInput.files.length : 0;
+    if (count > maxBatchLimit) {
+      selectedCountLabel.innerHTML = `<span class="text-danger fw-bold"><i class="fa-solid fa-circle-exclamation me-1"></i>${count} files selected (Exceeds limit of ${maxBatchLimit})</span>`;
+    } else if (count > 0) {
+      selectedCountLabel.innerHTML = `<span class="text-success fw-medium"><i class="fa-solid fa-check me-1"></i>${count} resume file(s) selected</span>`;
+    } else {
+      selectedCountLabel.textContent = "Select multiple candidate resumes for batch analysis.";
+    }
+  });
+
+  // Handle Form Submission
+  uploadForm.addEventListener("submit", async function (e) {
+    e.preventDefault();
+    uploadAlert.className = "alert d-none";
+
+    const consentBox = document.getElementById("consentCheckbox");
+    if (!consentBox.checked) {
+      uploadAlert.className = "alert alert-danger";
+      uploadAlert.textContent = "Consent confirmation required: You must confirm student consent before proceeding.";
+      return;
+    }
+
+    const files = fileInput.files;
+    if (!files || files.length === 0) {
+      uploadAlert.className = "alert alert-danger";
+      uploadAlert.textContent = "Please select at least one resume file to upload.";
+      return;
+    }
+
+    if (files.length > maxBatchLimit) {
+      uploadAlert.className = "alert alert-danger";
+      uploadAlert.textContent = `Batch limit exceeded: You uploaded ${files.length} files. The maximum allowed batch size is ${maxBatchLimit} resumes.`;
+      return;
+    }
+
+    // UI State: Loading
+    btnSubmit.disabled = true;
+    btnSubmit.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Uploading...`;
+
+    resultsPlaceholder.classList.add("d-none");
+    resultsContent.classList.add("d-none");
+    resultsLoading.classList.remove("d-none");
+    btnExportCsv.classList.add("d-none");
+
+    const formData = new FormData(uploadForm);
+
+    try {
+      const response = await fetch("/api/admin/placement-cell/batch", {
+        method: "POST",
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to initiate batch processing.");
+      }
+
+      uploadAlert.className = "alert alert-success";
+      uploadAlert.textContent = `Batch created successfully! Processing ${data.total_files} resume(s) in background...`;
+
+      // Poll for completion
+      pollBatchStatus(data.batch_id);
+
+    } catch (err) {
+      uploadAlert.className = "alert alert-danger";
+      uploadAlert.textContent = err.message || "An unexpected error occurred during batch upload.";
+      resultsLoading.classList.add("d-none");
+      resultsPlaceholder.classList.remove("d-none");
+    } finally {
+      btnSubmit.disabled = false;
+      btnSubmit.innerHTML = `<i class="fa-solid fa-play me-2"></i>Start Batch Analysis`;
+    }
+  });
+
+  // Polling function for batch status
+  async function pollBatchStatus(batchId) {
+    let attempts = 0;
+    const maxAttempts = 60; // 2 minutes
+
+    const timer = setInterval(async () => {
+      attempts++;
+      try {
+        const res = await fetch(`/api/admin/placement-cell/batch/${batchId}`);
+        const json = await res.json();
+
+        if (json.success && json.batch) {
+          const b = json.batch;
+          if (b.status === "completed" || b.status === "failed" || attempts >= maxAttempts) {
+            clearInterval(timer);
+            renderBatchResults(b);
+          }
+        }
+      } catch (e) {
+        console.warn("Polling error:", e);
+      }
+    }, 2000);
+  }
+
+  // Render batch results in the UI
+  function renderBatchResults(batch) {
+    resultsLoading.classList.add("d-none");
+    resultsPlaceholder.classList.add("d-none");
+    resultsContent.classList.remove("d-none");
+
+    batchTitleHeader.innerHTML = `<i class="fa-solid fa-chart-pie text-success me-2"></i>${escapeHtml(batch.batch_name || "Batch Overview")}`;
+
+    btnExportCsv.href = `/admin/placement-cell/batch/${batch.id}/export.csv`;
+    btnExportCsv.classList.remove("d-none");
+
+    statAverageScore.textContent = batch.average_score || "0";
+    statProcessedCount.textContent = batch.processed_count || "0";
+    statFailedCount.textContent = batch.failed_count || "0";
+
+    // Score Distribution
+    const dist = batch.score_distribution || {};
+    const total = Math.max(1, batch.processed_count || 1);
+    const ranges = [
+      { key: "0-40", label: "0 - 40 (Needs Rework)", bg: "bg-danger" },
+      { key: "41-60", label: "41 - 60 (Developing)", bg: "bg-warning" },
+      { key: "61-80", label: "61 - 80 (Competitive)", bg: "bg-info" },
+      { key: "81-100", label: "81 - 100 (Placement Ready)", bg: "bg-success" }
+    ];
+
+    scoreDistributionBars.innerHTML = ranges.map(r => {
+      const cnt = dist[r.key] || 0;
+      const pct = Math.round((cnt / total) * 100);
+      return `
+        <div>
+          <div class="d-flex justify-content-between small fw-medium mb-1">
+            <span>${r.label}</span>
+            <span><strong>${cnt}</strong> students (${pct}%)</span>
+          </div>
+          <div class="progress" style="height: 10px;">
+            <div class="progress-bar ${r.bg}" role="progressbar" style="width: ${pct}%" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"></div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    // Missing Skills
+    const missing = batch.common_missing_skills || [];
+    if (missing.length > 0) {
+      missingSkillsTableBody.innerHTML = missing.map((item, idx) => `
+        <tr>
+          <td class="text-muted fw-bold">${idx + 1}</td>
+          <td class="fw-semibold text-dark">${escapeHtml(item.skill)}</td>
+          <td><span class="badge bg-secondary-subtle text-dark px-2 py-1">${item.count} students</span></td>
+          <td><span class="text-danger fw-semibold">${item.percentage}%</span></td>
+        </tr>
+      `).join("");
+    } else {
+      missingSkillsTableBody.innerHTML = `<tr><td colspan="4" class="text-muted text-center py-2">No significant skill deficits detected.</td></tr>`;
+    }
+
+    // Failed Files
+    const failed = batch.failed_files || [];
+    if (failed.length > 0) {
+      failedFilesBadgeCount.textContent = failed.length;
+      failedFilesTableBody.innerHTML = failed.map(f => `
+        <tr>
+          <td class="fw-semibold">${escapeHtml(f.filename || "Unknown file")}</td>
+          <td>${escapeHtml(f.error || "Parsing failure")}</td>
+        </tr>
+      `).join("");
+      failedFilesSection.classList.remove("d-none");
+    } else {
+      failedFilesSection.classList.add("d-none");
+    }
+  }
+
+  // Load existing batch when clicked from history
+  document.querySelectorAll(".btn-load-batch").forEach(btn => {
+    btn.addEventListener("click", async function () {
+      const batchId = this.getAttribute("data-batch-id");
+      if (!batchId) return;
+
+      resultsPlaceholder.classList.add("d-none");
+      resultsContent.classList.add("d-none");
+      resultsLoading.classList.remove("d-none");
+
+      try {
+        const res = await fetch(`/api/admin/placement-cell/batch/${batchId}`);
+        const data = await res.json();
+        if (data.success && data.batch) {
+          renderBatchResults(data.batch);
+        }
+      } catch (err) {
+        console.error("Error loading batch:", err);
+        resultsLoading.classList.add("d-none");
+        resultsPlaceholder.classList.remove("d-none");
+      }
+    });
+  });
+
+  function escapeHtml(str) {
+    if (!str) return "";
+    return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+  }
+});
+</script>
+{% endblock %}

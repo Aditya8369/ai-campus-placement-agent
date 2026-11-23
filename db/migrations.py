@@ -345,6 +345,7 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             overall_verdict TEXT NOT NULL DEFAULT 'Offer',
             difficulty_level TEXT NOT NULL DEFAULT 'Medium',
             tips_and_preparation TEXT,
+            helpful_count INTEGER NOT NULL DEFAULT 0,
             reported_flag INTEGER NOT NULL DEFAULT 0,
             report_reason TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -353,6 +354,24 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_company ON interview_experiences (company_name, interview_date DESC)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_reported_date ON interview_experiences (reported_flag, interview_date DESC, created_at DESC)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_student ON interview_experiences (student_id, created_at DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiences_helpful ON interview_experiences (helpful_count DESC, interview_date DESC)")
+
+    cursor.execute("PRAGMA table_info(interview_experiences)")
+    exp_col_names = {row["name"] for row in cursor.fetchall()}
+    if "helpful_count" not in exp_col_names:
+        cursor.execute("ALTER TABLE interview_experiences ADD COLUMN helpful_count INTEGER NOT NULL DEFAULT 0")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interview_experience_helpful_votes (
+            id TEXT PRIMARY KEY,
+            experience_id TEXT NOT NULL,
+            student_id TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(experience_id, student_id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_exp ON interview_experience_helpful_votes (experience_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_student ON interview_experience_helpful_votes (student_id)")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS interview_preparation_notes (

@@ -29,6 +29,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from utils.database import get_db_connection
+from utils.interview_helpful_service import ensure_helpful_votes_schema
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ def search_and_filter_interview_experiences(
     Returns paginated list of experiences, total matching count, and metadata facet options.
     """
     with get_db_connection() as conn:
+        ensure_helpful_votes_schema(conn)
         cursor = conn.cursor()
         conditions = []
         params: List[Any] = []
@@ -98,9 +100,11 @@ def search_and_filter_interview_experiences(
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-        # Sorting logic
+        # Sorting logic (#693)
         order_by = "ORDER BY interview_date DESC, created_at DESC"
-        if sort_by == "date_asc":
+        if sort_by in ("helpful_desc", "most_helpful"):
+            order_by = "ORDER BY helpful_count DESC, interview_date DESC, created_at DESC"
+        elif sort_by == "date_asc":
             order_by = "ORDER BY interview_date ASC, created_at ASC"
         elif sort_by == "company_asc":
             order_by = "ORDER BY company_name ASC, interview_date DESC"
@@ -209,6 +213,7 @@ def get_interview_filter_facets() -> Dict[str, Any]:
             "roles": roles,
             "sort_options": [
                 {"key": "date_desc", "label": "Newest Interviews First"},
+                {"key": "helpful_desc", "label": "Most Helpful First"},
                 {"key": "date_asc", "label": "Oldest Interviews First"},
                 {"key": "difficulty_desc", "label": "Highest Difficulty First"},
                 {"key": "difficulty_asc", "label": "Lowest Difficulty First"},

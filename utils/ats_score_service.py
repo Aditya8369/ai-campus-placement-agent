@@ -846,8 +846,10 @@ def evaluate_resume_ats_score(resume_text: str) -> Dict[str, Any]:
                 "is_weak": True,
                 "suggestion": f"Add the {SECTION_TITLES[key]} section.",
             }
+        from utils.keyword_balance_service import check_keyword_balance
         return {
             "total_score": 0,
+            "base_score": 0,
             "rating": "Needs Rework",
             "sections": empty_sections,
             "hurts_most": {
@@ -861,6 +863,7 @@ def evaluate_resume_ats_score(resume_text: str) -> Dict[str, Any]:
                 "impact_message": "Empty resume provides zero candidate evidence.",
             },
             "basics": evaluate_basics_checks(""),
+            "keyword_balance": check_keyword_balance(""),
             "weak_sections_count": len(SECTION_WEIGHTS),
             "recommendations": ["Upload a readable resume with complete student credentials."],
             "is_deterministic": True,
@@ -929,7 +932,29 @@ def evaluate_resume_ats_score(resume_text: str) -> Dict[str, Any]:
     # 6. Basics checks
     basics = evaluate_basics_checks(resume_text)
 
-    # 7. Aggregate actionable recommendations for weak sections
+    # 7. Keyword balance & stuffing check (#685)
+    from utils.keyword_balance_service import check_keyword_balance
+    keyword_balance = check_keyword_balance(
+        resume_text=resume_text,
+        skills_text=parsed.get("skills", "")
+    )
+
+    # 8. Apply non-blocking, capped score penalty (#685)
+    unadjusted_total_score = total_score
+    if keyword_balance.get("score_penalty", 0) > 0:
+        total_score = max(0, min(100, total_score - keyword_balance["score_penalty"]))
+
+    # Recalculate rating with adjusted score
+    if total_score >= 85:
+        rating = "Excellent"
+    elif total_score >= 70:
+        rating = "Good"
+    elif total_score >= 50:
+        rating = "Fair"
+    else:
+        rating = "Needs Rework"
+
+    # 9. Aggregate actionable recommendations for weak sections
     weak_sections = [s for s in sections.values() if s["is_weak"]]
     recommendations: List[str] = [s["suggestion"] for s in weak_sections]
 
@@ -938,12 +963,18 @@ def evaluate_resume_ats_score(resume_text: str) -> Dict[str, Any]:
         if not b_info["passed"] and b_info["suggestion"] not in recommendations:
             recommendations.append(b_info["suggestion"])
 
+    # Add keyword balance recommendation if stuffing/dump flagged
+    if keyword_balance.get("has_warnings") and keyword_balance.get("suggestion"):
+        recommendations.append(keyword_balance["suggestion"])
+
     return {
         "total_score": total_score,
+        "base_score": unadjusted_total_score,
         "rating": rating,
         "sections": sections,
         "hurts_most": hurts_most,
         "basics": basics,
+        "keyword_balance": keyword_balance,
         "weak_sections_count": len(weak_sections),
         "recommendations": recommendations,
         "is_deterministic": True,
