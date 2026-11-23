@@ -13,7 +13,7 @@ import re
 import socket
 import time
 import random
-from typing import Any, Dict, Optional, Tuple, Callable
+from typing import Any, Dict, Optional, Tuple, Callable, Generator, Set, List
 from google import genai
 from google.genai import types
 from google.genai.errors import APIError
@@ -796,3 +796,222 @@ def generate_json_response(
                     "The AI service is busy, please try again in a minute."
                 )
                 raise classified from e
+
+
+# ==============================================================================
+# Streaming JSON Response Generator (#764)
+# ==============================================================================
+
+STANDARD_ANALYSIS_SECTIONS: List[str] = [
+    "resume_analysis",
+    "job_match",
+    "skill_gap",
+    "learning_roadmap",
+    "interview_questions",
+    "overall_recommendation_summary",
+]
+
+
+def extract_completed_sections_from_buffer(
+    buffer: str,
+    completed: Set[str],
+    expected_sections: Optional[List[str]] = None,
+) -> List[Tuple[str, Any]]:
+    """
+    Scans a streaming JSON buffer and extracts fully completed top-level sections
+    without waiting for the entire document to close (#764).
+    """
+    sections = expected_sections or STANDARD_ANALYSIS_SECTIONS
+    results: List[Tuple[str, Any]] = []
+
+    for sec in sections:
+        if sec in completed:
+            continue
+
+        pattern = re.compile(rf'"{re.escape(sec)}"\s*:\s*')
+        m = pattern.search(buffer)
+        if not m:
+            continue
+
+        start_idx = m.end()
+        while start_idx < len(buffer) and buffer[start_idx] in " \t\r\n":
+            start_idx += 1
+
+        if start_idx >= len(buffer):
+            continue
+
+        open_char = buffer[start_idx]
+        if open_char == "{":
+            close_char = "}"
+        elif open_char == "[":
+            close_char = "]"
+        elif open_char == '"':
+            close_char = '"'
+        else:
+            continue
+
+        in_string = (open_char == '"')
+        escape = False
+        depth = 1
+        end_idx = None
+
+        for i in range(start_idx + 1, len(buffer)):
+            c = buffer[i]
+            if escape:
+                escape = False
+                continue
+            if c == "\\":
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                if open_char == '"' and not in_string:
+                    end_idx = i + 1
+                    break
+                continue
+            if not in_string:
+                if c == open_char:
+                    depth += 1
+                elif c == close_char:
+                    depth -= 1
+                    if depth == 0:
+                        end_idx = i + 1
+                        break
+
+        if end_idx is not None:
+            snippet = buffer[start_idx:end_idx]
+            try:
+                val = json.loads(snippet)
+                if isinstance(val, (dict, list, str)):
+                    try:
+                        from utils.prompt_security import redact_sensitive_information
+                        val = redact_sensitive_information(val)
+                    except Exception:
+                        pass
+                results.append((sec, val))
+                completed.add(sec)
+            except Exception:
+                pass
+
+    return results
+
+
+def stream_json_response_sections(
+    system_instruction: str,
+    prompt: str,
+    expected_sections: Optional[List[str]] = None,
+    is_cancelled_fn: Optional[Callable[[], bool]] = None,
+    request_timeout: Optional[float] = None,
+    feature: Optional[str] = "analysis",
+) -> Generator[Tuple[str, Any], None, None]:
+    """
+    Streams content from Gemini using client.models.generate_content_stream (#764).
+    Yields (section_name, parsed_section_data) as each top-level section completes,
+    allowing the client to render each section before the full response finishes.
+
+    Cancellation:
+        Checks is_cancelled_fn() on each streamed chunk. If True, cleanly stops consumption
+        and stops the underlying request.
+
+    Mid-stream error handling:
+        If an error occurs mid-stream, captures the error and yields:
+        ('_stream_error', {'error': error_msg, 'completed_sections': list(completed)})
+        ensuring content already received and shown is never discarded.
+
+    Non-streaming fallback:
+        If streaming cannot be initialized or fails on the first chunk before any section
+        is parsed, callers can seamlessly fall back to generate_json_response.
+    """
+    effective_timeout = request_timeout if request_timeout is not None else getattr(config, "GEMINI_REQUEST_TIMEOUT", 30.0)
+    timeout_ms = int(effective_timeout * 1000) if effective_timeout else None
+    sections_list = expected_sections or STANDARD_ANALYSIS_SECTIONS
+
+    try:
+        client = get_gemini_client(timeout=effective_timeout)
+    except TypeError:
+        client = get_gemini_client()
+
+    cfg_kwargs = {
+        "system_instruction": system_instruction,
+        "response_mime_type": "application/json",
+        "temperature": 0.2,
+    }
+    if timeout_ms:
+        try:
+            cfg_kwargs["http_options"] = types.HttpOptions(timeout=timeout_ms)
+        except Exception:
+            pass
+
+    cfg = types.GenerateContentConfig(**cfg_kwargs)
+
+    effective_prompt = prompt
+    if getattr(config, "ENABLE_PII_REDACTION", True):
+        try:
+            from utils.pii_redactor import redact_pii
+            effective_prompt = redact_pii(prompt)
+        except Exception:
+            pass
+
+    completed_sections: Set[str] = set()
+    buffer = ""
+    start_time = time.time()
+
+    logger.info(f"Initiating streaming Gemini response for feature={feature} model={config.GEMINI_MODEL}")
+
+    try:
+        stream = client.models.generate_content_stream(
+            model=config.GEMINI_MODEL,
+            contents=effective_prompt,
+            config=cfg,
+        )
+
+        for chunk in stream:
+            # Check cancellation between chunks (#764)
+            if is_cancelled_fn and is_cancelled_fn():
+                logger.info("Cancellation detected during Gemini stream iteration. Halting stream.")
+                yield ("_cancelled", {"completed_sections": list(completed_sections)})
+                return
+
+            chunk_text = getattr(chunk, "text", "") or ""
+            if not chunk_text:
+                continue
+
+            buffer += chunk_text
+
+            # Extract any newly completed sections from accumulated buffer
+            newly_completed = extract_completed_sections_from_buffer(
+                buffer=buffer,
+                completed=completed_sections,
+                expected_sections=sections_list,
+            )
+
+            for sec_name, sec_data in newly_completed:
+                logger.info(f"Streamed section complete: '{sec_name}'")
+                yield (sec_name, sec_data)
+
+        # End of stream: Check for any final section that might have completed with closing brace
+        remaining = extract_completed_sections_from_buffer(
+            buffer=buffer,
+            completed=completed_sections,
+            expected_sections=sections_list,
+        )
+        for sec_name, sec_data in remaining:
+            logger.info(f"Streamed final section complete: '{sec_name}'")
+            yield (sec_name, sec_data)
+
+    except Exception as stream_err:
+        clean_err = scrub_api_key(str(stream_err))
+        logger.warning(
+            f"Error occurred during Gemini response streaming: {clean_err}. "
+            f"Completed sections: {list(completed_sections)}"
+        )
+        # Mid-stream error: yield error event with completed sections preserved (#764)
+        yield (
+            "_stream_error",
+            {
+                "error": format_ai_error_for_user(stream_err),
+                "error_details": clean_err,
+                "completed_sections": list(completed_sections),
+            },
+        )
+

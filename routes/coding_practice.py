@@ -683,4 +683,18 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@coding_practice_bp.route("/api/coding/performance/compare", methods=["POST"])
+def api_compare_coding_performance():
+    """Compares candidate solution runtime and memory against canonical baselines (#617)."""
+    from utils.coding_performance_service import compare_performance
+    data = request.get_json(silent=True) or {}
+    problem_id = data.get("problem_id", "default")
+    runtime = data.get("runtime_ms")
+    memory = data.get("memory_mb")
+
+    result = compare_performance(problem_id, runtime, memory)
+    return jsonify({"status": "success", "metrics": result}), 200
+
+
+
 

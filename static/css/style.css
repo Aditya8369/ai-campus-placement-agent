@@ -3767,3 +3767,285 @@ footer a:hover {
 [data-bs-theme="dark"] h6 {
     color: var(--home-heading);
 }
+
+/* ==========================================================================
+   REDUCED-MOTION PREFERENCE SUPPORT (#task-reduced-motion)
+   ========================================================================== */
+
+/* 1. Global Reduced-Motion Rules:
+   Active when user explicitly selects reduced motion OR system prefers reduced motion without manual allow */
+:root[data-reduced-motion="true"],
+.reduced-motion {
+  --app-reduced-motion: 1;
+}
+
+:root[data-reduced-motion="true"] *,
+:root[data-reduced-motion="true"] *::before,
+:root[data-reduced-motion="true"] *::after,
+.reduced-motion *,
+.reduced-motion *::before,
+.reduced-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) {
+    --app-reduced-motion: 1;
+  }
+
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) *,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) *::before,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* 2. Specific Keyframe Animations & Decorative Motion Removal */
+:root[data-reduced-motion="true"] .pulse-ring,
+:root[data-reduced-motion="true"] .pulse-border,
+:root[data-reduced-motion="true"] .pulse-warning,
+:root[data-reduced-motion="true"] .pulse-speaking,
+:root[data-reduced-motion="true"] .reticle-pulse,
+:root[data-reduced-motion="true"] .flame-bounce,
+:root[data-reduced-motion="true"] .flame-pulse,
+:root[data-reduced-motion="true"] .streak-flame-icon,
+:root[data-reduced-motion="true"] .fade-in-element,
+:root[data-reduced-motion="true"] .walkthrough-fade,
+.reduced-motion .pulse-ring,
+.reduced-motion .pulse-border,
+.reduced-motion .pulse-warning,
+.reduced-motion .pulse-speaking,
+.reduced-motion .reticle-pulse,
+.reduced-motion .flame-bounce,
+.reduced-motion .flame-pulse,
+.reduced-motion .streak-flame-icon,
+.reduced-motion .fade-in-element,
+.reduced-motion .walkthrough-fade {
+  animation: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .pulse-ring,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .pulse-border,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .pulse-warning,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .pulse-speaking,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .reticle-pulse,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .flame-bounce,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .flame-pulse,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .streak-flame-icon,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .fade-in-element,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .walkthrough-fade {
+    animation: none !important;
+    transform: none !important;
+  }
+}
+
+/* 3. Card Hovers & Button Bouncing Removal */
+:root[data-reduced-motion="true"] .card:hover,
+:root[data-reduced-motion="true"] .glass-card:hover,
+:root[data-reduced-motion="true"] .interactive-card:hover,
+:root[data-reduced-motion="true"] .feature-card:hover,
+:root[data-reduced-motion="true"] .btn:hover,
+:root[data-reduced-motion="true"] .btn:active,
+.reduced-motion .card:hover,
+.reduced-motion .glass-card:hover,
+.reduced-motion .interactive-card:hover,
+.reduced-motion .feature-card:hover,
+.reduced-motion .btn:hover,
+.reduced-motion .btn:active {
+  transform: none !important;
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .card:hover,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .glass-card:hover,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .interactive-card:hover,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .feature-card:hover,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .btn:hover,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .btn:active {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* 4. KEEP PROGRESS AND LOADING FEEDBACK VISIBLE WITHOUT MOVEMENT */
+
+/* Spinners: Stop continuous rotation while remaining completely visible as a static waiting indicator */
+:root[data-reduced-motion="true"] .spinner-border,
+.reduced-motion .spinner-border {
+  animation: none !important;
+  border: 0.22em solid currentColor !important;
+  border-right-color: transparent !important;
+  opacity: 0.85 !important;
+  display: inline-block !important;
+  visibility: visible !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .spinner-border {
+    animation: none !important;
+    border: 0.22em solid currentColor !important;
+    border-right-color: transparent !important;
+    opacity: 0.85 !important;
+    display: inline-block !important;
+    visibility: visible !important;
+  }
+}
+
+/* Spinner Grow: Prevent element from disappearing at scale(0) or opacity 0 */
+:root[data-reduced-motion="true"] .spinner-grow,
+.reduced-motion .spinner-grow {
+  animation: none !important;
+  transform: scale(0.85) !important;
+  opacity: 0.85 !important;
+  display: inline-block !important;
+  visibility: visible !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .spinner-grow {
+    animation: none !important;
+    transform: scale(0.85) !important;
+    opacity: 0.85 !important;
+    display: inline-block !important;
+    visibility: visible !important;
+  }
+}
+
+/* FontAwesome Spinners: Stop spinning icon but keep visible */
+:root[data-reduced-motion="true"] .fa-spin,
+:root[data-reduced-motion="true"] .fa-pulse,
+.reduced-motion .fa-spin,
+.reduced-motion .fa-pulse {
+  animation: none !important;
+  transform: none !important;
+  display: inline-block !important;
+  visibility: visible !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .fa-spin,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .fa-pulse {
+    animation: none !important;
+    transform: none !important;
+    display: inline-block !important;
+    visibility: visible !important;
+  }
+}
+
+/* Progress Bars: Keep progress fill level visible, stop moving stripes and transitions */
+:root[data-reduced-motion="true"] .progress-bar-animated,
+.reduced-motion .progress-bar-animated {
+  animation: none !important;
+}
+
+:root[data-reduced-motion="true"] .progress-bar,
+.reduced-motion .progress-bar {
+  transition: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .progress-bar-animated {
+    animation: none !important;
+  }
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .progress-bar {
+    transition: none !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Circular Progress Dials: Snap instantly to score without 1.5s spinning transition */
+:root[data-reduced-motion="true"] .circular-fill-ring,
+.reduced-motion .circular-fill-ring {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .circular-fill-ring {
+    transition: none !important;
+  }
+}
+
+/* Voice Recording & Waveform: Keep status visible without pulsing/movement */
+:root[data-reduced-motion="true"] .recording-pulse,
+.reduced-motion .recording-pulse {
+  animation: none !important;
+  background-color: #dc3545 !important;
+  opacity: 1 !important;
+  transform: none !important;
+  display: inline-block !important;
+  visibility: visible !important;
+}
+
+:root[data-reduced-motion="true"] .voice-waveform.active .wave-bar,
+.reduced-motion .voice-waveform.active .wave-bar {
+  animation: none !important;
+  height: 16px !important;
+  opacity: 0.85 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .recording-pulse {
+    animation: none !important;
+    background-color: #dc3545 !important;
+    opacity: 1 !important;
+    transform: none !important;
+    display: inline-block !important;
+    visibility: visible !important;
+  }
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .voice-waveform.active .wave-bar {
+    animation: none !important;
+    height: 16px !important;
+    opacity: 0.85 !important;
+  }
+}
+
+/* Status indicator dots (e.g. status page): Keep solid color without pulsing */
+:root[data-reduced-motion="true"] .status-dot,
+.reduced-motion .status-dot,
+:root[data-reduced-motion="true"] [class*="pulse"],
+.reduced-motion [class*="pulse"] {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .status-dot,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) [class*="pulse"] {
+    animation: none !important;
+  }
+}
+
+/* Modal, Offcanvas, Collapse, Tabs: Instant appearance without sliding/fading */
+:root[data-reduced-motion="true"] .fade,
+:root[data-reduced-motion="true"] .modal.fade .modal-dialog,
+:root[data-reduced-motion="true"] .offcanvas,
+:root[data-reduced-motion="true"] .collapsing,
+.reduced-motion .fade,
+.reduced-motion .modal.fade .modal-dialog,
+.reduced-motion .offcanvas,
+.reduced-motion .collapsing {
+  transition: none !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .fade,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .modal.fade .modal-dialog,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .offcanvas,
+  :root:not([data-motion-pref="allow"]):not([data-reduced-motion="false"]) .collapsing {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+

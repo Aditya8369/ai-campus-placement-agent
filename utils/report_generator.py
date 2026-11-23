@@ -1078,6 +1078,12 @@ def generate_interview_transcript_pdf(
         if not isinstance(answers, list):
             answers = []
 
+        interviewer_style = escape_xml(
+            session_data.get("interviewer_style_name")
+            or (session_data.get("questions") and isinstance(session_data["questions"], list) and len(session_data["questions"]) > 0 and session_data["questions"][0].get("interviewer_style_name"))
+            or "Friendly HR"
+        )
+
         if summary_data is None:
             try:
                 from agents.interview_agent import InterviewAgent
@@ -1098,7 +1104,7 @@ def generate_interview_transcript_pdf(
         # 1. Header Banner
         story.append(Paragraph("<b>AI Mock Interview Session Transcript</b>", title_style))
         story.append(Paragraph(
-            f"Candidate Practice Session for <b>{target_company}</b> &bull; Overall Score: <b>{overall_score}/100</b> ({verdict})",
+            f"Candidate Practice Session for <b>{target_company}</b> &bull; Persona: <b>{interviewer_style}</b> &bull; Overall Score: <b>{overall_score}/100</b> ({verdict})",
             subtitle_style
         ))
 
@@ -1445,10 +1451,17 @@ def generate_interview_transcript_markdown(
     verdict = summary_data.get("readiness_verdict", "Completed Session")
     summary_feedback = summary_data.get("summary_feedback", "")
 
+    interviewer_style = (
+        session_data.get("interviewer_style_name")
+        or (session_data.get("questions") and isinstance(session_data["questions"], list) and len(session_data["questions"]) > 0 and session_data["questions"][0].get("interviewer_style_name"))
+        or "Friendly HR"
+    )
+
     lines = [
         f"# AI Mock Interview Session Transcript — {target_company}",
         "",
         f"- **Target Company:** {target_company}",
+        f"- **Interviewer Persona:** {interviewer_style}",
         f"- **Total Questions Answered:** {total_ans}",
         f"- **Overall Performance Score:** {overall_score}/100",
         f"- **Readiness Verdict:** {verdict}",

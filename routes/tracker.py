@@ -612,6 +612,13 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/shortcuts", methods=["GET"])
+def api_get_keyboard_shortcuts():
+    """Returns platform keyboard shortcut definitions and bindings (#634)."""
+    from utils.keyboard_shortcuts_service import get_keyboard_shortcuts
+    return jsonify({"status": "success", "shortcuts": get_keyboard_shortcuts()}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
