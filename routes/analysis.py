@@ -131,6 +131,11 @@ from utils.session_resume_comparator import (
     clear_session_comparison,
     compare_resume_versions,
 )
+from utils.job_url_extractor import (
+    extract_job_description_from_url,
+    JobURLExtractionError,
+    SSRFSecurityError,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -4429,6 +4434,62 @@ def api_saved_job_description_item(saved_id):
         "success": True,
         "saved_job_description": get_saved_job_description_by_id(saved_id, student_id)
     }), 200
+
+
+@analysis_bp.route("/api/job-description/extract-url", methods=["POST"])
+@analysis_bp.route("/api/job-description/import-link", methods=["POST"])
+@csrf.exempt
+def api_extract_job_description_url():
+    """
+    Extracts and normalizes job posting description text from a student-provided URL (#689).
+    Enforces SSRF prevention (blocking private, loopback, link-local IPs and dangerous ports),
+    short timeouts, download limits, redirect IP validation, and readability extraction.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    url = (payload.get("url") or payload.get("link") or payload.get("job_url") or "").strip()
+
+    if not url:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Please provide a valid job posting link."
+        }), 400
+
+    try:
+        result = extract_job_description_from_url(url)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "url": url,
+            "job_description": result["job_description"],
+            "character_count": result["character_count"],
+            "title": result.get("title", ""),
+            "company": result.get("company", ""),
+        }), 200
+    except SSRFSecurityError as e:
+        logger.warning(f"SSRF safety check blocked job URL request: {url} -> {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "security_restriction",
+            "error": f"The provided URL cannot be fetched for security reasons: {str(e)} Please copy and paste the job description text manually."
+        }), 400
+    except JobURLExtractionError as e:
+        logger.info(f"Job URL extraction failed for {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "extraction_failed",
+            "error": str(e)
+        }), 422
+    except Exception as e:
+        logger.exception(f"Unexpected error while extracting job URL {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "server_error",
+            "error": "Failed to extract job description from the provided link. Please copy and paste the job description text manually."
+        }), 500
 
 
 @analysis_bp.route("/api/goals", methods=["GET", "POST"])
