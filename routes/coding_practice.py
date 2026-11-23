@@ -683,4 +683,27 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@coding_practice_bp.route("/api/coding/hints", methods=["POST"])
+def api_get_coding_hint():
+    """Retrieves graduated hint level and tracks hint usage (#615)."""
+    from utils.coding_hint_ladder_service import get_hint_for_problem
+    data = request.get_json(silent=True) or {}
+    problem_id = data.get("problem_id", "default")
+    level = data.get("level", 1)
+
+    hint_res = get_hint_for_problem(problem_id, level)
+
+    used_key = f"hints_used_{problem_id}"
+    current_count = flask_session.get(used_key, 0)
+    if level > current_count:
+        flask_session[used_key] = level
+
+    return jsonify({
+        "status": "success",
+        "hint": hint_res,
+        "hints_used_count": flask_session.get(used_key, 1)
+    }), 200
+
+
+
 
