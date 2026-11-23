@@ -7,6 +7,11 @@ import re
 import logging
 from typing import Dict, Any, List, Set, Optional, Tuple
 
+from utils.job_data_source import (
+    JobDataSource,
+    JsonFileJobDataSource,
+)
+
 logger = logging.getLogger(__name__)
 
 # Common synonyms and sub-skill aliases for technical competencies
@@ -49,8 +54,21 @@ class JobRecommendationAgent:
     calculating skill match percentages, overlap ratios, and hiring probability.
     """
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, data_source: Optional[JobDataSource] = None) -> None:
+        """
+        Initializes the JobRecommendationAgent with a pluggable data source (#533).
+        Defaults to loading listings from data/campus_jobs.json via JsonFileJobDataSource.
+        """
+        self.data_source: JobDataSource = data_source or JsonFileJobDataSource()
+
+    def set_data_source(self, data_source: JobDataSource) -> None:
+        """
+        Dynamically swaps the underlying job data source at runtime (#533).
+        Allows testing, switching between remote feeds and local storage without altering ranking logic.
+        """
+        if data_source is None:
+            raise ValueError("Job data source cannot be None.")
+        self.data_source = data_source
 
     @staticmethod
     def _normalize_string(s: str) -> str:
@@ -198,6 +216,30 @@ class JobRecommendationAgent:
             tier_label = "Stretch Opportunity"
             fit_summary = f"Significant skill gap detected. Review roadmap tasks for {', '.join(missing_req[:3]) if missing_req else 'key topics'}."
 
+        # Build detailed recommendation reason explaining why each job fits (#533)
+        if matched_req:
+            top_matched_str = ", ".join(matched_req[:4])
+            reason = f"Matches {len(matched_req)} of {len(req_skills)} required technical skills ({top_matched_str})."
+        else:
+            reason = "Aligns with entry-level placement qualifications."
+
+        if company_bonus > 0:
+            recommendation_reason = f"Target recruiter opening: {reason} Directly matches your evaluated company preference."
+        elif match_percentage >= 82:
+            recommendation_reason = f"Top recommendation: {reason} High technical compatibility with candidate profile."
+        elif match_percentage >= 68:
+            recommendation_reason = f"Strong fit: {reason}"
+            if missing_req:
+                recommendation_reason += f" Bridging {missing_req[0]} will further boost selection chances."
+        elif match_percentage >= 50:
+            recommendation_reason = f"Moderate match: {reason}"
+            if missing_req:
+                recommendation_reason += f" Reviewing {', '.join(missing_req[:2])} is suggested before drive day."
+        else:
+            recommendation_reason = f"Stretch opportunity: {reason}"
+            if missing_req:
+                recommendation_reason += f" Recommended to cover {', '.join(missing_req[:2])} in roadmap."
+
         return {
             **job,
             "match_percentage": match_percentage,
@@ -205,25 +247,34 @@ class JobRecommendationAgent:
             "tier_label": tier_label,
             "matched_skills": matched_req + matched_pref,
             "missing_skills": missing_req + missing_pref,
+            "matched_required_skills": matched_req,
+            "missing_required_skills": missing_req,
             "matched_required_count": len(matched_req),
             "total_required_count": len(req_skills),
             "fit_summary": fit_summary,
+            "fit_reason": recommendation_reason,
+            "recommendation_reason": recommendation_reason,
             "is_target_company": (target_clean != "" and (target_clean in job_company or job_company in target_clean))
         }
 
     def recommend_jobs(
         self,
         analysis_record: Dict[str, Any],
-        jobs: List[Dict[str, Any]],
+        jobs: Optional[List[Dict[str, Any]]] = None,
         location: str = "all",
         role_type: str = "all",
+        experience_level: str = "all",
         min_match: int = 0,
         search_query: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        Scores and ranks all active jobs for the given candidate analysis.
-        Filters by location, role_type, min_match threshold, and optional search query.
+        Scores and ranks active jobs for the candidate profile (#533).
+        Loads listings from the configured pluggable data source when jobs is None.
+        Filters by location, role_type (internship/full-time), experience_level, min_match, and search.
         """
+        if jobs is None:
+            jobs = self.data_source.get_jobs()
+
         if not jobs:
             return []
 
@@ -262,7 +313,7 @@ class JobRecommendationAgent:
                 if loc_clean in (j.get("location") or "").lower()
             ]
 
-        # Apply role type filter
+        # Apply role type filter (internship vs full-time)
         if role_type and role_type.strip().lower() not in ("all", "any"):
             rt_clean = role_type.strip().lower()
             scored_jobs = [
@@ -270,9 +321,27 @@ class JobRecommendationAgent:
                 if rt_clean in (j.get("role_type") or "").lower()
             ]
 
+        # Apply experience level filter (#533)
+        if experience_level and experience_level.strip().lower() not in ("all", "any"):
+            exp_clean = experience_level.strip().lower()
+
+            def matches_exp(j: Dict[str, Any]) -> bool:
+                j_exp = (j.get("experience_level") or "").lower()
+                if exp_clean in j_exp or j_exp in exp_clean:
+                    return True
+                # Semantic groupings
+                if any(w in exp_clean for w in ["fresher", "0-1", "graduate", "entry"]):
+                    return any(w in j_exp for w in ["fresher", "0-1", "graduate", "entry", "graduating"])
+                if any(w in exp_clean for w in ["intern", "student", "pre-final", "2nd", "3rd"]):
+                    return any(w in j_exp for w in ["intern", "student", "pre-final", "final year", "2nd", "3rd"])
+                return False
+
+            scored_jobs = [j for j in scored_jobs if matches_exp(j)]
+
         # Apply text search query
         if search_query and search_query.strip():
             q = search_query.strip().lower()
+
             def matches(j: Dict[str, Any]) -> bool:
                 if q in (j.get("title") or "").lower():
                     return True
@@ -286,4 +355,39 @@ class JobRecommendationAgent:
             scored_jobs = [j for j in scored_jobs if matches(j)]
 
         return scored_jobs
+
+    def get_broaden_suggestions(
+        self,
+        total_available: int,
+        filtered_count: int,
+        location: str = "all",
+        role_type: str = "all",
+        experience_level: str = "all",
+        search_query: Optional[str] = None
+    ) -> List[str]:
+        """
+        Generates actionable suggestions to broaden filters when no listings match (#533).
+        """
+        suggestions: List[str] = []
+        if filtered_count > 0:
+            return suggestions
+
+        if location and location.strip().lower() not in ("all", "any"):
+            loc_label = location.strip()
+            suggestions.append(f"Switch location from '{loc_label}' to 'All Locations' to explore opportunities across all tech hubs and remote drives.")
+
+        if role_type and role_type.strip().lower() not in ("all", "any"):
+            rt_label = role_type.strip()
+            suggestions.append(f"Broaden role type from '{rt_label}' to 'All Roles' to include both Full-time positions and Internships.")
+
+        if experience_level and experience_level.strip().lower() not in ("all", "any"):
+            suggestions.append(f"Clear experience filter '{experience_level}' to view all fresher, student, and early-career drives.")
+
+        if search_query and search_query.strip():
+            suggestions.append(f"Clear or shorten search query '{search_query}' to match a broader set of job listings.")
+
+        if not suggestions:
+            suggestions.append(f"Reset your filters to view all {total_available} available campus opportunities sorted by skill overlap.")
+
+        return suggestions
 

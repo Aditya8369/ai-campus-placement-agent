@@ -51,6 +51,7 @@ from utils.bookmark_folders import *
 from utils.interview_moderation import *
 from utils.deadline_reminders import *
 from utils.company_profile_manager import *
+from utils.interview_helpful_service import get_contributor_helped_students_count
 from utils.progress_tracker import *
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
@@ -843,6 +844,8 @@ def profile_view():
         session_item["last_seen_display"] = _format_session_timestamp(session_item.get("last_seen_at"))
         sessions.append(session_item)
 
+    helped_students_count = get_contributor_helped_students_count(student_id)
+
     return render_template(
         "profile.html",
         completion=completion_info,
@@ -850,7 +853,8 @@ def profile_view():
         skills_csv=skills_csv,
         student_id=student_id,
         sessions=sessions,
-        current_session_id=current_session_id
+        current_session_id=current_session_id,
+        helped_students_count=helped_students_count,
     )
 
 
@@ -867,9 +871,12 @@ def api_profile_completion():
         or "default_student"
     )
     data = calculate_profile_completion(student_id=student_id)
+    helped_students_count = get_contributor_helped_students_count(student_id)
+    data["helped_students_count"] = helped_students_count
     return jsonify({
         "status": "success",
-        "data": data
+        "data": data,
+        "helped_students_count": helped_students_count,
     }), 200
 
 
@@ -1837,6 +1844,32 @@ def api_verify_email_change():
     status_code = 200 if result["success"] else 400
 
     return jsonify(result), status_code
+
+
+@auth_bp.route("/api/account/merge/preview", methods=["POST"])
+def api_preview_account_merge():
+    """Previews transferable records between two candidate accounts (#630)."""
+    from utils.account_merge_service import preview_account_merge
+    data = request.get_json(silent=True) or {}
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    preview = preview_account_merge(p_id, s_id)
+    return jsonify({"status": "success", "preview": preview}), 200
+
+
+@auth_bp.route("/api/account/merge/execute", methods=["POST"])
+def api_execute_account_merge():
+    """Executes verified account merge (#630)."""
+    from utils.account_merge_service import execute_account_merge
+    data = request.get_json(silent=True) or {}
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    token_verified = bool(data.get("verified_token", False))
+    res = execute_account_merge(p_id, s_id, verified_token=token_verified)
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error")}), 400
+    return jsonify({"status": "success", "result": res}), 200
+
 
 
 
