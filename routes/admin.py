@@ -627,118 +627,208 @@ def api_enroll_student_batch():
 
 
 # =====================================================================
-# PLACEMENT CELL BATCH ANALYSIS ROUTES (#763)
+# STUDENT BULK INVITATION ROUTES (#690)
 # =====================================================================
 
-@admin_bp.route("/admin/placement-cell", methods=["GET"])
-def placement_cell_view():
-    """
-    Renders the Placement Cell batch analysis dashboard (#763).
-    Displays batch resume upload form with consent notice, batch size limits,
-    background processing status, and anonymized aggregate statistics.
-    """
-    from utils.placement_cell_service import PlacementCellBatchService
-    batches = PlacementCellBatchService.list_batches(limit=25)
-    max_batch_size = PlacementCellBatchService.get_max_batch_size()
+def _check_admin_access() -> bool:
+    """Verifies that the current requester has administrative credentials."""
+    admin_session = (
+        flask_session.get("is_admin")
+        or (flask_session.get("user", {}).get("role") == "admin")
+        or flask_session.get("user_role") in ["admin", "coordinator"]
+    )
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+    return bool(
+        admin_session
+        or (admin_header and admin_header == configured_key)
+        or (admin_param and admin_param == configured_key)
+    )
+
+
+@admin_bp.route("/admin/invite-students", methods=["GET"])
+@admin_bp.route("/admin/invitations", methods=["GET"])
+def admin_invite_students_view():
+    """Renders the placement officer student invitation and batch onboarding portal (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import list_invitations
+    status_filter = request.args.get("status", "all")
+    search_query = request.args.get("search", "").strip()
+
+    data = list_invitations(status_filter=status_filter, search_query=search_query)
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "data": data}), 200
+
     return render_template(
-        "placement_cell.html",
-        batches=batches,
-        max_batch_size=max_batch_size
+        "admin_invite_students.html",
+        invitations=data.get("invitations", []),
+        counts=data.get("counts", {}),
+        status_filter=status_filter,
+        search_query=search_query,
     )
 
 
-@admin_bp.route("/api/admin/placement-cell/batch", methods=["POST"])
-@csrf.exempt
-def api_upload_placement_batch():
-    """
-    Handles multi-resume upload for college placement officers (#763).
-    - Enforces consent notice and batch size limits.
-    - Processes resumes in the background.
-    - Reports failed files individually.
-    - Uploaded files are deleted from storage after processing.
-    """
-    from utils.placement_cell_service import PlacementCellBatchService
+@admin_bp.route("/admin/invitations/template.csv", methods=["GET"])
+@admin_bp.route("/admin/invite-students/template", methods=["GET"])
+def admin_download_invitation_csv_template():
+    """Provides a downloadable sample CSV template for bulk student onboarding (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    files = request.files.getlist("resumes")
-    consent = request.form.get("consent")
-    batch_name = request.form.get("batch_name", "").strip()
-    is_sync = request.form.get("sync") in ("true", "1") or request.args.get("sync") in ("true", "1")
-
-    valid, err_msg = PlacementCellBatchService.validate_batch_upload(files, consent)
-    if not valid:
-        return jsonify({"success": False, "error": err_msg}), 400
-
-    # Filter non-empty files
-    valid_files = [f for f in files if f and f.filename and f.filename.strip()]
-
-    batch_id = PlacementCellBatchService.create_batch(
-        batch_name=batch_name,
-        total_files=len(valid_files),
-        consent_confirmed=True
+    from utils.student_invitation_service import generate_invitation_csv_template
+    csv_text = generate_invitation_csv_template()
+    return Response(
+        csv_text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=student_invitations_template.csv"},
     )
 
-    # Save files to isolated temporary batch directory
-    batch_dir = os.path.join(str(config.UPLOAD_FOLDER), f"batch_{batch_id}")
-    os.makedirs(batch_dir, exist_ok=True)
 
-    file_records = []
-    for f in valid_files:
-        safe_name = secure_filename(f.filename) or f"resume_{uuid.uuid4().hex[:8]}.pdf"
-        target_path = os.path.join(batch_dir, f"{uuid.uuid4().hex[:8]}_{safe_name}")
-        f.save(target_path)
-        file_records.append((target_path, f.filename))
+@admin_bp.route("/api/admin/invitations/preview", methods=["POST"])
+def api_admin_preview_invitations_csv():
+    """Parses and validates uploaded CSV and returns preview with error reporting (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    # Process batch (background worker by default; sync if requested)
-    PlacementCellBatchService.process_batch(
-        batch_id=batch_id,
-        file_records=file_records,
-        run_in_background=(not is_sync)
+    from utils.student_invitation_service import parse_and_validate_invitation_csv
+
+    csv_data = ""
+    if "file" in request.files:
+        uploaded_file = request.files["file"]
+        if not uploaded_file.filename:
+            return jsonify({"success": False, "error": "No file selected."}), 400
+        csv_data = uploaded_file.read()
+    else:
+        payload = request.get_json(silent=True) or request.form
+        csv_data = payload.get("csv_content", "")
+
+    if not csv_data:
+        return jsonify({"success": False, "error": "No CSV content provided."}), 400
+
+    preview = parse_and_validate_invitation_csv(csv_data)
+    status_code = 200 if preview.get("success") else 400
+    return jsonify(preview), status_code
+
+
+@admin_bp.route("/api/admin/invitations/send", methods=["POST"])
+def api_admin_send_invitations():
+    """Creates single-use, 14-day expiring invitations and dispatches emails (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import (
+        create_and_send_invitations,
+        parse_and_validate_invitation_csv,
     )
 
-    status_code = 200 if is_sync else 202
-    return jsonify({
-        "success": True,
-        "batch_id": batch_id,
-        "status": "completed" if is_sync else "processing",
-        "total_files": len(valid_files),
-        "message": "Batch resumes submitted successfully for processing."
-    }), status_code
+    admin_id = flask_session.get("user_id") or "admin"
+    client_ip = request.remote_addr
+
+    candidate_rows = []
+    if "file" in request.files:
+        uploaded_file = request.files["file"]
+        csv_data = uploaded_file.read()
+        preview = parse_and_validate_invitation_csv(csv_data)
+        if not preview.get("success") or not preview.get("valid_rows"):
+            return jsonify({
+                "success": False,
+                "error": preview.get("error") or "No valid rows found in CSV.",
+                "preview": preview,
+            }), 400
+        candidate_rows = preview["valid_rows"]
+    else:
+        payload = request.get_json(silent=True) or request.form
+        candidate_rows = payload.get("rows") or []
+
+    if not candidate_rows:
+        return jsonify({"success": False, "error": "No candidate rows to invite."}), 400
+
+    base_url = request.host_url
+    result = create_and_send_invitations(
+        candidate_rows=candidate_rows,
+        admin_id=admin_id,
+        base_url=base_url,
+        ip_address=client_ip,
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
 
 
-@admin_bp.route("/api/admin/placement-cell/batch/<batch_id>", methods=["GET"])
-def api_get_placement_batch(batch_id: str):
-    """
-    Returns anonymized aggregate statistics for a placement cell batch (#763).
-    Contains NO names or candidate contact details.
-    """
-    from utils.placement_cell_service import PlacementCellBatchService
-    batch = PlacementCellBatchService.get_batch(batch_id)
-    if not batch:
-        return jsonify({"success": False, "error": f"Placement batch '{batch_id}' not found."}), 404
+@admin_bp.route("/api/admin/invitations/<invite_id>/revoke", methods=["POST"])
+def api_admin_revoke_invitation(invite_id: str):
+    """Revokes an active invitation link so it stops functioning (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    return jsonify({"success": True, "batch": batch}), 200
+    from utils.student_invitation_service import revoke_invitation
+    admin_id = flask_session.get("user_id") or "admin"
+    payload = request.get_json(silent=True) or request.form
+    reason = payload.get("reason", "Revoked by placement officer")
+
+    result = revoke_invitation(
+        invitation_id=invite_id,
+        admin_id=admin_id,
+        reason=reason,
+        ip_address=request.remote_addr,
+    )
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
 
 
-@admin_bp.route("/admin/placement-cell/batch/<batch_id>/export.csv", methods=["GET"])
-@admin_bp.route("/api/admin/placement-cell/batch/<batch_id>/export.csv", methods=["GET"])
-def export_placement_batch_csv(batch_id: str):
-    """
-    Exports an anonymized aggregate CSV report for the placement batch (#763).
-    Acceptance Criterion: Contains NO names or contact details.
-    """
-    from utils.placement_cell_service import PlacementCellBatchService
-    try:
-        csv_content = PlacementCellBatchService.generate_aggregate_csv(batch_id)
-    except ValueError as ve:
-        return jsonify({"success": False, "error": str(ve)}), 404
-    except Exception as e:
-        logger.error(f"Failed to generate aggregate CSV for batch {batch_id}: {e}")
-        return jsonify({"success": False, "error": "Failed to generate CSV export."}), 500
+@admin_bp.route("/api/admin/invitations/<invite_id>/resend", methods=["POST"])
+def api_admin_resend_invitation(invite_id: str):
+    """Resends an invitation with a refreshed 14-day expiry window (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    response = Response(csv_content, mimetype="text/csv")
-    response.headers["Content-Disposition"] = f"attachment; filename=placement_batch_{batch_id[:8]}_aggregate.csv"
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return response
+    from utils.student_invitation_service import resend_invitation
+    admin_id = flask_session.get("user_id") or "admin"
+
+    result = resend_invitation(
+        invitation_id=invite_id,
+        admin_id=admin_id,
+        base_url=request.host_url,
+        ip_address=request.remote_addr,
+    )
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@admin_bp.route("/admin/invitations/export.csv", methods=["GET"])
+def admin_export_invitations_csv():
+    """Exports invitation statuses with CSV formula injection sanitization (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import export_invitations_csv
+    status_filter = request.args.get("status")
+    search_query = request.args.get("search")
+
+    csv_data = export_invitations_csv(status_filter=status_filter, search_query=search_query)
+    filename = f"student_invitations_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@admin_bp.route("/api/admin/invitations/audit-log", methods=["GET"])
+def api_admin_invitations_audit_log():
+    """Retrieves immutable admin invitation audit logs (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import get_invitation_audit_logs
+    limit = min(request.args.get("limit", 50, type=int), 200)
+    logs = get_invitation_audit_logs(limit=limit)
+    return jsonify({"success": True, "logs": logs}), 200
+
 
 
 

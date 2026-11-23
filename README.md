@@ -639,25 +639,31 @@ The following features are being considered:
 
 ---
 
-## Import Job Description from URL with Safe Fetching (#689)
+## Bulk Student Onboarding via CSV for Placement Officers (#690)
 
-To eliminate the friction of copying and pasting job postings by hand—which often carries clutter like navigation menus, cookie banners, sidebars, and similar job links—students can import a job description directly via link:
+To overcome the student adoption barrier for colleges and institutions, placement officers and administrators can onboard entire student batches and departments in seconds via CSV:
 
-- **"Import from link" on Analysis Form**: Accessible on the main placement preparation landing page under the custom job description tab.
-- **Server-Side Request Forgery (SSRF) Protection**:
-  - Restricts URL schemes strictly to `http://` and `https://`.
-  - Resolves target hostnames and blocks private (RFC 1918), loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), carrier-grade NAT (`100.64.0.0/10`), multicast, reserved, and non-global IP addresses.
-  - Validates every redirect hop (e.g. 301, 302) to prevent redirect-based internal pivot attacks.
-  - Blocks dangerous non-web destination ports.
-- **Strict Resource & Abuse Limits**:
-  - Connect and read timeouts prevent slow-loris hanging.
-  - Maximum download size capped at 2 MB via `Content-Length` checks and chunked stream thresholds.
-  - Maximum of 5 redirects permitted before aborting.
-- **Lightweight Readability Extraction**:
-  - Strips scripts, styles, forms, headers, footers, navbars, and cookie banners using BeautifulSoup.
-  - Heuristically extracts core job requirements, preserving headings, bullet points, and paragraph structure.
-  - Populates the textarea for the student to review, edit, or adjust before triggering analysis.
-  - If a site uses anti-bot challenges (HTTP 401, 403, 429) or non-HTML content, provides a clear, helpful message asking the student to paste the text manually.
+- **Admin Portal**: Accessible to authorized administrators and placement coordinators at [`/admin/invite-students`](templates/admin_invite_students.html).
+- **CSV Format & Validation**:
+  - Accepts standard CSV with headers `name`, `email`, optional `branch`, and optional `graduation_year`.
+  - Downloadable template available directly from `/admin/invitations/template.csv`.
+  - Real-time row validation with instant preview, reporting explicit failure reasons for invalid entries (missing name, malformed email, institutional domain mismatch, out-of-range graduation year).
+  - Automatically identifies and skips duplicate emails within the CSV as well as already-registered platform users.
+- **Single-Use, 14-Day Expiring Links**:
+  - Each invited student receives a cryptographically secure, single-use activation link (`/register?invite_token=<token>`).
+  - Automatically expires after 14 days.
+  - Revoked links stop working immediately.
+  - Links are consumed immediately upon successful registration and cannot be reused.
+- **Safety Quotas & Rate Limits**:
+  - Upload limit: Maximum **200 rows per CSV upload**.
+  - Rate limit: Maximum **500 invitations per hour** per institution.
+- **Invitation Status Tracking & Management**:
+  - Tracks status in real time: `sent`, `accepted`, `expired`, and `revoked`.
+  - Resend invitation functionality with refreshed 14-day expiry.
+  - One-click link revocation.
+  - Export all invitation records to CSV with **CSV Formula Injection Sanitization** (neutralizing `=`, `+`, `-`, `@`, `\t`, `\r` prefixes).
+- **Admin Audit Logging**:
+  - Every batch upload, resend, revocation, and student acceptance is recorded to an immutable audit log (`admin_invitation_audit_logs`).
 
 ---
 

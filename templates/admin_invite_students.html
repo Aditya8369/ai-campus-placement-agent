@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Invite Students | AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand fs-5 fw-bold text-white text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary me-2"></i>Admin &bull; Placement Officer Portal
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/admin/batch-analytics" class="btn btn-outline-light btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-chart-pie me-1"></i> Batch Analytics
+        </a>
+        <a href="/companies" class="btn btn-outline-secondary btn-sm rounded-pill px-3 text-white">
+          <i class="fa-solid fa-building me-1"></i> Companies
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 text-white">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3 shadow-sm" role="alert">
+              <i class="fa-solid fa-circle-info me-2"></i> {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Header Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4 bg-white">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1.5 fw-semibold small">
+              <i class="fa-solid fa-users-viewfinder me-1"></i> Batch Onboarding
+            </span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1.5 fw-semibold small">
+              <i class="fa-solid fa-shield-check me-1"></i> Single-Use 14-Day Links
+            </span>
+          </div>
+          <h2 class="fw-bold text-dark mb-2">Invite Students in Bulk</h2>
+          <p class="text-muted mb-0">
+            Onboard entire graduating classes and departments in seconds via CSV. Preview valid and invalid rows with rejection reasons before sending, track acceptance in real time, and manage link revocation.
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <div class="d-flex flex-column flex-sm-row flex-lg-column gap-2 justify-content-lg-end">
+            <a href="/admin/invitations/template.csv" class="btn btn-outline-primary rounded-pill px-3 py-2 fw-semibold shadow-sm">
+              <i class="fa-solid fa-file-csv me-1"></i> Download CSV Template
+            </a>
+            <a href="/admin/invitations/export.csv" class="btn btn-outline-secondary rounded-pill px-3 py-2 fw-semibold shadow-sm">
+              <i class="fa-solid fa-file-export me-1"></i> Export All Invitations
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <span class="text-muted small fw-semibold text-uppercase">Total Invited</span>
+          <h3 class="fw-bold text-dark my-1" id="statTotal">{{ counts.total or 0 }}</h3>
+          <span class="small text-muted">Across all batches</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <span class="text-success small fw-semibold text-uppercase">Accepted / Joined</span>
+          <h3 class="fw-bold text-success my-1" id="statAccepted">{{ counts.accepted or 0 }}</h3>
+          <span class="small text-success">
+            {% if counts.total and counts.total > 0 %}
+              {{ ((counts.accepted / counts.total) * 100) | round(1) }}% conversion
+            {% else %}
+              0% conversion
+            {% endif %}
+          </span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <span class="text-primary small fw-semibold text-uppercase">Pending Active</span>
+          <h3 class="fw-bold text-primary my-1" id="statSent">{{ counts.sent or 0 }}</h3>
+          <span class="small text-muted">Awaiting activation</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center">
+          <span class="text-danger small fw-semibold text-uppercase">Expired / Revoked</span>
+          <h3 class="fw-bold text-danger my-1" id="statExpired">
+            {{ (counts.expired or 0) + (counts.revoked or 0) }}
+          </h3>
+          <span class="small text-muted">{{ counts.expired or 0 }} expired &bull; {{ counts.revoked or 0 }} revoked</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload & Preview Card -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+      <h5 class="fw-bold text-dark mb-3">
+        <i class="fa-solid fa-cloud-arrow-up text-primary me-2"></i> Step 1: Upload Candidate Batch CSV
+      </h5>
+      <p class="small text-muted mb-3">
+        The CSV file must contain columns: <code>name</code> and <code>email</code>. Optional columns: <code>branch</code> and <code>graduation_year</code>. Maximum <strong>200 rows</strong> per upload, and <strong>500 invitations</strong> per hour.
+      </p>
+
+      <div class="row g-3 align-items-center">
+        <div class="col-md-8">
+          <div class="input-group">
+            <input type="file" id="csvFileInput" class="form-control rounded-start-pill py-2" accept=".csv,text/csv">
+            <button class="btn btn-primary rounded-end-pill px-4 fw-semibold" id="btnPreviewCsv" type="button">
+              <i class="fa-solid fa-magnifying-glass me-1"></i> Preview & Validate CSV
+            </button>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="small text-muted">
+            <i class="fa-solid fa-shield-halved text-success me-1"></i> Duplicates & existing users are automatically checked.
+          </div>
+        </div>
+      </div>
+
+      <!-- Preview Results Area (Initially Hidden) -->
+      <div id="previewContainer" class="d-none mt-4 pt-3 border-top">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+          <div>
+            <h6 class="fw-bold text-dark mb-1">
+              <i class="fa-solid fa-list-check text-primary me-1"></i> CSV Validation Preview
+            </h6>
+            <div class="d-flex gap-2">
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                <i class="fa-solid fa-check me-1"></i> <span id="previewValidCount">0</span> Valid Rows
+              </span>
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i> <span id="previewInvalidCount">0</span> Invalid Rows
+              </span>
+            </div>
+          </div>
+          <div>
+            <button class="btn btn-success rounded-pill px-4 fw-semibold shadow-sm" id="btnConfirmSend" type="button" disabled>
+              <i class="fa-solid fa-paper-plane me-1"></i> Send <span id="sendCountBadge">0</span> Invitations
+            </button>
+          </div>
+        </div>
+
+        <!-- Invalid Rows Alert (If Any) -->
+        <div id="invalidRowsSection" class="d-none mb-3">
+          <div class="alert alert-warning border rounded-3 p-3 mb-0">
+            <h6 class="fw-bold text-warning-emphasis mb-2">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> The following rows will be skipped:
+            </h6>
+            <div class="table-responsive" style="max-height: 180px; overflow-y: auto;">
+              <table class="table table-sm table-borderless small mb-0">
+                <thead>
+                  <tr class="text-muted">
+                    <th>Row</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Rejection Reason</th>
+                  </tr>
+                </thead>
+                <tbody id="invalidRowsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Valid Rows Preview Table -->
+        <div class="table-responsive border rounded-3" style="max-height: 240px; overflow-y: auto;">
+          <table class="table table-hover table-striped align-middle small mb-0">
+            <thead class="table-light sticky-top">
+              <tr>
+                <th>#</th>
+                <th>Candidate Name</th>
+                <th>Email Address</th>
+                <th>Branch</th>
+                <th>Grad Year</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="validRowsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Invitations Tracking Table Card -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-4">
+        <div>
+          <h5 class="fw-bold text-dark mb-1">
+            <i class="fa-solid fa-table-list text-primary me-2"></i> Invitations Registry & Status Tracking
+          </h5>
+          <p class="small text-muted mb-0">Live status of onboarding invitations sent to campus batches.</p>
+        </div>
+
+        <!-- Filter Controls -->
+        <form method="GET" action="/admin/invite-students" class="d-flex flex-wrap gap-2">
+          <div class="input-group input-group-sm" style="max-width: 240px;">
+            <input type="text" name="search" class="form-control rounded-start-pill" placeholder="Search name or email..." value="{{ search_query }}">
+            <button class="btn btn-outline-secondary rounded-end-pill px-3" type="submit">
+              <i class="fa-solid fa-magnifying-glass"></i>
+            </button>
+          </div>
+          <div class="btn-group btn-group-sm" role="group" aria-label="Status filters">
+            <a href="/admin/invite-students?status=all{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-outline-secondary rounded-start-pill {% if status_filter == 'all' or not status_filter %}active{% endif %}">
+              All
+            </a>
+            <a href="/admin/invite-students?status=sent{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-outline-secondary {% if status_filter == 'sent' %}active{% endif %}">
+              Sent
+            </a>
+            <a href="/admin/invite-students?status=accepted{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-outline-secondary {% if status_filter == 'accepted' %}active{% endif %}">
+              Accepted
+            </a>
+            <a href="/admin/invite-students?status=expired{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-outline-secondary {% if status_filter == 'expired' %}active{% endif %}">
+              Expired
+            </a>
+            <a href="/admin/invite-students?status=revoked{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-outline-secondary rounded-end-pill {% if status_filter == 'revoked' %}active{% endif %}">
+              Revoked
+            </a>
+          </div>
+        </form>
+      </div>
+
+      <!-- Invitations Table -->
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead class="table-light">
+            <tr class="small text-muted text-uppercase">
+              <th>Candidate</th>
+              <th>Branch & Year</th>
+              <th>Status</th>
+              <th>Sent Date</th>
+              <th>Expires Date</th>
+              <th>Resends</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if invitations and invitations|length > 0 %}
+              {% for inv in invitations %}
+                <tr id="invitation-row-{{ inv.id }}">
+                  <td>
+                    <div class="fw-semibold text-dark">{{ inv.name }}</div>
+                    <div class="small text-muted">{{ inv.email }}</div>
+                  </td>
+                  <td>
+                    {% if inv.branch %}
+                      <span class="badge bg-light text-dark border rounded-pill">{{ inv.branch }}</span>
+                    {% else %}
+                      <span class="text-muted small">&mdash;</span>
+                    {% endif %}
+                    {% if inv.graduation_year %}
+                      <span class="badge bg-light text-secondary border rounded-pill">'{{ inv.graduation_year }}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if inv.status == 'accepted' %}
+                      <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-check-double me-1"></i> Accepted
+                      </span>
+                    {% elif inv.status == 'sent' %}
+                      <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-clock me-1"></i> Sent
+                      </span>
+                    {% elif inv.status == 'expired' %}
+                      <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-hourglass-end me-1"></i> Expired
+                      </span>
+                    {% elif inv.status == 'revoked' %}
+                      <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-3 py-1">
+                        <i class="fa-solid fa-ban me-1"></i> Revoked
+                      </span>
+                    {% else %}
+                      <span class="badge bg-secondary rounded-pill">{{ inv.status }}</span>
+                    {% endif %}
+                  </td>
+                  <td class="small text-muted">
+                    {{ inv.created_at[:10] if inv.created_at else '&mdash;' }}
+                  </td>
+                  <td class="small text-muted">
+                    {{ inv.expires_at[:10] if inv.expires_at else '&mdash;' }}
+                  </td>
+                  <td class="small text-muted">
+                    {{ inv.resend_count or 0 }}
+                  </td>
+                  <td class="text-end">
+                    <div class="btn-group btn-group-sm">
+                      <button type="button" class="btn btn-outline-secondary btn-copy-link"
+                              data-url="{{ request.host_url }}register?invite_token={{ inv.token }}"
+                              title="Copy onboarding link">
+                        <i class="fa-solid fa-link"></i>
+                      </button>
+                      {% if inv.status != 'accepted' %}
+                        <button type="button" class="btn btn-outline-primary btn-resend-invite"
+                                data-id="{{ inv.id }}" title="Resend invitation email">
+                          <i class="fa-solid fa-rotate-right"></i>
+                        </button>
+                      {% endif %}
+                      {% if inv.status == 'sent' %}
+                        <button type="button" class="btn btn-outline-danger btn-revoke-invite"
+                                data-id="{{ inv.id }}" title="Revoke invitation link">
+                          <i class="fa-solid fa-ban"></i>
+                        </button>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            {% else %}
+              <tr>
+                <td colspan="7" class="text-center py-5 text-muted">
+                  <i class="fa-solid fa-inbox fa-3x mb-3 text-secondary d-block"></i>
+                  No student invitations found matching the selected criteria.
+                </td>
+              </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <!-- Inline Dashboard Client Logic -->
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      const csrfToken = document.querySelector('meta[name="csrf-token"]')
+        ? document.querySelector('meta[name="csrf-token"]').getAttribute("content")
+        : "";
+
+      const csvFileInput = document.getElementById("csvFileInput");
+      const btnPreviewCsv = document.getElementById("btnPreviewCsv");
+      const previewContainer = document.getElementById("previewContainer");
+      const previewValidCount = document.getElementById("previewValidCount");
+      const previewInvalidCount = document.getElementById("previewInvalidCount");
+      const validRowsTableBody = document.getElementById("validRowsTableBody");
+      const invalidRowsTableBody = document.getElementById("invalidRowsTableBody");
+      const invalidRowsSection = document.getElementById("invalidRowsSection");
+      const btnConfirmSend = document.getElementById("btnConfirmSend");
+      const sendCountBadge = document.getElementById("sendCountBadge");
+
+      let currentValidRows = [];
+
+      // 1. Preview CSV Handler
+      btnPreviewCsv.addEventListener("click", function () {
+        if (!csvFileInput.files || csvFileInput.files.length === 0) {
+          alert("Please select a CSV file first.");
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append("file", csvFileInput.files[0]);
+
+        btnPreviewCsv.disabled = true;
+        btnPreviewCsv.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Validating...';
+
+        fetch("/api/admin/invitations/preview", {
+          method: "POST",
+          headers: {
+            "X-CSRFToken": csrfToken,
+          },
+          body: formData,
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            btnPreviewCsv.disabled = false;
+            btnPreviewCsv.innerHTML = '<i class="fa-solid fa-magnifying-glass me-1"></i> Preview & Validate CSV';
+
+            if (!data.success && data.error) {
+              alert("Validation Error: " + data.error);
+              return;
+            }
+
+            currentValidRows = data.valid_rows || [];
+            previewValidCount.textContent = data.valid_count || 0;
+            previewInvalidCount.textContent = data.invalid_count || 0;
+            sendCountBadge.textContent = data.valid_count || 0;
+            btnConfirmSend.disabled = currentValidRows.length === 0;
+
+            // Render valid rows
+            validRowsTableBody.innerHTML = "";
+            currentValidRows.forEach((r, idx) => {
+              const tr = document.createElement("tr");
+              tr.innerHTML = `
+                <td>${idx + 1}</td>
+                <td class="fw-semibold text-dark">${r.name}</td>
+                <td>${r.email}</td>
+                <td>${r.branch || '&mdash;'}</td>
+                <td>${r.graduation_year || '&mdash;'}</td>
+                <td><span class="badge bg-success-subtle text-success border rounded-pill">Ready to invite</span></td>
+              `;
+              validRowsTableBody.appendChild(tr);
+            });
+
+            // Render invalid rows if any
+            invalidRowsTableBody.innerHTML = "";
+            if (data.invalid_rows && data.invalid_rows.length > 0) {
+              invalidRowsSection.classList.remove("d-none");
+              data.invalid_rows.forEach((r) => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+                  <td>${r.row_number || '&mdash;'}</td>
+                  <td>${r.name || '&mdash;'}</td>
+                  <td>${r.email || '&mdash;'}</td>
+                  <td class="text-danger fw-semibold">${r.reason || 'Invalid data'}</td>
+                `;
+                invalidRowsTableBody.appendChild(tr);
+              });
+            } else {
+              invalidRowsSection.classList.add("d-none");
+            }
+
+            previewContainer.classList.remove("d-none");
+          })
+          .catch((err) => {
+            btnPreviewCsv.disabled = false;
+            btnPreviewCsv.innerHTML = '<i class="fa-solid fa-magnifying-glass me-1"></i> Preview & Validate CSV';
+            alert("Error validating CSV: " + err.message);
+          });
+      });
+
+      // 2. Confirm Send Handler
+      btnConfirmSend.addEventListener("click", function () {
+        if (!currentValidRows || currentValidRows.length === 0) return;
+
+        if (!confirm(`Are you sure you want to dispatch ${currentValidRows.length} single-use invitation emails?`)) {
+          return;
+        }
+
+        btnConfirmSend.disabled = true;
+        btnConfirmSend.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending Invitations...';
+
+        fetch("/api/admin/invitations/send", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+          body: JSON.stringify({ rows: currentValidRows }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              alert(`Successfully created and dispatched ${data.created_count} invitations!`);
+              window.location.reload();
+            } else {
+              alert("Failed to send invitations: " + (data.error || "Unknown error"));
+              btnConfirmSend.disabled = false;
+              btnConfirmSend.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Send Invitations';
+            }
+          })
+          .catch((err) => {
+            alert("Network error: " + err.message);
+            btnConfirmSend.disabled = false;
+            btnConfirmSend.innerHTML = '<i class="fa-solid fa-paper-plane me-1"></i> Send Invitations';
+          });
+      });
+
+      // 3. Copy Link Handler
+      document.querySelectorAll(".btn-copy-link").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const url = this.getAttribute("data-url");
+          if (navigator.clipboard) {
+            navigator.clipboard.writeText(url).then(() => {
+              const orig = btn.innerHTML;
+              btn.innerHTML = '<i class="fa-solid fa-check text-success"></i>';
+              setTimeout(() => { btn.innerHTML = orig; }, 1500);
+            });
+          } else {
+            prompt("Copy link:", url);
+          }
+        });
+      });
+
+      // 4. Revoke Handler
+      document.querySelectorAll(".btn-revoke-invite").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const inviteId = this.getAttribute("data-id");
+          if (!confirm("Are you sure you want to revoke this invitation? The student link will stop working immediately.")) {
+            return;
+          }
+
+          fetch(`/api/admin/invitations/${inviteId}/revoke`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({ reason: "Revoked by placement officer" }),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                window.location.reload();
+              } else {
+                alert("Could not revoke: " + (data.error || "Unknown error"));
+              }
+            })
+            .catch((err) => alert("Error: " + err.message));
+        });
+      });
+
+      // 5. Resend Handler
+      document.querySelectorAll(".btn-resend-invite").forEach((btn) => {
+        btn.addEventListener("click", function () {
+          const inviteId = this.getAttribute("data-id");
+          if (!confirm("Resend invitation email with refreshed 14-day expiry?")) {
+            return;
+          }
+
+          fetch(`/api/admin/invitations/${inviteId}/resend`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-CSRFToken": csrfToken,
+            },
+            body: JSON.stringify({}),
+          })
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.success) {
+                alert(data.message);
+                window.location.reload();
+              } else {
+                alert("Could not resend: " + (data.error || "Unknown error"));
+              }
+            })
+            .catch((err) => alert("Error: " + err.message));
+        });
+      });
+    });
+  </script>
+</body>
+</html>

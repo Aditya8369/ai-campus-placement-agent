@@ -36,8 +36,22 @@
                 {% endif %}
             {% endwith %}
 
+            {% if invited_info %}
+                <div class="alert alert-info rounded-3 py-2 px-3 small mb-3 d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-envelope-circle-check text-primary"></i>
+                    <div>
+                        <strong>Placement Invitation:</strong> Onboarding for
+                        {% if invited_info.branch %}<strong>{{ invited_info.branch }}</strong>{% endif %}
+                        {% if invited_info.graduation_year %}Class of {{ invited_info.graduation_year }}{% endif %}.
+                    </div>
+                </div>
+            {% endif %}
+
             <form method="POST" action="{{ url_for('register') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                {% if invite_token %}
+                    <input type="hidden" name="invite_token" value="{{ invite_token }}"/>
+                {% endif %}
                 <div class="mb-3">
                     <label for="regName" class="form-label">Full Name</label>
                     <input type="text" id="regName" name="name" class="form-control"
