@@ -2403,6 +2403,28 @@ def api_evaluate_resume_format_compatibility():
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
+@analysis_bp.route("/api/job-description/check-quality", methods=["POST"])
+def api_check_job_description_quality():
+    """
+    Evaluates job description quality score, detected sections, and missing parts (#602).
+    Never stores the description and never rejects valid short text automatically.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    jd_text = (payload.get("job_description") or payload.get("text") or "").strip()
+
+    from utils.jd_quality_checker_service import evaluate_job_description_quality
+    try:
+        report = evaluate_job_description_quality(jd_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "report": report
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error checking job description quality: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @analysis_bp.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
 def get_bullet_rewrites_api(analysis_id: str):
     """Return detected weak bullets and suggested rewrites for an analysis (#429)."""
