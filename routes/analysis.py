@@ -2441,39 +2441,28 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
-@analysis_bp.route("/api/role-difficulty-estimate", methods=["POST"])
-def api_get_role_difficulty_estimate():
+@analysis_bp.route("/api/timetable/generate", methods=["POST"])
+def api_generate_timetable():
     """
-    Computes Role-Based Preparation Difficulty (Easy, Moderate, Challenging),
-    factors, and estimated practice weeks based on candidate skills and selected role (#604).
+    Generates personalized weekly preparation timetable based on daily hours (#605).
     """
     payload = request.get_json(silent=True) or request.form.to_dict()
-    analysis_id = payload.get("analysis_id")
-    candidate_skills = payload.get("skills") or []
-    role_id = payload.get("role_id") or "software_developer"
-    hours_per_week = payload.get("hours_per_week") or 15
+    availability = payload.get("availability") or {}
+    preferred_slot = payload.get("preferred_slot", "Evening (18:00 - 21:00)")
+    custom_tasks = payload.get("custom_tasks")
 
-    # If analysis_id provided, extract skills from the saved report
-    if analysis_id and not candidate_skills:
-        record = get_analysis(analysis_id)
-        if record and _is_student_authorized(record):
-            from utils.role_skill_gap_service import extract_candidate_skills
-            candidate_skills = extract_candidate_skills(record)
-
-    from utils.prep_difficulty_service import calculate_preparation_difficulty
+    from utils.prep_timetable_service import generate_weekly_timetable
     try:
-        difficulty_report = calculate_preparation_difficulty(
-            candidate_skills=candidate_skills,
-            role_id_or_profile=role_id,
-            hours_per_week=int(hours_per_week)
+        result = generate_weekly_timetable(
+            availability=availability,
+            preferred_slot=preferred_slot,
+            custom_tasks=custom_tasks
         )
-        return jsonify({
-            "status": "success",
-            "success": True,
-            "difficulty": difficulty_report
-        }), 200
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
     except Exception as exc:
-        logger.error(f"Error calculating preparation difficulty: {exc}")
+        logger.error(f"Error generating timetable: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
