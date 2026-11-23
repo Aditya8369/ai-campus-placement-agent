@@ -683,4 +683,30 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@coding_practice_bp.route("/api/coding/explanations/feedback", methods=["POST"])
+def api_submit_explanation_feedback():
+    """Submits or updates student feedback on a solution explanation (#616)."""
+    from utils.explanation_feedback_service import submit_feedback
+    user_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or {}
+    exp_id = data.get("explanation_id", "")
+    fb_type = data.get("feedback_type", "")
+    comment = data.get("comment", "")
+
+    res = submit_feedback(user_id, exp_id, fb_type, comment)
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error")}), 400
+    return jsonify({"status": "success", "feedback": res}), 200
+
+
+@coding_practice_bp.route("/api/coding/explanations/feedback/summary", methods=["GET"])
+def api_get_explanation_feedback_summary():
+    """Gets aggregate feedback distribution for an explanation (#616)."""
+    from utils.explanation_feedback_service import get_feedback_summary
+    exp_id = request.args.get("explanation_id", "")
+    summary = get_feedback_summary(exp_id)
+    return jsonify({"status": "success", "summary": summary}), 200
+
+
+
 
