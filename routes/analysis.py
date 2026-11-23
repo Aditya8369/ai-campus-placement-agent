@@ -2419,46 +2419,40 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
-@analysis_bp.route("/api/tasks/dependencies", methods=["GET", "POST"])
-def api_task_dependencies():
+@analysis_bp.route("/api/role-difficulty-estimate", methods=["POST"])
+def api_get_role_difficulty_estimate():
     """
-    Evaluates prerequisite dependencies, lock states, and completes tasks (#606).
+    Computes Role-Based Preparation Difficulty (Easy, Moderate, Challenging),
+    factors, and estimated practice weeks based on candidate skills and selected role (#604).
     """
-    from utils.task_dependency_service import (
-        DEFAULT_TASK_DEPENDENCY_GRAPH,
-        evaluate_task_dependency_states,
-        complete_task_with_validation
-    )
-
-    if request.method == "GET":
-        completed_ids = request.args.getlist("completed")
-        try:
-            res = evaluate_task_dependency_states(DEFAULT_TASK_DEPENDENCY_GRAPH, completed_ids)
-            return jsonify(res), 200
-        except ValueError as ve:
-            return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
-
     payload = request.get_json(silent=True) or request.form.to_dict()
-    action = payload.get("action", "evaluate")
-    tasks = payload.get("tasks") or DEFAULT_TASK_DEPENDENCY_GRAPH
-    completed_ids = payload.get("completed_ids") or []
+    analysis_id = payload.get("analysis_id")
+    candidate_skills = payload.get("skills") or []
+    role_id = payload.get("role_id") or "software_developer"
+    hours_per_week = payload.get("hours_per_week") or 15
 
-    if action == "complete":
-        task_id = payload.get("task_id")
-        if not task_id:
-            return jsonify({"status": "error", "success": False, "error": "task_id is required."}), 400
-        ok, err_msg, updated_completed = complete_task_with_validation(task_id, tasks, completed_ids)
-        if not ok:
-            return jsonify({"status": "error", "success": False, "error": err_msg}), 400
-        evaluation = evaluate_task_dependency_states(tasks, updated_completed)
-        evaluation["updated_completed_ids"] = updated_completed
-        return jsonify(evaluation), 200
+    # If analysis_id provided, extract skills from the saved report
+    if analysis_id and not candidate_skills:
+        record = get_analysis(analysis_id)
+        if record and _is_student_authorized(record):
+            from utils.role_skill_gap_service import extract_candidate_skills
+            candidate_skills = extract_candidate_skills(record)
 
+    from utils.prep_difficulty_service import calculate_preparation_difficulty
     try:
-        res = evaluate_task_dependency_states(tasks, completed_ids)
-        return jsonify(res), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+        difficulty_report = calculate_preparation_difficulty(
+            candidate_skills=candidate_skills,
+            role_id_or_profile=role_id,
+            hours_per_week=int(hours_per_week)
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "difficulty": difficulty_report
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error calculating preparation difficulty: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 
