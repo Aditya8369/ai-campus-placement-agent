@@ -245,6 +245,7 @@ def api_evaluate_code(analysis_id: str = None):
         }), 500
 
 
+@coding_practice_bp.route("/practice", methods=["GET", "POST"])
 @coding_practice_bp.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """

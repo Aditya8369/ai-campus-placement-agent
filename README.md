@@ -770,6 +770,31 @@ All JSON exports adhere to a versioned, stable JSON schema (`v1.0`):
 
 ---
 
+## Keyboard Shortcuts & Accessibility (#691)
+
+The platform provides a lightweight, accessible keyboard navigation layer and modal help dialog to enable efficient navigation without relying solely on the mouse:
+
+### Global Navigation Sequences
+Press <kbd>g</kbd> followed by the destination key:
+- <kbd>g</kbd> then <kbd>d</kbd> : Jump to **Dashboard** (`/`)
+- <kbd>g</kbd> then <kbd>i</kbd> : Jump to **Mock Interview Practice** (`/interview`)
+- <kbd>g</kbd> then <kbd>t</kbd> : Jump to **Applications Tracker** (`/applications`)
+- <kbd>g</kbd> then <kbd>c</kbd> : Jump to **Coding Practice** (`/coding-practice`)
+
+### Actions & Search
+- <kbd>/</kbd> : Focus the primary search input on the current page (or navigate to `/search`)
+- <kbd>?</kbd> : Open the **Keyboard Shortcuts Help Dialog** (accessible with `role="dialog"`, `aria-modal="true"`, and Tab focus trapping)
+- <kbd>Esc</kbd> : Close open modal dialogs or offcanvas drawers and restore focus to the triggering element
+- <kbd>Ctrl</kbd> + <kbd>Enter</kbd> : Submit active form answers or run code editor problem evaluation
+
+### Accessibility Guarantees
+- **Form Protection**: All shortcuts are automatically ignored whenever focus is within an `<input>`, `<textarea>`, `<select>`, or `contenteditable` code editor.
+- **Modifier Key Safety**: Shortcuts do not trigger when modifier keys (<kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Meta</kbd>) are active, preventing any conflict with browser navigation or operating system commands.
+- **Screen Reader & Keyboard Friendly**: The help dialog follows WCAG 2.1 AA specifications with explicit focus traps, descriptive ARIA labels, and keyboard dismissibility.
+- **REST Endpoint**: Platform bindings are also retrievable programmatically via `GET /api/shortcuts`.
+
+---
+
 ## Privacy & Data Protection
 
 The AI Campus Placement Agent is committed to transparent, student-friendly data practices:

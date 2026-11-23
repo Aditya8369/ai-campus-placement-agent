@@ -2155,6 +2155,8 @@ def export_interview_bookmarks():
     )
 
 
+@interview_bp.route("/interview", methods=["GET"])
+@interview_bp.route("/interview/practice", methods=["GET"])
 @interview_bp.route("/interview/bookmarks/practice", methods=["GET"])
 def interview_saved_practice_view():
     """
