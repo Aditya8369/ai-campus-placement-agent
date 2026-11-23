@@ -2740,31 +2740,32 @@ def api_delete_question_explanation(question_id):
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
 
-@interview_bp.route("/api/interview/interviewer-styles", methods=["GET"])
-def api_get_interviewer_styles():
-    """Lists available interviewer personality styles (#612)."""
-    from utils.interviewer_style_service import get_available_styles, DEFAULT_STYLE
-    current_style = flask_session.get("interviewer_style", DEFAULT_STYLE)
+@interview_bp.route("/api/interview/benchmarks", methods=["GET"])
+def api_list_answer_benchmarks():
+    """Returns curated good/average/poor interview answer benchmarks (#610)."""
+    from utils.answer_benchmark_service import get_answer_benchmarks
+    category = request.args.get("category")
+    topic = request.args.get("topic")
+    search = request.args.get("search")
+
+    benchmarks = get_answer_benchmarks(category=category, topic=topic, search=search)
     return jsonify({
         "status": "success",
-        "current_style": current_style,
-        "styles": get_available_styles()
+        "count": len(benchmarks),
+        "benchmarks": benchmarks
     }), 200
 
 
-@interview_bp.route("/api/interview/interviewer-style", methods=["POST"])
-def api_set_interviewer_style():
-    """Saves user preferred interviewer style in session (#612)."""
-    from utils.interviewer_style_service import get_style_config
-    data = request.get_json(silent=True) or {}
-    style_id = data.get("style", "friendly")
-    config = get_style_config(style_id)
-    flask_session["interviewer_style"] = config["id"]
+@interview_bp.route("/api/interview/benchmarks/<benchmark_id>", methods=["GET"])
+def api_get_answer_benchmark(benchmark_id):
+    """Returns a specific answer benchmark by ID (#610)."""
+    from utils.answer_benchmark_service import get_benchmark_by_id
+    benchmark = get_benchmark_by_id(benchmark_id)
+    if not benchmark:
+        return jsonify({"status": "error", "message": "Benchmark not found"}), 404
     return jsonify({
         "status": "success",
-        "selected_style": config["id"],
-        "name": config["name"],
-        "tone": config["tone"]
+        "benchmark": benchmark
     }), 200
 
 
