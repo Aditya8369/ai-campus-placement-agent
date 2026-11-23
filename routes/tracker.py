@@ -612,6 +612,18 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/calendar/conflicts", methods=["POST"])
+def api_detect_calendar_conflicts():
+    """Detects overlapping preparation schedule events and suggests free blocks (#622)."""
+    from utils.calendar_conflict_service import detect_schedule_conflicts
+    data = request.get_json(silent=True) or {}
+    events = data.get("events", [])
+    dismissed = data.get("dismissed_conflict_keys", [])
+
+    conflicts = detect_schedule_conflicts(events, dismissed_conflict_keys=dismissed)
+    return jsonify({"status": "success", "conflicts": conflicts}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
