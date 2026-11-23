@@ -1199,6 +1199,150 @@
       </div>
       {% endif %}
 
+      <!-- Resume Improvement Simulator ("What-If" Sandbox) (#600) -->
+      <div class="card glass-card p-4 border-0 mb-4" id="resumeImprovementSimulatorCard">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">Sandbox Experiment</span>
+            <h4 class="fw-bold mb-1">
+              <i class="fa-solid fa-flask-vial text-primary me-2"></i> Resume Improvement Simulator
+            </h4>
+            <p class="text-secondary small mb-0">
+              Test how adding skills or projects changes your readiness and ATS scores before making changes to your actual resume.
+            </p>
+          </div>
+          <div>
+            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill px-3 py-2">
+              <i class="fa-solid fa-shield-halved me-1"></i> Original Resume Unchanged
+            </span>
+          </div>
+        </div>
+
+        <div class="alert alert-light border rounded-3 p-3 mb-4">
+          <div class="d-flex align-items-center gap-2 text-muted small">
+            <i class="fa-solid fa-circle-info text-primary"></i>
+            <span><strong>Notice:</strong> All calculations below are simulated estimates for planning purposes only and never modify your stored resume or guarantee placement results.</span>
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <!-- Left Column: What-If Controls -->
+          <div class="col-lg-6">
+            <h6 class="fw-bold text-dark mb-2">
+              <i class="fa-solid fa-list-check text-primary me-1"></i> Recommended "What-If" Actions
+            </h6>
+            <p class="small text-muted mb-3">Select tailored recommendations to preview their impact on your score.</p>
+            <div id="whatIfSuggestionsList" class="d-flex flex-column gap-2 mb-4">
+              <div class="form-check p-3 border rounded-3 bg-light">
+                <input class="form-check-input what-if-checkbox" type="checkbox" value="add_cloud_devops" id="chk_cloud_devops" data-ats="6" data-match="8">
+                <label class="form-check-label ms-2 cursor-pointer w-100" for="chk_cloud_devops">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <strong class="text-dark">Add Docker & AWS / Cloud Deployment</strong>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">+6 ATS / +8 Match</span>
+                  </div>
+                  <div class="small text-muted">Demonstrate containerization and modern cloud architecture on projects.</div>
+                </label>
+              </div>
+              <div class="form-check p-3 border rounded-3 bg-light">
+                <input class="form-check-input what-if-checkbox" type="checkbox" value="add_system_design" id="chk_system_design" data-ats="8" data-match="10">
+                <label class="form-check-label ms-2 cursor-pointer w-100" for="chk_system_design">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <strong class="text-dark">Add Microservices & System Architecture</strong>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">+8 ATS / +10 Match</span>
+                  </div>
+                  <div class="small text-muted">Highlight scalable backend design, API gateways, and distributed caching (Redis).</div>
+                </label>
+              </div>
+              <div class="form-check p-3 border rounded-3 bg-light">
+                <input class="form-check-input what-if-checkbox" type="checkbox" value="quantify_impact" id="chk_quantify_impact" data-ats="7" data-match="7">
+                <label class="form-check-label ms-2 cursor-pointer w-100" for="chk_quantify_impact">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <strong class="text-dark">Quantify Project Impact & Metrics</strong>
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">+7 ATS / +7 Match</span>
+                  </div>
+                  <div class="small text-muted">Add measurable metrics (e.g. latency improved by 35%, 10k requests handled).</div>
+                </label>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="simulatedSkillsInput" class="form-label fw-bold small text-dark">
+                <i class="fa-solid fa-code text-primary me-1"></i> Add Custom Simulated Skills:
+              </label>
+              <div class="input-group">
+                <input type="text" id="simulatedSkillsInput" class="form-control" placeholder="e.g. Kubernetes, GraphQL, TypeScript">
+                <button class="btn btn-outline-primary" type="button" id="btnAddSimulatedSkill">Add</button>
+              </div>
+              <div id="simulatedSkillsTags" class="d-flex flex-wrap gap-2 mt-2"></div>
+            </div>
+
+            <div class="mb-3">
+              <label for="simulatedProjectsInput" class="form-label fw-bold small text-dark">
+                <i class="fa-solid fa-diagram-project text-primary me-1"></i> Add Custom Simulated Project:
+              </label>
+              <div class="input-group">
+                <input type="text" id="simulatedProjectsInput" class="form-control" placeholder="e.g. Real-time Collaborative Code Editor">
+                <button class="btn btn-outline-primary" type="button" id="btnAddSimulatedProject">Add</button>
+              </div>
+              <div id="simulatedProjectsTags" class="d-flex flex-wrap gap-2 mt-2"></div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <button type="button" id="btnResetSimulation" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
+                <i class="fa-solid fa-rotate-left me-1"></i> Reset Simulation
+              </button>
+            </div>
+          </div>
+
+          <!-- Right Column: Simulated Score Outcome -->
+          <div class="col-lg-6">
+            <div class="p-4 rounded-4 border bg-white shadow-xs h-100 d-flex flex-column justify-content-between">
+              <div>
+                <h6 class="fw-bold text-dark mb-3">
+                  <i class="fa-solid fa-chart-line text-success me-1"></i> Estimated Impact Breakdown
+                </h6>
+                <div class="row g-3 mb-4">
+                  <div class="col-6">
+                    <div class="p-3 rounded-3 bg-light border text-center">
+                      <span class="small text-muted text-uppercase fw-semibold d-block">Estimated ATS Score</span>
+                      <div class="d-flex align-items-center justify-content-center gap-2 mt-1">
+                        <span class="fw-bold fs-3 text-dark" id="simulatedAtsScore">{{ analysis.results.resume_analysis.ats_score|default(0) }}</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" id="simulatedAtsDelta">+0</span>
+                      </div>
+                      <small class="text-muted d-block mt-1">Base: {{ analysis.results.resume_analysis.ats_score|default(0) }}/100</small>
+                    </div>
+                  </div>
+                  <div class="col-6">
+                    <div class="p-3 rounded-3 bg-light border text-center">
+                      <span class="small text-muted text-uppercase fw-semibold d-block">Estimated Job Match</span>
+                      <div class="d-flex align-items-center justify-content-center gap-2 mt-1">
+                        <span class="fw-bold fs-3 text-dark" id="simulatedMatchScore">{{ analysis.results.job_match.match_percentage|default(0) }}</span>
+                        <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" id="simulatedMatchDelta">+0</span>
+                      </div>
+                      <small class="text-muted d-block mt-1">Base: {{ analysis.results.job_match.match_percentage|default(0) }}%</small>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="p-3 rounded-3 border bg-light-subtle mb-3">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="small fw-bold text-dark">Simulated Readiness Status:</span>
+                    <span class="badge bg-primary rounded-pill px-3 py-1" id="simulatedStatusBadge">
+                      {{ r_sum.readiness_status|default('Targeted Prep Needed') }}
+                    </span>
+                  </div>
+                  <small class="text-muted d-block" id="simulatedFactorsText">Select suggestions or add simulated skills to estimate readiness improvements.</small>
+                </div>
+              </div>
+
+              <div class="pt-3 border-top text-muted small">
+                <i class="fa-solid fa-lock text-secondary me-1"></i> Your original report and resume file remain untouched.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Preparation Status Short Summary -->
       <div class="p-3 rounded-4 bg-light-subtle border mb-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
@@ -5485,6 +5629,124 @@
             }, 2000);
           });
         });
+      }
+
+      // Resume Improvement Simulator (#600)
+      const simulatorCard = document.getElementById("resumeImprovementSimulatorCard");
+      if (simulatorCard) {
+        const simulatedSkills = new Set();
+        const simulatedProjects = new Set();
+        const baseAts = parseInt("{{ analysis.results.resume_analysis.ats_score|default(0) }}", 10) || 0;
+        const baseMatch = parseInt("{{ analysis.results.job_match.match_percentage|default(0) }}", 10) || 0;
+
+        const elAts = document.getElementById("simulatedAtsScore");
+        const elAtsDelta = document.getElementById("simulatedAtsDelta");
+        const elMatch = document.getElementById("simulatedMatchScore");
+        const elMatchDelta = document.getElementById("simulatedMatchDelta");
+        const elStatusBadge = document.getElementById("simulatedStatusBadge");
+        const elFactorsText = document.getElementById("simulatedFactorsText");
+        const skillsTags = document.getElementById("simulatedSkillsTags");
+        const projectsTags = document.getElementById("simulatedProjectsTags");
+
+        function renderTags() {
+          if (skillsTags) {
+            skillsTags.innerHTML = Array.from(simulatedSkills).map(s => 
+              `<span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1">${s} <i class="fa-solid fa-xmark ms-1 cursor-pointer" onclick="removeSimSkill('${s}')"></i></span>`
+            ).join("");
+          }
+          if (projectsTags) {
+            projectsTags.innerHTML = Array.from(simulatedProjects).map(p => 
+              `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill px-2 py-1">${p} <i class="fa-solid fa-xmark ms-1 cursor-pointer" onclick="removeSimProject('${p}')"></i></span>`
+            ).join("");
+          }
+        }
+
+        window.removeSimSkill = (s) => {
+          simulatedSkills.delete(s);
+          renderTags();
+          triggerSimulation();
+        };
+
+        window.removeSimProject = (p) => {
+          simulatedProjects.delete(p);
+          renderTags();
+          triggerSimulation();
+        };
+
+        async function triggerSimulation() {
+          const selectedSuggestionIds = Array.from(document.querySelectorAll(".what-if-checkbox:checked")).map(cb => cb.value);
+          try {
+            const resp = await fetch(`/api/analysis/{{ analysis.id }}/simulate-improvements`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                simulated_skills: Array.from(simulatedSkills),
+                simulated_projects: Array.from(simulatedProjects),
+                selected_suggestion_ids: selectedSuggestionIds
+              })
+            });
+            const data = await resp.json();
+            if (data.success && data.simulation) {
+              const sim = data.simulation;
+              if (elAts) elAts.textContent = sim.estimated_metrics.ats_score;
+              if (elAtsDelta) elAtsDelta.textContent = (sim.deltas.ats_delta >= 0 ? "+" : "") + sim.deltas.ats_delta;
+              if (elMatch) elMatch.textContent = sim.estimated_metrics.match_percentage;
+              if (elMatchDelta) elMatchDelta.textContent = (sim.deltas.match_delta >= 0 ? "+" : "") + sim.deltas.match_delta;
+              if (elStatusBadge) elStatusBadge.textContent = sim.estimated_metrics.readiness_status;
+              if (elFactorsText) {
+                const count = sim.factors_applied.length;
+                elFactorsText.textContent = count > 0 
+                  ? `Applied ${count} simulated factor(s). Impact: +${sim.deltas.ats_delta} ATS points, +${sim.deltas.match_delta}% Job Match.`
+                  : "Select suggestions or add simulated skills to estimate readiness improvements.";
+              }
+            }
+          } catch (e) {
+            console.error("Simulation error", e);
+          }
+        }
+
+        document.querySelectorAll(".what-if-checkbox").forEach(cb => {
+          cb.addEventListener("change", triggerSimulation);
+        });
+
+        const btnAddSkill = document.getElementById("btnAddSimulatedSkill");
+        const inputSkill = document.getElementById("simulatedSkillsInput");
+        if (btnAddSkill && inputSkill) {
+          btnAddSkill.addEventListener("click", () => {
+            const val = inputSkill.value.trim();
+            if (val) {
+              val.split(",").map(s => s.trim()).filter(Boolean).forEach(s => simulatedSkills.add(s));
+              inputSkill.value = "";
+              renderTags();
+              triggerSimulation();
+            }
+          });
+        }
+
+        const btnAddProject = document.getElementById("btnAddSimulatedProject");
+        const inputProject = document.getElementById("simulatedProjectsInput");
+        if (btnAddProject && inputProject) {
+          btnAddProject.addEventListener("click", () => {
+            const val = inputProject.value.trim();
+            if (val) {
+              simulatedProjects.add(val);
+              inputProject.value = "";
+              renderTags();
+              triggerSimulation();
+            }
+          });
+        }
+
+        const btnReset = document.getElementById("btnResetSimulation");
+        if (btnReset) {
+          btnReset.addEventListener("click", () => {
+            simulatedSkills.clear();
+            simulatedProjects.clear();
+            document.querySelectorAll(".what-if-checkbox").forEach(cb => cb.checked = false);
+            renderTags();
+            triggerSimulation();
+          });
+        }
       }
     });
   </script>
