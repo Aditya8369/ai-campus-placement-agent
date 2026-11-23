@@ -612,6 +612,19 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/applications/board/validate-move", methods=["POST"])
+def api_validate_board_move():
+    """Validates drag-and-drop or keyboard-initiated stage transition (#619)."""
+    from utils.application_board_service import validate_stage_transition
+    data = request.get_json(silent=True) or {}
+    current_stage = data.get("current_stage", "Applied")
+    target_stage = data.get("target_stage", "")
+    confirmed = bool(data.get("confirmed", False))
+
+    res = validate_stage_transition(current_stage, target_stage, requires_confirmation=confirmed)
+    return jsonify({"status": "success", "result": res}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """

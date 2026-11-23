@@ -138,6 +138,38 @@ def get_company_profile(company_name: str):
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
 
 
+@jobs_bp.route("/api/company/<company_name>/eligibility", methods=["POST"])
+def api_calculate_company_eligibility(company_name: str):
+    """
+    Calculates candidate eligibility against verified company rules (#603).
+    Private to student, supports optional CGPA, backlogs, branch, passing year.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    student_profile = {
+        "cgpa": payload.get("cgpa"),
+        "backlogs": payload.get("backlogs"),
+        "passing_year": payload.get("passing_year"),
+        "branch": payload.get("branch"),
+        "experience_months": payload.get("experience_months")
+    }
+
+    from utils.company_eligibility_service import calculate_company_eligibility
+    try:
+        eligibility_result = calculate_company_eligibility(
+            company_name=company_name,
+            student_profile=student_profile
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "eligibility": eligibility_result
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error calculating eligibility for {company_name}: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+
 @jobs_bp.route("/company/<company_name>/cheat-sheet", methods=["GET"])
 def download_company_cheat_sheet(company_name: str):
     """
