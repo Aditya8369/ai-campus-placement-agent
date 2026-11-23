@@ -13,6 +13,7 @@
 import { escapeHtml, showToast, getCsrfToken } from "./utils.js";
 import { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./common.js";
 import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
+import { isReducedMotion } from "./motion.js";
 
 export { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup };
 
@@ -678,7 +679,7 @@ export function initMockInterview() {
           submitBtn.disabled = false;
           answerInput.value = "";
           answerInput.focus();
-          answerInput.scrollIntoView({ behavior: "smooth", block: "center" });
+          answerInput.scrollIntoView({ behavior: isReducedMotion() ? "auto" : "smooth", block: "center" });
         }
       }
     });

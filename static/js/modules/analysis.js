@@ -7,6 +7,7 @@
 
 import { escapeHtml } from "./utils.js";
 import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
+import { isReducedMotion } from "./motion.js";
 
 /**
  * Real-time character counter and limit monitor for resume text and job description inputs (#132).
@@ -90,6 +91,7 @@ export function initCharacterCounters() {
  */
 export function initCircularProgress() {
   const circles = document.querySelectorAll(".circular-fill-ring");
+  const reduced = isReducedMotion();
   circles.forEach((circle) => {
     const score = circle.getAttribute("data-score");
     if (score) {
@@ -97,10 +99,16 @@ export function initCircularProgress() {
       const circumference = 2 * Math.PI * radius;
       const offset = circumference - (score / 100) * circumference;
 
-      setTimeout(() => {
+      if (reduced) {
+        circle.style.transition = "none";
         circle.style.strokeDasharray = `${circumference} ${circumference}`;
         circle.style.strokeDashoffset = offset;
-      }, 300);
+      } else {
+        setTimeout(() => {
+          circle.style.strokeDasharray = `${circumference} ${circumference}`;
+          circle.style.strokeDashoffset = offset;
+        }, 300);
+      }
     }
   });
 }
@@ -936,7 +944,7 @@ export function initFormUpload() {
           formResetAlertMessage.textContent = "Form cleared successfully. All inputs have been reset.";
         }
         formResetAlert.classList.remove("d-none");
-        formResetAlert.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        formResetAlert.scrollIntoView({ behavior: isReducedMotion() ? "auto" : "smooth", block: "nearest" });
 
         clearTimeout(window._formResetAlertTimeout);
         window._formResetAlertTimeout = setTimeout(() => {
