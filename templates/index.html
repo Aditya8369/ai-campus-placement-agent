@@ -1012,7 +1012,10 @@
           <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
         </div>
         <div id="progressErrorMessage" class="small mb-3"></div>
-        <div class="d-flex justify-content-end gap-2">
+        <div class="d-flex justify-content-end gap-2 flex-wrap">
+          <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3 d-none" id="btnViewPartialDashboard">
+            <i class="fa-solid fa-gauge-high me-1"></i> View Saved Sections
+          </a>
           <button type="button" class="btn btn-sm btn-danger text-white rounded-pill px-3" id="btnRetryAnalysis">
             <i class="fa-solid fa-rotate-right me-1"></i> Retry
           </button>
@@ -1050,7 +1053,20 @@
       </ul>
       <p class="text-muted small mb-0" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
 
-      <!-- Cancel Analysis Action (#465) -->
+      <!-- Streamed Sections Live Preview Container (#764) -->
+      <div id="streamedSectionsContainer" class="d-none text-start mt-3 pt-3 border-top" aria-live="polite">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="small fw-semibold text-secondary">
+            <i class="fa-solid fa-bolt text-warning me-1"></i> Generated Sections (Live Stream)
+          </span>
+          <span class="badge bg-primary-subtle text-primary rounded-pill small" id="streamedSectionsCounter">0 ready</span>
+        </div>
+        <div id="streamedSectionsCards" class="d-flex flex-column gap-2" style="max-height: 240px; overflow-y: auto;">
+          <!-- Dynamically populated as each section completes -->
+        </div>
+      </div>
+
+      <!-- Cancel Analysis Action (#465, #764) -->
       <div class="mt-4 pt-3 border-top">
         <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-4" id="btnCancelAnalysis">
           <i class="fa-solid fa-ban me-1"></i> Cancel Analysis

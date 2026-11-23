@@ -352,7 +352,8 @@ def analyze():
                 "task_id": task.task_id,
                 "analysis_id": file_uuid,
                 "stream_url": f"/api/analysis/stream/{task.task_id}",
-                "status_url": f"/api/analysis/status/{task.task_id}"
+                "status_url": f"/api/analysis/status/{task.task_id}",
+                "cancel_url": f"/api/analysis/cancel/{task.task_id}"
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
@@ -571,6 +572,7 @@ def start_analysis_async():
             "analysis_id": file_uuid,
             "stream_url": f"/api/analysis/stream/{task.task_id}",
             "status_url": f"/api/analysis/status/{task.task_id}",
+            "cancel_url": f"/api/analysis/cancel/{task.task_id}",
             "format_compatibility": format_compatibility
         }), 202
 
@@ -611,10 +613,10 @@ def stream_analysis_progress(task_id: str):
                 for ev in events:
                     yield f"data: {json.dumps(ev)}\n\n"
                     last_index += 1
-                    if ev.get("status") in ("completed", "error"):
+                    if ev.get("status") in ("completed", "error", "cancelled"):
                         return
             else:
-                if task.status in ("completed", "error"):
+                if task.status in ("completed", "error", "cancelled") or task.is_cancelled:
                     return
                 # SSE heartbeat comment to keep HTTP connection alive
                 yield ": keep-alive\n\n"
@@ -636,6 +638,35 @@ def get_analysis_task_status(task_id: str):
         return jsonify({"success": False, "error": f"Analysis task '{task_id}' not found"}), 404
 
     return jsonify({"success": True, **task.to_dict()}), 200
+
+
+@analysis_bp.route("/api/analysis/cancel", methods=["POST"])
+@analysis_bp.route("/api/analysis/cancel/<task_id>", methods=["POST"])
+def cancel_analysis(task_id: Optional[str] = None):
+    """
+    Cancels an in-progress or queued background placement analysis task (#465, #764).
+    Accepts task_id either as URL route param or in JSON request body {"task_id": "..."}.
+    """
+    effective_task_id = task_id
+    if not effective_task_id:
+        req_json = request.get_json(silent=True) or {}
+        effective_task_id = req_json.get("task_id") or request.form.get("task_id")
+
+    if not effective_task_id:
+        return jsonify({"success": False, "error": "Missing task_id parameter."}), 400
+
+    student_id = flask_session.get("student_id") or flask_session.get("user_id")
+    success, msg = cancel_analysis_task(effective_task_id, student_id=student_id)
+    if not success:
+        status_code = 404 if "not found" in msg.lower() else 400
+        return jsonify({"success": False, "error": msg}), status_code
+
+    return jsonify({
+        "success": True,
+        "status": "cancelled",
+        "task_id": effective_task_id,
+        "message": msg
+    }), 200
 
 
 @analysis_bp.route("/analyze/rerun/<analysis_id>", methods=["GET", "POST"])

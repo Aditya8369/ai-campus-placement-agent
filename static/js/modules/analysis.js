@@ -382,6 +382,16 @@ export function initFormUpload() {
   const btnSubmitAnalysis = document.getElementById("btnSubmitAnalysis");
   const submitBtnSpan = document.getElementById("submitBtnSpan");
   const submitBtnIcon = document.getElementById("submitBtnIcon");
+  const btnCancelAnalysis = document.getElementById("btnCancelAnalysis");
+  const streamedSectionsContainer = document.getElementById("streamedSectionsContainer");
+  const streamedSectionsCounter = document.getElementById("streamedSectionsCounter");
+  const streamedSectionsCards = document.getElementById("streamedSectionsCards");
+  const btnViewPartialDashboard = document.getElementById("btnViewPartialDashboard");
+
+  let currentTaskId = null;
+  let currentAnalysisId = null;
+  let cancelUrl = null;
+  const receivedSections = new Map();
 
   let isAnalysisRunning = false;
   let isSubmitting = false;
@@ -459,6 +469,125 @@ export function initFormUpload() {
     btnRetryProgress.addEventListener("click", handleRetryAction);
   }
 
+  // Handle Cancel Button Action (#465, #764)
+  if (btnCancelAnalysis) {
+    btnCancelAnalysis.addEventListener("click", () => {
+      if (!currentTaskId) return;
+      btnCancelAnalysis.disabled = true;
+      btnCancelAnalysis.classList.add("disabled");
+      btnCancelAnalysis.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Cancelling...';
+
+      const targetCancelUrl = cancelUrl || `/api/analysis/cancel/${currentTaskId}`;
+      fetch(targetCancelUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task_id: currentTaskId }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (progressTitle) progressTitle.textContent = "Analysis Cancelled";
+          if (progressSubtitle) {
+            progressSubtitle.textContent =
+              receivedSections.size > 0
+                ? `Cancelled by user. ${receivedSections.size} generated section(s) have been kept below.`
+                : "Analysis was cancelled. You can adjust your inputs and try again.";
+          }
+          if (progressSpinner) progressSpinner.classList.add("d-none");
+          if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+          if (btnViewPartialDashboard && currentAnalysisId && receivedSections.size > 0) {
+            btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+            btnViewPartialDashboard.classList.remove("d-none");
+          }
+          enableSubmitButton();
+        })
+        .catch((err) => {
+          console.warn("Cancel request failed:", err);
+          enableSubmitButton();
+        });
+    });
+  }
+
+  // Render streamed section card incrementally as each completes (#764)
+  function renderStreamedSection(secName, secData) {
+    if (!secName || receivedSections.has(secName)) return;
+    receivedSections.set(secName, secData);
+
+    if (streamedSectionsContainer) {
+      streamedSectionsContainer.classList.remove("d-none");
+    }
+    if (streamedSectionsCounter) {
+      streamedSectionsCounter.textContent = `${receivedSections.size} ready`;
+    }
+
+    if (!streamedSectionsCards) return;
+
+    const card = document.createElement("div");
+    card.className = "card border-0 shadow-sm p-3 bg-light rounded-3 text-start mb-2";
+    card.id = `streamedCard_${secName}`;
+
+    let title = secName.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    let badgeHtml = '<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small"><i class="fa-solid fa-check me-1"></i> Ready</span>';
+    let contentHtml = "";
+
+    if (secName === "resume_analysis") {
+      title = "Resume Analysis & ATS";
+      const score = secData.ats_score || (secData.ats_breakdown && secData.ats_breakdown.total_score) || 75;
+      const strengthsCount = Array.isArray(secData.strengths) ? secData.strengths.length : 0;
+      const summary = secData.summary || secData.overall_feedback || "Analysis completed.";
+      contentHtml = `
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="small fw-semibold text-dark">ATS Score: <strong>${score}/100</strong></span>
+          <span class="small text-muted">${strengthsCount} strengths identified</span>
+        </div>
+        <p class="small text-secondary mb-0 text-truncate" title="${summary}">${summary}</p>
+      `;
+    } else if (secName === "job_match") {
+      title = "Job Description Match";
+      const matchPct = secData.match_percentage || 0;
+      const matchedCount = Array.isArray(secData.matched_skills) ? secData.matched_skills.length : 0;
+      const missingCount = Array.isArray(secData.missing_skills) ? secData.missing_skills.length : 0;
+      contentHtml = `
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="small fw-semibold text-dark">Role Match: <strong>${matchPct}%</strong></span>
+          <span class="small text-muted">${matchedCount} matched, ${missingCount} gaps</span>
+        </div>
+      `;
+    } else if (secName === "skill_gap") {
+      title = "Skill Gap Assessment";
+      const gapsCount = Array.isArray(secData) ? secData.length : 0;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${gapsCount} prioritized skill gaps identified with resources</span>
+      `;
+    } else if (secName === "learning_roadmap") {
+      title = "6-Week Preparation Roadmap";
+      const weeksCount = Array.isArray(secData) ? secData.length : 6;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${weeksCount}-week structured preparation roadmap with coding tasks</span>
+      `;
+    } else if (secName === "interview_questions") {
+      title = "Company Interview Questions";
+      const hrCount = secData.hr ? secData.hr.length : 0;
+      const techCount = secData.technical ? secData.technical.length : 0;
+      const behCount = secData.behavioral ? secData.behavioral.length : 0;
+      contentHtml = `
+        <span class="small fw-semibold text-dark">${hrCount + techCount + behCount} customized interview questions (Technical, HR, Behavioral) generated</span>
+      `;
+    } else {
+      contentHtml = `<p class="small text-secondary mb-0">${typeof secData === "string" ? secData : "Section generated."}</p>`;
+    }
+
+    card.innerHTML = `
+      <div class="d-flex align-items-center justify-content-between mb-1">
+        <strong class="small text-primary"><i class="fa-solid fa-file-lines me-1"></i> ${title}</strong>
+        ${badgeHtml}
+      </div>
+      ${contentHtml}
+    `;
+
+    streamedSectionsCards.appendChild(card);
+    streamedSectionsCards.scrollTop = streamedSectionsCards.scrollHeight;
+  }
+
   const stepOrder = ["step1", "step2", "step3", "step4", "step5", "step6"];
   const stepNamesMap = {
     "step1": "Reading resume",
@@ -470,6 +599,17 @@ export function initFormUpload() {
   };
 
   function resetProgressPanel() {
+    if (streamedSectionsCards) streamedSectionsCards.innerHTML = "";
+    if (streamedSectionsContainer) streamedSectionsContainer.classList.add("d-none");
+    if (streamedSectionsCounter) streamedSectionsCounter.textContent = "0 ready";
+    if (btnViewPartialDashboard) btnViewPartialDashboard.classList.add("d-none");
+    if (btnCancelAnalysis) {
+      btnCancelAnalysis.disabled = false;
+      btnCancelAnalysis.classList.remove("disabled");
+      btnCancelAnalysis.innerHTML = '<i class="fa-solid fa-ban me-1"></i> Cancel Analysis';
+    }
+    receivedSections.clear();
+
     if (progressOverlay) progressOverlay.removeAttribute("data-state");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
     if (progressSuccessIcon) progressSuccessIcon.classList.add("d-none");
@@ -1080,6 +1220,47 @@ export function initFormUpload() {
       const stepName = milestone.current_step_name || stepNamesMap[step] || step;
       const completedSteps = milestone.completed_steps || [];
 
+      // Check for streaming section completed event (#764)
+      if (
+        milestone.event === "section_completed" ||
+        milestone.step === "section_stream" ||
+        milestone.section ||
+        (milestone.extra && (milestone.extra.section || milestone.extra.event === "section_completed"))
+      ) {
+        const secName =
+          milestone.section ||
+          (milestone.extra && (milestone.extra.section || milestone.extra.section_name));
+        const secData =
+          milestone.data ||
+          milestone.section_data ||
+          (milestone.extra && (milestone.extra.data || milestone.extra.section_data));
+        if (secName && secData) {
+          renderStreamedSection(secName, secData);
+        }
+      }
+
+      if (status === "cancelled" || step === "cancelled") {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        if (progressTitle) progressTitle.textContent = "Analysis Cancelled";
+        if (progressSubtitle) {
+          progressSubtitle.textContent =
+            receivedSections.size > 0
+              ? `Analysis stopped. ${receivedSections.size} generated section(s) are preserved below.`
+              : (milestone.message || "Analysis was cancelled by the user.");
+        }
+        if (progressSpinner) progressSpinner.classList.add("d-none");
+        if (progressErrorIcon) progressErrorIcon.classList.remove("d-none");
+        if (btnViewPartialDashboard && currentAnalysisId && receivedSections.size > 0) {
+          btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+          btnViewPartialDashboard.classList.remove("d-none");
+        }
+        enableSubmitButton();
+        return;
+      }
+
       if (analysisProgressBar) {
         analysisProgressBar.style.width = `${progress}%`;
         analysisProgressBar.setAttribute("aria-valuenow", String(progress));
@@ -1225,11 +1406,25 @@ export function initFormUpload() {
       if (progressErrorStepName) {
         progressErrorStepName.textContent = stepLabel;
       }
+
+      // Errors never discard content that was already shown (#764)
+      let displayMsg = errMsg;
+      if (receivedSections.size > 0) {
+        displayMsg = `${errMsg} (${receivedSections.size} section(s) generated before this issue are kept below).`;
+        if (progressSubtitle) {
+          progressSubtitle.textContent = `Interrupted, but ${receivedSections.size} completed section(s) are preserved below.`;
+        }
+        if (btnViewPartialDashboard && currentAnalysisId) {
+          btnViewPartialDashboard.href = `/dashboard/${currentAnalysisId}`;
+          btnViewPartialDashboard.classList.remove("d-none");
+        }
+      }
+
       if (progressErrorAlert && progressErrorMessage) {
-        progressErrorMessage.textContent = errMsg;
+        progressErrorMessage.textContent = displayMsg;
         progressErrorAlert.classList.remove("d-none");
       } else {
-        alert(`Failed at ${stepLabel}: ${errMsg}`);
+        alert(`Failed at ${stepLabel}: ${displayMsg}`);
         if (progressOverlay) progressOverlay.classList.add("d-none");
       }
       setActionButtonsProcessing(false);
@@ -1248,6 +1443,10 @@ export function initFormUpload() {
         } catch (e) {
           data = {};
         }
+
+        currentTaskId = data.task_id;
+        currentAnalysisId = data.analysis_id;
+        cancelUrl = data.cancel_url || `/api/analysis/cancel/${data.task_id}`;
 
         syncRateLimitFromHeaders(response, "analyze");
 
