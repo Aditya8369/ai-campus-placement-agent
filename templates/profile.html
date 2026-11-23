@@ -140,6 +140,11 @@
           <div class="col-md-4 text-md-end mt-3 mt-md-0">
             <span class="text-muted small d-block">Candidate Identifier</span>
             <span class="fw-bold text-dark font-monospace">{{ student_id }}</span>
+            <div class="mt-2" id="profileHelpedStudentsContainer">
+              <span class="badge bg-success-subtle text-success border border-success-subtle py-1.5 px-3 rounded-pill fw-semibold" title="Total helpful votes received on your shared interview experiences">
+                <i class="fa-solid fa-heart text-danger me-1"></i> Helped {{ helped_students_count|default(0) }} students
+              </span>
+            </div>
             {% if profile.college %}
               <div class="mt-2" id="profileCollegeContainer">
                 <span class="text-muted small d-block">College / Institution</span>

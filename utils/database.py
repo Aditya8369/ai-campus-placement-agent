@@ -19,9 +19,7 @@ def get_db_connection() -> sqlite3.Connection:
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
     """
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return create_connection()
 
 def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
@@ -232,11 +230,25 @@ def init_db() -> None:
                 overall_verdict TEXT NOT NULL DEFAULT 'Offer',
                 difficulty_level TEXT NOT NULL DEFAULT 'Medium',
                 tips_and_preparation TEXT,
+                helpful_count INTEGER NOT NULL DEFAULT 0,
                 reported_flag INTEGER NOT NULL DEFAULT 0,
                 report_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table for interview experience helpful votes (#693)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interview_experience_helpful_votes (
+                id TEXT PRIMARY KEY,
+                experience_id TEXT NOT NULL,
+                student_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(experience_id, student_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_exp ON interview_experience_helpful_votes (experience_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_student ON interview_experience_helpful_votes (student_id)")
 
         # Table 8: Store student placement preparation calendar events (#190)
         cursor.execute("""
@@ -3101,14 +3113,17 @@ def get_interview_experiences(
     company_name: Optional[str] = None,
     category_filter: Optional[str] = None,
     search_query: Optional[str] = None,
+    sort_by: str = "date_desc",
     include_reported: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves company interview experiences with search and round filtering (#189).
+    Retrieves company interview experiences with search, sorting, and round filtering (#189, #693).
     Omits inappropriate/reported posts by default.
     """
+    from utils.interview_helpful_service import ensure_helpful_votes_schema
     conn = get_db_connection()
     try:
+        ensure_helpful_votes_schema(conn)
         cursor = conn.cursor()
         conditions = []
         params = []
@@ -3126,7 +3141,14 @@ def get_interview_experiences(
             params.extend([kw, kw, kw])
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
+
+        order_by = "ORDER BY interview_date DESC, created_at DESC"
+        if sort_by in ("helpful_desc", "most_helpful"):
+            order_by = "ORDER BY helpful_count DESC, interview_date DESC, created_at DESC"
+        elif sort_by == "date_asc":
+            order_by = "ORDER BY interview_date ASC, created_at ASC"
+
+        query = f"SELECT * FROM interview_experiences {where_clause} {order_by}"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -6696,6 +6718,13 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from utils.interview_helpful_service import (
+    toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
+)
+
 from db.reports import (
     create_secure_share_link,
     create_shared_report,
@@ -6860,6 +6889,10 @@ __all__ = [
     "save_interview_experience",
     "get_interview_experiences",
     "report_interview_experience",
+    "toggle_helpful_vote",
+    "get_user_helpful_votes",
+    "get_contributor_helped_students_count",
+    "check_voting_rate_limit",
     "create_preparation_note",
     "get_preparation_notes",
     "get_preparation_note_by_id",

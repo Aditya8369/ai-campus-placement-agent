@@ -666,12 +666,15 @@ def get_interview_experiences(
     company_name: Optional[str] = None,
     category_filter: Optional[str] = None,
     search_query: Optional[str] = None,
+    sort_by: str = "date_desc",
     include_reported: bool = False,
     db_path: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Retrieves company interview experiences with search and round filtering."""
+    """Retrieves company interview experiences with search, sorting, and round filtering (#693)."""
     try:
+        from utils.interview_helpful_service import ensure_helpful_votes_schema
         with get_connection(db_path) as conn:
+            ensure_helpful_votes_schema(conn)
             cursor = conn.cursor()
             conditions = []
             params = []
@@ -691,7 +694,14 @@ def get_interview_experiences(
                 params.extend([kw, kw, kw])
 
             where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-            query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
+
+            order_by = "ORDER BY interview_date DESC, created_at DESC"
+            if sort_by in ("helpful_desc", "most_helpful"):
+                order_by = "ORDER BY helpful_count DESC, interview_date DESC, created_at DESC"
+            elif sort_by == "date_asc":
+                order_by = "ORDER BY interview_date ASC, created_at ASC"
+
+            query = f"SELECT * FROM interview_experiences {where_clause} {order_by}"
 
             cursor.execute(query, params)
             rows = cursor.fetchall()
