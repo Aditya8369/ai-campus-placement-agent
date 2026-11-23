@@ -21,6 +21,7 @@
 import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
 import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
 import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
+import { initChartAccessibility, toggleChartTableView } from "./modules/chart_accessibility.js";
 import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
 import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
 import { initMockInterview } from "./modules/interview.js";
@@ -74,7 +75,9 @@ export {
   initPasswordStrengthIndicator,
   initSelfIntroductionStudio,
   initProjectDeepDive,
-  initTailoredCoverLetterStudio
+  initTailoredCoverLetterStudio,
+  initChartAccessibility,
+  toggleChartTableView
 };
 
 // Expose public API on window for backwards compatibility with inline templates
@@ -84,6 +87,8 @@ if (typeof window !== "undefined") {
   window.showToast = showToast;
   window.copyToClipboard = copyToClipboard;
   window.clearAllInterviewDrafts = clearAllInterviewDrafts;
+  window.initChartAccessibility = initChartAccessibility;
+  window.toggleChartTableView = toggleChartTableView;
 }
 
 // Bootstrap on DOMContentLoaded
