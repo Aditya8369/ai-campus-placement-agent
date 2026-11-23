@@ -698,16 +698,42 @@
 
                 <!-- Mode 2: Custom Job Description Textarea & Saved Descriptions -->
                 <div id="customJdSection" class="d-none">
-                  <div class="d-flex justify-content-end mb-2">
-                    {% if session.get('user_id') %}
-                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
-                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnToggleImportUrl" data-bs-toggle="collapse" data-bs-target="#importUrlCollapse" aria-expanded="false" aria-controls="importUrlCollapse" title="Import job description from a public web link">
+                      <i class="fa-solid fa-link me-1"></i> Import from link
                     </button>
-                    {% else %}
-                    <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
-                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
-                    </a>
-                    {% endif %}
+                    <div>
+                      {% if session.get('user_id') %}
+                      <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
+                        <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                      </button>
+                      {% else %}
+                      <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
+                        <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                      </a>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <!-- Import from link collapsible box (#689) -->
+                  <div class="collapse mb-3" id="importUrlCollapse">
+                    <div class="card card-body bg-light border p-3 rounded-3 shadow-sm">
+                      <label for="importUrlInput" class="form-label small fw-semibold text-secondary mb-1">
+                        <i class="fa-solid fa-globe me-1 text-primary"></i> Paste Job Posting URL
+                      </label>
+                      <div class="input-group">
+                        <input type="url" id="importUrlInput" class="form-control rounded-start-3" placeholder="https://careers.example.com/job/software-engineer" aria-label="Job posting URL">
+                        <button class="btn btn-primary rounded-end-3 px-3" type="button" id="btnFetchJobUrl">
+                          <span id="fetchUrlSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+                          <span id="fetchUrlBtnText"><i class="fa-solid fa-cloud-arrow-down me-1"></i> Fetch & Extract</span>
+                        </button>
+                      </div>
+                      <div id="importUrlAlert" class="alert py-2 px-3 mt-2 small d-none rounded-2" role="alert"></div>
+                      <div class="d-flex justify-content-between align-items-center mt-1 text-muted small flex-wrap gap-1">
+                        <span><i class="fa-solid fa-shield-halved me-1 text-success"></i> Only public web links allowed. SSRF protected.</span>
+                        <span><i class="fa-solid fa-pen-to-square me-1"></i> Text appears below for review</span>
+                      </div>
+                    </div>
                   </div>
                   {% if session.get('user_id') %}
                   <div class="input-group mb-2">
@@ -1465,6 +1491,94 @@
             });
           });
         }
+      }
+
+      // Import Job Description from URL (#689)
+      const btnFetchJobUrl = document.getElementById("btnFetchJobUrl");
+      const importUrlInput = document.getElementById("importUrlInput");
+      const importUrlAlert = document.getElementById("importUrlAlert");
+      const fetchUrlSpinner = document.getElementById("fetchUrlSpinner");
+      const fetchUrlBtnText = document.getElementById("fetchUrlBtnText");
+      const mainJdInput = document.getElementById("jdInput");
+
+      function showImportUrlAlert(message, alertClass) {
+        if (!importUrlAlert) return;
+        importUrlAlert.className = `alert alert-${alertClass} py-2 px-3 mt-2 small rounded-2`;
+        importUrlAlert.innerHTML = message;
+        importUrlAlert.classList.remove("d-none");
+      }
+
+      function hideImportUrlAlert() {
+        if (!importUrlAlert) return;
+        importUrlAlert.className = "alert py-2 px-3 mt-2 small d-none rounded-2";
+        importUrlAlert.innerHTML = "";
+      }
+
+      if (btnFetchJobUrl && importUrlInput) {
+        const handleImportUrlFetch = async () => {
+          const rawUrl = importUrlInput.value.trim();
+          if (!rawUrl) {
+            showImportUrlAlert("<i class='fa-solid fa-circle-exclamation me-1'></i> Please paste a job posting link.", "warning");
+            importUrlInput.focus();
+            return;
+          }
+
+          hideImportUrlAlert();
+          btnFetchJobUrl.disabled = true;
+          importUrlInput.disabled = true;
+          if (fetchUrlSpinner) fetchUrlSpinner.classList.remove("d-none");
+          if (fetchUrlBtnText) fetchUrlBtnText.textContent = "Fetching & Extracting...";
+
+          try {
+            const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = csrfMeta ? csrfMeta.getAttribute("content") : "";
+
+            const resp = await fetch("/api/job-description/extract-url", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": csrfToken
+              },
+              body: JSON.stringify({ url: rawUrl })
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+              if (mainJdInput) {
+                mainJdInput.value = data.job_description || "";
+                mainJdInput.dispatchEvent(new Event("input", { bubbles: true }));
+                mainJdInput.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+              const chars = data.character_count || (data.job_description ? data.job_description.length : 0);
+              showImportUrlAlert(
+                `<i class='fa-solid fa-circle-check me-1'></i> Successfully extracted ${chars.toLocaleString()} characters! Review and edit the description in the box below before analyzing.`,
+                "success"
+              );
+            } else {
+              const errMsg = data.error || "Failed to extract job description from the link. Please copy and paste the text manually.";
+              showImportUrlAlert(`<i class='fa-solid fa-triangle-exclamation me-1'></i> ${errMsg}`, "danger");
+            }
+          } catch (networkErr) {
+            showImportUrlAlert(
+              "<i class='fa-solid fa-triangle-exclamation me-1'></i> Network error communicating with the extraction service. Please copy and paste the job description text manually.",
+              "danger"
+            );
+          } finally {
+            btnFetchJobUrl.disabled = false;
+            importUrlInput.disabled = false;
+            if (fetchUrlSpinner) fetchUrlSpinner.classList.add("d-none");
+            if (fetchUrlBtnText) fetchUrlBtnText.innerHTML = "<i class='fa-solid fa-cloud-arrow-down me-1'></i> Fetch & Extract";
+          }
+        };
+
+        btnFetchJobUrl.addEventListener("click", handleImportUrlFetch);
+        importUrlInput.addEventListener("keydown", (evt) => {
+          if (evt.key === "Enter") {
+            evt.preventDefault();
+            handleImportUrlFetch();
+          }
+        });
       }
     });
   </script>
