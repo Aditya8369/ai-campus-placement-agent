@@ -51,6 +51,11 @@ from utils.bookmark_folders import *
 from utils.interview_moderation import *
 from utils.deadline_reminders import *
 from utils.company_profile_manager import *
+from utils.interview_helpful_service import (
+    toggle_helpful_vote,
+    get_user_helpful_votes,
+    check_voting_rate_limit,
+)
 from utils.progress_tracker import *
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
@@ -1185,6 +1190,7 @@ def interview_experiences_view():
     company_filter = request.args.get("company", "").strip()
     category_filter = request.args.get("category", "All").strip()
     search_query = request.args.get("search", "").strip()
+    sort_by = (request.args.get("sort_by") or request.args.get("sort", "date_desc")).strip()
 
     if request.method == "POST":
         company_name = request.form.get("company_name", "").strip()
@@ -1245,8 +1251,16 @@ def interview_experiences_view():
     experiences = get_interview_experiences(
         company_name=company_filter,
         category_filter=category_filter,
-        search_query=search_query
+        search_query=search_query,
+        sort_by=sort_by,
     )
+
+    # Decorate experiences with helpful vote state for current user (#693)
+    user_voted_ids = get_user_helpful_votes(student_id)
+    for exp in experiences:
+        exp["helpful_count"] = int(exp.get("helpful_count") or 0)
+        exp["user_voted_helpful"] = (exp.get("id") in user_voted_ids)
+        exp["is_own_post"] = (str(exp.get("student_id", "")).strip().lower() == student_id.strip().lower())
 
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 10, type=int)
@@ -1263,6 +1277,7 @@ def interview_experiences_view():
             "success": True,
             "count": len(pagination.items),
             "total": len(experiences),
+            "sort_by": sort_by,
             "experiences": pagination.items,
             "pagination": pagination.to_dict()
         }), 200
@@ -1274,6 +1289,7 @@ def interview_experiences_view():
         company_filter=company_filter,
         category_filter=category_filter,
         search_query=search_query,
+        sort_by=sort_by,
         student_id=student_id
     )
 
@@ -1290,6 +1306,43 @@ def api_report_interview_experience(exp_id: str):
         "success": reported,
         "message": "Submission reported and flagged for moderation review." if reported else "Experience not found."
     }), (200 if reported else 404)
+
+
+@interview_bp.route("/api/interview-experiences/<exp_id>/helpful", methods=["POST"])
+@interview_bp.route("/api/interview-experiences/<exp_id>/vote", methods=["POST"])
+@rate_limit(max_requests=20, window_seconds=60, scope="helpful_vote", is_api=True)
+def api_toggle_interview_helpful_vote(exp_id: str):
+    """
+    Toggles helpful vote on an approved interview experience (#693).
+    One vote per user per experience, can be removed, and not possible on own posts.
+    Rate limited with sliding window. Voter identities are never exposed publicly.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    student_id = (
+        payload.get("student_id")
+        or request.args.get("student_id")
+        or flask_session.get("user", {}).get("id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+    )
+    if not student_id or not str(student_id).strip():
+        client_ip = limiter.get_client_ip()
+        student_id = f"guest_{client_ip.replace('.', '_').replace(':', '_')}"
+
+    clean_student_id = str(student_id).strip()
+
+    is_allowed, remaining, reset_secs = check_voting_rate_limit(clean_student_id)
+    if not is_allowed:
+        return jsonify({
+            "success": False,
+            "error": "You have exceeded the voting rate limit. Please try again later.",
+            "retry_after": int(reset_secs) + 1,
+        }), 429
+
+    result = toggle_helpful_vote(experience_id=exp_id, student_id=clean_student_id)
+    status_code = result.get("code", 200)
+    res_dict = {k: v for k, v in result.items() if k != "code"}
+    return jsonify(res_dict), status_code
 
 
 @interview_bp.route("/api/self-introduction/<analysis_id>/generate", methods=["POST"])
