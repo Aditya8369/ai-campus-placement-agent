@@ -20,8 +20,7 @@
 
 import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
 import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
-import { initMotionPreference, isReducedMotion, getMotionPreference, setMotionPreference } from "./modules/motion.js";
-import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
+import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup, initKeyboardShortcuts, openShortcutsModal, closeShortcutsModal } from "./modules/common.js";
 import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
 import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
 import { initMockInterview } from "./modules/interview.js";
@@ -51,6 +50,9 @@ export {
   initSessionTimeout,
   clearAllInterviewDrafts,
   initInterviewDraftLogoutCleanup,
+  initKeyboardShortcuts,
+  openShortcutsModal,
+  closeShortcutsModal,
   initFormUpload,
   initCharacterCounters,
   initCircularProgress,

@@ -143,6 +143,7 @@ logger = logging.getLogger(__name__)
 analysis_bp = Blueprint("analysis", __name__)
 
 @analysis_bp.route("/")
+@analysis_bp.route("/dashboard")
 def index() -> str:
     """
     Renders the placement landing page containing the configuration forms.
