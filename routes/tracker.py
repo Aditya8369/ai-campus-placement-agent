@@ -612,6 +612,27 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
+@tracker_bp.route("/api/table-preferences/columns", methods=["GET"])
+def api_get_table_columns_preferences():
+    """Gets column visibility preferences for data tables (#636)."""
+    from utils.table_columns_service import get_table_column_preferences
+    user_prefs = flask_session.get("table_column_prefs", {})
+    cols = get_table_column_preferences(user_prefs)
+    return jsonify({"status": "success", "columns": cols}), 200
+
+
+@tracker_bp.route("/api/table-preferences/columns", methods=["POST"])
+def api_set_table_columns_preferences():
+    """Saves column visibility preferences in candidate session (#636)."""
+    from utils.table_columns_service import get_table_column_preferences
+    data = request.get_json(silent=True) or {}
+    prefs = data.get("preferences", {})
+
+    flask_session["table_column_prefs"] = prefs
+    cols = get_table_column_preferences(prefs)
+    return jsonify({"status": "success", "columns": cols}), 200
+
+
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
 def api_delete_application(app_id: str):
     """
