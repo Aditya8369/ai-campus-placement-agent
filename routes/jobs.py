@@ -255,6 +255,7 @@ def api_job_recommendations(analysis_id: str):
 
         location = request.args.get("location", "all").strip()
         role_type = request.args.get("role_type", "all").strip()
+        experience_level = request.args.get("experience_level", "all").strip()
         search_query = request.args.get("search", "").strip()
         force_refresh = request.args.get("force_refresh", "false").lower() in ("true", "1")
 
@@ -270,18 +271,29 @@ def api_job_recommendations(analysis_id: str):
         except (ValueError, TypeError):
             limit = None
 
-        feed_service = JobFeedService()
-        active_jobs = feed_service.get_all_jobs(force_refresh=force_refresh)
-
         matcher_agent = JobRecommendationAgent()
+        active_jobs = matcher_agent.data_source.get_jobs()
+
         recommendations = matcher_agent.recommend_jobs(
             analysis_record=analysis_record,
             jobs=active_jobs,
             location=location,
             role_type=role_type,
+            experience_level=experience_level,
             min_match=min_match,
             search_query=search_query
         )
+
+        suggestions_to_broaden = []
+        if len(recommendations) == 0:
+            suggestions_to_broaden = matcher_agent.get_broaden_suggestions(
+                total_available=len(active_jobs),
+                filtered_count=len(recommendations),
+                location=location,
+                role_type=role_type,
+                experience_level=experience_level,
+                search_query=search_query
+            )
 
         if limit and limit > 0:
             recommendations = recommendations[:limit]
@@ -295,9 +307,11 @@ def api_job_recommendations(analysis_id: str):
             "filters_applied": {
                 "location": location,
                 "role_type": role_type,
+                "experience_level": experience_level,
                 "min_match": min_match,
                 "search": search_query
             },
+            "suggestions_to_broaden": suggestions_to_broaden,
             "jobs": recommendations
         }), 200
 

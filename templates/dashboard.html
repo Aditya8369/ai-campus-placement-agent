@@ -1479,6 +1479,9 @@
           <a href="#selfIntroSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-id-card-clip me-1 text-primary"></i> Self Introduction
           </a>
+          <a href="#jobRecommendationsCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnNavJobRecommendations">
+            <i class="fa-solid fa-briefcase me-1 text-primary"></i> Job Recommendations
+          </a>
           <a href="/aptitude" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-stopwatch me-1 text-primary"></i> Aptitude Practice
           </a>
@@ -2771,6 +2774,210 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Targeted Campus Job Recommendations (#533) -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="jobRecommendationsCard" data-analysis-id="{{ analysis_id }}" data-initial-jobs='{{ initial_recommended_jobs_json|safe if initial_recommended_jobs_json is defined else "[]" }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <div class="rounded-circle p-2 bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+            <i class="fa-solid fa-briefcase"></i>
+          </div>
+          <div>
+            <h4 class="fw-bold mb-0">Targeted Campus Drive Recommendations</h4>
+            <small class="text-muted">Job openings ranked by technical skill overlap with candidate evaluation</small>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2 fw-semibold" id="jobMatchedCountBadge">
+            <i class="fa-solid fa-list-check me-1"></i> <span id="jobMatchedCount">{{ initial_recommended_jobs|default([])|length }}</span> Openings Matched
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnResetJobFilters" title="Reset all filters to show all openings">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset Filters
+          </button>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">
+        Explore active recruitment drives and internships filtered by location, role type, and experience level. Every recommendation displays your matched skills and explains why it fits your evaluated profile.
+      </p>
+
+      <!-- Filter Controls Bar -->
+      <div class="p-3 bg-light rounded-4 border mb-4" id="jobFiltersBar">
+        <div class="row g-3 align-items-center">
+          <!-- Location Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobLocationFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-location-dot text-danger me-1"></i> Location:
+            </label>
+            <select class="form-select form-select-sm" id="jobLocationFilter" aria-label="Filter jobs by location">
+              <option value="all">All Locations</option>
+              <option value="Bengaluru">Bengaluru</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Pune">Pune</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Noida">Noida</option>
+              <option value="Gurugram">Gurugram</option>
+              <option value="Remote">Remote</option>
+            </select>
+          </div>
+
+          <!-- Role Type Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobRoleTypeFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-id-badge text-primary me-1"></i> Role Type:
+            </label>
+            <select class="form-select form-select-sm" id="jobRoleTypeFilter" aria-label="Filter jobs by role type">
+              <option value="all">All Roles</option>
+              <option value="Full-time">Full-time</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
+
+          <!-- Experience Level Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobExperienceFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-graduation-cap text-success me-1"></i> Experience Level:
+            </label>
+            <select class="form-select form-select-sm" id="jobExperienceFilter" aria-label="Filter jobs by experience level">
+              <option value="all">All Experience Levels</option>
+              <option value="fresher">Fresher / 0-1 Years</option>
+              <option value="intern">Student / Pre-final Year</option>
+              <option value="final year">Final Year / 2026 Batch</option>
+            </select>
+          </div>
+
+          <!-- Search Input -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobSearchInput" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-magnifying-glass text-info me-1"></i> Search:
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="jobSearchInput" placeholder="Company, title or skill..." aria-label="Search jobs by keyword">
+              <button class="btn btn-outline-secondary" type="button" id="btnClearJobSearch" title="Clear search">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State with Broaden Suggestions (#533) -->
+      <div id="jobRecommendationsEmptyState" class="alert alert-warning border-0 rounded-4 shadow-sm p-4 text-center {% if initial_recommended_jobs|default([])|length > 0 %}d-none{% endif %}" role="alert">
+        <div class="mb-3">
+          <i class="fa-solid fa-filter-circle-xmark text-warning fa-3x"></i>
+        </div>
+        <h5 class="fw-bold text-dark mb-2">No Matching Openings Found</h5>
+        <p class="text-secondary small mb-3">No campus job openings currently match your selected combination of location, role type, and experience filters.</p>
+
+        <div class="p-3 bg-white rounded-3 border text-start mx-auto mb-3" style="max-width: 600px;">
+          <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Suggestions to Broaden Your Search:</h6>
+          <ul class="mb-0 text-secondary small ps-3" id="jobBroadenSuggestionsList">
+            <li>Switch location to 'All Locations' to see positions across all tech hubs and remote drives.</li>
+            <li>Broaden role type to 'All Roles' to include both Full-time and Internship opportunities.</li>
+            <li>Clear specific experience criteria to explore all student and early-career drives.</li>
+          </ul>
+        </div>
+
+        <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" id="btnEmptyStateReset">
+          <i class="fa-solid fa-rotate-left me-1"></i> Reset All Filters
+        </button>
+      </div>
+
+      <!-- Job Recommendations Grid List -->
+      <div class="row g-3" id="jobRecommendationsList">
+        {% for job in initial_recommended_jobs|default([]) %}
+          <div class="col-lg-6 col-12 job-recommendation-item" data-job-id="{{ job.id }}">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <!-- Top Row: Company & Match Badge -->
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="rounded-3 px-2 py-1 text-white fw-bold small text-center" style="background-color: {{ job.logo_color|default('#4f46e5') }}; min-width: 36px;">
+                    {{ job.company[:2]|upper if job.company else 'CO' }}
+                  </div>
+                  <div>
+                    <h6 class="fw-bold mb-0 text-dark">{{ job.title }}</h6>
+                    <small class="text-muted fw-semibold">{{ job.company }}</small>
+                  </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <span class="badge {{ 'bg-success text-white' if job.match_percentage >= 80 else ('bg-primary text-white' if job.match_percentage >= 65 else 'bg-warning text-dark') }} rounded-pill px-3 py-1 fw-bold">
+                    {{ job.match_percentage }}% Match
+                  </span>
+                  {% if job.is_target_company %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill d-block mt-1 small">
+                      <i class="fa-solid fa-bullseye me-1"></i> Target
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Metadata Badges (Location, Role Type, Experience, Salary) -->
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-location-dot text-danger me-1"></i> {{ job.location }}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-briefcase text-primary me-1"></i> {{ job.role_type }}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-graduation-cap text-success me-1"></i> {{ job.experience_level }}
+                </span>
+                {% if job.salary_range %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">
+                    <i class="fa-solid fa-indian-rupee-sign me-1"></i> {{ job.salary_range }}
+                  </span>
+                {% endif %}
+              </div>
+
+              <!-- Why It Fits (Recommendation Reason) (#533) -->
+              <div class="p-2 px-3 bg-light rounded-3 small border mb-3">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i>
+                <strong>Why this fits:</strong>
+                <span class="text-secondary">{{ job.recommendation_reason|default(job.fit_reason)|default(job.fit_summary) }}</span>
+              </div>
+
+              <!-- Matched Skills Pills (#533) -->
+              <div class="mb-2">
+                <span class="small fw-bold text-success d-block mb-1">
+                  <i class="fa-solid fa-circle-check me-1"></i> Matched Skills ({{ job.matched_skills|length }}):
+                </span>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for s in job.matched_skills %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">{{ s }}</span>
+                  {% else %}
+                    <span class="text-muted small fst-italic">Standard campus baseline</span>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Missing / Recommended Skills Pills -->
+              {% if job.missing_skills %}
+                <div class="mb-3">
+                  <span class="small fw-bold text-secondary d-block mb-1">
+                    <i class="fa-solid fa-circle-info me-1"></i> Skills to Brush Up:
+                  </span>
+                  <div class="d-flex flex-wrap gap-1">
+                    {% for s in job.missing_skills[:5] %}
+                      <span class="badge bg-light text-secondary border rounded-pill small">{{ s }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+
+              <!-- Footer with Apply & Deadline Info -->
+              <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                  <i class="fa-regular fa-clock me-1"></i> {{ job.deadline|default('Active Hiring Drive') }}
+                </small>
+                <a href="{{ job.apply_url|default('#') }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-custom-primary rounded-pill px-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Apply / View Drive
+                </a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
       </div>
     </div>
 

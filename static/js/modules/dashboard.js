@@ -2349,6 +2349,236 @@ export function initUserWalkthrough() {
  */
 
 
+/**
+ * Interactive Filterable Campus Job Recommendations (#533)
+ * Supports dynamic filtering by location, role type (internship/full-time), experience level,
+ * and text search. Updates recommendation cards with matched skills and fit reasons.
+ * Shows actionable broadening suggestions when 0 jobs match.
+ */
+export function initJobRecommendations() {
+  const card = document.getElementById("jobRecommendationsCard");
+  if (!card) return;
+
+  const analysisId = card.getAttribute("data-analysis-id");
+  if (!analysisId) return;
+
+  const locationFilter = document.getElementById("jobLocationFilter");
+  const roleTypeFilter = document.getElementById("jobRoleTypeFilter");
+  const experienceFilter = document.getElementById("jobExperienceFilter");
+  const searchInput = document.getElementById("jobSearchInput");
+  const clearSearchBtn = document.getElementById("btnClearJobSearch");
+  const resetBtn = document.getElementById("btnResetJobFilters");
+  const emptyStateResetBtn = document.getElementById("btnEmptyStateReset");
+  const listContainer = document.getElementById("jobRecommendationsList");
+  const emptyState = document.getElementById("jobRecommendationsEmptyState");
+  const broadenList = document.getElementById("jobBroadenSuggestionsList");
+  const countBadge = document.getElementById("jobMatchedCount");
+
+  let searchTimeout = null;
+
+  async function fetchJobRecommendations() {
+    const loc = locationFilter ? locationFilter.value : "all";
+    const rt = roleTypeFilter ? roleTypeFilter.value : "all";
+    const exp = experienceFilter ? experienceFilter.value : "all";
+    const q = searchInput ? searchInput.value.trim() : "";
+
+    const params = new URLSearchParams({
+      location: loc,
+      role_type: rt,
+      experience_level: exp,
+      search: q
+    });
+
+    try {
+      if (listContainer) {
+        listContainer.style.opacity = "0.6";
+      }
+      const response = await fetch(`/api/jobs/recommendations/${encodeURIComponent(analysisId)}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to load job recommendations");
+      }
+
+      renderJobRecommendations(data.jobs || [], data.suggestions_to_broaden || []);
+    } catch (err) {
+      console.warn("Error fetching filtered job recommendations:", err);
+    } finally {
+      if (listContainer) {
+        listContainer.style.opacity = "1";
+      }
+    }
+  }
+
+  function renderJobRecommendations(jobs, suggestions) {
+    if (countBadge) {
+      countBadge.textContent = jobs.length;
+    }
+
+    if (jobs.length === 0) {
+      if (listContainer) listContainer.innerHTML = "";
+      if (emptyState) emptyState.classList.remove("d-none");
+      if (broadenList) {
+        if (suggestions && suggestions.length > 0) {
+          broadenList.innerHTML = suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+        } else {
+          broadenList.innerHTML = `
+            <li>Switch location to 'All Locations' to see positions across all tech hubs and remote drives.</li>
+            <li>Broaden role type to 'All Roles' to include both Full-time and Internship opportunities.</li>
+            <li>Clear specific experience criteria to explore all student and early-career drives.</li>
+          `;
+        }
+      }
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add("d-none");
+
+    if (listContainer) {
+      listContainer.innerHTML = jobs.map(job => {
+        const matchPct = job.match_percentage || 0;
+        let badgeClass = "bg-warning text-dark";
+        if (matchPct >= 80) badgeClass = "bg-success text-white";
+        else if (matchPct >= 65) badgeClass = "bg-primary text-white";
+
+        const matchedSkills = job.matched_skills || [];
+        const missingSkills = job.missing_skills || [];
+        const fitReason = job.recommendation_reason || job.fit_reason || job.fit_summary || "Aligned with candidate technical capabilities.";
+        const companyShort = (job.company || "CO").substring(0, 2).toUpperCase();
+        const logoColor = job.logo_color || "#4f46e5";
+
+        const matchedSkillsHtml = matchedSkills.length > 0
+          ? matchedSkills.map(s => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">${escapeHtml(s)}</span>`).join(" ")
+          : `<span class="text-muted small fst-italic">Standard campus baseline</span>`;
+
+        const missingSkillsHtml = missingSkills.length > 0
+          ? `
+            <div class="mb-3">
+              <span class="small fw-bold text-secondary d-block mb-1">
+                <i class="fa-solid fa-circle-info me-1"></i> Skills to Brush Up:
+              </span>
+              <div class="d-flex flex-wrap gap-1">
+                ${missingSkills.slice(0, 5).map(s => `<span class="badge bg-light text-secondary border rounded-pill small">${escapeHtml(s)}</span>`).join(" ")}
+              </div>
+            </div>
+          `
+          : "";
+
+        const salaryBadge = job.salary_range
+          ? `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2"><i class="fa-solid fa-indian-rupee-sign me-1"></i> ${escapeHtml(job.salary_range)}</span>`
+          : "";
+
+        const targetBadge = job.is_target_company
+          ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill d-block mt-1 small"><i class="fa-solid fa-bullseye me-1"></i> Target</span>`
+          : "";
+
+        return `
+          <div class="col-lg-6 col-12 job-recommendation-item" data-job-id="${escapeHtml(job.id || '')}">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="rounded-3 px-2 py-1 text-white fw-bold small text-center" style="background-color: ${escapeHtml(logoColor)}; min-width: 36px;">
+                    ${escapeHtml(companyShort)}
+                  </div>
+                  <div>
+                    <h6 class="fw-bold mb-0 text-dark">${escapeHtml(job.title || '')}</h6>
+                    <small class="text-muted fw-semibold">${escapeHtml(job.company || '')}</small>
+                  </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <span class="badge ${badgeClass} rounded-pill px-3 py-1 fw-bold">
+                    ${matchPct}% Match
+                  </span>
+                  ${targetBadge}
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-location-dot text-danger me-1"></i> ${escapeHtml(job.location || 'Pan India')}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-briefcase text-primary me-1"></i> ${escapeHtml(job.role_type || 'Full-time')}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-graduation-cap text-success me-1"></i> ${escapeHtml(job.experience_level || 'Fresher')}
+                </span>
+                ${salaryBadge}
+              </div>
+
+              <div class="p-2 px-3 bg-light rounded-3 small border mb-3">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i>
+                <strong>Why this fits:</strong>
+                <span class="text-secondary">${escapeHtml(fitReason)}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="small fw-bold text-success d-block mb-1">
+                  <i class="fa-solid fa-circle-check me-1"></i> Matched Skills (${matchedSkills.length}):
+                </span>
+                <div class="d-flex flex-wrap gap-1">
+                  ${matchedSkillsHtml}
+                </div>
+              </div>
+
+              ${missingSkillsHtml}
+
+              <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                  <i class="fa-regular fa-clock me-1"></i> ${escapeHtml(job.deadline || 'Active Hiring Drive')}
+                </small>
+                <a href="${escapeHtml(job.apply_url || '#')}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-custom-primary rounded-pill px-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Apply / View Drive
+                </a>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  function resetAllFilters() {
+    if (locationFilter) locationFilter.value = "all";
+    if (roleTypeFilter) roleTypeFilter.value = "all";
+    if (experienceFilter) experienceFilter.value = "all";
+    if (searchInput) searchInput.value = "";
+    fetchJobRecommendations();
+  }
+
+  if (locationFilter) {
+    locationFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (roleTypeFilter) {
+    roleTypeFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (experienceFilter) {
+    experienceFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(fetchJobRecommendations, 250);
+    });
+  }
+  if (clearSearchBtn) {
+    clearSearchBtn.addEventListener("click", () => {
+      if (searchInput) {
+        searchInput.value = "";
+        fetchJobRecommendations();
+      }
+    });
+  }
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetAllFilters);
+  }
+  if (emptyStateResetBtn) {
+    emptyStateResetBtn.addEventListener("click", resetAllFilters);
+  }
+}
+
 export function initDashboard() {
   initCircularProgress();
   initSkillGapFilter();
@@ -2363,6 +2593,7 @@ export function initDashboard() {
   initResumeKeywordHighlighter();
   initSectionFeedback();
   initUserWalkthrough();
+  initJobRecommendations();
 }
 
 if (typeof document !== "undefined") {
