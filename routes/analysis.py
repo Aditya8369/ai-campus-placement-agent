@@ -189,6 +189,18 @@ def analyze():
             flash(validation_error, "error")
             return redirect(url_for("index"))
 
+        # Section-by-section approval support (#601)
+        # If user approved or corrected individual sections, reassemble them into the analysis input
+        approved_sections_json = request.form.get("approved_sections")
+        if approved_sections_json:
+            try:
+                approved_dict = json.loads(approved_sections_json)
+                if isinstance(approved_dict, dict) and approved_dict:
+                    from utils.resume_section_approval_service import reassemble_approved_resume
+                    extracted_resume_text = reassemble_approved_resume(approved_dict, extracted_resume_text)
+            except Exception as e_appr:
+                logger.warning(f"Error parsing approved sections payload: {e_appr}")
+
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
         student_id = flask_session["user_id"]
@@ -2278,6 +2290,31 @@ def api_get_analysis_pdf_page_issues(analysis_id: str):
         "analysis_id": analysis_id,
         "page_issues": report
     }), 200
+
+
+@analysis_bp.route("/api/resume/parse-sections", methods=["POST"])
+def api_parse_resume_sections():
+    """
+    Parses uploaded resume or text into canonical sections for user review & approval (#601).
+    Does not modify files on disk. Returns detected sections and missing warnings.
+    """
+    extracted_text, filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+    if validation_error:
+        return jsonify({"success": False, "error": validation_error}), 400
+
+    from utils.resume_section_approval_service import parse_resume_for_approval
+    try:
+        parsed = parse_resume_for_approval(extracted_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "filename": filename,
+            "file_uuid": file_uuid,
+            "data": parsed
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error parsing resume sections: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @analysis_bp.route("/api/resume/format-compatibility", methods=["POST"])
