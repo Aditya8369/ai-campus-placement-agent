@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Union
 from db.connection import create_connection, get_connection, transaction
 import config
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -777,6 +778,26 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gd_attempts_student ON gd_practice_attempts (student_id, created_at DESC)")
+
+        # Table 35: Store placement cell batch resume analysis records (#763)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS placement_cell_batches (
+                id TEXT PRIMARY KEY,
+                batch_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                consent_confirmed INTEGER NOT NULL DEFAULT 1,
+                total_files INTEGER NOT NULL DEFAULT 0,
+                processed_count INTEGER NOT NULL DEFAULT 0,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                average_score REAL DEFAULT 0.0,
+                score_distribution TEXT,
+                common_missing_skills TEXT,
+                failed_files TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
