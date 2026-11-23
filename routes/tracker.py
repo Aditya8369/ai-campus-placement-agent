@@ -612,25 +612,17 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
-@tracker_bp.route("/api/table-preferences/columns", methods=["GET"])
-def api_get_table_columns_preferences():
-    """Gets column visibility preferences for data tables (#636)."""
-    from utils.table_columns_service import get_table_column_preferences
-    user_prefs = flask_session.get("table_column_prefs", {})
-    cols = get_table_column_preferences(user_prefs)
-    return jsonify({"status": "success", "columns": cols}), 200
-
-
-@tracker_bp.route("/api/table-preferences/columns", methods=["POST"])
-def api_set_table_columns_preferences():
-    """Saves column visibility preferences in candidate session (#636)."""
-    from utils.table_columns_service import get_table_column_preferences
+@tracker_bp.route("/api/preparation/streak", methods=["POST"])
+def api_calculate_preparation_streak():
+    """Calculates student practice streak with optional grace period (#626)."""
+    from utils.streak_grace_service import calculate_streak_with_grace
     data = request.get_json(silent=True) or {}
-    prefs = data.get("preferences", {})
+    activity_dates = data.get("activity_dates", [])
+    current_date = data.get("current_date")
+    grace_days = int(data.get("grace_days", 1))
 
-    flask_session["table_column_prefs"] = prefs
-    cols = get_table_column_preferences(prefs)
-    return jsonify({"status": "success", "columns": cols}), 200
+    streak_res = calculate_streak_with_grace(activity_dates, current_date, grace_days_allowed=grace_days)
+    return jsonify({"status": "success", "streak": streak_res}), 200
 
 
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
