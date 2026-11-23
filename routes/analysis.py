@@ -189,6 +189,18 @@ def analyze():
             flash(validation_error, "error")
             return redirect(url_for("index"))
 
+        # Section-by-section approval support (#601)
+        # If user approved or corrected individual sections, reassemble them into the analysis input
+        approved_sections_json = request.form.get("approved_sections")
+        if approved_sections_json:
+            try:
+                approved_dict = json.loads(approved_sections_json)
+                if isinstance(approved_dict, dict) and approved_dict:
+                    from utils.resume_section_approval_service import reassemble_approved_resume
+                    extracted_resume_text = reassemble_approved_resume(approved_dict, extracted_resume_text)
+            except Exception as e_appr:
+                logger.warning(f"Error parsing approved sections payload: {e_appr}")
+
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
         student_id = flask_session["user_id"]
@@ -2280,6 +2292,31 @@ def api_get_analysis_pdf_page_issues(analysis_id: str):
     }), 200
 
 
+@analysis_bp.route("/api/resume/parse-sections", methods=["POST"])
+def api_parse_resume_sections():
+    """
+    Parses uploaded resume or text into canonical sections for user review & approval (#601).
+    Does not modify files on disk. Returns detected sections and missing warnings.
+    """
+    extracted_text, filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+    if validation_error:
+        return jsonify({"success": False, "error": validation_error}), 400
+
+    from utils.resume_section_approval_service import parse_resume_for_approval
+    try:
+        parsed = parse_resume_for_approval(extracted_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "filename": filename,
+            "file_uuid": file_uuid,
+            "data": parsed
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error parsing resume sections: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @analysis_bp.route("/api/resume/format-compatibility", methods=["POST"])
 def api_evaluate_resume_format_compatibility():
     """
@@ -2342,6 +2379,49 @@ def get_bullet_rewrites_api(analysis_id: str):
     except Exception as e:
         logger.error(f"Error in bullet-rewrites API: {e}")
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
+
+
+@analysis_bp.route("/api/tasks/dependencies", methods=["GET", "POST"])
+def api_task_dependencies():
+    """
+    Evaluates prerequisite dependencies, lock states, and completes tasks (#606).
+    """
+    from utils.task_dependency_service import (
+        DEFAULT_TASK_DEPENDENCY_GRAPH,
+        evaluate_task_dependency_states,
+        complete_task_with_validation
+    )
+
+    if request.method == "GET":
+        completed_ids = request.args.getlist("completed")
+        try:
+            res = evaluate_task_dependency_states(DEFAULT_TASK_DEPENDENCY_GRAPH, completed_ids)
+            return jsonify(res), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    action = payload.get("action", "evaluate")
+    tasks = payload.get("tasks") or DEFAULT_TASK_DEPENDENCY_GRAPH
+    completed_ids = payload.get("completed_ids") or []
+
+    if action == "complete":
+        task_id = payload.get("task_id")
+        if not task_id:
+            return jsonify({"status": "error", "success": False, "error": "task_id is required."}), 400
+        ok, err_msg, updated_completed = complete_task_with_validation(task_id, tasks, completed_ids)
+        if not ok:
+            return jsonify({"status": "error", "success": False, "error": err_msg}), 400
+        evaluation = evaluate_task_dependency_states(tasks, updated_completed)
+        evaluation["updated_completed_ids"] = updated_completed
+        return jsonify(evaluation), 200
+
+    try:
+        res = evaluate_task_dependency_states(tasks, completed_ids)
+        return jsonify(res), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+
 
 
 @analysis_bp.route("/dashboard/<analysis_id>/annotations", methods=["POST"])

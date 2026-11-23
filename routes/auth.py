@@ -1839,4 +1839,21 @@ def api_verify_email_change():
     return jsonify(result), status_code
 
 
+@auth_bp.route("/api/account/data-retention", methods=["POST"])
+def api_update_data_retention():
+    """Sets student data retention window (#629)."""
+    from utils.data_retention_service import validate_retention_policy
+    data = request.get_json(silent=True) or {}
+    policy = data.get("policy", "indefinite")
+    confirmed = bool(data.get("confirmed", False))
+
+    val = validate_retention_policy(policy)
+    if not val.get("valid"):
+        return jsonify({"status": "error", "message": val.get("error")}), 400
+
+    flask_session["data_retention_policy"] = val["policy_key"]
+    return jsonify({"status": "success", "policy": val}), 200
+
+
+
 
