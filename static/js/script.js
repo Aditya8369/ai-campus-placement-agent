@@ -20,6 +20,7 @@
 
 import { getCsrfToken, escapeHtml, showToast, copyToClipboard } from "./modules/utils.js";
 import { getPreferredTheme, setTheme, updateThemeIcon, initThemeToggle } from "./modules/theme.js";
+import { initMotionPreference, isReducedMotion, getMotionPreference, setMotionPreference } from "./modules/motion.js";
 import { initCommon, initBackToTop, initAccessibility, initRecentAnalysesDrawer, initSessionTimeout, clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./modules/common.js";
 import { initFormUpload, initCharacterCounters, initCircularProgress } from "./modules/analysis.js";
 import { initDashboard, initSkillGapFilter, initRoleSkillGapSelector, initRoadmapTracker, initRoadmapExport, initProgressTracker, initOutreachGenerator, initCopySuggestions, initRoleBasedPrep, initSkillsComparisonChart, initResumeKeywordHighlighter, initSectionFeedback, initUserWalkthrough } from "./modules/dashboard.js";
@@ -74,7 +75,11 @@ export {
   initPasswordStrengthIndicator,
   initSelfIntroductionStudio,
   initProjectDeepDive,
-  initTailoredCoverLetterStudio
+  initTailoredCoverLetterStudio,
+  initMotionPreference,
+  isReducedMotion,
+  getMotionPreference,
+  setMotionPreference
 };
 
 // Expose public API on window for backwards compatibility with inline templates
@@ -84,6 +89,9 @@ if (typeof window !== "undefined") {
   window.showToast = showToast;
   window.copyToClipboard = copyToClipboard;
   window.clearAllInterviewDrafts = clearAllInterviewDrafts;
+  window.getMotionPreference = getMotionPreference;
+  window.setMotionPreference = setMotionPreference;
+  window.isReducedMotion = isReducedMotion;
 }
 
 // Bootstrap on DOMContentLoaded
