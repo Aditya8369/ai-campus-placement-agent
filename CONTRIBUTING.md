@@ -172,6 +172,54 @@ Run the validator locally to confirm compliance:
 python utils/sri_validator.py
 ```
 
+### Property-Based Testing with Hypothesis (#692)
+
+To ensure pure functions in the platform (parsers, sanitizers, validators, regional formatters, and scoring engines) handle arbitrary user inputs, Unicode artifacts, boundary values, and extreme numbers without crashing or returning invalid results, we use **[Hypothesis](https://hypothesis.readthedocs.io/)** for property-based testing.
+
+Unlike example-based tests that only check inputs anticipated by developers, property-based tests randomly generate hundreds of permutations (including empty strings, unusual Unicode symbols, ligature characters, extreme numeric values, and special file paths) and automatically shrink any failing input down to the minimal reproducible case.
+
+#### Running Property-Based Tests Locally:
+```bash
+# Run the complete property-based test suite
+pytest tests/test_property_based.py -v
+
+# Run with custom verbosity or statistics
+pytest tests/test_property_based.py -v --hypothesis-show-statistics
+```
+
+#### How to Add or Extend a Property-Based Test:
+
+When writing or modifying pure utility functions, validators, or calculation logic:
+
+1. **Target Pure Functions**: Focus on functions that take inputs and produce outputs without side-effects (e.g. database transactions or network/API calls).
+2. **Define Invariants / Properties**: Identify properties that must hold true for *all* valid or arbitrary inputs:
+   - **No Unhandled Crashes**: Function always returns the expected type (`str`, `dict`, `int`) without raising unhandled exceptions on arbitrary strings.
+   - **Score Bounds**: Numeric scores (e.g. ATS score, match score, bullet impact) must strictly stay within bounds (e.g. `0 <= score <= 100`).
+   - **Determinism**: Repeating the function on the exact same input produces identical output.
+   - **Idempotence**: `fn(fn(x)) == fn(x)` (e.g. text normalization, filename sanitization, skill canonicalization).
+   - **Length & Security Contracts**: Outputs respect maximum length constraints and strip path traversal / injection markers.
+3. **Keep Examples Fast for CI**: Use `@settings(max_examples=40, deadline=None)` or `@settings(max_examples=50, deadline=None)` so the full suite runs in under 10 seconds without slowing down CI.
+4. **Capture Failing Examples as Regression Tests**: Whenever Hypothesis identifies an edge case bug (such as `decimals=0` or `NaN`/`Infinity` floats in formatters), fix the underlying function and commit the minimal failing example to `TestHypothesisDiscoveredRegressions` in `tests/test_property_based.py`.
+
+#### Example Property-Based Test Pattern:
+```python
+from hypothesis import given, settings, strategies as st
+from utils.file_validation_service import sanitize_filename
+
+@settings(max_examples=50, deadline=None)
+@given(
+    raw_name=st.one_of(st.text(max_size=300), st.none()),
+    max_length=st.integers(min_value=10, max_value=200)
+)
+def test_prop_sanitize_filename_invariants(raw_name: str | None, max_length: int):
+    clean = sanitize_filename(raw_name, max_length=max_length)
+    assert isinstance(clean, str)
+    assert 0 < len(clean) <= max_length
+    assert "/" not in clean and "\\" not in clean and "\x00" not in clean
+    # Idempotent
+    assert sanitize_filename(clean, max_length=max_length) == clean
+```
+
 ### Route Organization & Where to Add New Routes (#553)
 
 The application has been refactored from a monolithic `app.py` into modular Flask Blueprints grouped by feature area inside the `routes/` package. **`app.py` is a thin entry point** exporting `app = create_app()` and should not have new routes added to it directly.

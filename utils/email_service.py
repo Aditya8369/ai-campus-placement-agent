@@ -149,6 +149,46 @@ class EmailNotificationService:
             logger.error(f"Unexpected error in email dispatch to {recipient_email}: {ex}")
             return False
 
+    def send_student_invitation_email(
+        self,
+        recipient_email: str,
+        student_name: str,
+        invite_url: str,
+        expires_at_str: str,
+        college_name: Optional[str] = None
+    ) -> bool:
+        """
+        Dispatches placement batch onboarding invitation to a student candidate (#690).
+        """
+        title = "Invitation to Join AI Campus Placement Platform"
+        headline = f"You're invited to AI Campus Placement Agent!"
+        college_note = f" from <strong>{college_name}</strong>" if college_name else ""
+        body = f"""
+        <p>Dear {student_name or 'Student'},</p>
+        <p>Your placement cell{college_note} has invited you to activate your account on the <strong>AI Campus Placement Agent</strong> platform.</p>
+        <p>This single-use onboarding link gives you immediate access to:</p>
+        <ul style="padding-left: 20px;">
+          <li><strong>AI Resume Review & ATS Scoring</strong> customized for leading recruiters</li>
+          <li><strong>Interactive Mock Interview Simulator</strong> with instant feedback</li>
+          <li><strong>Company Prep Checklists & One-Page Drive Cheat Sheets</strong></li>
+          <li><strong>Application Status Tracker</strong> for placement drives</li>
+        </ul>
+        <p style="color: #dc2626; font-size: 13px;"><em>Note: This secure invitation link is single-use and will expire on {expires_at_str}.</em></p>
+        """
+        html_layout = self._format_html_layout(
+            title=title,
+            headline=headline,
+            body_content=body,
+            cta_url=invite_url,
+            cta_text="Accept Invitation & Activate Account"
+        )
+        return self.send_email(
+            recipient_email=recipient_email,
+            subject="Action Required: Your AI Campus Placement Account Invitation",
+            html_content=html_layout,
+            plain_text=f"Hello {student_name},\n\nYou have been invited to join AI Campus Placement Agent. Activate your account here: {invite_url}\n\nThis link expires on {expires_at_str}."
+        )
+
     def send_welcome_email(self, recipient_email: str, student_name: str, locale: str = DEFAULT_OUTPUT_LOCALE) -> bool:
         """
         Dispatches welcome email upon student registration (#186).
