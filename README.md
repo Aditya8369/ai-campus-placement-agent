@@ -639,6 +639,28 @@ The following features are being considered:
 
 ---
 
+## Import Job Description from URL with Safe Fetching (#689)
+
+To eliminate the friction of copying and pasting job postings by hand—which often carries clutter like navigation menus, cookie banners, sidebars, and similar job links—students can import a job description directly via link:
+
+- **"Import from link" on Analysis Form**: Accessible on the main placement preparation landing page under the custom job description tab.
+- **Server-Side Request Forgery (SSRF) Protection**:
+  - Restricts URL schemes strictly to `http://` and `https://`.
+  - Resolves target hostnames and blocks private (RFC 1918), loopback (`127.0.0.0/8`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`), carrier-grade NAT (`100.64.0.0/10`), multicast, reserved, and non-global IP addresses.
+  - Validates every redirect hop (e.g. 301, 302) to prevent redirect-based internal pivot attacks.
+  - Blocks dangerous non-web destination ports.
+- **Strict Resource & Abuse Limits**:
+  - Connect and read timeouts prevent slow-loris hanging.
+  - Maximum download size capped at 2 MB via `Content-Length` checks and chunked stream thresholds.
+  - Maximum of 5 redirects permitted before aborting.
+- **Lightweight Readability Extraction**:
+  - Strips scripts, styles, forms, headers, footers, navbars, and cookie banners using BeautifulSoup.
+  - Heuristically extracts core job requirements, preserving headings, bullet points, and paragraph structure.
+  - Populates the textarea for the student to review, edit, or adjust before triggering analysis.
+  - If a site uses anti-bot challenges (HTTP 401, 403, 429) or non-HTML content, provides a clear, helpful message asking the student to paste the text manually.
+
+---
+
 ## Company Interview Cheat Sheet (One-Page Revision PDF)
 
 To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:

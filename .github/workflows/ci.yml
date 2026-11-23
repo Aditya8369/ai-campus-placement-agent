@@ -31,7 +31,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov hypothesis
 
           - name: Run Linting Checks
         run: |
@@ -177,7 +177,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install pytest pytest-cov hypothesis
 
       - name: Execute Automated Test Suite
         run: |

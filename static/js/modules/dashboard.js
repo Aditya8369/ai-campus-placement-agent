@@ -7,6 +7,7 @@
  */
 
 import { escapeHtml, showToast, getCsrfToken, copyToClipboard } from "./utils.js";
+import { OKABE_ITO, createAccessiblePattern, getChartThemeTokens } from "./chart_palette.js";
 
 export function initSkillGapFilter() {
   const searchInput = document.getElementById("skillSearchInput");
@@ -639,8 +640,12 @@ export function initProgressTracker() {
   const canvas = document.getElementById("progressTrendChart");
   if (canvas && window.Chart && trendData && Array.isArray(trendData.labels) && trendData.labels.length > 0) {
     const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
-    const textColor = isDark ? "#c4c7c5" : "#444746";
-    const gridColor = isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+    const tokens = getChartThemeTokens ? getChartThemeTokens(isDark) : {
+      textColor: isDark ? "#f0f2f5" : "#1f1f1f",
+      gridColor: isDark ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      surfaceBg: isDark ? "#1e2022" : "#ffffff",
+      borderColor: isDark ? "#444746" : "#dadce0",
+    };
 
     const ctx = canvas.getContext("2d");
     const progressChart = new window.Chart(ctx, {
@@ -651,45 +656,55 @@ export function initProgressTracker() {
           {
             label: "ATS Profile Score",
             data: trendData.ats_scores,
-            borderColor: "#1a73e8",
-            backgroundColor: "rgba(26, 115, 232, 0.12)",
+            borderColor: OKABE_ITO.blue,
+            backgroundColor: "rgba(0, 114, 178, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#1a73e8",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.blue,
+            pointBorderColor: "#ffffff",
+            pointStyle: "circle",
+            borderDash: [],
             yAxisID: "y"
           },
           {
             label: "Job Match %",
             data: trendData.match_scores,
-            borderColor: "#34a853",
-            backgroundColor: "rgba(52, 168, 83, 0.08)",
+            borderColor: OKABE_ITO.bluishGreen,
+            backgroundColor: "rgba(0, 158, 115, 0.12)",
             fill: true,
             tension: 0.35,
             borderWidth: 2.5,
-            pointRadius: 5,
-            pointHoverRadius: 7,
-            pointBackgroundColor: "#34a853",
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.bluishGreen,
+            pointBorderColor: "#ffffff",
+            pointStyle: "rectRot",
+            borderDash: [6, 4],
             yAxisID: "y"
           },
           {
             label: "Skill Gaps Count",
             data: trendData.gap_counts,
-            borderColor: "#ea4335",
-            borderDash: [5, 5],
+            borderColor: OKABE_ITO.vermilion,
             backgroundColor: "transparent",
             fill: false,
             tension: 0.3,
-            borderWidth: 2,
-            pointRadius: 4,
-            pointBackgroundColor: "#ea4335",
+            borderWidth: 2.5,
+            pointRadius: 6,
+            pointHoverRadius: 8,
+            pointBackgroundColor: OKABE_ITO.vermilion,
+            pointBorderColor: "#ffffff",
+            pointStyle: "triangle",
+            borderDash: [3, 3],
             yAxisID: "y1"
           }
         ]
       },
       options: {
+        animation: isReducedMotion() ? false : true,
         responsive: true,
         maintainAspectRatio: false,
         interaction: {
@@ -700,16 +715,28 @@ export function initProgressTracker() {
           legend: {
             position: "top",
             labels: {
-              boxWidth: 14,
-              font: { size: 12, family: "'Outfit', sans-serif" },
-              color: textColor
+              usePointStyle: true,
+              boxWidth: 12,
+              font: { size: 12, family: "'Outfit', sans-serif", weight: "500" },
+              color: tokens.textColor,
+              generateLabels: function(chart) {
+                const markers = ["●", "◆", "▲"];
+                return chart.data.datasets.map((ds, i) => ({
+                  text: `${markers[i] || "■"} ${ds.label}`,
+                  fillStyle: ds.borderColor,
+                  strokeStyle: ds.borderColor,
+                  pointStyle: ds.pointStyle,
+                  datasetIndex: i,
+                  fontColor: tokens.textColor,
+                }));
+              }
             }
           },
           tooltip: {
-            backgroundColor: isDark ? "#282a2c" : "#ffffff",
-            titleColor: isDark ? "#e3e3e3" : "#1f1f1f",
-            bodyColor: isDark ? "#c4c7c5" : "#444746",
-            borderColor: isDark ? "#444746" : "#dadce0",
+            backgroundColor: tokens.surfaceBg,
+            titleColor: tokens.textColor,
+            bodyColor: tokens.textColor,
+            borderColor: tokens.borderColor,
             borderWidth: 1,
             padding: 10,
             callbacks: {
@@ -718,14 +745,20 @@ export function initProgressTracker() {
                 const date = trendData.dates && trendData.dates[idx] ? trendData.dates[idx] : "";
                 const filename = trendData.filenames && trendData.filenames[idx] ? trendData.filenames[idx] : "";
                 return `Iteration ${trendData.labels[idx]} (${date}) - ${filename}`;
+              },
+              label: function (context) {
+                const markers = ["●", "◆", "▲"];
+                const sym = markers[context.datasetIndex] || "■";
+                const suffix = context.datasetIndex === 2 ? "" : "%";
+                return ` ${sym} ${context.dataset.label}: ${context.raw}${suffix}`;
               }
             }
           }
         },
         scales: {
           x: {
-            grid: { color: gridColor },
-            ticks: { color: textColor, font: { family: "'Outfit', sans-serif" } }
+            grid: { color: tokens.gridColor },
+            ticks: { color: tokens.textColor, font: { family: "'Outfit', sans-serif" } }
           },
           y: {
             type: "linear",
@@ -733,9 +766,9 @@ export function initProgressTracker() {
             position: "left",
             min: 0,
             max: 100,
-            grid: { color: gridColor },
+            grid: { color: tokens.gridColor },
             ticks: {
-              color: textColor,
+              color: tokens.textColor,
               callback: val => `${val}%`,
               font: { family: "'Outfit', sans-serif" }
             }
@@ -748,9 +781,9 @@ export function initProgressTracker() {
             suggestedMax: 8,
             grid: { drawOnChartArea: false },
             ticks: {
-              color: "#ea4335",
+              color: OKABE_ITO.vermilion,
               precision: 0,
-              font: { family: "'Outfit', sans-serif" }
+              font: { family: "'Outfit', sans-serif", weight: "600" }
             }
           }
         }
@@ -760,15 +793,17 @@ export function initProgressTracker() {
     // Theme toggle listener to update chart colors
     const observer = new MutationObserver(() => {
       const darkNow = document.documentElement.getAttribute("data-bs-theme") === "dark";
-      const newTextColor = darkNow ? "#c4c7c5" : "#444746";
-      const newGridColor = darkNow ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.06)";
+      const newTokens = getChartThemeTokens ? getChartThemeTokens(darkNow) : {
+        textColor: darkNow ? "#f0f2f5" : "#1f1f1f",
+        gridColor: darkNow ? "rgba(255, 255, 255, 0.12)" : "rgba(0, 0, 0, 0.08)",
+      };
 
       if (progressChart) {
-        progressChart.options.scales.x.ticks.color = newTextColor;
-        progressChart.options.scales.x.grid.color = newGridColor;
-        progressChart.options.scales.y.ticks.color = newTextColor;
-        progressChart.options.scales.y.grid.color = newGridColor;
-        progressChart.options.plugins.legend.labels.color = newTextColor;
+        progressChart.options.scales.x.ticks.color = newTokens.textColor;
+        progressChart.options.scales.x.grid.color = newTokens.gridColor;
+        progressChart.options.scales.y.ticks.color = newTokens.textColor;
+        progressChart.options.scales.y.grid.color = newTokens.gridColor;
+        progressChart.options.plugins.legend.labels.color = newTokens.textColor;
         progressChart.update();
       }
     });
@@ -1867,6 +1902,15 @@ export function initSkillsComparisonChart() {
   const missingPct = 100 - matchPct;
 
   const ctx = canvas.getContext("2d");
+
+  // Create accessible patterns for non-color differentiation (diagonal-stripes vs cross-hatch)
+  const matchedPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "diagonal-stripes", OKABE_ITO.bluishGreen, isDark ? "rgba(0, 158, 115, 0.35)" : "rgba(0, 158, 115, 0.20)")
+    : OKABE_ITO.bluishGreen;
+  const missingPattern = createAccessiblePattern
+    ? createAccessiblePattern(ctx, "cross-hatch", OKABE_ITO.vermilion, isDark ? "rgba(213, 94, 0, 0.35)" : "rgba(213, 94, 0, 0.20)")
+    : OKABE_ITO.vermilion;
+
   const chartInstance = new window.Chart(ctx, {
     type: "doughnut",
     data: {
@@ -1874,10 +1918,7 @@ export function initSkillsComparisonChart() {
       datasets: [
         {
           data: [matchedCount, missingCount],
-          backgroundColor: [
-            isDark ? "#2ea043" : "#198754", // Green / Success
-            isDark ? "#f85149" : "#dc3545"  // Red / Danger
-          ],
+          backgroundColor: [matchedPattern, missingPattern],
           borderColor: isDark ? "#161b22" : "#ffffff",
           borderWidth: 3,
           hoverOffset: 6
@@ -1885,12 +1926,13 @@ export function initSkillsComparisonChart() {
       ]
     },
     options: {
+      animation: isReducedMotion() ? false : true,
       responsive: true,
       maintainAspectRatio: false,
       cutout: "70%",
       plugins: {
         legend: {
-          display: false // We render custom interactive badges and tooltips
+          display: false // Custom accessible legend rendered in HTML with check/cross icons
         },
         tooltip: {
           backgroundColor: isDark ? "rgba(22, 27, 34, 0.95)" : "rgba(33, 37, 41, 0.95)",
@@ -1902,7 +1944,8 @@ export function initSkillsComparisonChart() {
             label: function (context) {
               const count = context.raw || 0;
               const pct = context.dataIndex === 0 ? matchPct : missingPct;
-              return ` ${context.label}: ${count} (${pct}%)`;
+              const icon = context.dataIndex === 0 ? "✔" : "✖";
+              return ` ${icon} ${context.label}: ${count} (${pct}%)`;
             }
           }
         }
@@ -2287,7 +2330,7 @@ export function initUserWalkthrough() {
         }
         const targetEl = document.getElementById("analysisForm") || document.getElementById("uploadArea");
         if (targetEl) {
-          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          targetEl.scrollIntoView({ behavior: isReducedMotion() ? "auto" : "smooth", block: "center" });
           const fileInput = document.getElementById("resumeInput");
           if (fileInput) fileInput.focus();
         }
@@ -2306,6 +2349,236 @@ export function initUserWalkthrough() {
  */
 
 
+/**
+ * Interactive Filterable Campus Job Recommendations (#533)
+ * Supports dynamic filtering by location, role type (internship/full-time), experience level,
+ * and text search. Updates recommendation cards with matched skills and fit reasons.
+ * Shows actionable broadening suggestions when 0 jobs match.
+ */
+export function initJobRecommendations() {
+  const card = document.getElementById("jobRecommendationsCard");
+  if (!card) return;
+
+  const analysisId = card.getAttribute("data-analysis-id");
+  if (!analysisId) return;
+
+  const locationFilter = document.getElementById("jobLocationFilter");
+  const roleTypeFilter = document.getElementById("jobRoleTypeFilter");
+  const experienceFilter = document.getElementById("jobExperienceFilter");
+  const searchInput = document.getElementById("jobSearchInput");
+  const clearSearchBtn = document.getElementById("btnClearJobSearch");
+  const resetBtn = document.getElementById("btnResetJobFilters");
+  const emptyStateResetBtn = document.getElementById("btnEmptyStateReset");
+  const listContainer = document.getElementById("jobRecommendationsList");
+  const emptyState = document.getElementById("jobRecommendationsEmptyState");
+  const broadenList = document.getElementById("jobBroadenSuggestionsList");
+  const countBadge = document.getElementById("jobMatchedCount");
+
+  let searchTimeout = null;
+
+  async function fetchJobRecommendations() {
+    const loc = locationFilter ? locationFilter.value : "all";
+    const rt = roleTypeFilter ? roleTypeFilter.value : "all";
+    const exp = experienceFilter ? experienceFilter.value : "all";
+    const q = searchInput ? searchInput.value.trim() : "";
+
+    const params = new URLSearchParams({
+      location: loc,
+      role_type: rt,
+      experience_level: exp,
+      search: q
+    });
+
+    try {
+      if (listContainer) {
+        listContainer.style.opacity = "0.6";
+      }
+      const response = await fetch(`/api/jobs/recommendations/${encodeURIComponent(analysisId)}?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.error || "Failed to load job recommendations");
+      }
+
+      renderJobRecommendations(data.jobs || [], data.suggestions_to_broaden || []);
+    } catch (err) {
+      console.warn("Error fetching filtered job recommendations:", err);
+    } finally {
+      if (listContainer) {
+        listContainer.style.opacity = "1";
+      }
+    }
+  }
+
+  function renderJobRecommendations(jobs, suggestions) {
+    if (countBadge) {
+      countBadge.textContent = jobs.length;
+    }
+
+    if (jobs.length === 0) {
+      if (listContainer) listContainer.innerHTML = "";
+      if (emptyState) emptyState.classList.remove("d-none");
+      if (broadenList) {
+        if (suggestions && suggestions.length > 0) {
+          broadenList.innerHTML = suggestions.map(s => `<li>${escapeHtml(s)}</li>`).join("");
+        } else {
+          broadenList.innerHTML = `
+            <li>Switch location to 'All Locations' to see positions across all tech hubs and remote drives.</li>
+            <li>Broaden role type to 'All Roles' to include both Full-time and Internship opportunities.</li>
+            <li>Clear specific experience criteria to explore all student and early-career drives.</li>
+          `;
+        }
+      }
+      return;
+    }
+
+    if (emptyState) emptyState.classList.add("d-none");
+
+    if (listContainer) {
+      listContainer.innerHTML = jobs.map(job => {
+        const matchPct = job.match_percentage || 0;
+        let badgeClass = "bg-warning text-dark";
+        if (matchPct >= 80) badgeClass = "bg-success text-white";
+        else if (matchPct >= 65) badgeClass = "bg-primary text-white";
+
+        const matchedSkills = job.matched_skills || [];
+        const missingSkills = job.missing_skills || [];
+        const fitReason = job.recommendation_reason || job.fit_reason || job.fit_summary || "Aligned with candidate technical capabilities.";
+        const companyShort = (job.company || "CO").substring(0, 2).toUpperCase();
+        const logoColor = job.logo_color || "#4f46e5";
+
+        const matchedSkillsHtml = matchedSkills.length > 0
+          ? matchedSkills.map(s => `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">${escapeHtml(s)}</span>`).join(" ")
+          : `<span class="text-muted small fst-italic">Standard campus baseline</span>`;
+
+        const missingSkillsHtml = missingSkills.length > 0
+          ? `
+            <div class="mb-3">
+              <span class="small fw-bold text-secondary d-block mb-1">
+                <i class="fa-solid fa-circle-info me-1"></i> Skills to Brush Up:
+              </span>
+              <div class="d-flex flex-wrap gap-1">
+                ${missingSkills.slice(0, 5).map(s => `<span class="badge bg-light text-secondary border rounded-pill small">${escapeHtml(s)}</span>`).join(" ")}
+              </div>
+            </div>
+          `
+          : "";
+
+        const salaryBadge = job.salary_range
+          ? `<span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2"><i class="fa-solid fa-indian-rupee-sign me-1"></i> ${escapeHtml(job.salary_range)}</span>`
+          : "";
+
+        const targetBadge = job.is_target_company
+          ? `<span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill d-block mt-1 small"><i class="fa-solid fa-bullseye me-1"></i> Target</span>`
+          : "";
+
+        return `
+          <div class="col-lg-6 col-12 job-recommendation-item" data-job-id="${escapeHtml(job.id || '')}">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="rounded-3 px-2 py-1 text-white fw-bold small text-center" style="background-color: ${escapeHtml(logoColor)}; min-width: 36px;">
+                    ${escapeHtml(companyShort)}
+                  </div>
+                  <div>
+                    <h6 class="fw-bold mb-0 text-dark">${escapeHtml(job.title || '')}</h6>
+                    <small class="text-muted fw-semibold">${escapeHtml(job.company || '')}</small>
+                  </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <span class="badge ${badgeClass} rounded-pill px-3 py-1 fw-bold">
+                    ${matchPct}% Match
+                  </span>
+                  ${targetBadge}
+                </div>
+              </div>
+
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-location-dot text-danger me-1"></i> ${escapeHtml(job.location || 'Pan India')}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-briefcase text-primary me-1"></i> ${escapeHtml(job.role_type || 'Full-time')}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-graduation-cap text-success me-1"></i> ${escapeHtml(job.experience_level || 'Fresher')}
+                </span>
+                ${salaryBadge}
+              </div>
+
+              <div class="p-2 px-3 bg-light rounded-3 small border mb-3">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i>
+                <strong>Why this fits:</strong>
+                <span class="text-secondary">${escapeHtml(fitReason)}</span>
+              </div>
+
+              <div class="mb-2">
+                <span class="small fw-bold text-success d-block mb-1">
+                  <i class="fa-solid fa-circle-check me-1"></i> Matched Skills (${matchedSkills.length}):
+                </span>
+                <div class="d-flex flex-wrap gap-1">
+                  ${matchedSkillsHtml}
+                </div>
+              </div>
+
+              ${missingSkillsHtml}
+
+              <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                  <i class="fa-regular fa-clock me-1"></i> ${escapeHtml(job.deadline || 'Active Hiring Drive')}
+                </small>
+                <a href="${escapeHtml(job.apply_url || '#')}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-custom-primary rounded-pill px-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Apply / View Drive
+                </a>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  function resetAllFilters() {
+    if (locationFilter) locationFilter.value = "all";
+    if (roleTypeFilter) roleTypeFilter.value = "all";
+    if (experienceFilter) experienceFilter.value = "all";
+    if (searchInput) searchInput.value = "";
+    fetchJobRecommendations();
+  }
+
+  if (locationFilter) {
+    locationFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (roleTypeFilter) {
+    roleTypeFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (experienceFilter) {
+    experienceFilter.addEventListener("change", fetchJobRecommendations);
+  }
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(fetchJobRecommendations, 250);
+    });
+  }
+  if (clearSearchBtn) {
+    clearSearchBtn.addEventListener("click", () => {
+      if (searchInput) {
+        searchInput.value = "";
+        fetchJobRecommendations();
+      }
+    });
+  }
+  if (resetBtn) {
+    resetBtn.addEventListener("click", resetAllFilters);
+  }
+  if (emptyStateResetBtn) {
+    emptyStateResetBtn.addEventListener("click", resetAllFilters);
+  }
+}
+
 export function initDashboard() {
   initCircularProgress();
   initSkillGapFilter();
@@ -2320,6 +2593,7 @@ export function initDashboard() {
   initResumeKeywordHighlighter();
   initSectionFeedback();
   initUserWalkthrough();
+  initJobRecommendations();
 }
 
 if (typeof document !== "undefined") {

@@ -51,6 +51,7 @@ from utils.bookmark_folders import *
 from utils.interview_moderation import *
 from utils.deadline_reminders import *
 from utils.company_profile_manager import *
+from utils.interview_helpful_service import get_contributor_helped_students_count
 from utils.progress_tracker import *
 from utils.password_security import evaluate_password_strength
 from utils.pagination import Pagination
@@ -843,6 +844,8 @@ def profile_view():
         session_item["last_seen_display"] = _format_session_timestamp(session_item.get("last_seen_at"))
         sessions.append(session_item)
 
+    helped_students_count = get_contributor_helped_students_count(student_id)
+
     return render_template(
         "profile.html",
         completion=completion_info,
@@ -850,7 +853,8 @@ def profile_view():
         skills_csv=skills_csv,
         student_id=student_id,
         sessions=sessions,
-        current_session_id=current_session_id
+        current_session_id=current_session_id,
+        helped_students_count=helped_students_count,
     )
 
 
@@ -867,9 +871,12 @@ def api_profile_completion():
         or "default_student"
     )
     data = calculate_profile_completion(student_id=student_id)
+    helped_students_count = get_contributor_helped_students_count(student_id)
+    data["helped_students_count"] = helped_students_count
     return jsonify({
         "status": "success",
-        "data": data
+        "data": data,
+        "helped_students_count": helped_students_count,
     }), 200
 
 

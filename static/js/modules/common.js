@@ -105,7 +105,7 @@ export function initBackToTop() {
     e.preventDefault();
     window.scrollTo({
       top: 0,
-      behavior: "smooth"
+      behavior: isReducedMotion() ? "auto" : "smooth"
     });
     btn.blur();
   });
@@ -675,6 +675,7 @@ export function initSessionTimeout() {
 export function initCommon() {
   initCsrfFetch();
   initThemeToggle();
+  initMotionPreference();
   initBackToTop();
   initAccessibility();
   initRecentAnalysesDrawer();
@@ -682,6 +683,8 @@ export function initCommon() {
   initInterviewDraftLogoutCleanup();
   initKeyboardShortcuts();
 }
+
+export { initMotionPreference, isReducedMotion, getMotionPreference, setMotionPreference };
 
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") {
