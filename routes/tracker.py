@@ -612,37 +612,14 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
-@tracker_bp.route("/api/applications/<app_id>/archive", methods=["POST"])
-def api_archive_application(app_id: str):
-    """Archives an old application to declutter tracker without deleting records (#620)."""
-    from utils.application_archive_service import archive_application
+@tracker_bp.route("/api/deadlines/digest", methods=["GET"])
+def api_get_placement_deadlines_digest():
+    """Aggregates placement and application deadlines into Today, This Week, Later, and Overdue (#621)."""
+    from utils.placement_deadline_digest_service import get_placement_deadline_digest
     student_id = flask_session.get("user_id") or "default_student"
-    success = archive_application(app_id, student_id)
-    if not success:
-        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
-    return jsonify({"status": "success", "message": "Application archived"}), 200
-
-
-@tracker_bp.route("/api/applications/<app_id>/restore", methods=["POST"])
-def api_restore_application(app_id: str):
-    """Restores an archived application back to active tracker (#620)."""
-    from utils.application_archive_service import restore_application
-    student_id = flask_session.get("user_id") or "default_student"
-    success = restore_application(app_id, student_id)
-    if not success:
-        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
-    return jsonify({"status": "success", "message": "Application restored"}), 200
-
-
-@tracker_bp.route("/api/applications/<app_id>/renew", methods=["POST"])
-def api_renew_application(app_id: str):
-    """Renews an application into a new hiring cycle preserving history (#620)."""
-    from utils.application_archive_service import renew_application
-    student_id = flask_session.get("user_id") or "default_student"
-    res = renew_application(app_id, student_id)
-    if not res:
-        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
-    return jsonify({"status": "success", "renewal": res}), 200
+    as_of = request.args.get("as_of_date")
+    digest = get_placement_deadline_digest(student_id, as_of)
+    return jsonify({"status": "success", "digest": digest}), 200
 
 
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
