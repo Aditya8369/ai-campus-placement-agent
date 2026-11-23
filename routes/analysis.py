@@ -131,6 +131,11 @@ from utils.session_resume_comparator import (
     clear_session_comparison,
     compare_resume_versions,
 )
+from utils.job_url_extractor import (
+    extract_job_description_from_url,
+    JobURLExtractionError,
+    SSRFSecurityError,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -138,6 +143,7 @@ logger = logging.getLogger(__name__)
 analysis_bp = Blueprint("analysis", __name__)
 
 @analysis_bp.route("/")
+@analysis_bp.route("/dashboard")
 def index() -> str:
     """
     Renders the placement landing page containing the configuration forms.
@@ -347,7 +353,8 @@ def analyze():
                 "task_id": task.task_id,
                 "analysis_id": file_uuid,
                 "stream_url": f"/api/analysis/stream/{task.task_id}",
-                "status_url": f"/api/analysis/status/{task.task_id}"
+                "status_url": f"/api/analysis/status/{task.task_id}",
+                "cancel_url": f"/api/analysis/cancel/{task.task_id}"
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
@@ -566,6 +573,7 @@ def start_analysis_async():
             "analysis_id": file_uuid,
             "stream_url": f"/api/analysis/stream/{task.task_id}",
             "status_url": f"/api/analysis/status/{task.task_id}",
+            "cancel_url": f"/api/analysis/cancel/{task.task_id}",
             "format_compatibility": format_compatibility
         }), 202
 
@@ -606,10 +614,10 @@ def stream_analysis_progress(task_id: str):
                 for ev in events:
                     yield f"data: {json.dumps(ev)}\n\n"
                     last_index += 1
-                    if ev.get("status") in ("completed", "error"):
+                    if ev.get("status") in ("completed", "error", "cancelled"):
                         return
             else:
-                if task.status in ("completed", "error"):
+                if task.status in ("completed", "error", "cancelled") or task.is_cancelled:
                     return
                 # SSE heartbeat comment to keep HTTP connection alive
                 yield ": keep-alive\n\n"
@@ -631,6 +639,35 @@ def get_analysis_task_status(task_id: str):
         return jsonify({"success": False, "error": f"Analysis task '{task_id}' not found"}), 404
 
     return jsonify({"success": True, **task.to_dict()}), 200
+
+
+@analysis_bp.route("/api/analysis/cancel", methods=["POST"])
+@analysis_bp.route("/api/analysis/cancel/<task_id>", methods=["POST"])
+def cancel_analysis(task_id: Optional[str] = None):
+    """
+    Cancels an in-progress or queued background placement analysis task (#465, #764).
+    Accepts task_id either as URL route param or in JSON request body {"task_id": "..."}.
+    """
+    effective_task_id = task_id
+    if not effective_task_id:
+        req_json = request.get_json(silent=True) or {}
+        effective_task_id = req_json.get("task_id") or request.form.get("task_id")
+
+    if not effective_task_id:
+        return jsonify({"success": False, "error": "Missing task_id parameter."}), 400
+
+    student_id = flask_session.get("student_id") or flask_session.get("user_id")
+    success, msg = cancel_analysis_task(effective_task_id, student_id=student_id)
+    if not success:
+        status_code = 404 if "not found" in msg.lower() else 400
+        return jsonify({"success": False, "error": msg}), status_code
+
+    return jsonify({
+        "success": True,
+        "status": "cancelled",
+        "task_id": effective_task_id,
+        "message": msg
+    }), 200
 
 
 @analysis_bp.route("/analyze/rerun/<analysis_id>", methods=["GET", "POST"])
@@ -1642,7 +1679,9 @@ def dashboard(analysis_id: str) -> str:
         ats_confidence=ats_confidence,
         ats_confidence_json=json.dumps(ats_confidence),
         resume_evidence=resume_evidence,
-        resume_evidence_json=json.dumps(resume_evidence)
+        resume_evidence_json=json.dumps(resume_evidence),
+        initial_recommended_jobs=initial_recommended_jobs,
+        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
     )
 
 
@@ -2365,6 +2404,28 @@ def api_evaluate_resume_format_compatibility():
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
+@analysis_bp.route("/api/job-description/check-quality", methods=["POST"])
+def api_check_job_description_quality():
+    """
+    Evaluates job description quality score, detected sections, and missing parts (#602).
+    Never stores the description and never rejects valid short text automatically.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    jd_text = (payload.get("job_description") or payload.get("text") or "").strip()
+
+    from utils.jd_quality_checker_service import evaluate_job_description_quality
+    try:
+        report = evaluate_job_description_quality(jd_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "report": report
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error checking job description quality: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @analysis_bp.route("/api/resume/bullet-rewrites/<analysis_id>", methods=["GET"])
 def get_bullet_rewrites_api(analysis_id: str):
     """Return detected weak bullets and suggested rewrites for an analysis (#429)."""
@@ -2381,46 +2442,61 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
-@analysis_bp.route("/api/tasks/dependencies", methods=["GET", "POST"])
-def api_task_dependencies():
+@analysis_bp.route("/api/snapshots", methods=["GET", "POST"])
+def api_snapshots_collection():
     """
-    Evaluates prerequisite dependencies, lock states, and completes tasks (#606).
+    Lists student preparation progress snapshots or creates a new manual/automatic snapshot (#607).
     """
-    from utils.task_dependency_service import (
-        DEFAULT_TASK_DEPENDENCY_GRAPH,
-        evaluate_task_dependency_states,
-        complete_task_with_validation
+    student_id = flask_session.get("user_id") or "default_student"
+    from utils.prep_snapshot_service import (
+        create_progress_snapshot,
+        list_student_snapshots,
+        compare_two_snapshots
     )
 
     if request.method == "GET":
-        completed_ids = request.args.getlist("completed")
-        try:
-            res = evaluate_task_dependency_states(DEFAULT_TASK_DEPENDENCY_GRAPH, completed_ids)
-            return jsonify(res), 200
-        except ValueError as ve:
-            return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+        compare_a = request.args.get("compare_a")
+        compare_b = request.args.get("compare_b")
+        snapshots = list_student_snapshots(student_id)
+
+        if compare_a and compare_b:
+            snap_map = {s["id"]: s for s in snapshots}
+            if compare_a in snap_map and compare_b in snap_map:
+                comparison = compare_two_snapshots(snap_map[compare_a], snap_map[compare_b])
+                return jsonify({"status": "success", "comparison": comparison}), 200
+            return jsonify({"status": "error", "message": "One or both snapshots not found."}), 404
+
+        return jsonify({"status": "success", "snapshots": snapshots}), 200
 
     payload = request.get_json(silent=True) or request.form.to_dict()
-    action = payload.get("action", "evaluate")
-    tasks = payload.get("tasks") or DEFAULT_TASK_DEPENDENCY_GRAPH
-    completed_ids = payload.get("completed_ids") or []
+    label = payload.get("label", "Manual Snapshot")
+    ats_score = payload.get("ats_score")
+    coding_score = payload.get("coding_score")
+    interview_score = payload.get("interview_score")
+    skill_gaps_count = payload.get("skill_gaps_count")
+    matched_skills_count = payload.get("matched_skills_count")
 
-    if action == "complete":
-        task_id = payload.get("task_id")
-        if not task_id:
-            return jsonify({"status": "error", "success": False, "error": "task_id is required."}), 400
-        ok, err_msg, updated_completed = complete_task_with_validation(task_id, tasks, completed_ids)
-        if not ok:
-            return jsonify({"status": "error", "success": False, "error": err_msg}), 400
-        evaluation = evaluate_task_dependency_states(tasks, updated_completed)
-        evaluation["updated_completed_ids"] = updated_completed
-        return jsonify(evaluation), 200
+    new_snap = create_progress_snapshot(
+        student_id=student_id,
+        label=label,
+        ats_score=int(ats_score) if ats_score is not None else None,
+        coding_score=int(coding_score) if coding_score is not None else None,
+        interview_score=int(interview_score) if interview_score is not None else None,
+        skill_gaps_count=int(skill_gaps_count) if skill_gaps_count is not None else None,
+        matched_skills_count=int(matched_skills_count) if matched_skills_count is not None else None
+    )
+    return jsonify({"status": "success", "snapshot": new_snap}), 201
 
-    try:
-        res = evaluate_task_dependency_states(tasks, completed_ids)
-        return jsonify(res), 200
-    except ValueError as ve:
-        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+
+@analysis_bp.route("/api/snapshots/<snapshot_id>", methods=["DELETE"])
+def api_delete_snapshot(snapshot_id: str):
+    """Deletes an owned preparation progress snapshot (#607)."""
+    student_id = flask_session.get("user_id") or "default_student"
+    from utils.prep_snapshot_service import delete_student_snapshot
+    deleted = delete_student_snapshot(student_id, snapshot_id)
+    if deleted:
+        return jsonify({"status": "success", "message": "Snapshot deleted."}), 200
+    return jsonify({"status": "error", "message": "Snapshot not found or unauthorized."}), 404
 
 
 
@@ -4431,6 +4507,62 @@ def api_saved_job_description_item(saved_id):
     }), 200
 
 
+@analysis_bp.route("/api/job-description/extract-url", methods=["POST"])
+@analysis_bp.route("/api/job-description/import-link", methods=["POST"])
+@csrf.exempt
+def api_extract_job_description_url():
+    """
+    Extracts and normalizes job posting description text from a student-provided URL (#689).
+    Enforces SSRF prevention (blocking private, loopback, link-local IPs and dangerous ports),
+    short timeouts, download limits, redirect IP validation, and readability extraction.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    url = (payload.get("url") or payload.get("link") or payload.get("job_url") or "").strip()
+
+    if not url:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Please provide a valid job posting link."
+        }), 400
+
+    try:
+        result = extract_job_description_from_url(url)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "url": url,
+            "job_description": result["job_description"],
+            "character_count": result["character_count"],
+            "title": result.get("title", ""),
+            "company": result.get("company", ""),
+        }), 200
+    except SSRFSecurityError as e:
+        logger.warning(f"SSRF safety check blocked job URL request: {url} -> {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "security_restriction",
+            "error": f"The provided URL cannot be fetched for security reasons: {str(e)} Please copy and paste the job description text manually."
+        }), 400
+    except JobURLExtractionError as e:
+        logger.info(f"Job URL extraction failed for {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "extraction_failed",
+            "error": str(e)
+        }), 422
+    except Exception as e:
+        logger.exception(f"Unexpected error while extracting job URL {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "server_error",
+            "error": "Failed to extract job description from the provided link. Please copy and paste the job description text manually."
+        }), 500
+
+
 @analysis_bp.route("/api/goals", methods=["GET", "POST"])
 def api_preparation_goals():
     """
@@ -4742,5 +4874,18 @@ def api_get_role_template_by_id(role_id: str):
         "success": True,
         "template": template
     }), 200
+
+
+@analysis_bp.route("/api/analysis/freshness-check", methods=["POST"])
+def api_check_analysis_freshness():
+    """Evaluates if an existing analysis report is current or outdated (#628)."""
+    from utils.data_freshness_service import check_report_freshness
+    data = request.get_json(silent=True) or {}
+    report_meta = data.get("report_meta", {})
+    current_profile = data.get("current_profile", {})
+
+    freshness = check_report_freshness(report_meta, current_profile)
+    return jsonify({"status": "success", "freshness": freshness}), 200
+
 
 

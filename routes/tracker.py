@@ -400,6 +400,7 @@ def api_skills_assessment():
         }), 200 if deleted else 404
 
 
+@tracker_bp.route("/tracker", methods=["GET"])
 @tracker_bp.route("/applications", methods=["GET", "POST"])
 @tracker_bp.route("/api/applications", methods=["GET", "POST"])
 def job_applications_tracker():

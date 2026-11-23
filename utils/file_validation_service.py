@@ -14,11 +14,20 @@ Checks before sending to heavy AI analysis pipelines:
 
 import io
 import os
+import re
+import unicodedata
 import zipfile
 from typing import Dict, Any, Optional, List
 
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 DEFAULT_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+# Reserved device stems on Windows filesystems (#692)
+WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+    "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+}
 
 # Recognized magic header bytes
 MAGIC_SIGNATURES = {
@@ -26,6 +35,81 @@ MAGIC_SIGNATURES = {
     "docx_zip": b"PK\x03\x04",
     "docx_ole_encrypted": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 }
+
+
+def sanitize_filename(
+    filename: Optional[str],
+    default: str = "document.pdf",
+    max_length: int = 120
+) -> str:
+    """
+    Sanitizes an uploaded or user-provided filename into a safe, deterministic string (#692).
+    - Strips directory traversal components ('..', '/', '\\')
+    - Strips null bytes and unprintable/control characters
+    - Normalizes Unicode with NFKC
+    - Eliminates dangerous characters (<>:"/\\|?*)
+    - Protects Windows reserved device stems (CON, PRN, AUX, NUL, COM*, LPT*)
+    - Prevents hidden dot-files or trailing space/dot issues
+    - Clamps length to max_length while preserving the file extension
+    - Always returns a valid, non-empty filename string safe for disk operations
+    """
+    if max_length < 5:
+        max_length = 5
+    safe_default = os.path.basename(default.strip()) if default and default.strip() else "document.pdf"
+    default_stem, default_ext = os.path.splitext(safe_default)
+    if not default_ext:
+        default_ext = ".pdf"
+    if not default_stem:
+        default_stem = "document"
+
+    if not filename or not isinstance(filename, str):
+        return f"{default_stem}{default_ext}"[:max_length]
+
+    # Normalize Unicode NFKC
+    raw = unicodedata.normalize("NFKC", filename)
+
+    # Remove null bytes and ASCII/Unicode control characters
+    raw = re.sub(r"[\x00-\x1f\x7f-\x9f]", "", raw)
+
+    # Standardize path separators and strip directory components
+    raw = raw.replace("\\", "/")
+    basename = raw.split("/")[-1].strip()
+
+    # Remove path traversal patterns
+    basename = re.sub(r"\.\.+", ".", basename)
+
+    # Remove characters forbidden on POSIX/Windows filesystems
+    cleaned = re.sub(r'[<>:"/\\|?*]', "_", basename)
+
+    # Collapse multiple consecutive underscores or spaces
+    cleaned = re.sub(r"[_\s]+", "_", cleaned).strip(" ._")
+
+    if not cleaned:
+        return f"{default_stem}{default_ext}"[:max_length]
+
+    # Split stem and extension
+    stem, ext = os.path.splitext(cleaned)
+    ext = ext.strip()
+    if ext and len(ext) > 10:
+        stem = f"{stem}{ext}"
+        ext = default_ext
+    elif not ext:
+        ext = default_ext
+
+    ext = re.sub(r"[^a-zA-Z0-9.]", "", ext)
+    if not ext.startswith("."):
+        ext = f".{ext}"
+
+    clean_stem = stem.strip(" ._")
+    if clean_stem.upper() in WINDOWS_RESERVED_NAMES or not clean_stem:
+        clean_stem = f"file_{clean_stem}" if clean_stem else default_stem
+
+    allowed_stem_len = max(1, max_length - len(ext))
+    clean_stem = clean_stem[:allowed_stem_len].rstrip(" ._")
+    if not clean_stem:
+        clean_stem = default_stem[:allowed_stem_len]
+
+    return f"{clean_stem}{ext}"
 
 
 class FileValidationFeedbackService:
