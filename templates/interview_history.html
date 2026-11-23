@@ -228,15 +228,17 @@
       data: {
         labels: trendData.map(d => `${d.company} (${d.date})`),
         datasets: [{
-          label: 'Interview Score',
+          label: '◆ Interview Score',
           data: trendData.map(d => d.score),
-          borderColor: '#4f46e5',
-          backgroundColor: 'rgba(79, 70, 229, 0.1)',
+          borderColor: '#0072B2',
+          backgroundColor: 'rgba(0, 114, 178, 0.12)',
           fill: true,
           tension: 0.35,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: '#4f46e5'
+          pointStyle: 'rectRot',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#0072B2',
+          pointBorderColor: '#ffffff'
         }]
       },
       options: {

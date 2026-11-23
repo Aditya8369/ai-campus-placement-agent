@@ -17,56 +17,12 @@ import config
 from utils.database import save_analysis, save_batch_comparison
 from agents.coordinator import CoordinatorAgent
 
+from utils.chart_palette import COMPANY_ACCESSIBLE_PALETTES
+
 logger = logging.getLogger(__name__)
 
-# Company Brand Palettes for Chart.js Radar Multi-Datasets
-COMPANY_PALETTES: Dict[str, Dict[str, str]] = {
-    "google": {
-        "border": "rgba(66, 133, 244, 1)",
-        "background": "rgba(66, 133, 244, 0.2)",
-        "badge": "primary"
-    },
-    "microsoft": {
-        "border": "rgba(0, 164, 239, 1)",
-        "background": "rgba(0, 164, 239, 0.2)",
-        "badge": "info"
-    },
-    "amazon": {
-        "border": "rgba(245, 158, 11, 1)",
-        "background": "rgba(245, 158, 11, 0.2)",
-        "badge": "warning"
-    },
-    "tcs": {
-        "border": "rgba(99, 102, 241, 1)",
-        "background": "rgba(99, 102, 241, 0.2)",
-        "badge": "indigo"
-    },
-    "infosys": {
-        "border": "rgba(14, 165, 233, 1)",
-        "background": "rgba(14, 165, 233, 0.2)",
-        "badge": "info"
-    },
-    "accenture": {
-        "border": "rgba(168, 85, 247, 1)",
-        "background": "rgba(168, 85, 247, 0.2)",
-        "badge": "purple"
-    },
-    "capgemini": {
-        "border": "rgba(37, 99, 235, 1)",
-        "background": "rgba(37, 99, 235, 0.2)",
-        "badge": "primary"
-    },
-    "wipro": {
-        "border": "rgba(20, 184, 166, 1)",
-        "background": "rgba(20, 184, 166, 0.2)",
-        "badge": "teal"
-    },
-    "default": {
-        "border": "rgba(100, 116, 139, 1)",
-        "background": "rgba(100, 116, 139, 0.2)",
-        "badge": "secondary"
-    }
-}
+# Company Brand Palettes for Chart.js Radar Multi-Datasets (Okabe-Ito barrier-free palette)
+COMPANY_PALETTES: Dict[str, Dict[str, Any]] = COMPANY_ACCESSIBLE_PALETTES
 
 
 def _get_company_style(company_name: str) -> Dict[str, str]:
@@ -338,7 +294,11 @@ def run_batch_company_comparison(
             "pointBackgroundColor": style["border"],
             "pointHoverBorderColor": "#fff",
             "pointBorderColor": "#fff",
-            "borderWidth": 2
+            "borderWidth": 2,
+            "pointStyle": style.get("point_style", "circle"),
+            "pointRadius": 6,
+            "pointHoverRadius": 8,
+            "marker": style.get("marker", "●"),
         })
 
     # Comparative Strategic Insights
