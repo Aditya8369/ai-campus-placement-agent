@@ -4838,3 +4838,16 @@ def api_get_role_template_by_id(role_id: str):
     }), 200
 
 
+@analysis_bp.route("/api/analysis/freshness-check", methods=["POST"])
+def api_check_analysis_freshness():
+    """Evaluates if an existing analysis report is current or outdated (#628)."""
+    from utils.data_freshness_service import check_report_freshness
+    data = request.get_json(silent=True) or {}
+    report_meta = data.get("report_meta", {})
+    current_profile = data.get("current_profile", {})
+
+    freshness = check_report_freshness(report_meta, current_profile)
+    return jsonify({"status": "success", "freshness": freshness}), 200
+
+
+
