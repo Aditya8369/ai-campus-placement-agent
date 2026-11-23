@@ -2740,32 +2740,17 @@ def api_delete_question_explanation(question_id):
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
 
-@interview_bp.route("/api/interview/benchmarks", methods=["GET"])
-def api_list_answer_benchmarks():
-    """Returns curated good/average/poor interview answer benchmarks (#610)."""
-    from utils.answer_benchmark_service import get_answer_benchmarks
-    category = request.args.get("category")
-    topic = request.args.get("topic")
-    search = request.args.get("search")
+@interview_bp.route("/api/interview/speech-metrics", methods=["POST"])
+def api_speech_metrics():
+    """Analyzes transcript for filler words, hesitations, repetitions, and pacing (#609)."""
+    from utils.speech_analysis_service import analyze_speech_metrics
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript", "")
+    pauses = data.get("pauses")
 
-    benchmarks = get_answer_benchmarks(category=category, topic=topic, search=search)
-    return jsonify({
-        "status": "success",
-        "count": len(benchmarks),
-        "benchmarks": benchmarks
-    }), 200
-
-
-@interview_bp.route("/api/interview/benchmarks/<benchmark_id>", methods=["GET"])
-def api_get_answer_benchmark(benchmark_id):
-    """Returns a specific answer benchmark by ID (#610)."""
-    from utils.answer_benchmark_service import get_benchmark_by_id
-    benchmark = get_benchmark_by_id(benchmark_id)
-    if not benchmark:
-        return jsonify({"status": "error", "message": "Benchmark not found"}), 404
-    return jsonify({
-        "status": "success",
-        "benchmark": benchmark
-    }), 200
+    result = analyze_speech_metrics(transcript, pauses=pauses)
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result), 200
 
 
