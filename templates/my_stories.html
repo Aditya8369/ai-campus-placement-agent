@@ -1,0 +1,562 @@
+{% extends "base.html" %}
+
+{% block title %}My Behavioural Stories (STAR Method) — AI Campus Placement{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <!-- Top Banner & Actions -->
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-3">
+    <div>
+      <nav aria-label="breadcrumb">
+        <ol class="breadcrumb mb-1">
+          <li class="breadcrumb-item"><a href="/" class="text-decoration-none">Home</a></li>
+          <li class="breadcrumb-item active" aria-current="page">My Stories</li>
+        </ol>
+      </nav>
+      <h2 class="fw-bold mb-1 text-dark">
+        <i class="fa-solid fa-star text-warning me-2"></i>My Behavioural Stories
+      </h2>
+      <p class="text-secondary mb-0 small">
+        Structure your best examples using the STAR method. A bank of 5–6 well-crafted stories can answer over 80% of behavioral interview questions.
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#storyModal" id="btnOpenNewStoryModal">
+        <i class="fa-solid fa-plus me-1"></i> Add New Story
+      </button>
+    </div>
+  </div>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show rounded-3 small py-2 px-3 mb-3 shadow-sm" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close py-2" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Overview Stats Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small fw-semibold">Story Bank Progress</div>
+            <div class="fs-4 fw-bold text-dark mt-1">{{ stats.total_stories }} / {{ stats.target_stories }}</div>
+          </div>
+          <div class="bg-primary-subtle text-primary p-3 rounded-circle">
+            <i class="fa-solid fa-book-bookmark fs-5"></i>
+          </div>
+        </div>
+        <div class="progress mt-3 rounded-pill" style="height: 6px;">
+          <div class="progress-bar bg-primary" role="progressbar" style="width: {{ [100, (stats.total_stories / stats.target_stories * 100)|int]|min }}%"></div>
+        </div>
+        <div class="small text-muted mt-2">Target: 5–6 core stories</div>
+      </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small fw-semibold">Complete Stories</div>
+            <div class="fs-4 fw-bold text-success mt-1">{{ stats.complete_stories }}</div>
+          </div>
+          <div class="bg-success-subtle text-success p-3 rounded-circle">
+            <i class="fa-solid fa-circle-check fs-5"></i>
+          </div>
+        </div>
+        <div class="small text-muted mt-3">
+          <i class="fa-solid fa-list-check me-1 text-success"></i> All 4 STAR parts filled
+        </div>
+      </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small fw-semibold">In Progress</div>
+            <div class="fs-4 fw-bold text-warning-emphasis mt-1">{{ stats.in_progress_stories }}</div>
+          </div>
+          <div class="bg-warning-subtle text-warning-emphasis p-3 rounded-circle">
+            <i class="fa-solid fa-clock-rotate-left fs-5"></i>
+          </div>
+        </div>
+        <div class="small text-muted mt-3">
+          <i class="fa-solid fa-pen me-1 text-warning"></i> Need missing STAR parts
+        </div>
+      </div>
+    </div>
+
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <div class="text-muted small fw-semibold">Competencies Covered</div>
+            <div class="fs-4 fw-bold text-info mt-1">{{ stats.core_covered|length }} / 5</div>
+          </div>
+          <div class="bg-info-subtle text-info p-3 rounded-circle">
+            <i class="fa-solid fa-shield-halved fs-5"></i>
+          </div>
+        </div>
+        <div class="progress mt-3 rounded-pill" style="height: 6px;">
+          <div class="progress-bar bg-info" role="progressbar" style="width: {{ stats.core_coverage_percent }}%"></div>
+        </div>
+        <div class="small text-muted mt-2">Teamwork, Leadership, Problem Solving, Failure, Initiative</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter & Search Toolbar -->
+  <div class="card border-0 shadow-sm rounded-4 p-3 mb-4 bg-white">
+    <div class="row g-2 align-items-center justify-content-between">
+      <div class="col-md-8">
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <span class="small fw-semibold text-muted me-1"><i class="fa-solid fa-filter me-1"></i>Tag:</span>
+          <a href="/stories" class="btn btn-sm rounded-pill px-3 {{ 'btn-primary' if not active_tag else 'btn-outline-secondary' }}">
+            All ({{ stats.total_stories }})
+          </a>
+          {% for tag in core_tags %}
+            <a href="/stories?tag={{ tag }}{% if search_query %}&search={{ search_query }}{% endif %}"
+               class="btn btn-sm rounded-pill px-3 {{ 'btn-primary' if active_tag == tag else 'btn-outline-secondary' }}">
+              {{ tag|capitalize }}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col-md-4">
+        <form method="GET" action="/stories" class="input-group input-group-sm">
+          {% if active_tag %}<input type="hidden" name="tag" value="{{ active_tag }}">{% endif %}
+          <input type="text" name="search" class="form-control rounded-start-pill ps-3" placeholder="Search stories..." value="{{ search_query|default('') }}">
+          <button class="btn btn-outline-primary rounded-end-pill px-3" type="submit">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stories Grid / List -->
+  {% if stories %}
+    <div class="row g-3">
+      {% for story in stories %}
+        <div class="col-lg-6">
+          <div class="card border-0 shadow-sm rounded-4 p-3 p-md-4 bg-white h-100 d-flex flex-column story-card" id="card-{{ story.story_id }}">
+            <!-- Card Header -->
+            <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+              <h5 class="fw-bold text-dark mb-0 fs-6 lh-base">{{ story.title }}</h5>
+              <div class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 btn-edit-story"
+                        data-story-id="{{ story.story_id }}"
+                        data-title="{{ story.title|e }}"
+                        data-situation="{{ story.situation|e }}"
+                        data-task="{{ story.task|e }}"
+                        data-action="{{ story.action|e }}"
+                        data-result="{{ story.result|e }}"
+                        data-tags="{{ story.tags|join(',')|e }}"
+                        title="Edit story">
+                  <i class="fa-solid fa-pen-to-square"></i> <span class="d-none d-sm-inline">Edit</span>
+                </button>
+                <form method="POST" action="/stories/{{ story.story_id }}/delete" onsubmit="return confirm('Delete this story? This action cannot be undone.');" class="d-inline mb-0">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill px-2 py-0" title="Delete story">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Tags -->
+            <div class="d-flex flex-wrap gap-1 mb-3">
+              {% for tag in story.tags %}
+                <span class="badge bg-light text-primary border rounded-pill px-2 py-1 small">
+                  #{{ tag }}
+                </span>
+              {% endfor %}
+            </div>
+
+            <!-- Indicators: Completeness & Word Count -->
+            <div class="d-flex justify-content-between align-items-center p-2 rounded-3 bg-light mb-3 flex-wrap gap-2">
+              <!-- Completeness Breakdown -->
+              <div class="d-flex align-items-center gap-1">
+                <span class="small fw-semibold text-secondary me-1">STAR:</span>
+                {% for part_key, part_letter in [('situation', 'S'), ('task', 'T'), ('action', 'A'), ('result', 'R')] %}
+                  {% if story.completeness[part_key ~ '_filled'] %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-circle p-1" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;" title="{{ part_key|capitalize }}: Filled">
+                      {{ part_letter }}
+                    </span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-muted border rounded-circle p-1" style="width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem;" title="{{ part_key|capitalize }}: Missing">
+                      {{ part_letter }}
+                    </span>
+                  {% endif %}
+                {% endfor %}
+                <span class="badge {{ 'bg-success text-white' if story.completeness.is_complete else 'bg-warning-subtle text-warning-emphasis' }} rounded-pill ms-1 small">
+                  {{ story.completeness.score }}/4 {{ story.completeness.status }}
+                </span>
+              </div>
+
+              <!-- Word Count Meter -->
+              <div class="small text-muted font-monospace">
+                <i class="fa-solid fa-calculator me-1 text-primary"></i>
+                <span class="fw-bold text-dark">{{ story.word_count.total_words }}</span> words
+                <span class="badge {{ 'bg-success-subtle text-success' if story.word_count.is_ideal else 'bg-light text-secondary border' }} rounded-pill ms-1">
+                  {{ story.word_count.assessment }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Story STAR Content Blocks -->
+            <div class="flex-grow-1">
+              <div class="mb-2">
+                <div class="small fw-bold text-primary mb-1">
+                  <span class="badge bg-primary text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem;">S</span> Situation:
+                </div>
+                <div class="small text-secondary ps-3 border-start border-2 border-primary-subtle text-break">
+                  {{ story.situation if story.situation else '<em class="text-muted">Not filled yet...</em>'|safe }}
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <div class="small fw-bold text-info mb-1">
+                  <span class="badge bg-info text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem;">T</span> Task:
+                </div>
+                <div class="small text-secondary ps-3 border-start border-2 border-info-subtle text-break">
+                  {{ story.task if story.task else '<em class="text-muted">Not filled yet...</em>'|safe }}
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <div class="small fw-bold text-warning-emphasis mb-1">
+                  <span class="badge bg-warning text-dark rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem;">A</span> Action:
+                </div>
+                <div class="small text-secondary ps-3 border-start border-2 border-warning-subtle text-break">
+                  {{ story.action if story.action else '<em class="text-muted">Not filled yet...</em>'|safe }}
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <div class="small fw-bold text-success mb-1">
+                  <span class="badge bg-success text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.7rem;">R</span> Result:
+                </div>
+                <div class="small text-secondary ps-3 border-start border-2 border-success-subtle text-break">
+                  {{ story.result if story.result else '<em class="text-muted">Not filled yet...</em>'|safe }}
+                </div>
+              </div>
+            </div>
+
+            <!-- Footer: Guidance Hint -->
+            <div class="mt-3 pt-2 border-top text-muted small d-flex justify-content-between align-items-center">
+              <span style="font-size: 0.75rem;"><i class="fa-solid fa-lightbulb text-warning me-1"></i>{{ story.word_count.guidance }}</span>
+              <span class="badge bg-light text-secondary border rounded-pill" style="font-size: 0.7rem;">Private</span>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <!-- Empty State -->
+    <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white">
+      <div class="mb-3">
+        <span class="bg-warning-subtle text-warning-emphasis p-4 rounded-circle d-inline-block">
+          <i class="fa-solid fa-book-bookmark fs-1"></i>
+        </span>
+      </div>
+      <h4 class="fw-bold text-dark">No Behavioural Stories Yet</h4>
+      <p class="text-secondary mx-auto mb-4" style="max-width: 520px;">
+        Behavioural interviews probe how you handled real past situations. Prepare 5–6 versatile stories covering:
+        <strong>team conflict, a major failure, a leadership experience, and deadline pressure</strong>.
+      </p>
+      <div>
+        <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm" data-bs-toggle="modal" data-bs-target="#storyModal">
+          <i class="fa-solid fa-plus me-1"></i> Create Your First Story
+        </button>
+      </div>
+    </div>
+  {% endif %}
+</div>
+
+<!-- Add / Edit Story Modal -->
+<div class="modal fade" id="storyModal" tabindex="-1" aria-labelledby="storyModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content rounded-4 border-0 shadow">
+      <div class="modal-header border-bottom-0 pb-0">
+        <h5 class="modal-title fw-bold" id="storyModalLabel">
+          <i class="fa-solid fa-star text-warning me-2"></i><span id="modalActionTitle">Add New Behavioural Story</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <form id="storyForm" method="POST" action="/stories">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" id="formStoryId" name="story_id" value="">
+
+        <div class="modal-body pt-3">
+          <!-- Story Title -->
+          <div class="mb-3">
+            <label for="storyTitleInput" class="form-label small fw-semibold text-secondary">
+              Story Title / Core Theme <span class="text-danger">*</span>
+            </label>
+            <input type="text" class="form-control rounded-3" id="storyTitleInput" name="title" required maxlength="150"
+                   placeholder="e.g. Migrating Legacy API to Microservices Under 2-Week Deadline">
+          </div>
+
+          <!-- Competency Tags -->
+          <div class="mb-3">
+            <label class="form-label small fw-semibold text-secondary mb-1">
+              Competency Tags <span class="text-muted fw-normal">(Select all that apply)</span>
+            </label>
+            <div class="d-flex flex-wrap gap-2 mb-2" id="competencyTagGroup">
+              {% for tag in core_tags %}
+                <label class="btn btn-outline-secondary btn-sm rounded-pill tag-checkbox-label" for="tag-{{ tag }}">
+                  <input type="checkbox" class="btn-check" name="competencies" id="tag-{{ tag }}" value="{{ tag }}" autocomplete="off">
+                  <span>#{{ tag }}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <div class="input-group input-group-sm">
+              <span class="input-group-text bg-white small text-muted">Additional custom tag:</span>
+              <input type="text" class="form-control" id="customTagInput" placeholder="e.g. conflict resolution, adaptability">
+              <button class="btn btn-outline-primary" type="button" id="btnAddCustomTag">Add Tag</button>
+            </div>
+            <input type="hidden" name="tags" id="hiddenTagsJson" value="[]">
+            <div id="selectedTagsContainer" class="d-flex flex-wrap gap-1 mt-2"></div>
+          </div>
+
+          <!-- Live Meter Bar -->
+          <div class="p-2 bg-light rounded-3 border mb-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="small fw-semibold text-secondary d-flex align-items-center gap-1">
+              <span>STAR Completeness:</span>
+              <span id="modalStarBadge" class="badge bg-warning-subtle text-warning-emphasis rounded-pill">0/4 In Progress</span>
+            </div>
+            <div class="small text-muted font-monospace">
+              <span>Word count:</span>
+              <span id="modalWordCount" class="fw-bold text-dark">0</span>
+              <span>/ 150–300 suggested</span>
+              <span id="modalWordAssessment" class="badge bg-light text-secondary border rounded-pill ms-1">Empty</span>
+            </div>
+          </div>
+
+          <!-- STAR Form Fields -->
+          <div class="row g-3">
+            <!-- Situation -->
+            <div class="col-12">
+              <label for="situationInput" class="form-label small fw-bold text-primary mb-1">
+                1. Situation <span class="text-muted fw-normal">(Context: Where? When? Who was involved?)</span>
+              </label>
+              <textarea class="form-control rounded-3 star-field" id="situationInput" name="situation" rows="2"
+                        placeholder="Describe the context or specific challenge you faced..."></textarea>
+            </div>
+
+            <!-- Task -->
+            <div class="col-12">
+              <label for="taskInput" class="form-label small fw-bold text-info mb-1">
+                2. Task <span class="text-muted fw-normal">(Goal: What was your specific responsibility or objective?)</span>
+              </label>
+              <textarea class="form-control rounded-3 star-field" id="taskInput" name="task" rows="2"
+                        placeholder="What specific outcome were you responsible for delivering?"></textarea>
+            </div>
+
+            <!-- Action -->
+            <div class="col-12">
+              <label for="actionInput" class="form-label small fw-bold text-warning-emphasis mb-1">
+                3. Action <span class="text-muted fw-normal">(Execution: What specific steps did YOU take? Tools, logic, decisions)</span>
+              </label>
+              <textarea class="form-control rounded-3 star-field" id="actionInput" name="action" rows="3"
+                        placeholder="Focus on 'I', not just 'we'. What steps, tools, and decisions did you execute?"></textarea>
+            </div>
+
+            <!-- Result -->
+            <div class="col-12">
+              <label for="resultInput" class="form-label small fw-bold text-success mb-1">
+                4. Result <span class="text-muted fw-normal">(Outcome: Measurable impact, key metrics, or lessons learned)</span>
+              </label>
+              <textarea class="form-control rounded-3 star-field" id="resultInput" name="result" rows="2"
+                        placeholder="Quantify the results: % performance increase, time saved, positive feedback, or lessons learned..."></textarea>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer border-top-0 pt-0">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary rounded-pill px-4" id="btnSubmitStory">
+            <i class="fa-solid fa-floppy-disk me-1"></i> Save Story
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Client-side Interactive JavaScript for My Stories -->
+<script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const storyModal = document.getElementById("storyModal");
+    const storyForm = document.getElementById("storyForm");
+    const modalActionTitle = document.getElementById("modalActionTitle");
+    const formStoryId = document.getElementById("formStoryId");
+    const storyTitleInput = document.getElementById("storyTitleInput");
+    const situationInput = document.getElementById("situationInput");
+    const taskInput = document.getElementById("taskInput");
+    const actionInput = document.getElementById("actionInput");
+    const resultInput = document.getElementById("resultInput");
+    const hiddenTagsJson = document.getElementById("hiddenTagsJson");
+    const customTagInput = document.getElementById("customTagInput");
+    const btnAddCustomTag = document.getElementById("btnAddCustomTag");
+    const selectedTagsContainer = document.getElementById("selectedTagsContainer");
+    const modalStarBadge = document.getElementById("modalStarBadge");
+    const modalWordCount = document.getElementById("modalWordCount");
+    const modalWordAssessment = document.getElementById("modalWordAssessment");
+
+    let currentTags = new Set();
+
+    function renderTags() {
+      selectedTagsContainer.innerHTML = "";
+      currentTags.forEach(tag => {
+        const badge = document.createElement("span");
+        badge.className = "badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1 small d-inline-flex align-items-center gap-1";
+        badge.innerHTML = `#${tag} <button type="button" class="btn-close btn-close-sm" style="font-size: 0.6rem;" aria-label="Remove tag"></button>`;
+        badge.querySelector("button").addEventListener("click", () => {
+          currentTags.delete(tag);
+          syncTags();
+        });
+        selectedTagsContainer.appendChild(badge);
+      });
+      hiddenTagsJson.value = JSON.stringify(Array.from(currentTags));
+
+      // Sync checkboxes
+      document.querySelectorAll("#competencyTagGroup input[type='checkbox']").forEach(chk => {
+        chk.checked = currentTags.has(chk.value.toLowerCase());
+      });
+    }
+
+    function syncTags() {
+      renderTags();
+    }
+
+    // Checkbox toggling
+    document.querySelectorAll("#competencyTagGroup input[type='checkbox']").forEach(chk => {
+      chk.addEventListener("change", () => {
+        const val = chk.value.toLowerCase();
+        if (chk.checked) currentTags.add(val);
+        else currentTags.delete(val);
+        renderTags();
+      });
+    });
+
+    // Custom tag button
+    if (btnAddCustomTag && customTagInput) {
+      const addCustom = () => {
+        const val = customTagInput.value.trim().toLowerCase();
+        if (val) {
+          currentTags.add(val);
+          customTagInput.value = "";
+          syncTags();
+        }
+      };
+      btnAddCustomTag.addEventListener("click", addCustom);
+      customTagInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          addCustom();
+        }
+      });
+    }
+
+    // Real-time completeness & word count calculator
+    function updateStoryMeters() {
+      const s = situationInput ? situationInput.value.trim() : "";
+      const t = taskInput ? taskInput.value.trim() : "";
+      const a = actionInput ? actionInput.value.trim() : "";
+      const r = resultInput ? resultInput.value.trim() : "";
+
+      const sFilled = Boolean(s);
+      const tFilled = Boolean(t);
+      const aFilled = Boolean(a);
+      const rFilled = Boolean(r);
+
+      const count = [sFilled, tFilled, aFilled, rFilled].filter(Boolean).length;
+      if (modalStarBadge) {
+        modalStarBadge.textContent = `${count}/4 ${count === 4 ? 'Complete' : 'In Progress'}`;
+        modalStarBadge.className = `badge ${count === 4 ? 'bg-success text-white' : 'bg-warning-subtle text-warning-emphasis'} rounded-pill`;
+      }
+
+      const totalWords = (s + " " + t + " " + a + " " + r).trim().split(/\s+/).filter(Boolean).length;
+      if (modalWordCount) modalWordCount.textContent = totalWords;
+
+      if (modalWordAssessment) {
+        if (totalWords === 0) {
+          modalWordAssessment.textContent = "Empty";
+          modalWordAssessment.className = "badge bg-light text-secondary border rounded-pill ms-1";
+        } else if (totalWords < 80) {
+          modalWordAssessment.textContent = "Brief";
+          modalWordAssessment.className = "badge bg-warning-subtle text-warning-emphasis rounded-pill ms-1";
+        } else if (totalWords < 150) {
+          modalWordAssessment.textContent = "Developing";
+          modalWordAssessment.className = "badge bg-info-subtle text-info rounded-pill ms-1";
+        } else if (totalWords <= 300) {
+          modalWordAssessment.textContent = "Ideal length";
+          modalWordAssessment.className = "badge bg-success-subtle text-success rounded-pill ms-1";
+        } else {
+          modalWordAssessment.textContent = "Detailed";
+          modalWordAssessment.className = "badge bg-secondary-subtle text-secondary rounded-pill ms-1";
+        }
+      }
+    }
+
+    [situationInput, taskInput, actionInput, resultInput].forEach(el => {
+      if (el) {
+        el.addEventListener("input", updateStoryMeters);
+      }
+    });
+
+    // Reset modal on opening new story
+    const btnNew = document.getElementById("btnOpenNewStoryModal");
+    if (btnNew) {
+      btnNew.addEventListener("click", () => {
+        modalActionTitle.textContent = "Add New Behavioural Story";
+        storyForm.action = "/stories";
+        formStoryId.value = "";
+        storyTitleInput.value = "";
+        situationInput.value = "";
+        taskInput.value = "";
+        actionInput.value = "";
+        resultInput.value = "";
+        currentTags.clear();
+        syncTags();
+        updateStoryMeters();
+      });
+    }
+
+    // Populate modal on Edit Story
+    document.querySelectorAll(".btn-edit-story").forEach(btn => {
+      btn.addEventListener("click", () => {
+        modalActionTitle.textContent = "Edit Behavioural Story";
+        const storyId = btn.dataset.storyId;
+        formStoryId.value = storyId;
+        storyForm.action = `/stories/${storyId}/edit`;
+
+        storyTitleInput.value = btn.dataset.title || "";
+        situationInput.value = btn.dataset.situation || "";
+        taskInput.value = btn.dataset.task || "";
+        actionInput.value = btn.dataset.action || "";
+        resultInput.value = btn.dataset.result || "";
+
+        currentTags.clear();
+        const rawTags = (btn.dataset.tags || "").split(",").map(t => t.trim().toLowerCase()).filter(Boolean);
+        rawTags.forEach(t => currentTags.add(t));
+        syncTags();
+        updateStoryMeters();
+
+        const bsModal = bootstrap.Modal.getOrCreateInstance(storyModal);
+        bsModal.show();
+      });
+    });
+  });
+</script>
+{% endblock %}

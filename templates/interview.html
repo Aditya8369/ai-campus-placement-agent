@@ -736,18 +736,23 @@
           {% if not interview.completed %}
             {% set active_q_type = current_q.type if current_q is defined and current_q else 'Technical' %}
 
-            <!-- Outline Mode Toggle Bar (#608) -->
-            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+            <!-- Outline Mode & Behavioral Stories Toggle Bar (#608, #687) -->
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1 flex-wrap gap-2">
               <span class="small fw-semibold text-secondary">
                 <i class="fa-solid fa-pen-ruler text-primary me-1"></i> Answer Structuring:
               </span>
-              <div class="btn-group btn-group-sm" role="group" aria-label="Answer Mode">
-                <button type="button" class="btn btn-outline-primary active py-0 px-3" id="btnModeFullAnswer">
-                  <i class="fa-solid fa-align-left me-1"></i> Full Answer
+              <div class="d-flex align-items-center gap-2">
+                <button type="button" class="btn btn-sm btn-outline-warning rounded-pill px-3" id="btnUseMyStories" data-bs-toggle="modal" data-bs-target="#useMyStoriesModal" title="Review matching STAR stories for this question">
+                  <i class="fa-solid fa-star me-1"></i> Use one of my stories
                 </button>
-                <button type="button" class="btn btn-outline-primary py-0 px-3" id="btnModeOutline">
-                  <i class="fa-solid fa-list-ol me-1"></i> Outline Mode
-                </button>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Answer Mode">
+                  <button type="button" class="btn btn-outline-primary active py-0 px-3" id="btnModeFullAnswer">
+                    <i class="fa-solid fa-align-left me-1"></i> Full Answer
+                  </button>
+                  <button type="button" class="btn btn-outline-primary py-0 px-3" id="btnModeOutline">
+                    <i class="fa-solid fa-list-ol me-1"></i> Outline Mode
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1514,11 +1519,169 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
   <!-- Monaco Editor AMD Loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js" integrity="sha384-UcP5/iVWyRzIhnVjcB2o9W1eoYKL5fAhHTRzvFZg8ctOsoAoDeBQyQuyIk+BJ/nh" crossorigin="anonymous"></script>
+  <!-- Use One of My Stories Modal (#687) -->
+  <div class="modal fade" id="useMyStoriesModal" tabindex="-1" aria-labelledby="useMyStoriesModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-bottom-0 pb-0">
+          <div>
+            <h5 class="modal-title fw-bold" id="useMyStoriesModalLabel">
+              <i class="fa-solid fa-star text-warning me-2"></i>My Behavioural Stories Bank
+            </h5>
+            <p class="small text-muted mb-0">
+              Suggested STAR stories matching your current question's competencies.
+            </p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body pt-3">
+          <!-- Advisory Alert: Prompt Only! -->
+          <div class="alert alert-info py-2 px-3 small rounded-3 mb-3 d-flex align-items-center gap-2">
+            <i class="fa-solid fa-circle-info fs-5 text-primary flex-shrink-0"></i>
+            <div>
+              <strong>Prompt only:</strong> Use these talking points to organize your thoughts and articulate your answer out loud. Stories are kept for your private reference and are not pasted automatically into the answer field.
+            </div>
+          </div>
+
+          <div id="matchingStoriesContainer">
+            <div class="text-center py-4" id="matchingStoriesLoading">
+              <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+              <span class="ms-2 small text-muted">Finding matching stories for this question...</span>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer border-top-0 pt-0 d-flex justify-content-between">
+          <a href="/stories" target="_blank" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+            <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Manage My Stories
+          </a>
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Custom JS -->
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/rate_limit.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/interview.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/bookmarks.js') }}"></script>
+  <!-- In-Interview Stories Script (#687) -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const useMyStoriesModal = document.getElementById("useMyStoriesModal");
+      const matchingStoriesContainer = document.getElementById("matchingStoriesContainer");
+
+      function escapeHtml(str) {
+        if (!str) return "";
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      if (useMyStoriesModal && matchingStoriesContainer) {
+        useMyStoriesModal.addEventListener("show.bs.modal", async () => {
+          // Identify current question text
+          let questionText = "";
+          const activeQuestionBubbles = document.querySelectorAll(".chat-bubble-ai .fw-medium");
+          if (activeQuestionBubbles.length > 0) {
+            questionText = activeQuestionBubbles[activeQuestionBubbles.length - 1].textContent.trim();
+          }
+
+          matchingStoriesContainer.innerHTML = `
+            <div class="text-center py-4">
+              <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+              <span class="ms-2 small text-muted">Finding matching stories for this question...</span>
+            </div>
+          `;
+
+          try {
+            const resp = await fetch(`/api/stories/match?question=${encodeURIComponent(questionText)}`);
+            const data = await resp.json();
+
+            if (resp.ok && data.matches && data.matches.length > 0) {
+              let html = "";
+              if (data.detected_competencies && data.detected_competencies.length > 0) {
+                html += `
+                  <div class="d-flex align-items-center gap-1 mb-3 small">
+                    <span class="text-muted fw-semibold">Detected Competencies:</span>
+                    ${data.detected_competencies.map(c => `<span class="badge bg-warning-subtle text-dark border border-warning-subtle rounded-pill">#${escapeHtml(c)}</span>`).join(' ')}
+                  </div>
+                `;
+              }
+
+              data.matches.forEach(item => {
+                const story = item.story;
+                const isMatch = item.is_match;
+                const matchedTags = item.matched_tags || [];
+
+                html += `
+                  <div class="card border rounded-3 p-3 mb-3 bg-white shadow-sm ${isMatch ? 'border-warning-subtle' : ''}">
+                    <div class="d-flex justify-content-between align-items-start mb-2 gap-2 flex-wrap">
+                      <div>
+                        <h6 class="fw-bold mb-1 text-dark">${escapeHtml(story.title)}</h6>
+                        <div class="d-flex flex-wrap gap-1">
+                          ${story.tags.map(t => {
+                            const isHighlighted = matchedTags.includes(t);
+                            return `<span class="badge ${isHighlighted ? 'bg-warning text-dark border-warning' : 'bg-light text-secondary border'} rounded-pill small">#${escapeHtml(t)}${isHighlighted ? ' ★' : ''}</span>`;
+                          }).join('')}
+                        </div>
+                      </div>
+                      <div class="d-flex align-items-center gap-1">
+                        <span class="badge ${story.completeness.is_complete ? 'bg-success text-white' : 'bg-warning-subtle text-warning-emphasis'} rounded-pill small">
+                          ${story.completeness.score}/4 STAR
+                        </span>
+                      </div>
+                    </div>
+
+                    <div class="mt-2 border-top pt-2">
+                      <div class="mb-2">
+                        <span class="small fw-bold text-primary"><span class="badge bg-primary text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem;">S</span> Situation:</span>
+                        <p class="small text-secondary ps-3 mb-1 border-start border-2 border-primary-subtle text-break">${escapeHtml(story.situation || "Not filled")}</p>
+                      </div>
+                      <div class="mb-2">
+                        <span class="small fw-bold text-info"><span class="badge bg-info text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem;">T</span> Task:</span>
+                        <p class="small text-secondary ps-3 mb-1 border-start border-2 border-info-subtle text-break">${escapeHtml(story.task || "Not filled")}</p>
+                      </div>
+                      <div class="mb-2">
+                        <span class="small fw-bold text-warning-emphasis"><span class="badge bg-warning text-dark rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem;">A</span> Action:</span>
+                        <p class="small text-secondary ps-3 mb-1 border-start border-2 border-warning-subtle text-break">${escapeHtml(story.action || "Not filled")}</p>
+                      </div>
+                      <div class="mb-2">
+                        <span class="small fw-bold text-success"><span class="badge bg-success text-white rounded-circle me-1" style="width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem;">R</span> Result:</span>
+                        <p class="small text-secondary ps-3 mb-1 border-start border-2 border-success-subtle text-break">${escapeHtml(story.result || "Not filled")}</p>
+                      </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mt-2 pt-1 border-top text-muted small" style="font-size: 0.75rem;">
+                      <span><i class="fa-solid fa-calculator me-1"></i>${story.word_count.total_words} words</span>
+                      <span class="text-secondary"><i class="fa-solid fa-eye me-1"></i>Prompt reference only</span>
+                    </div>
+                  </div>
+                `;
+              });
+              matchingStoriesContainer.innerHTML = html;
+            } else {
+              matchingStoriesContainer.innerHTML = `
+                <div class="text-center py-4">
+                  <i class="fa-solid fa-book-open text-muted fs-3 mb-2 d-block"></i>
+                  <p class="text-secondary small mb-3">No matching STAR stories found in your story bank.</p>
+                  <a href="/stories" target="_blank" class="btn btn-sm btn-primary rounded-pill px-3">
+                    <i class="fa-solid fa-plus me-1"></i> Create Stories in My Stories
+                  </a>
+                </div>
+              `;
+            }
+          } catch (err) {
+            matchingStoriesContainer.innerHTML = `
+              <div class="alert alert-danger small py-2 px-3 rounded-3">
+                Failed to load your stories. Please open <a href="/stories" target="_blank" class="alert-link">My Stories</a> directly.
+              </div>
+            `;
+          }
+        });
+      }
+    });
+  </script>
   <!-- Vercel Web Analytics -->
   <script src="{{ url_for('static', filename='js/analytics-init.js') }}"></script>
 </body>

@@ -639,6 +639,29 @@ The following features are being considered:
 
 ---
 
+## Behavioural Story Bank: Save STAR Stories Linked to Competencies (#687)
+
+To help candidates master behavioral interview rounds without starting from scratch each time or forgetting their best past experiences, the platform includes a dedicated **My Stories** bank:
+
+- **Structured STAR Framework**: Record stories organized across **Situation, Task, Action, and Result** with titles and competency tags.
+- **Core Competency Tagging**: Pre-configured with core placement behavioral competencies:
+  - `Teamwork` (collaboration, peer conflict resolution)
+  - `Leadership` (mentoring, ownership, driving initiatives)
+  - `Problem Solving` (debugging, analytical troubleshooting, overcoming obstacles)
+  - `Failure` (learning from mistakes, setbacks, missed deadlines)
+  - `Initiative` (proactive opportunities, innovations without being asked)
+  - Custom user tags (e.g. `conflict resolution`, `deadline pressure`, `adaptability`).
+- **Live Completeness & Word Count Intelligence**:
+  - Live completeness indicator tracking which of the 4 STAR parts are filled (`4/4 Complete`).
+  - Word count meter with recommended 150–300 word interview length benchmark (ideal for natural 2-minute answers).
+- **In-Interview Prompt Integration**:
+  - During mock interviews, the **"Use one of my stories"** action analyzes the current question text and surfaces matching stories ranked by relevance.
+  - Serves as a **prompt/reference talking point only**—never automatically pastes or submits text, encouraging genuine vocal articulation.
+- **Strict Privacy & Owner Isolation**:
+  - Stories are strictly private to each candidate. Cross-user access, editing, or deletion is strictly blocked.
+
+---
+
 ## Company Interview Cheat Sheet (One-Page Revision PDF)
 
 To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:
