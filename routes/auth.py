@@ -1839,20 +1839,29 @@ def api_verify_email_change():
     return jsonify(result), status_code
 
 
-@auth_bp.route("/api/account/data-retention", methods=["POST"])
-def api_update_data_retention():
-    """Sets student data retention window (#629)."""
-    from utils.data_retention_service import validate_retention_policy
+@auth_bp.route("/api/account/merge/preview", methods=["POST"])
+def api_preview_account_merge():
+    """Previews transferable records between two candidate accounts (#630)."""
+    from utils.account_merge_service import preview_account_merge
     data = request.get_json(silent=True) or {}
-    policy = data.get("policy", "indefinite")
-    confirmed = bool(data.get("confirmed", False))
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    preview = preview_account_merge(p_id, s_id)
+    return jsonify({"status": "success", "preview": preview}), 200
 
-    val = validate_retention_policy(policy)
-    if not val.get("valid"):
-        return jsonify({"status": "error", "message": val.get("error")}), 400
 
-    flask_session["data_retention_policy"] = val["policy_key"]
-    return jsonify({"status": "success", "policy": val}), 200
+@auth_bp.route("/api/account/merge/execute", methods=["POST"])
+def api_execute_account_merge():
+    """Executes verified account merge (#630)."""
+    from utils.account_merge_service import execute_account_merge
+    data = request.get_json(silent=True) or {}
+    p_id = data.get("primary_user_id", "")
+    s_id = data.get("secondary_user_id", "")
+    token_verified = bool(data.get("verified_token", False))
+    res = execute_account_merge(p_id, s_id, verified_token=token_verified)
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error")}), 400
+    return jsonify({"status": "success", "result": res}), 200
 
 
 
