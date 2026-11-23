@@ -704,6 +704,7 @@ export function initProgressTracker() {
         ]
       },
       options: {
+        animation: isReducedMotion() ? false : true,
         responsive: true,
         maintainAspectRatio: false,
         interaction: {
@@ -1925,6 +1926,7 @@ export function initSkillsComparisonChart() {
       ]
     },
     options: {
+      animation: isReducedMotion() ? false : true,
       responsive: true,
       maintainAspectRatio: false,
       cutout: "70%",
@@ -2328,7 +2330,7 @@ export function initUserWalkthrough() {
         }
         const targetEl = document.getElementById("analysisForm") || document.getElementById("uploadArea");
         if (targetEl) {
-          targetEl.scrollIntoView({ behavior: "smooth", block: "center" });
+          targetEl.scrollIntoView({ behavior: isReducedMotion() ? "auto" : "smooth", block: "center" });
           const fileInput = document.getElementById("resumeInput");
           if (fileInput) fileInput.focus();
         }

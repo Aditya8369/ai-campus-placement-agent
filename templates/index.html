@@ -18,6 +18,21 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <!-- Early Reduced Motion & Theme Resolution (Prevents FOUM / FOUC) -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem("placement_motion_pref") || "system";
+        var sys = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var isRed = pref === "reduce" || (pref === "system" && sys);
+        document.documentElement.setAttribute("data-motion-pref", pref);
+        document.documentElement.setAttribute("data-reduced-motion", isRed ? "true" : "false");
+        if (isRed) {
+          document.documentElement.classList.add("reduced-motion");
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>
@@ -246,6 +261,39 @@
           type="button" title="Toggle theme" aria-label="Toggle theme mode">
           <i class="fa-solid fa-moon"></i>
         </button>
+
+        <!-- Motion Preference Selector (#task-reduced-motion) -->
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-outline-secondary btn-sm rounded-pill px-2 py-1 motion-toggle-btn dropdown-toggle"
+            type="button" id="motionPrefDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+            title="Motion preferences: System, Reduced, or Standard" aria-label="Motion preference settings">
+            <i class="fa-solid fa-person-running me-1" id="motionNavIcon"></i>
+            <span class="small d-none d-md-inline" id="motionNavLabel">Motion</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 motion-dropdown-menu" aria-labelledby="motionPrefDropdown">
+            <li><h6 class="dropdown-header"><i class="fa-solid fa-sliders me-1"></i> Motion Preference</h6></li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="system">
+                <span><i class="fa-solid fa-desktop me-2 text-secondary"></i> System Default (Auto)</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="system"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="reduce">
+                <span><i class="fa-solid fa-person-walking me-2 text-warning"></i> Reduced Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="reduce"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="allow">
+                <span><i class="fa-solid fa-person-running me-2 text-success"></i> Standard Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="allow"></i>
+              </button>
+            </li>
+            <li><hr class="dropdown-divider my-1"></li>
+            <li><span class="dropdown-item-text text-muted small py-1" style="font-size: 0.75rem;">Disables animations while keeping progress indicators visible.</span></li>
+          </ul>
+        </div>
 
         <!-- Authentication -->
         {% if session.get('user_id') %}
