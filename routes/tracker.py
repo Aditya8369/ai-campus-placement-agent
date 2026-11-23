@@ -612,21 +612,17 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
-@tracker_bp.route("/api/calendar/recurring", methods=["POST"])
-def api_generate_recurring_calendar_blocks():
-    """Generates series occurrences for recurring preparation blocks (#623)."""
-    from utils.calendar_recurrence_service import generate_recurring_occurrences
+@tracker_bp.route("/api/applications/board/validate-move", methods=["POST"])
+def api_validate_board_move():
+    """Validates drag-and-drop or keyboard-initiated stage transition (#619)."""
+    from utils.application_board_service import validate_stage_transition
     data = request.get_json(silent=True) or {}
-    title = data.get("title", "Study Block")
-    start = data.get("start_time", "")
-    duration = int(data.get("duration_minutes", 60))
-    rec_type = data.get("recurrence_type", "daily")
-    max_occ = int(data.get("max_occurrences", 5))
+    current_stage = data.get("current_stage", "Applied")
+    target_stage = data.get("target_stage", "")
+    confirmed = bool(data.get("confirmed", False))
 
-    res = generate_recurring_occurrences(title, start, duration, rec_type, max_occurrences=max_occ)
-    if not res.get("success"):
-        return jsonify({"status": "error", "message": res.get("error")}), 400
-    return jsonify({"status": "success", "recurrence": res}), 200
+    res = validate_stage_transition(current_stage, target_stage, requires_confirmation=confirmed)
+    return jsonify({"status": "success", "result": res}), 200
 
 
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
