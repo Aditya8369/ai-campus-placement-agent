@@ -147,31 +147,12 @@ def get_company_profile(company_name: str):
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
 
 
-@jobs_bp.route("/api/company/<company_name>/faq", methods=["GET"])
-@jobs_bp.route("/api/company/<company_name>/frequently-asked-questions", methods=["GET"])
-def api_company_frequently_asked_questions(company_name: str):
-    """
-    Returns the top frequently asked questions for a company derived from
-    approved interview experiences (#694).
-    """
-    min_exp = request.args.get("min_experiences", 3, type=int)
-    limit = request.args.get("limit", 10, type=int)
-    faqs = get_frequently_asked_questions(company_name, min_experiences=min_exp, limit=limit)
-    return jsonify({
-        "success": True,
-        "company": company_name,
-        "total_questions": len(faqs),
-        "frequently_asked_questions": faqs,
-    }), 200
-
-
-@jobs_bp.route("/company/<company_name>", methods=["GET"])
-def company_profile_direct_view(company_name: str):
-    """
-    Direct company page route (#694).
-    Redirects to the companies directory pre-filtered to the target company.
-    """
-    return redirect(url_for("companies_search_view", search=company_name))
+@jobs_bp.route("/api/company/<company_name>/process-timeline", methods=["GET"])
+def api_get_company_process_timeline(company_name: str):
+    """Returns typical stages, average durations, and official/community split (#624)."""
+    from utils.company_timeline_service import get_company_process_timeline
+    timeline = get_company_process_timeline(company_name)
+    return jsonify({"status": "success", "timeline": timeline}), 200
 
 
 @jobs_bp.route("/company/<company_name>/cheat-sheet", methods=["GET"])
