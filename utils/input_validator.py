@@ -21,6 +21,8 @@ import html
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from utils.file_validation_service import sanitize_filename
+
 EMAIL_REGEX = re.compile(
     r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
 )

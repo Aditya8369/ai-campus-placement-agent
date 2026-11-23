@@ -131,6 +131,11 @@ from utils.session_resume_comparator import (
     clear_session_comparison,
     compare_resume_versions,
 )
+from utils.job_url_extractor import (
+    extract_job_description_from_url,
+    JobURLExtractionError,
+    SSRFSecurityError,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -188,6 +193,18 @@ def analyze():
                 return jsonify({"success": False, "error": validation_error}), 400
             flash(validation_error, "error")
             return redirect(url_for("index"))
+
+        # Section-by-section approval support (#601)
+        # If user approved or corrected individual sections, reassemble them into the analysis input
+        approved_sections_json = request.form.get("approved_sections")
+        if approved_sections_json:
+            try:
+                approved_dict = json.loads(approved_sections_json)
+                if isinstance(approved_dict, dict) and approved_dict:
+                    from utils.resume_section_approval_service import reassemble_approved_resume
+                    extracted_resume_text = reassemble_approved_resume(approved_dict, extracted_resume_text)
+            except Exception as e_appr:
+                logger.warning(f"Error parsing approved sections payload: {e_appr}")
 
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
@@ -335,7 +352,8 @@ def analyze():
                 "task_id": task.task_id,
                 "analysis_id": file_uuid,
                 "stream_url": f"/api/analysis/stream/{task.task_id}",
-                "status_url": f"/api/analysis/status/{task.task_id}"
+                "status_url": f"/api/analysis/status/{task.task_id}",
+                "cancel_url": f"/api/analysis/cancel/{task.task_id}"
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
@@ -554,6 +572,7 @@ def start_analysis_async():
             "analysis_id": file_uuid,
             "stream_url": f"/api/analysis/stream/{task.task_id}",
             "status_url": f"/api/analysis/status/{task.task_id}",
+            "cancel_url": f"/api/analysis/cancel/{task.task_id}",
             "format_compatibility": format_compatibility
         }), 202
 
@@ -594,10 +613,10 @@ def stream_analysis_progress(task_id: str):
                 for ev in events:
                     yield f"data: {json.dumps(ev)}\n\n"
                     last_index += 1
-                    if ev.get("status") in ("completed", "error"):
+                    if ev.get("status") in ("completed", "error", "cancelled"):
                         return
             else:
-                if task.status in ("completed", "error"):
+                if task.status in ("completed", "error", "cancelled") or task.is_cancelled:
                     return
                 # SSE heartbeat comment to keep HTTP connection alive
                 yield ": keep-alive\n\n"
@@ -619,6 +638,35 @@ def get_analysis_task_status(task_id: str):
         return jsonify({"success": False, "error": f"Analysis task '{task_id}' not found"}), 404
 
     return jsonify({"success": True, **task.to_dict()}), 200
+
+
+@analysis_bp.route("/api/analysis/cancel", methods=["POST"])
+@analysis_bp.route("/api/analysis/cancel/<task_id>", methods=["POST"])
+def cancel_analysis(task_id: Optional[str] = None):
+    """
+    Cancels an in-progress or queued background placement analysis task (#465, #764).
+    Accepts task_id either as URL route param or in JSON request body {"task_id": "..."}.
+    """
+    effective_task_id = task_id
+    if not effective_task_id:
+        req_json = request.get_json(silent=True) or {}
+        effective_task_id = req_json.get("task_id") or request.form.get("task_id")
+
+    if not effective_task_id:
+        return jsonify({"success": False, "error": "Missing task_id parameter."}), 400
+
+    student_id = flask_session.get("student_id") or flask_session.get("user_id")
+    success, msg = cancel_analysis_task(effective_task_id, student_id=student_id)
+    if not success:
+        status_code = 404 if "not found" in msg.lower() else 400
+        return jsonify({"success": False, "error": msg}), status_code
+
+    return jsonify({
+        "success": True,
+        "status": "cancelled",
+        "task_id": effective_task_id,
+        "message": msg
+    }), 200
 
 
 @analysis_bp.route("/analyze/rerun/<analysis_id>", methods=["GET", "POST"])
@@ -1570,6 +1618,21 @@ def dashboard(analysis_id: str) -> str:
             "recheck_url": "/resume/review"
         }
 
+        # Prepare Resume Evidence Cards (#599)
+    try:
+        from utils.resume_evidence_service import build_resume_evidence_cards
+        resume_evidence = build_resume_evidence_cards(analysis_record)
+    except Exception as ev_err:
+        logger.warning(f"Error building resume evidence cards: {ev_err}")
+        resume_evidence = {
+            "has_evidence_cards": False,
+            "total_cards": 0,
+            "direct_evidence_count": 0,
+            "missing_info_count": 0,
+            "grouped_cards": [],
+            "summary": "Evidence cards could not be loaded."
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1613,7 +1676,11 @@ def dashboard(analysis_id: str) -> str:
         format_compatibility=format_compatibility,
         format_compatibility_json=json.dumps(format_compatibility),
         ats_confidence=ats_confidence,
-        ats_confidence_json=json.dumps(ats_confidence)
+        ats_confidence_json=json.dumps(ats_confidence),
+        resume_evidence=resume_evidence,
+        resume_evidence_json=json.dumps(resume_evidence),
+        initial_recommended_jobs=initial_recommended_jobs,
+        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
     )
 
 
@@ -2162,6 +2229,29 @@ def api_evaluate_resume_ats_score():
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
+
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/resume-evidence", methods=["GET"])
+def api_get_analysis_resume_evidence(analysis_id: str):
+    """
+    Returns structured Resume Evidence Cards connecting AI suggestions to original resume text (#599).
+    Flags unmentioned content as missing information rather than confirmed defects.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    from utils.resume_evidence_service import build_resume_evidence_cards
+    evidence_cards = build_resume_evidence_cards(analysis_record)
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "evidence": evidence_cards
+    }), 200
+
+
 @analysis_bp.route("/api/analysis/<analysis_id>/format-compatibility", methods=["GET"])
 def api_get_analysis_format_compatibility(analysis_id: str):
     """
@@ -2240,6 +2330,31 @@ def api_get_analysis_pdf_page_issues(analysis_id: str):
     }), 200
 
 
+@analysis_bp.route("/api/resume/parse-sections", methods=["POST"])
+def api_parse_resume_sections():
+    """
+    Parses uploaded resume or text into canonical sections for user review & approval (#601).
+    Does not modify files on disk. Returns detected sections and missing warnings.
+    """
+    extracted_text, filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+    if validation_error:
+        return jsonify({"success": False, "error": validation_error}), 400
+
+    from utils.resume_section_approval_service import parse_resume_for_approval
+    try:
+        parsed = parse_resume_for_approval(extracted_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "filename": filename,
+            "file_uuid": file_uuid,
+            "data": parsed
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error parsing resume sections: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @analysis_bp.route("/api/resume/format-compatibility", methods=["POST"])
 def api_evaluate_resume_format_compatibility():
     """
@@ -2285,6 +2400,28 @@ def api_evaluate_resume_format_compatibility():
         }), 200
     except Exception as exc:
         logger.error(f"Error in api_evaluate_resume_format_compatibility: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@analysis_bp.route("/api/job-description/check-quality", methods=["POST"])
+def api_check_job_description_quality():
+    """
+    Evaluates job description quality score, detected sections, and missing parts (#602).
+    Never stores the description and never rejects valid short text automatically.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    jd_text = (payload.get("job_description") or payload.get("text") or "").strip()
+
+    from utils.jd_quality_checker_service import evaluate_job_description_quality
+    try:
+        report = evaluate_job_description_quality(jd_text)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "report": report
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error checking job description quality: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
@@ -4369,6 +4506,62 @@ def api_saved_job_description_item(saved_id):
     }), 200
 
 
+@analysis_bp.route("/api/job-description/extract-url", methods=["POST"])
+@analysis_bp.route("/api/job-description/import-link", methods=["POST"])
+@csrf.exempt
+def api_extract_job_description_url():
+    """
+    Extracts and normalizes job posting description text from a student-provided URL (#689).
+    Enforces SSRF prevention (blocking private, loopback, link-local IPs and dangerous ports),
+    short timeouts, download limits, redirect IP validation, and readability extraction.
+    """
+    payload = request.get_json(silent=True) or request.form or {}
+    url = (payload.get("url") or payload.get("link") or payload.get("job_url") or "").strip()
+
+    if not url:
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error": "Please provide a valid job posting link."
+        }), 400
+
+    try:
+        result = extract_job_description_from_url(url)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "url": url,
+            "job_description": result["job_description"],
+            "character_count": result["character_count"],
+            "title": result.get("title", ""),
+            "company": result.get("company", ""),
+        }), 200
+    except SSRFSecurityError as e:
+        logger.warning(f"SSRF safety check blocked job URL request: {url} -> {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "security_restriction",
+            "error": f"The provided URL cannot be fetched for security reasons: {str(e)} Please copy and paste the job description text manually."
+        }), 400
+    except JobURLExtractionError as e:
+        logger.info(f"Job URL extraction failed for {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "extraction_failed",
+            "error": str(e)
+        }), 422
+    except Exception as e:
+        logger.exception(f"Unexpected error while extracting job URL {url}: {e}")
+        return jsonify({
+            "status": "error",
+            "success": False,
+            "error_type": "server_error",
+            "error": "Failed to extract job description from the provided link. Please copy and paste the job description text manually."
+        }), 500
+
+
 @analysis_bp.route("/api/goals", methods=["GET", "POST"])
 def api_preparation_goals():
     """
@@ -4680,5 +4873,18 @@ def api_get_role_template_by_id(role_id: str):
         "success": True,
         "template": template
     }), 200
+
+
+@analysis_bp.route("/api/analysis/freshness-check", methods=["POST"])
+def api_check_analysis_freshness():
+    """Evaluates if an existing analysis report is current or outdated (#628)."""
+    from utils.data_freshness_service import check_report_freshness
+    data = request.get_json(silent=True) or {}
+    report_meta = data.get("report_meta", {})
+    current_profile = data.get("current_profile", {})
+
+    freshness = check_report_freshness(report_meta, current_profile)
+    return jsonify({"status": "success", "freshness": freshness}), 200
+
 
 

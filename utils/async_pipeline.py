@@ -73,6 +73,39 @@ class AnalysisTask:
         self._condition = threading.Condition(self._lock)
         self._event_queue: queue.Queue = queue.Queue()
         self.is_cancelled = False
+        self.completed_sections: Dict[str, Any] = {}
+
+    def emit_section(
+        self,
+        section_name: str,
+        section_data: Any,
+        progress: int,
+        message: Optional[str] = None
+    ) -> None:
+        """
+        Records a completed section from streaming AI generation and emits SSE event (#764).
+        Allows clients to render sections incrementally as they complete.
+        """
+        with self._lock:
+            self.completed_sections[section_name] = section_data
+            completed_keys = list(self.completed_sections.keys())
+
+        msg = message or f"Generated {section_name.replace('_', ' ').title()}"
+        self.emit(
+            step="section_stream",
+            agent="CoordinatorAgent",
+            message=msg,
+            progress=progress,
+            status="in_progress",
+            extra={
+                "event": "section_completed",
+                "section": section_name,
+                "section_name": section_name,
+                "section_data": section_data,
+                "data": section_data,
+                "completed_sections": completed_keys,
+            }
+        )
 
     def emit(
         self,
@@ -204,6 +237,8 @@ class AnalysisTask:
                 "redirect_url": self.redirect_url,
                 "error_message": self.error_message,
                 "is_cancelled": self.is_cancelled,
+                "completed_sections": list(self.completed_sections.keys()),
+                "has_partial_content": bool(self.completed_sections),
                 "milestones": list(self.milestones),
                 "created_at": self.created_at
             }
@@ -364,19 +399,45 @@ def _run_analysis_pipeline(
                 raise AnalysisCancelledException("Analysis cancelled by user")
             task.emit(step=step, agent=agent, message=message, progress=progress)
 
-        # Execute coordinated multi-agent analysis via Gemini
-        try:
-            analysis_payload = coordinator_agent.analyze(
-                resume_text=resume_text,
-                job_description=job_description,
-                company_name=company_name,
-                on_progress=on_agent_progress
+        # Execute coordinated multi-agent analysis via Gemini with streaming (#764)
+        def on_section_complete(sec_name: str, sec_data: Any, progress_pct: int) -> None:
+            if task.is_cancelled:
+                raise AnalysisCancelledException("Analysis cancelled by user")
+            task.emit_section(
+                section_name=sec_name,
+                section_data=sec_data,
+                progress=progress_pct,
+                message=f"Generated {sec_name.replace('_', ' ').title()} section"
             )
+
+        try:
+            from unittest.mock import Mock
+            if isinstance(coordinator_agent, Mock):
+                use_stream = "analyze_stream" in coordinator_agent.__dict__
+            else:
+                use_stream = hasattr(coordinator_agent, "analyze_stream")
+
+            if use_stream:
+                analysis_payload = coordinator_agent.analyze_stream(
+                    resume_text=resume_text,
+                    job_description=job_description,
+                    company_name=company_name,
+                    on_section=on_section_complete,
+                    is_cancelled=lambda: task.is_cancelled,
+                    use_fallback_on_failure=True
+                )
+            else:
+                analysis_payload = coordinator_agent.analyze(
+                    resume_text=resume_text,
+                    job_description=job_description,
+                    company_name=company_name,
+                    on_progress=on_agent_progress
+                )
         except TypeError:
             if task.is_cancelled:
                 _cleanup_cancelled_analysis(analysis_id)
                 return
-            # Fallback if coordinator_agent.analyze does not accept on_progress
+            # Non-streaming fallback if on_progress or analyze_stream is unsupported
             analysis_payload = coordinator_agent.analyze(
                 resume_text=resume_text,
                 job_description=job_description,
@@ -498,11 +559,54 @@ def _run_analysis_pipeline(
             logger.info(f"Task {task.task_id} was cancelled; suppressing downstream error: {exc}")
             _cleanup_cancelled_analysis(analysis_id)
             return
-        from utils.gemini import format_ai_error_for_user, scrub_api_key
+        from utils.gemini import format_ai_error_for_user, scrub_api_key, create_safe_fallback_analysis_payload
         clean_exc = scrub_api_key(str(exc))
         logger.error(f"Async pipeline worker failed for task {task.task_id}: {clean_exc}")
         friendly_error = format_ai_error_for_user(exc)
         current_step_name = task.current_step_name
+
+        # Preserve any content already received and shown to the user (#764)
+        has_partial = bool(task.completed_sections)
+        redirect_url = f"/dashboard/{analysis_id}" if has_partial else None
+
+        if has_partial:
+            try:
+                fallback_payload = create_safe_fallback_analysis_payload(company_name=company_name)
+                partial_payload = {
+                    "resume_analysis": task.completed_sections.get("resume_analysis", fallback_payload["resume_analysis"]),
+                    "job_match": task.completed_sections.get("job_match", fallback_payload["job_match"]),
+                    "skill_gap": task.completed_sections.get("skill_gap", fallback_payload["skill_gap"]),
+                    "learning_roadmap": task.completed_sections.get("learning_roadmap", fallback_payload["learning_roadmap"]),
+                    "interview_questions": task.completed_sections.get("interview_questions", fallback_payload["interview_questions"]),
+                    "overall_recommendation_summary": task.completed_sections.get(
+                        "overall_recommendation_summary", fallback_payload["overall_recommendation_summary"]
+                    ),
+                    "section_status": {
+                        k: ("valid" if k in task.completed_sections else "unavailable")
+                        for k in [
+                            "resume_analysis",
+                            "job_match",
+                            "skill_gap",
+                            "learning_roadmap",
+                            "interview_questions",
+                            "overall_recommendation_summary",
+                        ]
+                    },
+                    "extracted_resume_text": resume_text,
+                    "stream_error": friendly_error,
+                    "is_partial": True,
+                }
+                save_analysis_func(
+                    analysis_id=analysis_id,
+                    resume_filename=resume_filename,
+                    company_name=company_name,
+                    job_description=job_description,
+                    results_dict=partial_payload,
+                    student_id=student_id or "default_student",
+                )
+            except Exception as save_err:
+                logger.warning(f"Failed to persist partial analysis on stream error: {save_err}")
+
         task.emit(
             step=task.current_step,
             agent="CoordinatorAgent",
@@ -512,7 +616,11 @@ def _run_analysis_pipeline(
             extra={
                 "error_details": clean_exc,
                 "failed_step": current_step_name,
-                "step_name": current_step_name
+                "step_name": current_step_name,
+                "has_partial_content": has_partial,
+                "completed_sections": list(task.completed_sections.keys()),
+                "redirect_url": redirect_url,
+                "analysis_id": analysis_id if has_partial else None,
             }
         )
     finally:
