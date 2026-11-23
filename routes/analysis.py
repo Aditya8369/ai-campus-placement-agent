@@ -189,6 +189,18 @@ def analyze():
             flash(validation_error, "error")
             return redirect(url_for("index"))
 
+        # Section-by-section approval support (#601)
+        # If user approved or corrected individual sections, reassemble them into the analysis input
+        approved_sections_json = request.form.get("approved_sections")
+        if approved_sections_json:
+            try:
+                approved_dict = json.loads(approved_sections_json)
+                if isinstance(approved_dict, dict) and approved_dict:
+                    from utils.resume_section_approval_service import reassemble_approved_resume
+                    extracted_resume_text = reassemble_approved_resume(approved_dict, extracted_resume_text)
+            except Exception as e_appr:
+                logger.warning(f"Error parsing approved sections payload: {e_appr}")
+
         selected_company = request.form.get("company", "General").strip()
         job_description = request.form.get("job_description", "").strip()
         student_id = flask_session["user_id"]
@@ -2280,108 +2292,28 @@ def api_get_analysis_pdf_page_issues(analysis_id: str):
     }), 200
 
 
-@analysis_bp.route("/api/analysis/<analysis_id>/ats-confidence", methods=["GET"])
-def api_get_analysis_ats_confidence(analysis_id: str):
+@analysis_bp.route("/api/resume/parse-sections", methods=["POST"])
+def api_parse_resume_sections():
     """
-    Returns the ATS Score Confidence Indicator and factor breakdown (#598).
-    Evaluates extracted text characteristics, formatting alerts, and section completeness.
+    Parses uploaded resume or text into canonical sections for user review & approval (#601).
+    Does not modify files on disk. Returns detected sections and missing warnings.
     """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+    extracted_text, filename, file_uuid, validation_error = _extract_and_validate_resume(request)
+    if validation_error:
+        return jsonify({"success": False, "error": validation_error}), 400
 
-    results = analysis_record.get("results") or {}
-    raw_resume = (
-        analysis_record.get("resume_text")
-        or results.get("extracted_resume_text")
-        or results.get("resume_text")
-        or ""
-    )
-
-    format_compat = None
+    from utils.resume_section_approval_service import parse_resume_for_approval
     try:
-        format_compat = get_or_compute_format_compatibility(analysis_record)
-    except Exception:
-        pass
-
-    ats_breakdown = results.get("ats_breakdown")
-    if not ats_breakdown:
-        try:
-            from utils.ats_score_service import evaluate_resume_ats_score
-            ats_breakdown = evaluate_resume_ats_score(raw_resume)
-        except Exception:
-            ats_breakdown = None
-
-    from utils.ats_confidence_service import calculate_ats_score_confidence
-    confidence_data = calculate_ats_score_confidence(
-        resume_text=raw_resume,
-        format_compat=format_compat,
-        ats_breakdown=ats_breakdown
-    )
-
-    return jsonify({
-        "status": "success",
-        "success": True,
-        "analysis_id": analysis_id,
-        "confidence": confidence_data
-    }), 200
-
-
-@analysis_bp.route("/api/analysis/<analysis_id>/simulation-options", methods=["GET"])
-def api_get_simulation_options(analysis_id: str):
-    """
-    Returns curated What-If suggestions for resume improvement simulation (#600).
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
-
-    from utils.resume_simulator_service import get_default_what_if_suggestions
-    suggestions = get_default_what_if_suggestions(analysis_record)
-
-    return jsonify({
-        "status": "success",
-        "success": True,
-        "analysis_id": analysis_id,
-        "suggestions": suggestions
-    }), 200
-
-
-@analysis_bp.route("/api/analysis/<analysis_id>/simulate-improvements", methods=["POST"])
-def api_simulate_resume_improvements(analysis_id: str):
-    """
-    Simulates readiness and ATS score improvements on an isolated copy without modifying stored resume (#600).
-    Accepts:
-      {
-        "simulated_skills": ["Docker", "AWS"],
-        "simulated_projects": ["Distributed Queue"],
-        "selected_suggestion_ids": ["add_cloud_devops"]
-      }
-    """
-    analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
-        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
-
-    payload = request.get_json(silent=True) or {}
-    simulated_skills = payload.get("simulated_skills") or []
-    simulated_projects = payload.get("simulated_projects") or []
-    selected_suggestion_ids = payload.get("selected_suggestion_ids") or []
-
-    from utils.resume_simulator_service import simulate_resume_improvements
-    try:
-        simulation_result = simulate_resume_improvements(
-            analysis_record=analysis_record,
-            simulated_skills=simulated_skills,
-            simulated_projects=simulated_projects,
-            selected_suggestion_ids=selected_suggestion_ids
-        )
+        parsed = parse_resume_for_approval(extracted_text)
         return jsonify({
             "status": "success",
             "success": True,
-            "simulation": simulation_result
+            "filename": filename,
+            "file_uuid": file_uuid,
+            "data": parsed
         }), 200
     except Exception as exc:
-        logger.error(f"Error simulating resume improvements: {exc}")
+        logger.error(f"Error parsing resume sections: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
