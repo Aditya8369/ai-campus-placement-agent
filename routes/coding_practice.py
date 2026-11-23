@@ -683,29 +683,43 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@coding_practice_bp.route("/api/coding/explanations/feedback", methods=["POST"])
-def api_submit_explanation_feedback():
-    """Submits or updates student feedback on a solution explanation (#616)."""
-    from utils.explanation_feedback_service import submit_feedback
-    user_id = flask_session.get("user_id") or "default_student"
+@coding_practice_bp.route("/api/coding/languages", methods=["GET"])
+def api_get_supported_coding_languages():
+    """Lists supported programming languages and boilerplate (#614)."""
+    from utils.coding_language_service import get_supported_languages
+    return jsonify({
+        "status": "success",
+        "languages": get_supported_languages()
+    }), 200
+
+
+@coding_practice_bp.route("/api/coding/switch-language", methods=["POST"])
+def api_switch_coding_language():
+    """Saves per-language draft code and returns new language boilerplate (#614)."""
+    from utils.coding_language_service import is_language_supported, get_language_config
     data = request.get_json(silent=True) or {}
-    exp_id = data.get("explanation_id", "")
-    fb_type = data.get("feedback_type", "")
-    comment = data.get("comment", "")
+    lang_id = data.get("language", "").lower().strip()
+    problem_id = data.get("problem_id", "default")
+    code = data.get("code", "")
 
-    res = submit_feedback(user_id, exp_id, fb_type, comment)
-    if not res.get("success"):
-        return jsonify({"status": "error", "message": res.get("error")}), 400
-    return jsonify({"status": "success", "feedback": res}), 200
+    if not is_language_supported(lang_id):
+        return jsonify({
+            "status": "error",
+            "message": f"Unsupported language: '{lang_id}'. Supported languages: Python, JavaScript, Java, C++."
+        }), 400
 
+    cfg = get_language_config(lang_id)
+    drafts = flask_session.get("coding_drafts", {})
+    key = f"{problem_id}_{lang_id}"
+    if code:
+        drafts[key] = code
+        flask_session["coding_drafts"] = drafts
 
-@coding_practice_bp.route("/api/coding/explanations/feedback/summary", methods=["GET"])
-def api_get_explanation_feedback_summary():
-    """Gets aggregate feedback distribution for an explanation (#616)."""
-    from utils.explanation_feedback_service import get_feedback_summary
-    exp_id = request.args.get("explanation_id", "")
-    summary = get_feedback_summary(exp_id)
-    return jsonify({"status": "success", "summary": summary}), 200
+    return jsonify({
+        "status": "success",
+        "language": cfg,
+        "draft_code": drafts.get(key, cfg["default_boilerplate"])
+    }), 200
 
 
 
