@@ -3329,10 +3329,10 @@
             sc.missing_percentage }}%</span>
         </div>
         <div class="progress rounded-pill shadow-xs" style="height: 12px;">
-          <div class="progress-bar bg-success" role="progressbar" style="width: {{ sc.match_percentage }}%"
+          <div class="progress-bar progress-bar-striped" role="progressbar" style="width: {{ sc.match_percentage }}%; background-color: #009E73;"
             aria-valuenow="{{ sc.match_percentage }}" aria-valuemin="0" aria-valuemax="100"
             title="Matching Skills: {{ sc.match_percentage }}%"></div>
-          <div class="progress-bar bg-danger" role="progressbar" style="width: {{ sc.missing_percentage }}%"
+          <div class="progress-bar" role="progressbar" style="width: {{ sc.missing_percentage }}%; background-color: #D55E00;"
             aria-valuenow="{{ sc.missing_percentage }}" aria-valuemin="0" aria-valuemax="100"
             title="Missing Skills: {{ sc.missing_percentage }}%"></div>
         </div>
@@ -3365,13 +3365,11 @@
             <!-- Chart Legend Badges -->
             <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
               <div class="d-flex align-items-center gap-1">
-                <span class="legend-indicator bg-success rounded-circle"
-                  style="width: 10px; height: 10px; display: inline-block;"></span>
+                <i class="fa-solid fa-circle-check me-1" style="color: #009E73;" aria-hidden="true"></i>
                 <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }})</span>
               </div>
               <div class="d-flex align-items-center gap-1">
-                <span class="legend-indicator bg-danger rounded-circle"
-                  style="width: 10px; height: 10px; display: inline-block;"></span>
+                <i class="fa-solid fa-circle-xmark me-1" style="color: #D55E00;" aria-hidden="true"></i>
                 <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }})</span>
               </div>
             </div>
