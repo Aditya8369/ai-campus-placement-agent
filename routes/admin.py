@@ -626,4 +626,119 @@ def api_enroll_student_batch():
     return jsonify({"status": "success", "profile": profile}), 201
 
 
+# =====================================================================
+# PLACEMENT CELL BATCH ANALYSIS ROUTES (#763)
+# =====================================================================
+
+@admin_bp.route("/admin/placement-cell", methods=["GET"])
+def placement_cell_view():
+    """
+    Renders the Placement Cell batch analysis dashboard (#763).
+    Displays batch resume upload form with consent notice, batch size limits,
+    background processing status, and anonymized aggregate statistics.
+    """
+    from utils.placement_cell_service import PlacementCellBatchService
+    batches = PlacementCellBatchService.list_batches(limit=25)
+    max_batch_size = PlacementCellBatchService.get_max_batch_size()
+    return render_template(
+        "placement_cell.html",
+        batches=batches,
+        max_batch_size=max_batch_size
+    )
+
+
+@admin_bp.route("/api/admin/placement-cell/batch", methods=["POST"])
+@csrf.exempt
+def api_upload_placement_batch():
+    """
+    Handles multi-resume upload for college placement officers (#763).
+    - Enforces consent notice and batch size limits.
+    - Processes resumes in the background.
+    - Reports failed files individually.
+    - Uploaded files are deleted from storage after processing.
+    """
+    from utils.placement_cell_service import PlacementCellBatchService
+
+    files = request.files.getlist("resumes")
+    consent = request.form.get("consent")
+    batch_name = request.form.get("batch_name", "").strip()
+    is_sync = request.form.get("sync") in ("true", "1") or request.args.get("sync") in ("true", "1")
+
+    valid, err_msg = PlacementCellBatchService.validate_batch_upload(files, consent)
+    if not valid:
+        return jsonify({"success": False, "error": err_msg}), 400
+
+    # Filter non-empty files
+    valid_files = [f for f in files if f and f.filename and f.filename.strip()]
+
+    batch_id = PlacementCellBatchService.create_batch(
+        batch_name=batch_name,
+        total_files=len(valid_files),
+        consent_confirmed=True
+    )
+
+    # Save files to isolated temporary batch directory
+    batch_dir = os.path.join(str(config.UPLOAD_FOLDER), f"batch_{batch_id}")
+    os.makedirs(batch_dir, exist_ok=True)
+
+    file_records = []
+    for f in valid_files:
+        safe_name = secure_filename(f.filename) or f"resume_{uuid.uuid4().hex[:8]}.pdf"
+        target_path = os.path.join(batch_dir, f"{uuid.uuid4().hex[:8]}_{safe_name}")
+        f.save(target_path)
+        file_records.append((target_path, f.filename))
+
+    # Process batch (background worker by default; sync if requested)
+    PlacementCellBatchService.process_batch(
+        batch_id=batch_id,
+        file_records=file_records,
+        run_in_background=(not is_sync)
+    )
+
+    status_code = 200 if is_sync else 202
+    return jsonify({
+        "success": True,
+        "batch_id": batch_id,
+        "status": "completed" if is_sync else "processing",
+        "total_files": len(valid_files),
+        "message": "Batch resumes submitted successfully for processing."
+    }), status_code
+
+
+@admin_bp.route("/api/admin/placement-cell/batch/<batch_id>", methods=["GET"])
+def api_get_placement_batch(batch_id: str):
+    """
+    Returns anonymized aggregate statistics for a placement cell batch (#763).
+    Contains NO names or candidate contact details.
+    """
+    from utils.placement_cell_service import PlacementCellBatchService
+    batch = PlacementCellBatchService.get_batch(batch_id)
+    if not batch:
+        return jsonify({"success": False, "error": f"Placement batch '{batch_id}' not found."}), 404
+
+    return jsonify({"success": True, "batch": batch}), 200
+
+
+@admin_bp.route("/admin/placement-cell/batch/<batch_id>/export.csv", methods=["GET"])
+@admin_bp.route("/api/admin/placement-cell/batch/<batch_id>/export.csv", methods=["GET"])
+def export_placement_batch_csv(batch_id: str):
+    """
+    Exports an anonymized aggregate CSV report for the placement batch (#763).
+    Acceptance Criterion: Contains NO names or contact details.
+    """
+    from utils.placement_cell_service import PlacementCellBatchService
+    try:
+        csv_content = PlacementCellBatchService.generate_aggregate_csv(batch_id)
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 404
+    except Exception as e:
+        logger.error(f"Failed to generate aggregate CSV for batch {batch_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to generate CSV export."}), 500
+
+    response = Response(csv_content, mimetype="text/csv")
+    response.headers["Content-Disposition"] = f"attachment; filename=placement_batch_{batch_id[:8]}_aggregate.csv"
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return response
+
+
 
