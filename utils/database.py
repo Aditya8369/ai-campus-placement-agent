@@ -18,9 +18,7 @@ def get_db_connection() -> sqlite3.Connection:
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
     """
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return create_connection()
 
 def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()

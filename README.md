@@ -639,6 +639,34 @@ The following features are being considered:
 
 ---
 
+## Bulk Student Onboarding via CSV for Placement Officers (#690)
+
+To overcome the student adoption barrier for colleges and institutions, placement officers and administrators can onboard entire student batches and departments in seconds via CSV:
+
+- **Admin Portal**: Accessible to authorized administrators and placement coordinators at [`/admin/invite-students`](templates/admin_invite_students.html).
+- **CSV Format & Validation**:
+  - Accepts standard CSV with headers `name`, `email`, optional `branch`, and optional `graduation_year`.
+  - Downloadable template available directly from `/admin/invitations/template.csv`.
+  - Real-time row validation with instant preview, reporting explicit failure reasons for invalid entries (missing name, malformed email, institutional domain mismatch, out-of-range graduation year).
+  - Automatically identifies and skips duplicate emails within the CSV as well as already-registered platform users.
+- **Single-Use, 14-Day Expiring Links**:
+  - Each invited student receives a cryptographically secure, single-use activation link (`/register?invite_token=<token>`).
+  - Automatically expires after 14 days.
+  - Revoked links stop working immediately.
+  - Links are consumed immediately upon successful registration and cannot be reused.
+- **Safety Quotas & Rate Limits**:
+  - Upload limit: Maximum **200 rows per CSV upload**.
+  - Rate limit: Maximum **500 invitations per hour** per institution.
+- **Invitation Status Tracking & Management**:
+  - Tracks status in real time: `sent`, `accepted`, `expired`, and `revoked`.
+  - Resend invitation functionality with refreshed 14-day expiry.
+  - One-click link revocation.
+  - Export all invitation records to CSV with **CSV Formula Injection Sanitization** (neutralizing `=`, `+`, `-`, `@`, `\t`, `\r` prefixes).
+- **Admin Audit Logging**:
+  - Every batch upload, resend, revocation, and student acceptance is recorded to an immutable audit log (`admin_invitation_audit_logs`).
+
+---
+
 ## Company Interview Cheat Sheet (One-Page Revision PDF)
 
 To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:

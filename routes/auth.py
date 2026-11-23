@@ -110,6 +110,10 @@ from utils.captcha import (
     record_failed_attempt,
     reset_failed_attempts,
 )
+from utils.email_domain_validator import (
+    is_email_domain_allowed,
+    get_email_domain_error_message,
+)
 from utils.logger_config import (
     configure_logging,
     get_current_request_id,
@@ -1279,30 +1283,95 @@ def reset_password(token):
     return render_template("reset_password.html", token=token)
 
 
+@auth_bp.route("/invite/accept/<token>", methods=["GET"])
+def accept_invite_view(token: str):
+    """Deep-link shortcut for student invitation acceptance (#690)."""
+    return redirect(url_for("register", invite_token=token))
+
+
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
+    invite_token = (
+        request.form.get("invite_token")
+        if request.method == "POST"
+        else request.args.get("invite_token")
+    )
+    invite_token = (invite_token or "").strip()
+    invited_info = None
+
+    if invite_token:
+        from utils.student_invitation_service import verify_invitation_token
+        token_check = verify_invitation_token(invite_token)
+        if not token_check.get("valid"):
+            flash(token_check.get("error", "Invalid or expired invitation link."), "error")
+        else:
+            invited_info = token_check.get("invitation")
+
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         college = request.form.get("college", "").strip()
 
+        # If registered via invite, re-verify token
+        if invite_token:
+            from utils.student_invitation_service import verify_invitation_token
+            token_check = verify_invitation_token(invite_token)
+            if not token_check.get("valid"):
+                flash(token_check.get("error", "This invitation link is no longer valid."), "error")
+                return render_template(
+                    "register.html",
+                    name=name,
+                    email=email,
+                    college=college,
+                    invite_token=invite_token,
+                )
+            invited_info = token_check.get("invitation")
+
         is_valid_captcha, captcha_error = verify_captcha(request, form_type="register", identifier=email)
         if not is_valid_captcha:
             flash(captcha_error, "error")
-            return render_template("register.html")
+            return render_template(
+                "register.html",
+                name=name,
+                email=email,
+                college=college,
+                invite_token=invite_token,
+                invited_info=invited_info,
+            )
 
         if not name or not email or not password:
             flash("All fields are required.", "error")
-            return render_template("register.html", name=name, email=email, college=college)
+            return render_template(
+                "register.html",
+                name=name,
+                email=email,
+                college=college,
+                invite_token=invite_token,
+                invited_info=invited_info,
+            )
 
         if not is_email_domain_allowed(email):
             flash(get_email_domain_error_message(), "error")
-            return render_template("register.html", name=name, email=email, college=college)
+            return render_template(
+                "register.html",
+                name=name,
+                email=email,
+                college=college,
+                invite_token=invite_token,
+                invited_info=invited_info,
+            )
 
         if len(password) < 8:
             flash("Password must be at least 8 characters long.", "error")
-            return render_template("register.html", name=name, email=email, college=college)
+            return render_template(
+                "register.html",
+                name=name,
+                email=email,
+                college=college,
+                invite_token=invite_token,
+                invited_info=invited_info,
+            )
 
         password_hash = generate_password_hash(password)
         user_id = str(uuid.uuid4())
@@ -1311,7 +1380,23 @@ def register():
 
         if not created:
             flash("An account with this email already exists.", "error")
-            return render_template("register.html", name=name, email=email, college=college)
+            return render_template(
+                "register.html",
+                name=name,
+                email=email,
+                college=college,
+                invite_token=invite_token,
+                invited_info=invited_info,
+            )
+
+        # Consume single-use invitation token (#690)
+        if invite_token and invited_info:
+            from utils.student_invitation_service import accept_invitation_token
+            accept_invitation_token(
+                invite_token,
+                registered_user_id=user_id,
+                ip_address=request.remote_addr,
+            )
 
         # Initialize student profile with optional college (#654)
         save_student_profile(
@@ -1320,6 +1405,18 @@ def register():
             email=email,
             college=college if college else None,
         )
+
+        # Enroll batch profile if specified on invitation (#690, #514)
+        if invited_info and (invited_info.get("branch") or invited_info.get("graduation_year")):
+            from utils.batch_analytics_service import BatchAnalyticsService
+            try:
+                BatchAnalyticsService.enroll_student_profile(
+                    user_id=user_id,
+                    graduation_year=int(invited_info.get("graduation_year") or 2026),
+                    department=invited_info.get("branch") or "Computer Science",
+                )
+            except Exception as batch_err:
+                logger.warning(f"Could not enroll batch profile from invitation: {batch_err}")
 
         # Initialize email preferences and verification token (#186, #206)
         update_email_notification_preferences(student_id=user_id, email=email, email_enabled=True)
@@ -1339,7 +1436,15 @@ def register():
         flash("Registration successful! A verification link has been sent to your email. Please verify your account before logging in.", "success")
         return redirect(url_for("login"))
 
-    return render_template("register.html")
+    initial_name = invited_info.get("name") if invited_info else ""
+    initial_email = invited_info.get("email") if invited_info else ""
+    return render_template(
+        "register.html",
+        name=initial_name,
+        email=initial_email,
+        invite_token=invite_token,
+        invited_info=invited_info,
+    )
 
 
 @auth_bp.route("/api/auth/password-strength", methods=["POST"])
