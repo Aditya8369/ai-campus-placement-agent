@@ -1,0 +1,128 @@
+[
+  {
+    "id": "bench-tech-01",
+    "topic": "Data Structures & Algorithms",
+    "category": "technical",
+    "question": "How do you detect a cycle in a singly linked list?",
+    "tier_level": "Intermediate",
+    "benchmarks": {
+      "good": {
+        "score": 95,
+        "label": "Strong Answer",
+        "answer": "I use Floyd's Tortoise and Hare cycle-finding algorithm with two pointers moving at different speeds. The slow pointer advances by one node while the fast pointer advances by two nodes. If there is a cycle, the fast pointer will eventually catch up and meet the slow pointer within the loop. If the fast pointer reaches null, there is no cycle. This approach runs in O(N) time and requires O(1) auxiliary space.",
+        "strengths": [
+          "Names the optimal algorithm (Floyd's algorithm)",
+          "Clearly articulates time O(N) and space O(1) complexities",
+          "Explains step-by-step logic and termination condition"
+        ],
+        "weaknesses": []
+      },
+      "average": {
+        "score": 70,
+        "label": "Average Answer",
+        "answer": "You can detect a cycle by using a hash set. Traverse each node and check if the node pointer is already in the hash set. If it is, then you found a loop. Otherwise, add it and move on.",
+        "strengths": [
+          "Valid algorithm that accurately solves the problem"
+        ],
+        "weaknesses": [
+          "Uses O(N) additional memory instead of O(1)",
+          "Does not mention the two-pointer technique or edge cases"
+        ]
+      },
+      "poor": {
+        "score": 40,
+        "label": "Weak Answer",
+        "answer": "You can loop through the list with a counter and if the count exceeds 10,000 steps you assume it has an infinite loop.",
+        "strengths": [
+          "Recognizes that cycles cause infinite loops"
+        ],
+        "weaknesses": [
+          "Arbitrary threshold fails on large lists",
+          "Not a deterministic algorithmic approach"
+        ]
+      }
+    }
+  },
+  {
+    "id": "bench-behav-01",
+    "topic": "Conflict Resolution & Teamwork",
+    "category": "behavioral",
+    "question": "Describe a time when you had a disagreement with a team member about technical architecture. How did you resolve it?",
+    "tier_level": "Intermediate",
+    "benchmarks": {
+      "good": {
+        "score": 92,
+        "label": "Strong Answer",
+        "answer": "During our capstone project, my teammate and I disagreed on whether to use PostgreSQL or MongoDB for our analytics service. I preferred PostgreSQL due to ACID requirements and relational reporting, while my peer favored MongoDB for flexible schemaless ingestion. To resolve it objectively, I scheduled a 30-minute benchmark spike where we listed our query patterns and tested write/read latency. We realized our primary need was structured cross-table joins, so we aligned on PostgreSQL while adopting JSONB columns for semi-structured log events. This compromise met both needs and prevented delivery delays.",
+        "strengths": [
+          "Follows clear STAR method (Situation, Task, Action, Result)",
+          "Demonstrates objective decision-making via benchmarking rather than arguing",
+          "Shows collaborative compromise with JSONB"
+        ],
+        "weaknesses": []
+      },
+      "average": {
+        "score": 68,
+        "label": "Average Answer",
+        "answer": "We had a disagreement on which database to use. We talked about it and I explained why my choice was better, so we ended up going with my recommendation and completed the project on time.",
+        "strengths": [
+          "Addresses the conflict and outcome"
+        ],
+        "weaknesses": [
+          "Lacks specific technical reasoning or empathy for peer's perspective",
+          "Vague actions without concrete metrics or compromise"
+        ]
+      },
+      "poor": {
+        "score": 35,
+        "label": "Weak Answer",
+        "answer": "My teammate wanted to use a database I hated, so I just let them do it and when it broke I told them I was right.",
+        "strengths": [],
+        "weaknesses": [
+          "Unprofessional attitude and poor teamwork",
+          "No constructive resolution or communication"
+        ]
+      }
+    }
+  },
+  {
+    "id": "bench-hr-01",
+    "topic": "Career Goals & Motivation",
+    "category": "hr",
+    "question": "Where do you see yourself in 3 to 5 years?",
+    "tier_level": "Beginner",
+    "benchmarks": {
+      "good": {
+        "score": 90,
+        "label": "Strong Answer",
+        "answer": "In the next 3 to 5 years, my goal is to grow from an impactful software engineer into a senior technical lead. In the first two years, I plan to master your system architecture, ship resilient features, and contribute to production reliability. As I gain domain expertise, I want to mentor incoming graduates, participate in system design discussions, and help drive our team's engineering standards.",
+        "strengths": [
+          "Realistic, phased progression (mastery -> mentorship & leadership)",
+          "Aligns individual ambition with organizational value"
+        ],
+        "weaknesses": []
+      },
+      "average": {
+        "score": 65,
+        "label": "Average Answer",
+        "answer": "I see myself becoming a senior developer or project manager leading a team and learning the latest technologies.",
+        "strengths": [
+          "Shows desire for growth"
+        ],
+        "weaknesses": [
+          "Generic response without concrete phases or company connection"
+        ]
+      },
+      "poor": {
+        "score": 30,
+        "label": "Weak Answer",
+        "answer": "I haven't thought that far ahead, probably working at a FAANG company or doing an MBA.",
+        "strengths": [],
+        "weaknesses": [
+          "Suggests low commitment to the hiring company",
+          "Unprepared and unfocused"
+        ]
+      }
+    }
+  }
+]
