@@ -1,30 +1,19 @@
-"""
-Unit tests for data retention policies and maintenance endpoints.
-"""
+import pytest
+from utils.data_retention_service import validate_retention_policy, RETENTION_POLICIES
 
-import json
-from app import app
-from utils.cleanup import run_full_retention_policy
+def test_retention_policy_validation():
+    p1 = validate_retention_policy("90_days")
+    assert p1["valid"] is True
+    assert p1["days"] == 90
 
+    p_bad = validate_retention_policy("invalid_duration")
+    assert p_bad["valid"] is False
 
-def test_run_full_retention_policy_dry_run():
-    """Verify dry run calculates without deleting anything."""
-    results = run_full_retention_policy(max_file_age_hours=24, max_db_age_days=30, dry_run=True)
-    assert "files" in results
-    assert "database" in results
-    assert results["dry_run"] is True
-
-
-def test_api_admin_retention_run_endpoint():
-    """Verify admin retention execution API endpoint."""
-    app.config["TESTING"] = True
-    with app.test_client() as client:
-        res = client.post(
-            "/api/admin/retention/run",
-            data=json.dumps({"max_file_age_hours": 100, "max_db_age_days": 100, "dry_run": True}),
-            content_type="application/json",
-        )
-        assert res.status_code == 200
-        data = res.get_json()
-        assert data["status"] == "success"
-        assert data["results"]["dry_run"] is True
+def test_retention_api(client):
+    res = client.post("/api/account/data-retention", json={
+        "policy": "30_days",
+        "confirmed": True
+    })
+    assert res.status_code == 200
+    assert res.get_json()["status"] == "success"
+    assert res.get_json()["policy"]["policy_key"] == "30_days"

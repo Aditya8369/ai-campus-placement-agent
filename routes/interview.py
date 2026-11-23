@@ -499,6 +499,39 @@ def api_get_interview_difficulty_options():
     }), 200
 
 
+@interview_bp.route("/api/interview/outline-mode/template", methods=["GET"])
+def api_get_outline_template():
+    """
+    Returns answer outline headings (Introduction, Main Point, Example, Conclusion)
+    and question-type checklist (#608).
+    """
+    q_type = request.args.get("question_type", "General")
+    from utils.interview_outline_service import get_outline_template
+    template = get_outline_template(q_type)
+    return jsonify({"status": "success", "template": template}), 200
+
+
+@interview_bp.route("/api/interview/outline-mode/convert", methods=["POST"])
+def api_convert_outline_to_draft():
+    """
+    Converts structured outline fields into a draft answer and returns completeness score (#608).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    sections = payload.get("sections") or {}
+    checked_items = payload.get("checked_items") or []
+
+    from utils.interview_outline_service import convert_outline_to_draft, score_outline_completeness
+    draft_text = convert_outline_to_draft(sections)
+    score_data = score_outline_completeness(sections, checked_items)
+
+    return jsonify({
+        "status": "success",
+        "draft": draft_text,
+        "score_data": score_data
+    }), 200
+
+
+
 @interview_bp.route("/api/interview/difficulty/generate", methods=["POST"])
 def api_generate_difficulty_questions():
     """
@@ -2738,4 +2771,40 @@ def api_delete_question_explanation(question_id):
     if deleted:
         return jsonify({"status": "success", "message": "Question explanation removed"}), 200
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
+
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["POST"])
+def api_save_interview_checkpoint():
+    """Saves active interview progress and draft answer (#613)."""
+    from utils.interview_recovery_service import save_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or {}
+    analysis_id = data.get("analysis_id", "demo")
+    q_index = data.get("question_index", 0)
+    q_text = data.get("question_text", "")
+    draft = data.get("draft_answer", "")
+
+    result = save_session_checkpoint(user_id, analysis_id, q_index, q_text, draft)
+    return jsonify({"status": "success", "result": result}), 200
+
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["GET"])
+def api_get_interview_checkpoint():
+    """Retrieves saved checkpoint for the given session (#613)."""
+    from utils.interview_recovery_service import get_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    analysis_id = request.args.get("analysis_id", "demo")
+    checkpoint = get_session_checkpoint(user_id, analysis_id)
+    return jsonify({"status": "success", "checkpoint": checkpoint}), 200
+
+
+@interview_bp.route("/api/interview/recovery/checkpoint", methods=["DELETE"])
+def api_clear_interview_checkpoint():
+    """Clears saved checkpoint upon interview completion or cancellation (#613)."""
+    from utils.interview_recovery_service import clear_session_checkpoint
+    user_id = flask_session.get("user_id") or "default_student"
+    analysis_id = request.args.get("analysis_id", "demo")
+    cleared = clear_session_checkpoint(user_id, analysis_id)
+    return jsonify({"status": "success", "cleared": cleared}), 200
+
 
