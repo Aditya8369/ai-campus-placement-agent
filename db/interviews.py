@@ -212,6 +212,14 @@ def get_student_interview_history(
                 else 0.0
             )
 
+            from utils.interviewer_style_service import get_style_config
+            detected_style = None
+            if questions and isinstance(questions, list) and len(questions) > 0:
+                detected_style = questions[0].get("interviewer_style")
+            if not detected_style and answers and isinstance(answers, list) and len(answers) > 0:
+                detected_style = answers[0].get("interviewer_style") or answers[0].get("evaluation", {}).get("interviewer_style")
+            style_cfg = get_style_config(detected_style)
+
             history.append({
                 "session_id": rec["session_id"],
                 "analysis_id": rec["analysis_id"],
@@ -226,6 +234,10 @@ def get_student_interview_history(
                 "date": rec.get("analysis_date", ""),
                 "questions": questions,
                 "answers": answers,
+                "interviewer_style": style_cfg["id"],
+                "interviewer_style_name": style_cfg["name"],
+                "interviewer_style_badge": style_cfg["badge_class"],
+                "interviewer_style_icon": style_cfg["icon"],
             })
         return history
 

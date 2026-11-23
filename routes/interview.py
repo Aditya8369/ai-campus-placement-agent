@@ -118,6 +118,36 @@ logger = logging.getLogger(__name__)
 
 interview_bp = Blueprint("interview", __name__)
 
+@interview_bp.route("/api/interview/interviewer-styles", methods=["GET"])
+def api_get_interviewer_styles():
+    """
+    Returns available interviewer styles/personas presets (#686).
+    """
+    from utils.interviewer_style_service import get_available_styles
+    styles = get_available_styles()
+    return jsonify({
+        "status": "success",
+        "styles": styles
+    })
+
+
+@interview_bp.route("/api/interview/interviewer-style", methods=["POST"])
+def api_set_interviewer_style():
+    """
+    Saves candidate preference for interviewer persona (#686).
+    """
+    from utils.interviewer_style_service import normalize_style_id, get_style_config
+    data = request.get_json(silent=True) or {}
+    raw_style = data.get("style") or data.get("style_id") or data.get("interviewer_style")
+    normalized_style = normalize_style_id(raw_style)
+    flask_session["interviewer_style"] = normalized_style
+    return jsonify({
+        "status": "success",
+        "selected_style": normalized_style,
+        "style": get_style_config(normalized_style)
+    })
+
+
 @interview_bp.route("/interview/<analysis_id>")
 def interview(analysis_id: str) -> str:
     """
@@ -142,13 +172,28 @@ def interview(analysis_id: str) -> str:
     selected_difficulty = normalize_difficulty(request.args.get("difficulty"))
     difficulty_meta = get_difficulty_metadata(selected_difficulty)
 
-    # Key session by round and difficulty if customized
+    # Interviewer style / persona selection (#686)
+    from utils.interviewer_style_service import (
+        get_available_styles,
+        get_style_config,
+        normalize_style_id,
+        apply_interviewer_style_to_questions,
+    )
+    req_style = request.args.get("style") or flask_session.get("interviewer_style") or "friendly"
+    selected_style = normalize_style_id(req_style)
+    flask_session["interviewer_style"] = selected_style
+    style_meta = get_style_config(selected_style)
+    available_styles = get_available_styles()
+
+    # Key session by round, difficulty, and style if customized
     diff_slug = selected_difficulty.lower()
     session_id_parts = [analysis_id]
     if active_round in round_map.values():
         session_id_parts.append(raw_round)
     if diff_slug != "intermediate":
         session_id_parts.append(diff_slug)
+    if selected_style != "friendly":
+        session_id_parts.append(selected_style)
     session_id = "_".join(session_id_parts)
 
     # Load or initialize the interview session from DB
@@ -199,6 +244,9 @@ def interview(analysis_id: str) -> str:
             min_count=5
         )
 
+        # Apply interviewer style formatting & metadata (#686)
+        flat_questions_list = apply_interviewer_style_to_questions(flat_questions_list, selected_style)
+
         # Save new session into SQLite DB
         create_interview_session(
             interview_id=session_id,
@@ -216,6 +264,7 @@ def interview(analysis_id: str) -> str:
             target_company=analysis_record.get("company_name", "General"),
             min_count=5
         )
+        topped_up_questions = apply_interviewer_style_to_questions(topped_up_questions, selected_style)
         conn = get_db_connection()
         try:
             cursor = conn.cursor()
@@ -243,6 +292,9 @@ def interview(analysis_id: str) -> str:
         active_round=active_round,
         selected_difficulty=selected_difficulty,
         difficulty_meta=difficulty_meta,
+        available_styles=available_styles,
+        current_style=selected_style,
+        style_meta=style_meta,
         company_name=analysis_record.get("company_name", "General"),
     )
 
@@ -291,12 +343,23 @@ def submit_interview_answer(analysis_id: str):
         if is_behav is None:
             is_behav = live_interview_agent.is_behavioral_question(target_question.get("question", ""), q_type)
 
+        # Determine interviewer persona style (#686)
+        from utils.interviewer_style_service import normalize_style_id
+        target_style = normalize_style_id(
+            post_data.get("interviewer_style")
+            or target_question.get("interviewer_style")
+            or session.get("interviewer_style")
+            or flask_session.get("interviewer_style")
+            or "friendly"
+        )
+
         # Call InterviewAgent to dynamically evaluate response accuracy, metrics, and suggestions
         evaluation_results = live_interview_agent.evaluate_answer(
             question_type=q_type,
             question=target_question["question"],
             answer=candidate_response,
-            is_behavioral=is_behav
+            is_behavioral=is_behav,
+            interviewer_style=target_style,
         )
 
         # Enhance with deep STAR evaluation and non-verbal speech telemetry
@@ -361,6 +424,7 @@ def submit_interview_answer(analysis_id: str):
             "time_taken_seconds": time_taken_seconds,
             "time_limit_seconds": time_limit_seconds,
             "time_display": time_display,
+            "interviewer_style": target_style,
         }
 
         # Check if an answer already exists for this question (Retry loop #467)

@@ -237,13 +237,13 @@
             <!-- Difficulty Tier Selector (#266) -->
             <nav aria-label="Interview difficulty selection" class="d-flex flex-wrap gap-2 p-2 bg-white rounded-pill border shadow-sm">
               <span class="small fw-bold text-muted align-self-center ps-2 me-1">Difficulty:</span>
-              <a href="/interview/{{ analysis_id }}?difficulty=Beginner{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-success text-white' if selected_difficulty == 'Beginner' else 'btn-outline-success border-0' }}">
+              <a href="/interview/{{ analysis_id }}?difficulty=Beginner{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}{% if current_style and current_style != 'friendly' %}&style={{ current_style }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-success text-white' if selected_difficulty == 'Beginner' else 'btn-outline-success border-0' }}">
                 <i class="fa-solid fa-seedling me-1"></i> Beginner
               </a>
-              <a href="/interview/{{ analysis_id }}?difficulty=Intermediate{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary text-white' if (not selected_difficulty or selected_difficulty == 'Intermediate') else 'btn-outline-primary border-0' }}">
+              <a href="/interview/{{ analysis_id }}?difficulty=Intermediate{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}{% if current_style and current_style != 'friendly' %}&style={{ current_style }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary text-white' if (not selected_difficulty or selected_difficulty == 'Intermediate') else 'btn-outline-primary border-0' }}">
                 <i class="fa-solid fa-chart-line me-1"></i> Intermediate
               </a>
-              <a href="/interview/{{ analysis_id }}?difficulty=Advanced{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-danger text-white' if selected_difficulty == 'Advanced' else 'btn-outline-danger border-0' }}">
+              <a href="/interview/{{ analysis_id }}?difficulty=Advanced{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}{% if current_style and current_style != 'friendly' %}&style={{ current_style }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-danger text-white' if selected_difficulty == 'Advanced' else 'btn-outline-danger border-0' }}">
                 <i class="fa-solid fa-fire me-1"></i> Advanced
               </a>
               <span class="ms-auto pe-2 align-self-center">
@@ -252,6 +252,25 @@
                 </span>
               </span>
             </nav>
+
+            <!-- Interviewer Persona / Style Selector (#686) -->
+            {% if available_styles %}
+            <nav aria-label="Interviewer persona selection" class="d-flex flex-wrap gap-2 p-2 bg-light rounded-pill border shadow-sm mt-2">
+              <span class="small fw-bold text-muted align-self-center ps-2 me-1">Interviewer Persona:</span>
+              {% for s in available_styles %}
+              <a href="/interview/{{ analysis_id }}?style={{ s.id }}{% if active_round and active_round != 'All' %}&round={{ active_round }}{% endif %}{% if selected_difficulty and selected_difficulty != 'Intermediate' %}&difficulty={{ selected_difficulty }}{% endif %}" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold {{ 'btn-primary text-white shadow-sm' if current_style == s.id else 'btn-outline-secondary border-0' }}" title="{{ s.description }}">
+                <i class="fa-solid {{ s.icon }} me-1"></i> {{ s.name }}
+              </a>
+              {% endfor %}
+              {% if style_meta %}
+              <span class="ms-auto pe-2 align-self-center">
+                <span class="badge {{ style_meta.badge_class }} rounded-pill px-3 py-1 small">
+                  <i class="fa-solid {{ style_meta.icon }} me-1"></i> Persona: {{ style_meta.name }}
+                </span>
+              </span>
+              {% endif %}
+            </nav>
+            {% endif %}
           </div>
           
           <!-- Chat area -->
@@ -353,6 +372,12 @@
                     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0 px-2 flex-shrink-0 btn-copy-suggestion" data-copy-text="{{ ans.evaluation.star_method_analysis.feedback|e }}" title="Copy STAR feedback" aria-label="Copy STAR feedback">
                       <i class="fa-regular fa-copy"></i>
                     </button>
+                  </div>
+                {% endif %}
+                {% if ans.evaluation.probing_follow_up %}
+                  <div class="p-2 bg-warning-subtle text-warning-emphasis rounded-3 border border-warning-subtle mb-2 probing-follow-up-card">
+                    <div class="fw-bold small mb-1"><i class="fa-solid fa-bolt me-1"></i> Strict Technical Probing Follow-Up:</div>
+                    <div class="small">{{ ans.evaluation.probing_follow_up }}</div>
                   </div>
                 {% endif %}
                 {% if ans.evaluation.clarity or ans.evaluation.structure or ans.evaluation.relevance or ans.evaluation.tip %}
