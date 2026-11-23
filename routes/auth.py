@@ -1839,27 +1839,20 @@ def api_verify_email_change():
     return jsonify(result), status_code
 
 
-@auth_bp.route("/api/account/data-import/preview", methods=["POST"])
-def api_preview_data_import():
-    """Validates and previews records from candidate backup file (#631)."""
-    from utils.data_import_service import preview_backup_import
+@auth_bp.route("/api/account/data-retention", methods=["POST"])
+def api_update_data_retention():
+    """Sets student data retention window (#629)."""
+    from utils.data_retention_service import validate_retention_policy
     data = request.get_json(silent=True) or {}
-    backup = data.get("backup", {})
-    preview = preview_backup_import(backup)
-    return jsonify({"status": "success", "preview": preview}), 200
+    policy = data.get("policy", "indefinite")
+    confirmed = bool(data.get("confirmed", False))
 
+    val = validate_retention_policy(policy)
+    if not val.get("valid"):
+        return jsonify({"status": "error", "message": val.get("error")}), 400
 
-@auth_bp.route("/api/account/data-import/execute", methods=["POST"])
-def api_execute_data_import():
-    """Restores placement data into the authenticated candidate profile (#631)."""
-    from utils.data_import_service import execute_backup_import
-    student_id = flask_session.get("user_id") or "default_student"
-    data = request.get_json(silent=True) or {}
-    backup = data.get("backup", {})
-    res = execute_backup_import(student_id, backup)
-    if not res.get("success"):
-        return jsonify({"status": "error", "message": res.get("error")}), 400
-    return jsonify({"status": "success", "result": res}), 200
+    flask_session["data_retention_policy"] = val["policy_key"]
+    return jsonify({"status": "success", "policy": val}), 200
 
 
 
