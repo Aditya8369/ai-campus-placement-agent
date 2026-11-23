@@ -2773,17 +2773,74 @@ def api_delete_question_explanation(question_id):
     return jsonify({"status": "not_found", "message": "Explanation not found"}), 404
 
 
-@interview_bp.route("/api/interview/speech-metrics", methods=["POST"])
-def api_speech_metrics():
-    """Analyzes transcript for filler words, hesitations, repetitions, and pacing (#609)."""
-    from utils.speech_analysis_service import analyze_speech_metrics
-    data = request.get_json(silent=True) or {}
-    transcript = data.get("transcript", "")
-    pauses = data.get("pauses")
+@interview_bp.route("/api/interview/question-packs", methods=["GET"])
+def api_list_user_question_packs():
+    """Lists custom question packs created by the authenticated user (#611)."""
+    from utils.question_pack_service import get_user_question_packs
+    student_id = flask_session.get("user_id") or "default_student"
+    packs = get_user_question_packs(student_id)
+    return jsonify({
+        "status": "success",
+        "count": len(packs),
+        "packs": packs
+    }), 200
 
-    result = analyze_speech_metrics(transcript, pauses=pauses)
-    if not result.get("success"):
-        return jsonify(result), 400
-    return jsonify(result), 200
+
+@interview_bp.route("/api/interview/question-packs", methods=["POST"])
+def api_create_question_pack():
+    """Creates a new custom question pack for the authenticated user (#611)."""
+    from utils.question_pack_service import create_question_pack
+    student_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or {}
+
+    title = data.get("title", "")
+    description = data.get("description", "")
+    category = data.get("category", "general")
+    difficulty = data.get("difficulty", "intermediate")
+    questions = data.get("questions", [])
+
+    res = create_question_pack(
+        user_id=student_id,
+        title=title,
+        questions=questions,
+        description=description,
+        category=category,
+        difficulty=difficulty
+    )
+    if not res.get("success"):
+        return jsonify({"status": "error", "message": res.get("error")}), 400
+
+    return jsonify({
+        "status": "success",
+        "pack": res["pack"]
+    }), 201
+
+
+@interview_bp.route("/api/interview/question-packs/<pack_id>", methods=["GET"])
+def api_get_question_pack(pack_id):
+    """Retrieves a specific custom question pack (#611)."""
+    from utils.question_pack_service import get_question_pack_by_id
+    student_id = flask_session.get("user_id") or "default_student"
+    pack = get_question_pack_by_id(pack_id, student_id)
+    if not pack:
+        return jsonify({"status": "error", "message": "Question pack not found"}), 404
+    return jsonify({
+        "status": "success",
+        "pack": pack
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-packs/<pack_id>", methods=["DELETE"])
+def api_delete_question_pack(pack_id):
+    """Deletes a custom question pack (#611)."""
+    from utils.question_pack_service import delete_question_pack
+    student_id = flask_session.get("user_id") or "default_student"
+    deleted = delete_question_pack(pack_id, student_id)
+    if not deleted:
+        return jsonify({"status": "error", "message": "Question pack not found or unauthorized"}), 404
+    return jsonify({
+        "status": "success",
+        "message": "Question pack deleted successfully"
+    }), 200
 
 
