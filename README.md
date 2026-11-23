@@ -922,6 +922,15 @@ Here are solutions to the most common setup and runtime issues:
 
 ---
 
+## Security & Dependency Management
+
+We take application security and dependency hygiene seriously:
+- **Automated Dual-Ecosystem Scans**: CI workflows audit Python (`requirements.txt`) and JavaScript (`package.json`) dependencies on every pull request and weekly schedule.
+- **Maintainer Guide**: See [docs/DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md) for step-by-step instructions on reviewing, remediating, and managing time-limited exemptions.
+- **Security Policy & Responsible Disclosure**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
+
+---
+
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

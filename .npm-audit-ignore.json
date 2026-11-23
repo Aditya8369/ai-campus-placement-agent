@@ -1,0 +1,5 @@
+{
+  "description": "NPM Dependency Vulnerability Allow-List & Temporary Exceptions (#649)",
+  "version": 1,
+  "ignored_advisories": []
+}
