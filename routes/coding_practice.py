@@ -683,26 +683,21 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@coding_practice_bp.route("/api/coding/hints", methods=["POST"])
-def api_get_coding_hint():
-    """Retrieves graduated hint level and tracks hint usage (#615)."""
-    from utils.coding_hint_ladder_service import get_hint_for_problem
+@coding_practice_bp.route("/api/coding/recommendations", methods=["POST"])
+def api_get_coding_recommendations():
+    """Generates problem recommendations with explicit justifications (#618)."""
+    from utils.coding_recommendation_service import recommend_problems_with_reasons
     data = request.get_json(silent=True) or {}
-    problem_id = data.get("problem_id", "default")
-    level = data.get("level", 1)
+    weak_topics = data.get("weak_topics", [])
+    recent_failed = data.get("recent_failed", [])
+    dismissed = data.get("dismissed", [])
 
-    hint_res = get_hint_for_problem(problem_id, level)
-
-    used_key = f"hints_used_{problem_id}"
-    current_count = flask_session.get(used_key, 0)
-    if level > current_count:
-        flask_session[used_key] = level
-
-    return jsonify({
-        "status": "success",
-        "hint": hint_res,
-        "hints_used_count": flask_session.get(used_key, 1)
-    }), 200
+    recs = recommend_problems_with_reasons(
+        weak_topics=weak_topics,
+        recent_failed_attempts=recent_failed,
+        dismissed_problem_ids=dismissed
+    )
+    return jsonify({"status": "success", "recommendations": recs}), 200
 
 
 
