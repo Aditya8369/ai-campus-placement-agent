@@ -5,7 +5,13 @@ from typing import Dict, Any, List, Optional, Callable
 
 import prompts
 import config
-from utils.gemini import generate_json_response, AIResponseFormatError, scrub_api_key
+from utils.gemini import (
+    generate_json_response,
+    stream_json_response_sections,
+    create_safe_fallback_analysis_payload,
+    AIResponseFormatError,
+    scrub_api_key,
+)
 from agents.coordinator_schema import validate_coordinator_payload
 from utils.prompt_security import (
     sanitize_untrusted_text,
@@ -279,6 +285,240 @@ class CoordinatorAgent:
 
         logger.info("CoordinatorAgent: Multi-agent processing complete.")
         return combined_payload
+
+    def analyze_stream(
+        self,
+        resume_text: str,
+        job_description: str = "",
+        company_name: str = "General",
+        on_section: Optional[Callable[[str, Any, int], None]] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+        use_fallback_on_failure: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Runs placement analysis using streaming Gemini AI responses (#764).
+        Invokes on_section(section_name, section_data, progress) as each section
+        completes, rendering results before the entire response finishes.
+
+        Features:
+        - The first section appears before the whole response finishes.
+        - Cancelling stops the underlying stream request immediately.
+        - Mid-stream errors preserve all already generated sections.
+        - Seamless non-streaming fallback when streaming cannot start.
+        """
+        logger.info(f"CoordinatorAgent: Starting streaming analysis cycle for company target: '{company_name}'")
+
+        if getattr(config, "ENABLE_PII_REDACTION", True):
+            from utils.pii_redactor import redact_pii
+            redacted_resume = redact_pii(resume_text)
+            redacted_jd = redact_pii(job_description)
+        else:
+            redacted_resume = resume_text
+            redacted_jd = job_description
+
+        sanitized_resume = sanitize_untrusted_text(redacted_resume, max_length=25000)
+        sanitized_jd = sanitize_untrusted_text(redacted_jd, max_length=15000)
+
+        resume_threat = detect_prompt_injection(sanitized_resume)
+        jd_threat = detect_prompt_injection(sanitized_jd)
+
+        company_profile = self._load_company_data(company_name)
+        company_profile_str = json.dumps(company_profile, indent=2) if company_profile else "Generic technical engineering placement guidelines."
+
+        parsed_sections = standardize_resume_sections(sanitized_resume)
+        formatted_resume = format_standardized_resume(parsed_sections) if parsed_sections else sanitized_resume
+
+        encapsulated_resume = encapsulate_untrusted_input(formatted_resume, document_type="candidate_resume")
+        job_desc_str = sanitized_jd if sanitized_jd.strip() else "None provided. Assume General Software Development Engineer Role."
+        encapsulated_jd = encapsulate_untrusted_input(job_desc_str, document_type="job_description")
+
+        user_prompt = prompts.ANALYSIS_USER_PROMPT_TEMPLATE.format(
+            company_name=company_name,
+            company_details=company_profile_str,
+            job_description=encapsulated_jd,
+            resume_text=encapsulated_resume
+        )
+        secure_system_instruction = build_secure_system_instruction(prompts.ANALYSIS_SYSTEM_INSTRUCTION)
+
+        completed_sections: Dict[str, Any] = {}
+        section_status: Dict[str, str] = {
+            "resume_analysis": "unavailable",
+            "job_match": "unavailable",
+            "skill_gap": "unavailable",
+            "learning_roadmap": "unavailable",
+            "interview_questions": "unavailable",
+            "overall_recommendation_summary": "unavailable",
+        }
+
+        # Progress weights for each section
+        progress_map = {
+            "resume_analysis": 35,
+            "job_match": 50,
+            "skill_gap": 65,
+            "learning_roadmap": 80,
+            "interview_questions": 92,
+            "overall_recommendation_summary": 100,
+        }
+
+        fallback_payload = create_safe_fallback_analysis_payload(company_name=company_name)
+
+        stream_gen = stream_json_response_sections(
+            system_instruction=secure_system_instruction,
+            prompt=user_prompt,
+            is_cancelled_fn=is_cancelled,
+            feature="analysis",
+        )
+
+        had_stream_error = False
+        stream_error_msg = None
+
+        for sec_name, sec_data in stream_gen:
+            if is_cancelled and is_cancelled():
+                logger.info("CoordinatorAgent: Cancellation detected during stream iteration.")
+                break
+
+            if sec_name == "_cancelled":
+                logger.info("CoordinatorAgent: Stream generator returned cancelled event.")
+                break
+
+            if sec_name == "_stream_error":
+                had_stream_error = True
+                stream_error_msg = sec_data.get("error", "Stream error occurred.")
+                logger.warning(f"CoordinatorAgent: Mid-stream error: {stream_error_msg}")
+                break
+
+            # Process completed section with its specialized agent
+            try:
+                if sec_name == "resume_analysis":
+                    processed = self.resume_agent.process(sec_data)
+                    try:
+                        from utils.ats_score_service import evaluate_resume_ats_score
+                        ats_breakdown = evaluate_resume_ats_score(resume_text or sanitized_resume)
+                        processed["ats_score"] = ats_breakdown["total_score"]
+                        processed["ats_breakdown"] = ats_breakdown
+                    except Exception as ats_err:
+                        logger.warning(f"ATS scoring error during streaming: {ats_err}")
+                    processed["status"] = "valid"
+                    completed_sections["resume_analysis"] = processed
+                    section_status["resume_analysis"] = "valid"
+
+                elif sec_name == "job_match":
+                    ats_score = completed_sections.get("resume_analysis", {}).get("ats_score", 70)
+                    processed = self.job_match_agent.process(
+                        sec_data,
+                        company_name=company_name,
+                        ats_score=ats_score
+                    )
+                    processed["status"] = "valid"
+                    completed_sections["job_match"] = processed
+                    section_status["job_match"] = "valid"
+
+                elif sec_name == "skill_gap":
+                    processed = self.skill_gap_agent.process(sec_data)
+                    completed_sections["skill_gap"] = processed
+                    section_status["skill_gap"] = "valid"
+
+                elif sec_name == "learning_roadmap":
+                    processed = self.roadmap_agent.process(sec_data)
+                    completed_sections["learning_roadmap"] = processed
+                    section_status["learning_roadmap"] = "valid"
+
+                elif sec_name == "interview_questions":
+                    processed = self.interview_agent.process(sec_data, company_name=company_name)
+                    processed["status"] = "valid"
+                    completed_sections["interview_questions"] = processed
+                    section_status["interview_questions"] = "valid"
+
+                elif sec_name == "overall_recommendation_summary":
+                    summary_text = sec_data if isinstance(sec_data, str) else str(sec_data)
+                    completed_sections["overall_recommendation_summary"] = summary_text
+                    section_status["overall_recommendation_summary"] = "valid"
+
+                # Notify caller immediately as soon as section is complete (#764)
+                if on_section:
+                    progress_pct = progress_map.get(sec_name, 50)
+                    on_section(sec_name, completed_sections.get(sec_name, sec_data), progress_pct)
+
+            except Exception as proc_err:
+                logger.warning(f"Error processing section '{sec_name}': {proc_err}")
+                completed_sections[sec_name] = sec_data
+
+        # Fallback handling:
+        # If streaming failed with zero sections completed and fallback is enabled, call non-streaming analyze()
+        if had_stream_error and not completed_sections and use_fallback_on_failure:
+            logger.info("Streaming failed before any section completed. Invoking non-streaming fallback.")
+            return self.analyze(
+                resume_text=resume_text,
+                job_description=job_description,
+                company_name=company_name,
+            )
+
+        # Assemble result payload, retaining all completed sections (mid-stream errors never discard content)
+        final_resume = completed_sections.get("resume_analysis", fallback_payload["resume_analysis"])
+        final_job_match = completed_sections.get("job_match", fallback_payload["job_match"])
+        final_skill_gap = completed_sections.get("skill_gap", fallback_payload["skill_gap"])
+        final_roadmap = completed_sections.get("learning_roadmap", fallback_payload["learning_roadmap"])
+        final_interview = completed_sections.get("interview_questions", fallback_payload["interview_questions"])
+        final_summary = completed_sections.get(
+            "overall_recommendation_summary",
+            fallback_payload["overall_recommendation_summary"]
+        )
+
+        conflicts = self._detect_conflicts(
+            job_match=final_job_match,
+            skill_gap=final_skill_gap,
+            resume_analysis=final_resume
+        )
+
+        try:
+            matched_skills = final_job_match.get("matched_skills") or []
+            evidence_mapping = map_skill_evidence(
+                resume_text=resume_text,
+                target_skills=matched_skills or None
+            )
+        except Exception:
+            evidence_mapping = {
+                "total_skills": 0,
+                "supported_skills_count": 0,
+                "unsupported_skills_count": 0,
+                "partial_skills_count": 0,
+                "evidence_score": 100,
+                "summary": "Skill evidence mapping could not be evaluated.",
+                "skills": []
+            }
+
+        ats_breakdown = final_resume.get("ats_breakdown")
+
+        result_payload = {
+            "resume_analysis": final_resume,
+            "ats_breakdown": ats_breakdown,
+            "job_match": final_job_match,
+            "skill_gap": final_skill_gap,
+            "learning_roadmap": final_roadmap,
+            "interview_questions": final_interview,
+            "overall_recommendation_summary": final_summary,
+            "conflicts": conflicts,
+            "section_status": section_status,
+            "skill_evidence_mapping": evidence_mapping,
+            "extracted_resume_text": resume_text,
+            "streaming": True,
+            "completed_sections": list(completed_sections.keys()),
+            "security_audit": {
+                "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
+                "resume_threat": resume_threat,
+                "job_description_threat": jd_threat,
+                "safety_flags": []
+            }
+        }
+
+        if had_stream_error:
+            result_payload["stream_error"] = stream_error_msg
+            result_payload["is_partial"] = True
+
+        if is_cancelled and is_cancelled():
+            result_payload["is_cancelled"] = True
+
+        return result_payload
 
     def _detect_conflicts(
         self,

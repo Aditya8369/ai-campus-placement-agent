@@ -18,6 +18,21 @@
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <!-- Early Reduced Motion & Theme Resolution (Prevents FOUM / FOUC) -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem("placement_motion_pref") || "system";
+        var sys = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var isRed = pref === "reduce" || (pref === "system" && sys);
+        document.documentElement.setAttribute("data-motion-pref", pref);
+        document.documentElement.setAttribute("data-reduced-motion", isRed ? "true" : "false");
+        if (isRed) {
+          document.documentElement.classList.add("reduced-motion");
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>
@@ -246,6 +261,39 @@
           type="button" title="Toggle theme" aria-label="Toggle theme mode">
           <i class="fa-solid fa-moon"></i>
         </button>
+
+        <!-- Motion Preference Selector (#task-reduced-motion) -->
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-outline-secondary btn-sm rounded-pill px-2 py-1 motion-toggle-btn dropdown-toggle"
+            type="button" id="motionPrefDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+            title="Motion preferences: System, Reduced, or Standard" aria-label="Motion preference settings">
+            <i class="fa-solid fa-person-running me-1" id="motionNavIcon"></i>
+            <span class="small d-none d-md-inline" id="motionNavLabel">Motion</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 motion-dropdown-menu" aria-labelledby="motionPrefDropdown">
+            <li><h6 class="dropdown-header"><i class="fa-solid fa-sliders me-1"></i> Motion Preference</h6></li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="system">
+                <span><i class="fa-solid fa-desktop me-2 text-secondary"></i> System Default (Auto)</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="system"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="reduce">
+                <span><i class="fa-solid fa-person-walking me-2 text-warning"></i> Reduced Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="reduce"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="allow">
+                <span><i class="fa-solid fa-person-running me-2 text-success"></i> Standard Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="allow"></i>
+              </button>
+            </li>
+            <li><hr class="dropdown-divider my-1"></li>
+            <li><span class="dropdown-item-text text-muted small py-1" style="font-size: 0.75rem;">Disables animations while keeping progress indicators visible.</span></li>
+          </ul>
+        </div>
 
         <!-- Authentication -->
         {% if session.get('user_id') %}
@@ -650,16 +698,42 @@
 
                 <!-- Mode 2: Custom Job Description Textarea & Saved Descriptions -->
                 <div id="customJdSection" class="d-none">
-                  <div class="d-flex justify-content-end mb-2">
-                    {% if session.get('user_id') %}
-                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
-                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnToggleImportUrl" data-bs-toggle="collapse" data-bs-target="#importUrlCollapse" aria-expanded="false" aria-controls="importUrlCollapse" title="Import job description from a public web link">
+                      <i class="fa-solid fa-link me-1"></i> Import from link
                     </button>
-                    {% else %}
-                    <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
-                      <i class="fa-solid fa-bookmark me-1"></i> Save job description
-                    </a>
-                    {% endif %}
+                    <div>
+                      {% if session.get('user_id') %}
+                      <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnSaveJobDescription" data-bs-toggle="modal" data-bs-target="#saveJobDescriptionModal" title="Save this job description to your private library">
+                        <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                      </button>
+                      {% else %}
+                      <a href="{{ url_for('login', next=url_for('index')) }}" class="btn btn-sm btn-outline-secondary rounded-pill px-3" title="Log in to save job descriptions to your private library">
+                        <i class="fa-solid fa-bookmark me-1"></i> Save job description
+                      </a>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <!-- Import from link collapsible box (#689) -->
+                  <div class="collapse mb-3" id="importUrlCollapse">
+                    <div class="card card-body bg-light border p-3 rounded-3 shadow-sm">
+                      <label for="importUrlInput" class="form-label small fw-semibold text-secondary mb-1">
+                        <i class="fa-solid fa-globe me-1 text-primary"></i> Paste Job Posting URL
+                      </label>
+                      <div class="input-group">
+                        <input type="url" id="importUrlInput" class="form-control rounded-start-3" placeholder="https://careers.example.com/job/software-engineer" aria-label="Job posting URL">
+                        <button class="btn btn-primary rounded-end-3 px-3" type="button" id="btnFetchJobUrl">
+                          <span id="fetchUrlSpinner" class="spinner-border spinner-border-sm me-1 d-none" role="status" aria-hidden="true"></span>
+                          <span id="fetchUrlBtnText"><i class="fa-solid fa-cloud-arrow-down me-1"></i> Fetch & Extract</span>
+                        </button>
+                      </div>
+                      <div id="importUrlAlert" class="alert py-2 px-3 mt-2 small d-none rounded-2" role="alert"></div>
+                      <div class="d-flex justify-content-between align-items-center mt-1 text-muted small flex-wrap gap-1">
+                        <span><i class="fa-solid fa-shield-halved me-1 text-success"></i> Only public web links allowed. SSRF protected.</span>
+                        <span><i class="fa-solid fa-pen-to-square me-1"></i> Text appears below for review</span>
+                      </div>
+                    </div>
                   </div>
                   {% if session.get('user_id') %}
                   <div class="input-group mb-2">
@@ -690,6 +764,44 @@
                   </div>
                   <div id="jdCharLimitWarning" class="alert alert-warning py-1 px-2 mt-1 small d-none rounded-2">
                     <i class="fa-solid fa-circle-exclamation me-1"></i> You have reached the recommended character limit for job descriptions.
+                  </div>
+
+                  <!-- Job Description Quality Checker Feedback (#602) -->
+                  <div id="jdQualityCheckerPanel" class="mt-2 d-none">
+                    <div class="card border rounded-3 p-3 bg-light-subtle shadow-xs">
+                      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <div class="d-flex align-items-center gap-2">
+                          <i class="fa-solid fa-clipboard-check text-primary fs-5"></i>
+                          <h6 class="fw-bold text-dark mb-0">Job Description Quality: <span id="jdQualityScore">0</span>/100</h6>
+                        </div>
+                        <span id="jdQualityBadge" class="badge rounded-pill px-3 py-1 bg-secondary">Evaluating</span>
+                      </div>
+                      <p class="small text-secondary mb-2" id="jdQualityExplanation">Checking job description clarity and completeness...</p>
+                      
+                      <div id="jdMissingWarningBox" class="alert alert-warning py-2 px-3 small rounded-3 mb-2 d-none">
+                        <div class="d-flex align-items-start gap-2">
+                          <i class="fa-solid fa-triangle-exclamation text-warning mt-1"></i>
+                          <div>
+                            <strong id="jdMissingTitle">Notice:</strong>
+                            <span id="jdMissingText">Short or incomplete descriptions may produce weaker matching results.</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div id="jdSuggestionsBox" class="p-2 border rounded-3 bg-white small text-muted d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                          <strong class="text-primary"><i class="fa-solid fa-lightbulb me-1"></i> Suggested Example Text:</strong>
+                          <button type="button" id="btnAppendJdExample" class="btn btn-xs btn-outline-primary rounded-pill px-2 py-0" style="font-size: 0.75rem;">
+                            + Insert Example
+                          </button>
+                        </div>
+                        <pre class="mb-0 text-wrap font-monospace small" id="jdExampleTextSnippet" style="max-height: 120px; overflow-y: auto; font-size: 0.78rem;"></pre>
+                      </div>
+
+                      <div class="text-muted small mt-2" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-circle-info me-1"></i> You may proceed anytime with your analysis. This quality assessment is advisory and the text is not stored without your consent.
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -938,7 +1050,10 @@
           <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
         </div>
         <div id="progressErrorMessage" class="small mb-3"></div>
-        <div class="d-flex justify-content-end gap-2">
+        <div class="d-flex justify-content-end gap-2 flex-wrap">
+          <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3 d-none" id="btnViewPartialDashboard">
+            <i class="fa-solid fa-gauge-high me-1"></i> View Saved Sections
+          </a>
           <button type="button" class="btn btn-sm btn-danger text-white rounded-pill px-3" id="btnRetryAnalysis">
             <i class="fa-solid fa-rotate-right me-1"></i> Retry
           </button>
@@ -976,7 +1091,20 @@
       </ul>
       <p class="text-muted small mb-0" id="progressFooterNote">Please stand by. Multi-agent processing in progress...</p>
 
-      <!-- Cancel Analysis Action (#465) -->
+      <!-- Streamed Sections Live Preview Container (#764) -->
+      <div id="streamedSectionsContainer" class="d-none text-start mt-3 pt-3 border-top" aria-live="polite">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <span class="small fw-semibold text-secondary">
+            <i class="fa-solid fa-bolt text-warning me-1"></i> Generated Sections (Live Stream)
+          </span>
+          <span class="badge bg-primary-subtle text-primary rounded-pill small" id="streamedSectionsCounter">0 ready</span>
+        </div>
+        <div id="streamedSectionsCards" class="d-flex flex-column gap-2" style="max-height: 240px; overflow-y: auto;">
+          <!-- Dynamically populated as each section completes -->
+        </div>
+      </div>
+
+      <!-- Cancel Analysis Action (#465, #764) -->
       <div class="mt-4 pt-3 border-top">
         <button type="button" class="btn btn-outline-danger btn-sm rounded-pill px-4" id="btnCancelAnalysis">
           <i class="fa-solid fa-ban me-1"></i> Cancel Analysis
@@ -1418,8 +1546,84 @@
           });
         }
       }
+
+      // Job Description Quality Checker (#602)
+      const jdInputEl = document.getElementById("jdInput");
+      const jdPanel = document.getElementById("jdQualityCheckerPanel");
+      const jdScoreEl = document.getElementById("jdQualityScore");
+      const jdBadgeEl = document.getElementById("jdQualityBadge");
+      const jdExplEl = document.getElementById("jdQualityExplanation");
+      const jdWarnBox = document.getElementById("jdMissingWarningBox");
+      const jdMissingText = document.getElementById("jdMissingText");
+      const jdSuggBox = document.getElementById("jdSuggestionsBox");
+      const jdSnippet = document.getElementById("jdExampleTextSnippet");
+      const btnAppendEx = document.getElementById("btnAppendJdExample");
+      let lastSuggestedText = "";
+      let jdCheckTimeout = null;
+
+      async function checkJdQuality() {
+        if (!jdInputEl || !jdPanel) return;
+        const text = jdInputEl.value.trim();
+        if (text.length < 5) {
+          jdPanel.classList.add("d-none");
+          return;
+        }
+        jdPanel.classList.remove("d-none");
+        try {
+          const resp = await fetch("/api/job-description/check-quality", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_description: text })
+          });
+          const data = await resp.json();
+          if (data.success && data.report) {
+            const r = data.report;
+            if (jdScoreEl) jdScoreEl.textContent = r.quality_score;
+            if (jdBadgeEl) {
+              jdBadgeEl.textContent = r.quality_rating;
+              jdBadgeEl.className = "badge rounded-pill px-3 py-1 " + 
+                (r.quality_score >= 75 ? "bg-success" : (r.quality_score >= 50 ? "bg-warning text-dark" : "bg-danger"));
+            }
+            if (jdExplEl) jdExplEl.textContent = r.plain_explanation;
+            if (r.warning_message) {
+              if (jdWarnBox) jdWarnBox.classList.remove("d-none");
+              if (jdMissingText) jdMissingText.textContent = r.warning_message;
+            } else {
+              if (jdWarnBox) jdWarnBox.classList.add("d-none");
+            }
+            if (r.suggested_examples && r.suggested_examples.length > 0) {
+              lastSuggestedText = r.suggested_examples.join("\n\n");
+              if (jdSnippet) jdSnippet.textContent = lastSuggestedText;
+              if (jdSuggBox) jdSuggBox.classList.remove("d-none");
+            } else {
+              if (jdSuggBox) jdSuggBox.classList.add("d-none");
+            }
+          }
+        } catch (e) {
+          console.debug("JD quality check error:", e);
+        }
+      }
+
+      if (jdInputEl) {
+        jdInputEl.addEventListener("input", () => {
+          clearTimeout(jdCheckTimeout);
+          jdCheckTimeout = setTimeout(checkJdQuality, 400);
+        });
+      }
+
+      if (btnAppendEx && jdInputEl) {
+        btnAppendEx.addEventListener("click", () => {
+          if (lastSuggestedText) {
+            jdInputEl.value = (jdInputEl.value.trim() + "\n\n" + lastSuggestedText).trim();
+            checkJdQuality();
+          }
+        });
+      }
     });
   </script>
+  <!-- Keyboard Shortcuts Help Modal (#691) -->
+  {% include "shortcuts_help_modal.html" %}
+
   <!-- Custom JS -->
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/rate_limit.js') }}"></script>

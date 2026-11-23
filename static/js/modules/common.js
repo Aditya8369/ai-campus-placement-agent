@@ -11,6 +11,13 @@
 
 import { escapeHtml, initCsrfFetch } from "./utils.js";
 import { initThemeToggle } from "./theme.js";
+import {
+  initKeyboardShortcuts,
+  openShortcutsModal,
+  closeShortcutsModal,
+} from "./keyboard_shortcuts.js";
+
+export { initKeyboardShortcuts, openShortcutsModal, closeShortcutsModal };
 
 /**
  * Clear all interview draft answers from browser storage (#475).
@@ -98,7 +105,7 @@ export function initBackToTop() {
     e.preventDefault();
     window.scrollTo({
       top: 0,
-      behavior: "smooth"
+      behavior: isReducedMotion() ? "auto" : "smooth"
     });
     btn.blur();
   });
@@ -668,12 +675,16 @@ export function initSessionTimeout() {
 export function initCommon() {
   initCsrfFetch();
   initThemeToggle();
+  initMotionPreference();
   initBackToTop();
   initAccessibility();
   initRecentAnalysesDrawer();
   initSessionTimeout();
   initInterviewDraftLogoutCleanup();
+  initKeyboardShortcuts();
 }
+
+export { initMotionPreference, isReducedMotion, getMotionPreference, setMotionPreference };
 
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") {

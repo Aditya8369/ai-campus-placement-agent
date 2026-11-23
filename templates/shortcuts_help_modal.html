@@ -1,0 +1,70 @@
+<!-- Keyboard Shortcuts Accessible Help Modal (#691) -->
+<div class="modal fade" id="shortcutsHelpModal" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="shortcutsHelpModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg" role="document">
+    <div class="modal-content shadow-lg border-0 rounded-4 overflow-hidden">
+      <div class="modal-header bg-light border-bottom px-4 py-3">
+        <h5 class="modal-title fw-bold text-dark d-flex align-items-center gap-2 mb-0" id="shortcutsHelpModalTitle">
+          <i class="fa-solid fa-keyboard text-primary" aria-hidden="true"></i> Keyboard Shortcuts
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" id="shortcutsHelpCloseBtn" aria-label="Close keyboard shortcuts dialog"></button>
+      </div>
+      <div class="modal-body px-4 py-3">
+        <div class="row g-4">
+          <div class="col-md-6">
+            <h6 class="text-uppercase text-muted fw-bold small mb-3">
+              <i class="fa-solid fa-compass me-1 text-primary" aria-hidden="true"></i> Navigation
+            </h6>
+            <div class="list-group list-group-flush border rounded-3 mb-3">
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Dashboard</span>
+                <span><kbd class="shortcut-kbd">g</kbd> <span class="text-muted small">then</span> <kbd class="shortcut-kbd">d</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Mock Interview Practice</span>
+                <span><kbd class="shortcut-kbd">g</kbd> <span class="text-muted small">then</span> <kbd class="shortcut-kbd">i</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Application Tracker</span>
+                <span><kbd class="shortcut-kbd">g</kbd> <span class="text-muted small">then</span> <kbd class="shortcut-kbd">t</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Coding Practice</span>
+                <span><kbd class="shortcut-kbd">g</kbd> <span class="text-muted small">then</span> <kbd class="shortcut-kbd">c</kbd></span>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <h6 class="text-uppercase text-muted fw-bold small mb-3">
+              <i class="fa-solid fa-bolt me-1 text-warning" aria-hidden="true"></i> Actions & Dialogs
+            </h6>
+            <div class="list-group list-group-flush border rounded-3 mb-3">
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Focus Search</span>
+                <span><kbd class="shortcut-kbd">/</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Open Shortcuts Help</span>
+                <span><kbd class="shortcut-kbd">?</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Close Dialog / Cancel</span>
+                <span><kbd class="shortcut-kbd">Esc</kbd></span>
+              </div>
+              <div class="list-group-item d-flex justify-content-between align-items-center py-2 px-3">
+                <span class="small">Submit Answer / Run Code</span>
+                <span><kbd class="shortcut-kbd">Ctrl</kbd> + <kbd class="shortcut-kbd">Enter</kbd></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="alert alert-light border rounded-3 small text-muted mb-0 d-flex align-items-center gap-2">
+          <i class="fa-solid fa-circle-info text-primary" aria-hidden="true"></i>
+          <span>Shortcuts are inactive while typing inside inputs, textareas, or editable elements.</span>
+        </div>
+      </div>
+      <div class="modal-footer bg-light border-top px-4 py-2">
+        <button type="button" class="btn btn-secondary btn-sm rounded-pill px-3" data-bs-dismiss="modal" id="shortcutsHelpFooterCloseBtn">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Union
 from db.connection import create_connection, get_connection, transaction
 import config
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -229,11 +230,25 @@ def init_db() -> None:
                 overall_verdict TEXT NOT NULL DEFAULT 'Offer',
                 difficulty_level TEXT NOT NULL DEFAULT 'Medium',
                 tips_and_preparation TEXT,
+                helpful_count INTEGER NOT NULL DEFAULT 0,
                 reported_flag INTEGER NOT NULL DEFAULT 0,
                 report_reason TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+
+        # Table for interview experience helpful votes (#693)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS interview_experience_helpful_votes (
+                id TEXT PRIMARY KEY,
+                experience_id TEXT NOT NULL,
+                student_id TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(experience_id, student_id)
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_exp ON interview_experience_helpful_votes (experience_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_helpful_votes_student ON interview_experience_helpful_votes (student_id)")
 
         # Table 8: Store student placement preparation calendar events (#190)
         cursor.execute("""
@@ -775,6 +790,26 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_gd_attempts_student ON gd_practice_attempts (student_id, created_at DESC)")
+
+        # Table 35: Store placement cell batch resume analysis records (#763)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS placement_cell_batches (
+                id TEXT PRIMARY KEY,
+                batch_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                consent_confirmed INTEGER NOT NULL DEFAULT 1,
+                total_files INTEGER NOT NULL DEFAULT 0,
+                processed_count INTEGER NOT NULL DEFAULT 0,
+                failed_count INTEGER NOT NULL DEFAULT 0,
+                average_score REAL DEFAULT 0.0,
+                score_distribution TEXT,
+                common_missing_skills TEXT,
+                failed_files TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
@@ -2496,6 +2531,15 @@ def get_student_interview_history(student_id: str = "default_student") -> List[D
             hr_avg = round(sum(type_scores["HR"]) / len(type_scores["HR"]), 1) if type_scores["HR"] else 0.0
             behavioral_avg = round(sum(type_scores["Behavioral"]) / len(type_scores["Behavioral"]), 1) if type_scores["Behavioral"] else 0.0
 
+            # Extract interviewer persona style (#686)
+            from utils.interviewer_style_service import get_style_config
+            detected_style = None
+            if questions and isinstance(questions, list) and len(questions) > 0:
+                detected_style = questions[0].get("interviewer_style")
+            if not detected_style and answers and isinstance(answers, list) and len(answers) > 0:
+                detected_style = answers[0].get("interviewer_style") or answers[0].get("evaluation", {}).get("interviewer_style")
+            style_cfg = get_style_config(detected_style)
+
             history.append({
                 "session_id": rec["session_id"],
                 "analysis_id": rec["analysis_id"],
@@ -2509,7 +2553,11 @@ def get_student_interview_history(student_id: str = "default_student") -> List[D
                 "behavioral_score": behavioral_avg,
                 "date": rec.get("analysis_date", ""),
                 "questions": questions,
-                "answers": answers
+                "answers": answers,
+                "interviewer_style": style_cfg["id"],
+                "interviewer_style_name": style_cfg["name"],
+                "interviewer_style_badge": style_cfg["badge_class"],
+                "interviewer_style_icon": style_cfg["icon"],
             })
         return history
     except Exception as e:
@@ -3078,14 +3126,17 @@ def get_interview_experiences(
     company_name: Optional[str] = None,
     category_filter: Optional[str] = None,
     search_query: Optional[str] = None,
+    sort_by: str = "date_desc",
     include_reported: bool = False
 ) -> List[Dict[str, Any]]:
     """
-    Retrieves company interview experiences with search and round filtering (#189).
+    Retrieves company interview experiences with search, sorting, and round filtering (#189, #693).
     Omits inappropriate/reported posts by default.
     """
+    from utils.interview_helpful_service import ensure_helpful_votes_schema
     conn = get_db_connection()
     try:
+        ensure_helpful_votes_schema(conn)
         cursor = conn.cursor()
         conditions = []
         params = []
@@ -3103,7 +3154,14 @@ def get_interview_experiences(
             params.extend([kw, kw, kw])
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = f"SELECT * FROM interview_experiences {where_clause} ORDER BY interview_date DESC, created_at DESC"
+
+        order_by = "ORDER BY interview_date DESC, created_at DESC"
+        if sort_by in ("helpful_desc", "most_helpful"):
+            order_by = "ORDER BY helpful_count DESC, interview_date DESC, created_at DESC"
+        elif sort_by == "date_asc":
+            order_by = "ORDER BY interview_date ASC, created_at ASC"
+
+        query = f"SELECT * FROM interview_experiences {where_clause} {order_by}"
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -6673,6 +6731,12 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from db.connection import (
+    create_connection,
+    get_connection,
+    transaction,
+)
+
 from db.reports import (
     create_secure_share_link,
     create_shared_report,
@@ -6837,6 +6901,10 @@ __all__ = [
     "save_interview_experience",
     "get_interview_experiences",
     "report_interview_experience",
+    "toggle_helpful_vote",
+    "get_user_helpful_votes",
+    "get_contributor_helped_students_count",
+    "check_voting_rate_limit",
     "create_preparation_note",
     "get_preparation_notes",
     "get_preparation_note_by_id",

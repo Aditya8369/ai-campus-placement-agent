@@ -128,7 +128,7 @@
         </span>
         {% for c in comparisons %}
           <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold radar-toggle-btn active border" data-dataset-index="{{ loop.index0 }}" style="background-color: {{ c.style.background }}; border-color: {{ c.style.border }} !important; color: {{ c.style.border }};">
-            <i class="fa-solid fa-circle me-1" style="color: {{ c.style.border }}; font-size: 0.65rem;"></i> {{ c.company_name }}
+            <span class="me-1 fw-bold" style="color: {{ c.style.border }}; font-size: 0.8rem;">{{ c.style.marker|default('●') }}</span> {{ c.company_name }}
           </button>
         {% endfor %}
       </div>
@@ -346,7 +346,67 @@
   <!-- Chart.js for Radar Chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js" integrity="sha384-Emf5ZVIUiarAdhkgtqK+5/Z5qIvM6QoVrS+qAVtfyZVuD5lIHrac0me485+Antp0" crossorigin="anonymous"></script>
   <!-- Custom JS -->
+  <script type="module" src="{{ url_for('static', filename='js/modules/chart_palette.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const canvas = document.getElementById("companyRadarCanvas");
+      if (!canvas || !window.Chart) return;
+
+      let radarPayload = null;
+      try {
+        radarPayload = JSON.parse(canvas.getAttribute("data-radar") || "{}");
+      } catch (e) {
+        console.warn("Failed to parse company radar data:", e);
+      }
+
+      if (!radarPayload || !Array.isArray(radarPayload.datasets) || radarPayload.datasets.length === 0) return;
+
+      const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      const textColor = isDark ? "#f0f2f5" : "#1f1f1f";
+      const gridColor = isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.10)";
+
+      const radarChart = new window.Chart(canvas.getContext("2d"), {
+        type: "radar",
+        data: radarPayload,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            r: {
+              min: 0,
+              max: 100,
+              ticks: { stepSize: 20, color: textColor, backdropColor: "transparent" },
+              pointLabels: { color: textColor, font: { size: 12, family: "'Outfit', sans-serif", weight: "600" } },
+              grid: { color: gridColor },
+              angleLines: { color: gridColor }
+            }
+          }
+        }
+      });
+
+      // Interactive toggle buttons
+      document.querySelectorAll(".radar-toggle-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+          const idx = parseInt(this.getAttribute("data-dataset-index"), 10);
+          if (isNaN(idx)) return;
+          const isVisible = radarChart.isDatasetVisible(idx);
+          radarChart.setDatasetVisibility(idx, !isVisible);
+          radarChart.update();
+          if (isVisible) {
+            this.classList.remove("active");
+            this.style.opacity = "0.45";
+          } else {
+            this.classList.add("active");
+            this.style.opacity = "1.0";
+          }
+        });
+      });
+    });
+  </script>
 </body>
 </html>
 
