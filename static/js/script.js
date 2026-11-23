@@ -974,7 +974,103 @@ function initCompanyExplorer() {
               <i class="fa-solid fa-download me-1"></i>Download Cheat Sheet
             </a>
           </div>
+
+          <!-- Company Eligibility Calculator (#603) -->
+          <div class="card border border-primary-subtle rounded-3 mt-3 p-3 bg-body" id="companyEligibilityCalculatorCard">
+            <div class="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom">
+              <h6 class="fw-bold mb-0 text-primary">
+                <i class="fa-solid fa-calculator me-1"></i> Eligibility Calculator
+              </h6>
+              <span class="badge bg-secondary-subtle text-secondary border rounded-pill small">Private Profile</span>
+            </div>
+            <p class="small text-muted mb-3" style="font-size: 0.8rem;">
+              Compare your academic scores against verified requirements. Unknown or unconfirmed rules are marked clearly as uncertain.
+            </p>
+            <div class="row g-2 mb-3">
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Your CGPA:</label>
+                <input type="number" step="0.01" min="0" max="10" class="form-control form-control-sm" id="calcCgpaInput" placeholder="e.g. 7.5">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Active Backlogs:</label>
+                <input type="number" min="0" max="20" class="form-control form-control-sm" id="calcBacklogsInput" placeholder="e.g. 0">
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label small fw-semibold text-secondary mb-1">Branch / Degree:</label>
+                <input type="text" class="form-control form-control-sm" id="calcBranchInput" placeholder="e.g. CSE / IT">
+              </div>
+            </div>
+            <div class="d-flex justify-content-end mb-2">
+              <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" id="btnCalculateEligibility">
+                <i class="fa-solid fa-arrows-rotate me-1"></i> Check Eligibility
+              </button>
+            </div>
+            <div id="eligibilityResultsContainer" class="d-none mt-2">
+              <div class="alert alert-light border rounded-3 p-3 mb-2" id="eligibilityStatusAlert">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <strong id="eligibilityStatusTitle">Eligibility Status</strong>
+                  <span class="badge" id="eligibilityStatusBadge">Eligible</span>
+                </div>
+                <div id="eligibilityEvaluationsList" class="d-flex flex-column gap-1 small mt-2"></div>
+              </div>
+            </div>
+          </div>
         `;
+
+        // Attach event listener for company eligibility calculator
+        const btnCalc = modalBody.querySelector("#btnCalculateEligibility");
+        if (btnCalc) {
+          btnCalc.addEventListener("click", async () => {
+            const cgpaInput = modalBody.querySelector("#calcCgpaInput");
+            const backlogsInput = modalBody.querySelector("#calcBacklogsInput");
+            const branchInput = modalBody.querySelector("#calcBranchInput");
+            const resultsBox = modalBody.querySelector("#eligibilityResultsContainer");
+            const badgeEl = modalBody.querySelector("#eligibilityStatusBadge");
+            const titleEl = modalBody.querySelector("#eligibilityStatusTitle");
+            const listEl = modalBody.querySelector("#eligibilityEvaluationsList");
+
+            const payload = {
+              cgpa: cgpaInput && cgpaInput.value ? parseFloat(cgpaInput.value) : null,
+              backlogs: backlogsInput && backlogsInput.value !== "" ? parseInt(backlogsInput.value, 10) : null,
+              branch: branchInput && branchInput.value ? branchInput.value.trim() : null
+            };
+
+            btnCalc.disabled = true;
+            try {
+              const elResp = await fetch(`/api/company/${encodeURIComponent(company)}/eligibility`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+              });
+              const elData = await elResp.json();
+              if (elData.success && elData.eligibility) {
+                const el = elData.eligibility;
+                if (resultsBox) resultsBox.classList.remove("d-none");
+                if (titleEl) titleEl.textContent = `${company} Eligibility: ${el.overall_status}`;
+                if (badgeEl) {
+                  badgeEl.textContent = el.overall_status;
+                  badgeEl.className = "badge rounded-pill px-3 py-1 " + 
+                    (el.overall_status === "Eligible" ? "bg-success" : (el.overall_status === "Not Eligible" ? "bg-danger" : "bg-warning text-dark"));
+                }
+                if (listEl) {
+                  listEl.innerHTML = el.evaluations.map(ev => `
+                    <div class="p-2 rounded border bg-white">
+                      <div class="d-flex justify-content-between align-items-center">
+                        <strong>${escapeHtml(ev.criteria)}</strong>
+                        <span class="badge ${ev.status === 'Met' ? 'bg-success-subtle text-success' : (ev.status === 'Unmet' ? 'bg-danger-subtle text-danger' : 'bg-warning-subtle text-warning-emphasis')} border rounded-pill">${escapeHtml(ev.status)}</span>
+                      </div>
+                      <div class="text-secondary">${escapeHtml(ev.explanation)}</div>
+                    </div>
+                  `).join("");
+                }
+              }
+            } catch (calcErr) {
+              console.error("Eligibility check error", calcErr);
+            } finally {
+              btnCalc.disabled = false;
+            }
+          });
+        }
       } else {
         modalBody.innerHTML = `<div class="alert alert-warning">No details found for ${company}.</div>`;
       }
