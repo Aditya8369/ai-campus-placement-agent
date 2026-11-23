@@ -735,6 +735,69 @@
           <!-- Answer Input Form -->
           {% if not interview.completed %}
             {% set active_q_type = current_q.type if current_q is defined and current_q else 'Technical' %}
+
+            <!-- Outline Mode Toggle Bar (#608) -->
+            <div class="d-flex justify-content-between align-items-center mb-2 px-1">
+              <span class="small fw-semibold text-secondary">
+                <i class="fa-solid fa-pen-ruler text-primary me-1"></i> Answer Structuring:
+              </span>
+              <div class="btn-group btn-group-sm" role="group" aria-label="Answer Mode">
+                <button type="button" class="btn btn-outline-primary active py-0 px-3" id="btnModeFullAnswer">
+                  <i class="fa-solid fa-align-left me-1"></i> Full Answer
+                </button>
+                <button type="button" class="btn btn-outline-primary py-0 px-3" id="btnModeOutline">
+                  <i class="fa-solid fa-list-ol me-1"></i> Outline Mode
+                </button>
+              </div>
+            </div>
+
+            <!-- Outline Builder View Container (#608) -->
+            <div id="outlineModeContainer" class="card border rounded-3 p-3 bg-light-subtle mb-3 d-none">
+              <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                <h6 class="fw-bold mb-0 text-dark small">
+                  <i class="fa-solid fa-table-list text-primary me-1"></i> Structured Answer Outline
+                </h6>
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill" id="outlineScoreBadge">
+                  Structure Score: 0/100
+                </span>
+              </div>
+              <p class="small text-muted mb-3" style="font-size: 0.78rem;">
+                Structure your points before typing or speaking in full. Outline scores are evaluated separately from your final answer.
+              </p>
+              <div class="row g-2 mb-2">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-secondary mb-1">1. Introduction / Situation</label>
+                  <input type="text" class="form-control form-control-sm outline-field" id="outlineIntro" placeholder="Context, situation, or high-level concept...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-secondary mb-1">2. Main Point / Task</label>
+                  <input type="text" class="form-control form-control-sm outline-field" id="outlineMain" placeholder="Core approach, responsibility, or mechanism...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-secondary mb-1">3. Example / Execution</label>
+                  <input type="text" class="form-control form-control-sm outline-field" id="outlineExample" placeholder="Hands-on action taken, practical implementation...">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold text-secondary mb-1">4. Conclusion / Outcome</label>
+                  <input type="text" class="form-control form-control-sm outline-field" id="outlineConclusion" placeholder="Impact, result, trade-offs, or lesson learned...">
+                </div>
+              </div>
+              <div class="p-2 border rounded-3 bg-white mb-2">
+                <div class="small fw-bold text-dark mb-1"><i class="fa-solid fa-list-check text-success me-1"></i> Answer Checklist:</div>
+                <div class="d-flex flex-wrap gap-3 small text-secondary" id="outlineChecklistGroup">
+                  <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 outline-chk" value="context"> Contextual Situation</label>
+                  <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 outline-chk" value="ownership"> Personal Ownership (I did)</label>
+                  <label class="form-check-label"><input type="checkbox" class="form-check-input me-1 outline-chk" value="metrics"> Measurable Result / Metrics</label>
+                </div>
+              </div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="small text-muted" id="outlineStatusHint">Fill headings to convert outline into a draft.</span>
+                <button type="button" class="btn btn-sm btn-primary rounded-pill px-3" id="btnConvertOutline">
+                  <i class="fa-solid fa-arrow-down-wide-short me-1"></i> Convert to Answer Draft
+                </button>
+              </div>
+            </div>
+
             <form id="chatForm" data-question-index="{{ interview.current_question_index }}" data-analysis-id="{{ analysis_id }}" data-session-id="{{ session_id or analysis_id }}" data-total-questions="{{ interview.questions|length }}" data-question-type="{{ active_q_type }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
               <div class="input-group">
