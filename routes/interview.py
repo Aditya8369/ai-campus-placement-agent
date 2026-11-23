@@ -106,6 +106,10 @@ from utils.output_localization import (
 )
 from utils.csrf import csrf, CSRFError, generate_csrf
 from utils.totp import *
+from utils.behavioural_story_service import (
+    behavioural_story_service,
+    CORE_COMPETENCY_TAGS,
+)
 from utils.logger_config import (
     configure_logging,
     get_current_request_id,
@@ -2973,5 +2977,229 @@ def api_clear_interview_checkpoint():
     analysis_id = request.args.get("analysis_id", "demo")
     cleared = clear_session_checkpoint(user_id, analysis_id)
     return jsonify({"status": "success", "cleared": cleared}), 200
+
+
+# ==============================================================================
+# Behavioural Stories Bank Routes & Endpoints (#687)
+# ==============================================================================
+
+@interview_bp.route("/stories", methods=["GET", "POST"])
+@interview_bp.route("/interview/stories", methods=["GET", "POST"])
+def behavioural_stories_view():
+    """
+    Renders and manages the student's personal STAR stories bank (#687).
+    Guarantees strict privacy: students only access their own stories.
+    """
+    student_id = _get_current_student_id()
+
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        situation = request.form.get("situation", "").strip()
+        task = request.form.get("task", "").strip()
+        action = request.form.get("action", "").strip()
+        result = request.form.get("result", "").strip()
+        raw_tags = request.form.get("tags") or request.form.getlist("competencies")
+
+        if not title:
+            flash("Story title is required.", "danger")
+            return redirect(url_for("interview.behavioural_stories_view"))
+
+        try:
+            behavioural_story_service.create_story(
+                student_id=student_id,
+                title=title,
+                situation=situation,
+                task=task,
+                action=action,
+                result=result,
+                tags=raw_tags,
+            )
+            flash("New behavioural story added to your bank!", "success")
+        except Exception as e:
+            logger.error(f"Failed to create story: {e}")
+            flash(f"Could not save story: {e}", "danger")
+
+        return redirect(url_for("interview.behavioural_stories_view"))
+
+    # GET request
+    tag_filter = request.args.get("tag", "").strip()
+    search_query = request.args.get("search", "").strip()
+
+    stories = behavioural_story_service.list_stories(
+        student_id=student_id,
+        tag_filter=tag_filter if tag_filter else None,
+        search_query=search_query if search_query else None,
+    )
+    stats = behavioural_story_service.get_student_story_stats(student_id)
+
+    return render_template(
+        "my_stories.html",
+        stories=stories,
+        stats=stats,
+        active_tag=tag_filter,
+        search_query=search_query,
+        core_tags=CORE_COMPETENCY_TAGS,
+        student_id=student_id,
+    )
+
+
+@interview_bp.route("/stories/<story_id>/edit", methods=["POST"])
+@interview_bp.route("/interview/stories/<story_id>/edit", methods=["POST"])
+def edit_behavioural_story_view(story_id: str):
+    """Updates an existing STAR story belonging strictly to the current student."""
+    student_id = _get_current_student_id()
+    title = request.form.get("title", "").strip()
+    situation = request.form.get("situation", "").strip()
+    task = request.form.get("task", "").strip()
+    action = request.form.get("action", "").strip()
+    result = request.form.get("result", "").strip()
+    raw_tags = request.form.get("tags") or request.form.getlist("competencies")
+
+    if not title:
+        flash("Story title cannot be empty.", "danger")
+        return redirect(url_for("interview.behavioural_stories_view"))
+
+    updated = behavioural_story_service.update_story(
+        story_id=story_id,
+        student_id=student_id,
+        title=title,
+        situation=situation,
+        task=task,
+        action=action,
+        result=result,
+        tags=raw_tags,
+    )
+
+    if updated:
+        flash("Story successfully updated!", "success")
+    else:
+        flash("Story not found or you do not have permission to edit it.", "danger")
+
+    return redirect(url_for("interview.behavioural_stories_view"))
+
+
+@interview_bp.route("/stories/<story_id>/delete", methods=["POST"])
+@interview_bp.route("/interview/stories/<story_id>/delete", methods=["POST"])
+def delete_behavioural_story_view(story_id: str):
+    """Deletes a STAR story belonging strictly to the current student."""
+    student_id = _get_current_student_id()
+    deleted = behavioural_story_service.delete_story(story_id=story_id, student_id=student_id)
+
+    if deleted:
+        flash("Story deleted from your story bank.", "info")
+    else:
+        flash("Story not found or you do not have permission to delete it.", "danger")
+
+    return redirect(url_for("interview.behavioural_stories_view"))
+
+
+@interview_bp.route("/api/stories", methods=["GET", "POST"])
+@csrf.exempt
+def api_behavioural_stories():
+    """REST API endpoint to list or create student STAR stories."""
+    student_id = _get_current_student_id()
+
+    if request.method == "GET":
+        tag = request.args.get("tag")
+        search = request.args.get("search")
+        stories = behavioural_story_service.list_stories(student_id, tag_filter=tag, search_query=search)
+        stats = behavioural_story_service.get_student_story_stats(student_id)
+        return jsonify({
+            "status": "success",
+            "count": len(stories),
+            "stories": stories,
+            "stats": stats,
+        }), 200
+
+    payload = request.get_json(silent=True) or request.form or {}
+    title = (payload.get("title") or "").strip()
+    if not title:
+        return jsonify({"status": "error", "message": "Story title is required."}), 400
+
+    try:
+        story = behavioural_story_service.create_story(
+            student_id=student_id,
+            title=title,
+            situation=payload.get("situation", ""),
+            task=payload.get("task", ""),
+            action=payload.get("action", ""),
+            result=payload.get("result", ""),
+            tags=payload.get("tags") or payload.get("competencies"),
+        )
+        return jsonify({"status": "success", "story": story}), 201
+    except Exception as e:
+        logger.error(f"Error creating story via API: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@interview_bp.route("/api/stories/<story_id>", methods=["GET", "PUT", "PATCH", "DELETE", "POST"])
+@csrf.exempt
+def api_behavioural_story_item(story_id: str):
+    """REST API endpoint to get, update, or delete a single story."""
+    student_id = _get_current_student_id()
+
+    if request.method == "GET":
+        story = behavioural_story_service.get_story(story_id, student_id)
+        if not story:
+            return jsonify({"status": "error", "message": "Story not found or unauthorized."}), 404
+        return jsonify({"status": "success", "story": story}), 200
+
+    if request.method == "DELETE":
+        deleted = behavioural_story_service.delete_story(story_id, student_id)
+        if not deleted:
+            return jsonify({"status": "error", "message": "Story not found or unauthorized."}), 404
+        return jsonify({"status": "success", "message": "Story deleted."}), 200
+
+    # PUT/PATCH/POST update
+    payload = request.get_json(silent=True) or request.form or {}
+    try:
+        updated = behavioural_story_service.update_story(
+            story_id=story_id,
+            student_id=student_id,
+            title=payload.get("title"),
+            situation=payload.get("situation"),
+            task=payload.get("task"),
+            action=payload.get("action"),
+            result=payload.get("result"),
+            tags=payload.get("tags") or payload.get("competencies"),
+        )
+        if not updated:
+            return jsonify({"status": "error", "message": "Story not found or unauthorized."}), 404
+        return jsonify({"status": "success", "story": updated}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@interview_bp.route("/api/stories/match", methods=["GET", "POST"])
+@csrf.exempt
+def api_match_behavioural_stories():
+    """
+    Finds and ranks candidate stories matching a question's competency keywords (#687).
+    Used as an in-interview prompt to remind candidates of their best examples.
+    """
+    student_id = _get_current_student_id()
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form or {}
+        question_text = (payload.get("question") or payload.get("question_text") or "").strip()
+        category = payload.get("category")
+    else:
+        question_text = (request.args.get("question") or request.args.get("question_text") or "").strip()
+        category = request.args.get("category")
+
+    matches = behavioural_story_service.match_stories_for_question(
+        student_id=student_id,
+        question_text=question_text,
+        question_category=category,
+    )
+    detected = behavioural_story_service.detect_question_competencies(question_text)
+
+    return jsonify({
+        "status": "success",
+        "question": question_text,
+        "detected_competencies": detected,
+        "match_count": len(matches),
+        "matches": matches,
+    }), 200
+
 
 

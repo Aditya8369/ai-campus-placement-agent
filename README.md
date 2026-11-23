@@ -639,31 +639,26 @@ The following features are being considered:
 
 ---
 
-## Bulk Student Onboarding via CSV for Placement Officers (#690)
+## Behavioural Story Bank: Save STAR Stories Linked to Competencies (#687)
 
-To overcome the student adoption barrier for colleges and institutions, placement officers and administrators can onboard entire student batches and departments in seconds via CSV:
+To help candidates master behavioral interview rounds without starting from scratch each time or forgetting their best past experiences, the platform includes a dedicated **My Stories** bank:
 
-- **Admin Portal**: Accessible to authorized administrators and placement coordinators at [`/admin/invite-students`](templates/admin_invite_students.html).
-- **CSV Format & Validation**:
-  - Accepts standard CSV with headers `name`, `email`, optional `branch`, and optional `graduation_year`.
-  - Downloadable template available directly from `/admin/invitations/template.csv`.
-  - Real-time row validation with instant preview, reporting explicit failure reasons for invalid entries (missing name, malformed email, institutional domain mismatch, out-of-range graduation year).
-  - Automatically identifies and skips duplicate emails within the CSV as well as already-registered platform users.
-- **Single-Use, 14-Day Expiring Links**:
-  - Each invited student receives a cryptographically secure, single-use activation link (`/register?invite_token=<token>`).
-  - Automatically expires after 14 days.
-  - Revoked links stop working immediately.
-  - Links are consumed immediately upon successful registration and cannot be reused.
-- **Safety Quotas & Rate Limits**:
-  - Upload limit: Maximum **200 rows per CSV upload**.
-  - Rate limit: Maximum **500 invitations per hour** per institution.
-- **Invitation Status Tracking & Management**:
-  - Tracks status in real time: `sent`, `accepted`, `expired`, and `revoked`.
-  - Resend invitation functionality with refreshed 14-day expiry.
-  - One-click link revocation.
-  - Export all invitation records to CSV with **CSV Formula Injection Sanitization** (neutralizing `=`, `+`, `-`, `@`, `\t`, `\r` prefixes).
-- **Admin Audit Logging**:
-  - Every batch upload, resend, revocation, and student acceptance is recorded to an immutable audit log (`admin_invitation_audit_logs`).
+- **Structured STAR Framework**: Record stories organized across **Situation, Task, Action, and Result** with titles and competency tags.
+- **Core Competency Tagging**: Pre-configured with core placement behavioral competencies:
+  - `Teamwork` (collaboration, peer conflict resolution)
+  - `Leadership` (mentoring, ownership, driving initiatives)
+  - `Problem Solving` (debugging, analytical troubleshooting, overcoming obstacles)
+  - `Failure` (learning from mistakes, setbacks, missed deadlines)
+  - `Initiative` (proactive opportunities, innovations without being asked)
+  - Custom user tags (e.g. `conflict resolution`, `deadline pressure`, `adaptability`).
+- **Live Completeness & Word Count Intelligence**:
+  - Live completeness indicator tracking which of the 4 STAR parts are filled (`4/4 Complete`).
+  - Word count meter with recommended 150–300 word interview length benchmark (ideal for natural 2-minute answers).
+- **In-Interview Prompt Integration**:
+  - During mock interviews, the **"Use one of my stories"** action analyzes the current question text and surfaces matching stories ranked by relevance.
+  - Serves as a **prompt/reference talking point only**—never automatically pastes or submits text, encouraging genuine vocal articulation.
+- **Strict Privacy & Owner Isolation**:
+  - Stories are strictly private to each candidate. Cross-user access, editing, or deletion is strictly blocked.
 
 ---
 
