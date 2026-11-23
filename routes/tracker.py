@@ -612,17 +612,37 @@ def api_update_application_status(app_id: str):
     }), (200 if updated else 404)
 
 
-@tracker_bp.route("/api/applications/board/validate-move", methods=["POST"])
-def api_validate_board_move():
-    """Validates drag-and-drop or keyboard-initiated stage transition (#619)."""
-    from utils.application_board_service import validate_stage_transition
-    data = request.get_json(silent=True) or {}
-    current_stage = data.get("current_stage", "Applied")
-    target_stage = data.get("target_stage", "")
-    confirmed = bool(data.get("confirmed", False))
+@tracker_bp.route("/api/applications/<app_id>/archive", methods=["POST"])
+def api_archive_application(app_id: str):
+    """Archives an old application to declutter tracker without deleting records (#620)."""
+    from utils.application_archive_service import archive_application
+    student_id = flask_session.get("user_id") or "default_student"
+    success = archive_application(app_id, student_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
+    return jsonify({"status": "success", "message": "Application archived"}), 200
 
-    res = validate_stage_transition(current_stage, target_stage, requires_confirmation=confirmed)
-    return jsonify({"status": "success", "result": res}), 200
+
+@tracker_bp.route("/api/applications/<app_id>/restore", methods=["POST"])
+def api_restore_application(app_id: str):
+    """Restores an archived application back to active tracker (#620)."""
+    from utils.application_archive_service import restore_application
+    student_id = flask_session.get("user_id") or "default_student"
+    success = restore_application(app_id, student_id)
+    if not success:
+        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
+    return jsonify({"status": "success", "message": "Application restored"}), 200
+
+
+@tracker_bp.route("/api/applications/<app_id>/renew", methods=["POST"])
+def api_renew_application(app_id: str):
+    """Renews an application into a new hiring cycle preserving history (#620)."""
+    from utils.application_archive_service import renew_application
+    student_id = flask_session.get("user_id") or "default_student"
+    res = renew_application(app_id, student_id)
+    if not res:
+        return jsonify({"status": "error", "message": "Application not found or unauthorized"}), 404
+    return jsonify({"status": "success", "renewal": res}), 200
 
 
 @tracker_bp.route("/api/applications/<app_id>", methods=["DELETE"])
