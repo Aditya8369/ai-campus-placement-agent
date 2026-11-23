@@ -368,7 +368,10 @@
     }
 
     resultsSection.classList.remove("d-none");
-    resultsSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    const isReduced = typeof window.isReducedMotion === "function"
+      ? window.isReducedMotion()
+      : (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    resultsSection.scrollIntoView({ behavior: isReduced ? "auto" : "smooth", block: "start" });
   }
 
   function escapeHtml(str) {
