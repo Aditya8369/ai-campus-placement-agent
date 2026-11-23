@@ -2381,6 +2381,49 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
+@analysis_bp.route("/api/tasks/dependencies", methods=["GET", "POST"])
+def api_task_dependencies():
+    """
+    Evaluates prerequisite dependencies, lock states, and completes tasks (#606).
+    """
+    from utils.task_dependency_service import (
+        DEFAULT_TASK_DEPENDENCY_GRAPH,
+        evaluate_task_dependency_states,
+        complete_task_with_validation
+    )
+
+    if request.method == "GET":
+        completed_ids = request.args.getlist("completed")
+        try:
+            res = evaluate_task_dependency_states(DEFAULT_TASK_DEPENDENCY_GRAPH, completed_ids)
+            return jsonify(res), 200
+        except ValueError as ve:
+            return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    action = payload.get("action", "evaluate")
+    tasks = payload.get("tasks") or DEFAULT_TASK_DEPENDENCY_GRAPH
+    completed_ids = payload.get("completed_ids") or []
+
+    if action == "complete":
+        task_id = payload.get("task_id")
+        if not task_id:
+            return jsonify({"status": "error", "success": False, "error": "task_id is required."}), 400
+        ok, err_msg, updated_completed = complete_task_with_validation(task_id, tasks, completed_ids)
+        if not ok:
+            return jsonify({"status": "error", "success": False, "error": err_msg}), 400
+        evaluation = evaluate_task_dependency_states(tasks, updated_completed)
+        evaluation["updated_completed_ids"] = updated_completed
+        return jsonify(evaluation), 200
+
+    try:
+        res = evaluate_task_dependency_states(tasks, completed_ids)
+        return jsonify(res), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+
+
+
 @analysis_bp.route("/dashboard/<analysis_id>/annotations", methods=["POST"])
 def save_analysis_annotation_view(analysis_id: str):
     """Create or edit a private annotation attached to an owned analysis."""
