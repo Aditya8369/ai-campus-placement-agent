@@ -703,19 +703,60 @@ def create_app(config_override=None) -> Flask:
         return response
 
 
+    import click
+
     @app.cli.command("send-deadline-reminders")
     def send_deadline_reminders_cli():
         """
         CLI scheduled command to find items due in the next 2 days and dispatch reminder emails (#298).
         Designed for crontab, systemd timers, or APScheduler invocations.
         """
-        import click
         logger.info("Executing scheduled CLI job: send-deadline-reminders...")
         result = send_upcoming_deadline_reminders()
         click.echo(
             f"Deadline reminders complete: sent={result['sent_count']}, "
             f"skipped={result['skipped_count']}, failed={result['failed_count']}"
         )
+
+    @app.cli.command("validate-company-data")
+    @click.argument("paths", nargs=-1, type=click.Path())
+    @click.option("--live", "--check-live-links", "check_live_links", is_flag=True, default=False, help="Verify external URLs via live HTTP requests.")
+    @click.option("--strict", is_flag=True, default=False, help="Treat warnings as errors.")
+    @click.option("--json", "json_output", is_flag=True, default=False, help="Output validation findings as JSON.")
+    @click.option("--quiet", is_flag=True, default=False, help="Suppress output on successful validation.")
+    def validate_company_data_cli(paths, check_live_links, strict, json_output, quiet):
+        """
+        Validate contributor company JSON files for schema, required fields, duplicates, and broken links (#785).
+        """
+        from utils.company_data_validator import validate_paths, format_terminal_report
+        import json as json_module
+
+        results = validate_paths(
+            paths=list(paths) if paths else None,
+            check_live_links=check_live_links,
+            strict=strict,
+        )
+
+        if json_output:
+            payload = {
+                "all_valid": all(r.is_valid for r in results),
+                "total_files": len(results),
+                "total_companies": sum(r.company_count for r in results),
+                "total_errors": sum(len(r.errors) for r in results),
+                "total_warnings": sum(len(r.warnings) for r in results),
+                "files": [r.to_dict() for r in results],
+            }
+            click.echo(json_module.dumps(payload, indent=2))
+        else:
+            report_text = format_terminal_report(results, quiet=quiet)
+            click.echo(report_text)
+
+        is_success = all(r.is_valid for r in results)
+        if strict and any(len(r.warnings) > 0 for r in results):
+            is_success = False
+
+        if not is_success:
+            raise SystemExit(1)
 
     # Register all feature Blueprints
     app.register_blueprint(auth_bp)
