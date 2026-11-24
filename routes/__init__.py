@@ -63,6 +63,12 @@ from utils.formatters import (
     format_indian_number,
     get_display_timezone,
 )
+from utils.text_sanitizer import (
+    render_safe_notes,
+    sanitize_url,
+    is_safe_url,
+    break_long_words,
+)
 import config
 
 from .common import (
@@ -124,6 +130,13 @@ def create_app(config_override=None) -> Flask:
     app.jinja_env.filters["format_lpa"] = format_lpa
     app.jinja_env.filters["format_crore"] = format_crore
     app.jinja_env.filters["format_inr_words"] = format_inr_words
+
+    # Register safe long-text and URL sanitization filters
+    app.jinja_env.filters["safe_notes"] = render_safe_notes
+    app.jinja_env.filters["safe_text"] = render_safe_notes
+    app.jinja_env.filters["safe_url"] = sanitize_url
+    app.jinja_env.filters["is_safe_url"] = is_safe_url
+    app.jinja_env.filters["safe_break"] = break_long_words
 
     app.config["ALLOWED_EMAIL_DOMAINS"] = getattr(config, "ALLOWED_EMAIL_DOMAINS", "")
 

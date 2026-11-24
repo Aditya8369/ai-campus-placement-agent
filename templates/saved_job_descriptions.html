@@ -94,14 +94,21 @@
                 <span class="badge bg-primary-subtle text-primary text-truncate" style="max-width: 180px;">{{ saved.company_name }}</span>
                 <span class="small text-muted">{{ saved.updated_at[:10] if saved.updated_at else '' }}</span>
               </div>
-              <h5 class="fw-bold mb-1">{{ saved.role_title }}</h5>
+              <h5 class="fw-bold mb-1 safe-text-break">{{ saved.role_title }}</h5>
               {% if saved.source %}
-                <p class="small text-muted mb-2 text-truncate"><i class="fa-solid fa-link me-1"></i>{{ saved.source }}</p>
+                <p class="small text-muted mb-2 safe-text-break">
+                  <i class="fa-solid fa-link me-1"></i>
+                  {% if saved.source|is_safe_url %}
+                    <a href="{{ saved.source|safe_url }}" target="_blank" rel="noopener noreferrer" class="safe-link text-muted">{{ saved.source }}</a>
+                  {% else %}
+                    <span>{{ saved.source }}</span>
+                  {% endif %}
+                </p>
               {% else %}
                 <p class="small text-muted mb-2"><i class="fa-solid fa-bookmark me-1"></i>Direct Entry</p>
               {% endif %}
-              <p class="small text-secondary flex-grow-1">{{ saved.description[:220] }}{% if saved.description|length > 220 %}...{% endif %}</p>
-              {% if saved.notes %}<p class="small bg-light rounded-3 p-2 mb-3"><strong>Notes:</strong> {{ saved.notes }}</p>{% endif %}
+              <p class="small text-secondary flex-grow-1 safe-text-break">{{ saved.description[:220] }}{% if saved.description|length > 220 %}...{% endif %}</p>
+              {% if saved.notes %}<div class="small bg-light rounded-3 p-2 mb-3 user-notes-content safe-text-break"><strong>Notes:</strong> {{ saved.notes|safe_notes }}</div>{% endif %}
               <div class="d-flex gap-2 pt-3 border-top align-items-center">
                 <a href="{{ url_for('index') }}?saved_job_description={{ saved.id }}" class="btn btn-primary btn-sm rounded-pill flex-grow-1" title="Load into placement analysis"><i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Use for Analysis</a>
                 <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" data-bs-toggle="modal" data-bs-target="#renameModal{{ saved.id }}" title="Rename"><i class="fa-solid fa-i-cursor"></i> Rename</button>

@@ -132,7 +132,7 @@
                         {% endfor %}
                       </span>
                     </div>
-                    <p class="text-dark mb-1 small">{{ item.comment }}</p>
+                    <div class="text-dark mb-1 small user-comment-content safe-text-break">{{ item.comment|safe_notes }}</div>
                     <div class="d-flex justify-content-between align-items-center text-muted" style="font-size: 0.75rem;">
                       <span>Student: {{ item.student_id }}</span>
                       <span>{{ item.created_at }}</span>

@@ -1722,7 +1722,7 @@
                     aria-label="Delete this private annotation">Delete</button>
                 </form>
               </div>
-              <p class="mb-2 text-dark" style="white-space: pre-wrap;">{{ annotation.content }}</p>
+              <div class="mb-2 text-dark user-notes-content safe-text-break">{{ annotation.content|safe_notes }}</div>
               <details>
                 <summary class="small text-primary">Edit annotation</summary>
                 <form method="post" action="{{ url_for('save_analysis_annotation_view', analysis_id=analysis_id) }}"

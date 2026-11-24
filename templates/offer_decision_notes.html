@@ -28,8 +28,8 @@
       <div class="card h-100 border-0 shadow-sm rounded-3 p-3">
         <div class="d-flex justify-content-between align-items-start mb-3">
           <div>
-            <h5 class="fw-bold text-dark mb-0">{{ off.company_name }}</h5>
-            <span class="text-muted small">{{ off.role_title }}</span>
+            <h5 class="fw-bold text-dark mb-0 safe-text-break">{{ off.company_name }}</h5>
+            <span class="text-muted small safe-text-break">{{ off.role_title }}</span>
           </div>
           <span class="badge bg-success-subtle text-success fs-6 border border-success">
             ₹{{ off.ctc_lpa }} LPA
@@ -78,14 +78,14 @@
         {% if off.culture_and_team_notes %}
         <div class="mb-2 small">
           <span class="fw-semibold text-dark">Culture / Team Notes:</span>
-          <p class="text-muted mb-0">{{ off.culture_and_team_notes }}</p>
+          <div class="text-muted mb-0 user-notes-content safe-text-break">{{ off.culture_and_team_notes|safe_notes }}</div>
         </div>
         {% endif %}
 
         {% if off.concerns_and_risks %}
         <div class="mb-2 small">
           <span class="fw-semibold text-danger">Concerns / Risks:</span>
-          <p class="text-muted mb-0">{{ off.concerns_and_risks }}</p>
+          <div class="text-muted mb-0 user-notes-content safe-text-break">{{ off.concerns_and_risks|safe_notes }}</div>
         </div>
         {% endif %}
 
