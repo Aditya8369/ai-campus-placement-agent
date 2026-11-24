@@ -146,9 +146,14 @@
                 <strong>Role:</strong> <span class="analysis-role">{{ analysis.target_role|default('Software Engineer') }}</span>
               </div>
 
-              <!-- Resume Filename -->
+              <!-- Resume Filename & Library Label (#842) -->
               <div class="small text-muted mb-3 text-truncate" title="{{ analysis.resume_filename }}">
                 <i class="fa-solid fa-file-pdf text-danger me-1"></i> {{ analysis.resume_filename }}
+                {% if analysis.stored_resume_label %}
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill ms-1 px-2 py-0" style="font-size: 0.68rem;" title="Selected from My Resumes library">
+                  <i class="fa-solid fa-folder-open me-1"></i>{{ analysis.stored_resume_label }}
+                </span>
+                {% endif %}
               </div>
 
               <!-- Scores -->
