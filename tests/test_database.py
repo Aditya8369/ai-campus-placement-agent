@@ -108,3 +108,52 @@ def test_database_indexes_created(monkeypatch):
 
         assert "idx_analyses_created_at" in indexes
         assert "idx_interviews_analysis_id" in indexes
+
+
+def test_database_facade_all_exports_bound():
+    """
+    Regression test for #834: Ensure every symbol declared in utils.database.__all__
+    is bound and resolvable on the module namespace.
+    """
+    import utils.database as db
+
+    missing = [name for name in db.__all__ if not hasattr(db, name)]
+    assert not missing, f"Unbound symbols declared in utils.database.__all__: {missing}"
+
+
+def test_database_facade_helpful_vote_exports():
+    """
+    Regression test for #834: Ensure interview helpful vote functions
+    are properly exposed through the utils.database facade.
+    """
+    from utils.database import (
+        check_voting_rate_limit,
+        get_contributor_helped_students_count,
+        get_user_helpful_votes,
+        toggle_helpful_vote,
+    )
+    import utils.interview_helpful_service as helpful_service
+
+    assert callable(toggle_helpful_vote)
+    assert callable(get_user_helpful_votes)
+    assert callable(get_contributor_helped_students_count)
+    assert callable(check_voting_rate_limit)
+
+    assert toggle_helpful_vote is helpful_service.toggle_helpful_vote
+    assert get_user_helpful_votes is helpful_service.get_user_helpful_votes
+    assert get_contributor_helped_students_count is helpful_service.get_contributor_helped_students_count
+    assert check_voting_rate_limit is helpful_service.check_voting_rate_limit
+
+
+def test_database_wildcard_import_and_app_startup():
+    """
+    Regression test for #834: Verify that wildcard import from utils.database
+    executes without AttributeError and does not block application startup.
+    """
+    namespace = {}
+    exec("from utils.database import *", namespace)
+
+    assert "toggle_helpful_vote" in namespace
+    assert "get_user_helpful_votes" in namespace
+    assert "get_contributor_helped_students_count" in namespace
+    assert "check_voting_rate_limit" in namespace

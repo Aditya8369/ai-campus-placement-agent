@@ -52,6 +52,11 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 from utils.api_versioning import register_api_versioning
+from utils.response_optimizer import (
+    apply_cache_headers,
+    compress_response,
+    get_static_file_version,
+)
 from utils.formatters import (
     format_date_ist,
     format_datetime_ist,
@@ -425,6 +430,15 @@ def create_app(config_override=None) -> Flask:
             ),
         }
 
+    @app.url_defaults
+    def add_static_version(endpoint, values):
+        """Append deterministic content hash query string (?v=...) to static asset URLs (#857)."""
+        if (endpoint == "static" or endpoint.endswith(".static")) and "filename" in values:
+            if "v" not in values:
+                version = get_static_file_version(values["filename"], app.static_folder)
+                if version:
+                    values["v"] = version
+
 
     @app.before_request
     def assign_request_id():
@@ -694,11 +708,39 @@ def create_app(config_override=None) -> Flask:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
 
-        # For authenticated sessions viewing HTML pages, prevent browser history/disk caching
-        if flask_session.get("user_id") and "text/html" in response.headers.get("Content-Type", ""):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+        # Apply caching directives and personal data protection (#857)
+        is_authenticated = bool(flask_session.get("user_id"))
+        max_age_ver = current_app.config.get(
+            "STATIC_CACHE_MAX_AGE_VERSIONED",
+            getattr(config, "STATIC_CACHE_MAX_AGE_VERSIONED", 31536000),
+        )
+        max_age_def = current_app.config.get(
+            "STATIC_CACHE_MAX_AGE_DEFAULT",
+            getattr(config, "STATIC_CACHE_MAX_AGE_DEFAULT", 86400),
+        )
+        response = apply_cache_headers(
+            response,
+            request,
+            is_authenticated=is_authenticated,
+            max_age_versioned=max_age_ver,
+            max_age_default=max_age_def,
+        )
+
+        # Apply gzip response compression (#857)
+        comp_enabled = current_app.config.get(
+            "RESPONSE_COMPRESSION_ENABLED",
+            getattr(config, "RESPONSE_COMPRESSION_ENABLED", True),
+        )
+        comp_min_size = current_app.config.get(
+            "RESPONSE_COMPRESSION_MIN_SIZE",
+            getattr(config, "RESPONSE_COMPRESSION_MIN_SIZE", 500),
+        )
+        response = compress_response(
+            response,
+            request,
+            min_size=comp_min_size,
+            enabled=comp_enabled,
+        )
 
         return response
 
