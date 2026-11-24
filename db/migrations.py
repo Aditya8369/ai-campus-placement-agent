@@ -691,6 +691,27 @@ def _migration_010_api_retry_records(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
 
 
+def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
+    """Create deprecated_api_metrics table to track deprecated field and route invocations (#445, #553)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS deprecated_api_metrics (
+            id TEXT PRIMARY KEY,
+            item_type TEXT NOT NULL,
+            item_name TEXT NOT NULL,
+            replacement TEXT,
+            endpoint TEXT NOT NULL,
+            http_method TEXT NOT NULL DEFAULT 'GET',
+            user_id TEXT DEFAULT 'anonymous',
+            client_ip TEXT,
+            user_agent TEXT,
+            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_item ON deprecated_api_metrics (item_type, item_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_ts ON deprecated_api_metrics (timestamp DESC)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -703,6 +724,7 @@ MIGRATIONS: List[Migration] = [
     Migration("008_reports_and_sharing", "Create shared reports and view logs for mentor reviews", _migration_008_reports_and_sharing),
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
+    Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
 ]
 
 

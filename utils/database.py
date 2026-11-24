@@ -835,6 +835,25 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_expires ON api_retry_records (expires_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
 
+        # Table: Deprecated API usage metrics tracking (#445, #553)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS deprecated_api_metrics (
+                id TEXT PRIMARY KEY,
+                item_type TEXT NOT NULL,
+                item_name TEXT NOT NULL,
+                replacement TEXT,
+                endpoint TEXT NOT NULL,
+                http_method TEXT NOT NULL DEFAULT 'GET',
+                user_id TEXT DEFAULT 'anonymous',
+                client_ip TEXT,
+                user_agent TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_item ON deprecated_api_metrics (item_type, item_name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_ts ON deprecated_api_metrics (timestamp DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
