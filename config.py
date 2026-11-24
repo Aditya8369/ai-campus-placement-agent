@@ -172,6 +172,13 @@ TIMEZONE = DISPLAY_TIMEZONE
 ANONYMIZE_IPS = os.getenv("ANONYMIZE_IPS", "true").lower() in ("true", "1", "yes")
 
 
+# HTTP Response Compression and Static Asset Caching (#857)
+RESPONSE_COMPRESSION_ENABLED = os.getenv("RESPONSE_COMPRESSION_ENABLED", "true").lower() in ("true", "1", "yes")
+RESPONSE_COMPRESSION_MIN_SIZE = int(os.getenv("RESPONSE_COMPRESSION_MIN_SIZE", "500"))
+STATIC_CACHE_MAX_AGE_VERSIONED = int(os.getenv("STATIC_CACHE_MAX_AGE_VERSIONED", "31536000"))
+STATIC_CACHE_MAX_AGE_DEFAULT = int(os.getenv("STATIC_CACHE_MAX_AGE_DEFAULT", "86400"))
+
+
 # Compatibility alias for modules or tests importing `Config` class / namespace
 class Config:
     DATABASE_PATH = str(DATABASE_PATH)
