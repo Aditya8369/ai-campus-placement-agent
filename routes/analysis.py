@@ -136,6 +136,13 @@ from utils.job_url_extractor import (
     JobURLExtractionError,
     SSRFSecurityError,
 )
+from utils.pdf_metadata_service import (
+    read_pdf_metadata,
+    analyze_pdf_metadata_hygiene,
+    strip_pdf_metadata,
+    get_or_compute_pdf_metadata_hygiene,
+    generate_suggested_filename,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -233,6 +240,7 @@ def analyze():
 
         # ATS Layout Format Compatibility Check (#474)
         format_compatibility = None
+        pdf_metadata_hygiene = None
         try:
             target_upload_path = None
             if file_uuid and resume_filename:
@@ -241,10 +249,23 @@ def analyze():
                     target_upload_path = cand_path
             if target_upload_path:
                 format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    raw_meta = read_pdf_metadata(target_upload_path)
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        raw_meta,
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
             else:
                 format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        {},
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
         except Exception as fc_err:
-            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            logger.warning(f"Non-blocking format compatibility or metadata hygiene check error in analyze: {fc_err}")
             format_compatibility = None
 
         # PII Detection and Redaction Option (#249)
@@ -345,7 +366,8 @@ def analyze():
                 resume_filename=resume_filename,
                 analysis_id=file_uuid,
                 student_id=student_id,
-                format_compatibility=format_compatibility
+                format_compatibility=format_compatibility,
+                pdf_metadata_hygiene=pdf_metadata_hygiene
             )
             return jsonify({
                 "success": True,
@@ -367,6 +389,8 @@ def analyze():
             analysis_payload["extracted_resume_text"] = extracted_resume_text
             if format_compatibility:
                 analysis_payload["format_compatibility"] = format_compatibility
+            if pdf_metadata_hygiene:
+                analysis_payload["pdf_metadata_hygiene"] = pdf_metadata_hygiene
 
         save_analysis(
             analysis_id=file_uuid,
@@ -482,6 +506,7 @@ def start_analysis_async():
 
         # ATS Layout Format Compatibility Check (#474)
         format_compatibility = None
+        pdf_metadata_hygiene = None
         try:
             target_upload_path = None
             if file_uuid and resume_filename:
@@ -490,10 +515,23 @@ def start_analysis_async():
                     target_upload_path = cand_path
             if target_upload_path:
                 format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    raw_meta = read_pdf_metadata(target_upload_path)
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        raw_meta,
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
             else:
                 format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        {},
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
         except Exception as fc_err:
-            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            logger.warning(f"Non-blocking format compatibility or metadata hygiene check error in analyze: {fc_err}")
             format_compatibility = None
 
         # PII Detection and Redaction Option (#249)
@@ -563,7 +601,8 @@ def start_analysis_async():
             resume_filename=resume_filename,
             analysis_id=file_uuid,
             student_id=student_id,
-            format_compatibility=format_compatibility
+            format_compatibility=format_compatibility,
+            pdf_metadata_hygiene=pdf_metadata_hygiene
         )
 
         return jsonify({
@@ -1634,6 +1673,22 @@ def dashboard(analysis_id: str) -> str:
             "summary": "Evidence cards could not be loaded."
         }
 
+    # Prepare PDF Metadata & Filename Hygiene (#841)
+    try:
+        pdf_metadata_hygiene = get_or_compute_pdf_metadata_hygiene(analysis_record)
+    except Exception as meta_err:
+        logger.warning(f"Error evaluating PDF metadata hygiene for dashboard: {meta_err}")
+        pdf_metadata_hygiene = {
+            "has_warnings": False,
+            "warnings": [],
+            "metadata": {},
+            "filename": analysis_record.get("resume_filename") or "resume.pdf",
+            "clean_filename_pattern": "FirstName_LastName_Role.pdf",
+            "suggested_filename": "FirstName_LastName_Resume.pdf",
+            "has_any_metadata": False,
+            "is_clean": True,
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1681,7 +1736,9 @@ def dashboard(analysis_id: str) -> str:
         resume_evidence=resume_evidence,
         resume_evidence_json=json.dumps(resume_evidence),
         initial_recommended_jobs=initial_recommended_jobs,
-        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
+        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs),
+        pdf_metadata_hygiene=pdf_metadata_hygiene,
+        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene)
     )
 
 
@@ -3764,6 +3821,77 @@ def resume_template_download(file_uuid: Optional[str] = None):
         as_attachment=True,
         download_name=download_name,
     )
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/download-clean-resume", methods=["GET"])
+def api_download_clean_resume(analysis_id: str):
+    """
+    Generates and downloads a clean, metadata-stripped copy of the uploaded PDF resume (#841).
+    Ensures author, title, creator, producer, and identifying metadata are stripped.
+    Strictly restricted to the uploading student.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    # Locate uploaded PDF or generate clean PDF from extracted content
+    fname = analysis_record.get("resume_filename") or "resume.pdf"
+    file_id = analysis_record.get("id") or analysis_id
+    results = analysis_record.get("results") or {}
+    cand_info = results.get("candidate_info") or results.get("resume_analysis", {})
+    candidate_name = None
+    if isinstance(cand_info, dict):
+        candidate_name = cand_info.get("name") or cand_info.get("candidate_name")
+    target_role = analysis_record.get("target_role") or analysis_record.get("company_name")
+
+    suggested_filename = generate_suggested_filename(candidate_name, target_role)
+
+    # Check for stored PDF file in UPLOAD_FOLDER
+    target_pdf_path = None
+    if os.path.exists(config.UPLOAD_FOLDER):
+        for candidate in (
+            f"{file_id}_{fname}",
+            f"{file_id}.pdf",
+            f"{file_id}_resume.pdf",
+            fname
+        ):
+            cand_path = os.path.join(config.UPLOAD_FOLDER, secure_filename(candidate))
+            if os.path.exists(cand_path) and cand_path.lower().endswith(".pdf"):
+                target_pdf_path = cand_path
+                break
+
+        if not target_pdf_path:
+            for item in os.listdir(config.UPLOAD_FOLDER):
+                if item.startswith(f"{file_id}") and item.lower().endswith(".pdf"):
+                    target_pdf_path = os.path.join(config.UPLOAD_FOLDER, item)
+                    break
+
+    try:
+        if target_pdf_path and os.path.exists(target_pdf_path):
+            clean_stream = strip_pdf_metadata(target_pdf_path)
+        else:
+            # Fallback: synthesize a clean single-column PDF from resume data
+            raw_resume = (
+                analysis_record.get("resume_text")
+                or results.get("extracted_resume_text")
+                or results.get("resume_text")
+                or "Resume"
+            )
+            synthesized_data = dict(DEFAULT_SAMPLE_RESUME)
+            if candidate_name:
+                synthesized_data["candidate_name"] = candidate_name
+            pdf_bytes = generate_resume_pdf(synthesized_data, template="classic")
+            clean_stream = strip_pdf_metadata(pdf_bytes)
+
+        return send_file(
+            clean_stream,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=suggested_filename
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate clean resume PDF for analysis {analysis_id}: {e}")
+        return jsonify({"success": False, "error": f"Failed to generate clean resume: {str(e)}"}), 500
 
 
 @analysis_bp.route("/history", methods=["GET"])

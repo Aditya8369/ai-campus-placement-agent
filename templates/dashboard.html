@@ -1042,6 +1042,69 @@
       </div>
       {% endif %}
 
+      <!-- PDF Metadata & Filename Hygiene Card (#841) -->
+      {% set pdf_hygiene = pdf_metadata_hygiene|default(analysis.results.pdf_metadata_hygiene if analysis and analysis.results else none) %}
+      {% if pdf_hygiene and pdf_hygiene.has_warnings %}
+      <div class="card glass-card p-4 border-0 mb-4 border border-warning-subtle shadow-sm" id="pdfMetadataHygieneCard">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+          <div>
+            <span class="text-warning-emphasis fw-semibold text-uppercase small">Privacy & Recruiter Hygiene</span>
+            <h4 class="fw-bold mb-1">
+              <i class="fa-solid fa-user-secret text-warning me-2"></i> PDF Metadata & Filename Hygiene
+            </h4>
+            <p class="text-secondary small mb-0">
+              Hidden document properties (author, creator software, draft titles) and versioned filenames are visible to recruiters and ATS parsers.
+            </p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 rounded-pill fs-6" id="pdfMetadataWarningBadge">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Hygiene Warnings ({{ pdf_hygiene.warnings|length }})
+            </span>
+            <a href="{{ url_for('analysis.api_download_clean_resume', analysis_id=analysis_id) }}" class="btn btn-outline-primary btn-sm rounded-pill px-3 py-2 shadow-xs" id="btnDownloadCleanResume">
+              <i class="fa-solid fa-file-arrow-down me-1"></i> Download Clean Copy
+            </a>
+          </div>
+        </div>
+
+        <!-- Clean Filename Recommendation -->
+        <div class="alert alert-info py-2 px-3 rounded-3 small mb-3 d-flex align-items-center justify-content-between flex-wrap gap-2">
+          <div>
+            <i class="fa-solid fa-lightbulb text-info me-2"></i>
+            <strong>Recommended Filename Pattern:</strong>
+            <code>{{ pdf_hygiene.clean_filename_pattern }}</code>
+            <span class="text-secondary ms-2">(e.g. <code>{{ pdf_hygiene.suggested_filename }}</code>)</span>
+          </div>
+          <span class="badge bg-light text-dark border">Standard Practice</span>
+        </div>
+
+        <!-- Warnings List -->
+        <div class="row g-3" id="pdfMetadataWarningsList">
+          {% for w in pdf_hygiene.warnings %}
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 rounded-3 h-100 border border-warning-subtle bg-warning-subtle bg-opacity-10">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="fw-bold small text-warning-emphasis">
+                  <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
+                  {{ w.field|capitalize }} Issue
+                </span>
+                <span class="badge bg-warning text-dark rounded-pill text-uppercase px-2 py-1" style="font-size: 0.65rem;">
+                  Warning
+                </span>
+              </div>
+              <p class="small text-secondary mb-2" style="font-size: 0.8rem; line-height: 1.35;">
+                {{ w.message }}
+              </p>
+              <div class="small pt-2 border-top border-light-subtle" style="font-size: 0.75rem;">
+                <span class="fw-semibold text-dark"><i class="fa-solid fa-shield-halved me-1 text-muted"></i>Suggestion:</span>
+                <span class="text-secondary">{{ w.suggestion }}</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- ATS-Style Resume Score & Section-Wise Breakdown (#494) -->
       {% if ats_breakdown or r_sum.ats_breakdown %}
       {% set breakdown = ats_breakdown|default(r_sum.ats_breakdown) %}
