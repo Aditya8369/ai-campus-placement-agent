@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Faculty Intervention Queue | AI Campus Placement Agent</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .card-hover {
+      transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    }
+    .card-hover:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+    }
+    .privacy-tag {
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+    }
+    .urgency-badge-high {
+      background-color: #dc3545;
+      color: #fff;
+    }
+    .urgency-badge-medium {
+      background-color: #ffc107;
+      color: #212529;
+    }
+    .urgency-badge-low {
+      background-color: #6c757d;
+      color: #fff;
+    }
+  </style>
+</head>
+<body class="bg-light">
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand fs-5 fw-bold text-white text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap text-primary me-2"></i>Admin &bull; Placement Officer Portal
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/admin/intervention-queue" class="btn btn-warning btn-sm rounded-pill px-3 fw-semibold">
+          <i class="fa-solid fa-user-clock me-1"></i> Intervention Queue
+        </a>
+        <a href="/admin/batch-analytics" class="btn btn-outline-light btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-chart-pie me-1"></i> Batch Analytics
+        </a>
+        <a href="/admin/invite-students" class="btn btn-outline-light btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-users-viewfinder me-1"></i> Invite Students
+        </a>
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 text-white">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4 py-md-5">
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show rounded-3 shadow-sm" role="alert">
+              <i class="fa-solid fa-circle-info me-2"></i> {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <!-- Header Banner -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 p-md-5 mb-4 bg-white">
+      <div class="row align-items-center g-3">
+        <div class="col-lg-8">
+          <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1.5 fw-semibold small">
+              <i class="fa-solid fa-hand-holding-heart me-1"></i> Faculty Student Care
+            </span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1.5 fw-semibold small">
+              <i class="fa-solid fa-shield-halved me-1"></i> Privacy-Preserving Insights
+            </span>
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-3 py-1.5 fw-semibold small">
+              <i class="fa-solid fa-bolt me-1"></i> Proactive Placement Support
+            </span>
+          </div>
+          <h2 class="fw-bold text-dark mb-2">Faculty Intervention Queue</h2>
+          <p class="text-muted mb-0">
+            Identify and support students facing placement disengagement, lapsed logins, overdue company deadlines, paused preparation streaks, or repeated low mock interview scores.
+            Every item provides a <strong>privacy-preserving explanation</strong> and a <strong>suggested follow-up action</strong> without exposing confidential resume text or private interview transcripts.
+          </p>
+        </div>
+        <div class="col-lg-4 text-lg-end">
+          <div class="d-flex flex-column flex-sm-row flex-lg-column gap-2 justify-content-lg-end">
+            <button class="btn btn-primary rounded-pill px-4 py-2 fw-semibold shadow-sm" id="btnScanInterventions" onclick="runInterventionScan()">
+              <i class="fa-solid fa-arrows-rotate me-1" id="scanIcon"></i> Re-Scan Student Roster
+            </button>
+            <a href="/admin/batch-analytics" class="btn btn-outline-secondary rounded-pill px-3 py-2 fw-semibold shadow-sm">
+              <i class="fa-solid fa-chart-pie me-1"></i> View Cohort Analytics
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics Overview Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-muted small fw-semibold text-uppercase">Active Alerts</span>
+          <h3 class="fw-bold text-dark my-1" id="statActive">{{ summary.total_active or 0 }}</h3>
+          <span class="small text-muted">Pending review</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-danger small fw-semibold text-uppercase">High Urgency</span>
+          <h3 class="fw-bold text-danger my-1" id="statHigh">{{ summary.high_urgency or 0 }}</h3>
+          <span class="small text-danger">Immediate action</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-secondary small fw-semibold text-uppercase">Inactive</span>
+          <h3 class="fw-bold text-secondary my-1" id="statInactive">{{ summary.inactivity_count or 0 }}</h3>
+          <span class="small text-muted">&ge; 14 days no login</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-danger small fw-semibold text-uppercase">Missed Deadlines</span>
+          <h3 class="fw-bold text-danger my-1" id="statDeadlines">{{ summary.missed_deadlines_count or 0 }}</h3>
+          <span class="small text-muted">Expired applications</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-warning-emphasis small fw-semibold text-uppercase">Stalled Prep</span>
+          <h3 class="fw-bold text-warning-emphasis my-1" id="statStoppedPrep">{{ summary.stopped_prep_count or 0 }}</h3>
+          <span class="small text-muted">&ge; 14 days no practice</span>
+        </div>
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white text-center h-100 card-hover">
+          <span class="text-info-emphasis small fw-semibold text-uppercase">Low Scores</span>
+          <h3 class="fw-bold text-info-emphasis my-1" id="statLowScores">{{ summary.repeated_low_scores_count or 0 }}</h3>
+          <span class="small text-muted">&lt; 60% on 2+ drills</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter & Search Controls -->
+    <div class="card border-0 shadow-sm rounded-4 p-3 p-md-4 mb-4 bg-white">
+      <form method="GET" action="/admin/intervention-queue" id="filterForm">
+        <div class="row g-3 align-items-center">
+          <!-- Category Filter Pills -->
+          <div class="col-12">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+              <span class="text-muted small fw-semibold me-2">Category:</span>
+              <a href="{{ url_for('admin.admin_faculty_intervention_queue_view', category='all', status=selected_status, urgency=selected_urgency, department=selected_department, search=search_query) }}"
+                 class="btn btn-sm rounded-pill {{ 'btn-dark' if selected_category == 'all' else 'btn-outline-secondary' }}">
+                All Categories ({{ summary.total_active }})
+              </a>
+              <a href="{{ url_for('admin.admin_faculty_intervention_queue_view', category='inactivity', status=selected_status, urgency=selected_urgency, department=selected_department, search=search_query) }}"
+                 class="btn btn-sm rounded-pill {{ 'btn-secondary text-white' if selected_category == 'inactivity' else 'btn-outline-secondary' }}">
+                <i class="fa-solid fa-user-clock me-1"></i> Inactivity ({{ summary.inactivity_count }})
+              </a>
+              <a href="{{ url_for('admin.admin_faculty_intervention_queue_view', category='missed_deadlines', status=selected_status, urgency=selected_urgency, department=selected_department, search=search_query) }}"
+                 class="btn btn-sm rounded-pill {{ 'btn-danger text-white' if selected_category == 'missed_deadlines' else 'btn-outline-danger' }}">
+                <i class="fa-solid fa-calendar-xmark me-1"></i> Missed Deadlines ({{ summary.missed_deadlines_count }})
+              </a>
+              <a href="{{ url_for('admin.admin_faculty_intervention_queue_view', category='stopped_preparation', status=selected_status, urgency=selected_urgency, department=selected_department, search=search_query) }}"
+                 class="btn btn-sm rounded-pill {{ 'btn-warning text-dark' if selected_category == 'stopped_preparation' else 'btn-outline-warning text-dark' }}">
+                <i class="fa-solid fa-person-circle-exclamation me-1"></i> Stalled Prep ({{ summary.stopped_prep_count }})
+              </a>
+              <a href="{{ url_for('admin.admin_faculty_intervention_queue_view', category='repeated_low_scores', status=selected_status, urgency=selected_urgency, department=selected_department, search=search_query) }}"
+                 class="btn btn-sm rounded-pill {{ 'btn-info text-white' if selected_category == 'repeated_low_scores' else 'btn-outline-info' }}">
+                <i class="fa-solid fa-chart-line-down me-1"></i> Low Scores ({{ summary.repeated_low_scores_count }})
+              </a>
+            </div>
+          </div>
+
+          <!-- Status Dropdown -->
+          <div class="col-6 col-md-3">
+            <label class="form-label small fw-semibold text-muted mb-1">Queue Status</label>
+            <select name="status" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+              <option value="pending" {{ 'selected' if selected_status == 'pending' else '' }}>Pending Review</option>
+              <option value="in_progress" {{ 'selected' if selected_status == 'in_progress' else '' }}>In Progress</option>
+              <option value="resolved" {{ 'selected' if selected_status == 'resolved' else '' }}>Resolved</option>
+              <option value="snoozed" {{ 'selected' if selected_status == 'snoozed' else '' }}>Snoozed</option>
+              <option value="all" {{ 'selected' if selected_status == 'all' else '' }}>All Statuses</option>
+            </select>
+          </div>
+
+          <!-- Urgency Dropdown -->
+          <div class="col-6 col-md-3">
+            <label class="form-label small fw-semibold text-muted mb-1">Urgency Level</label>
+            <select name="urgency" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+              <option value="all" {{ 'selected' if selected_urgency == 'all' else '' }}>All Urgencies</option>
+              <option value="high" {{ 'selected' if selected_urgency == 'high' else '' }}>High Urgency Only</option>
+              <option value="medium" {{ 'selected' if selected_urgency == 'medium' else '' }}>Medium Urgency</option>
+              <option value="low" {{ 'selected' if selected_urgency == 'low' else '' }}>Low Urgency</option>
+            </select>
+          </div>
+
+          <!-- Department Dropdown -->
+          <div class="col-6 col-md-3">
+            <label class="form-label small fw-semibold text-muted mb-1">Department</label>
+            <select name="department" class="form-select form-select-sm rounded-pill" onchange="this.form.submit()">
+              <option value="all">All Departments</option>
+              {% for dept in summary.departments %}
+                <option value="{{ dept }}" {{ 'selected' if selected_department == dept else '' }}>{{ dept }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Search Input -->
+          <div class="col-6 col-md-3">
+            <label class="form-label small fw-semibold text-muted mb-1">Search Student</label>
+            <div class="input-group input-group-sm">
+              <input type="text" name="search" class="form-control rounded-start-pill" placeholder="Name, email, handle..." value="{{ search_query }}">
+              <button class="btn btn-outline-secondary rounded-end-pill" type="submit">
+                <i class="fa-solid fa-magnifying-glass"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Intervention Queue List -->
+    {% if interventions and interventions|length > 0 %}
+      <div class="d-flex flex-column gap-3 mb-4">
+        {% for item in interventions %}
+          <div class="card border-0 shadow-sm rounded-4 p-4 bg-white card-hover" id="intervention-{{ item.id }}">
+            <div class="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+              <!-- Left Column: Student Details & Category -->
+              <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                  <!-- Category Badge -->
+                  <span class="badge {{ item.category_badge_class }} rounded-pill px-3 py-1.5 fw-semibold small">
+                    <i class="{{ item.category_icon }} me-1"></i> {{ item.category_label }}
+                  </span>
+                  <!-- Urgency Badge -->
+                  <span class="badge {{ item.urgency_badge_class }} rounded-pill px-2.5 py-1 fw-bold text-uppercase" style="font-size: 0.7rem;">
+                    {{ item.urgency_level }} Urgency
+                  </span>
+                  <!-- Status Badge -->
+                  <span class="badge bg-light text-dark border rounded-pill px-2.5 py-1 text-capitalize" style="font-size: 0.7rem;">
+                    Status: {{ item.status }}
+                  </span>
+                  <!-- Privacy Protected Badge -->
+                  <span class="badge bg-light text-secondary border rounded-pill px-2 py-0.5 privacy-tag" title="Candidate details summarized with strict privacy safeguards">
+                    <i class="fa-solid fa-lock me-1 text-success"></i> Privacy Protected
+                  </span>
+                </div>
+
+                <!-- Student Header -->
+                <div class="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                  <h5 class="fw-bold mb-0 text-dark">{{ item.student_name }}</h5>
+                  <span class="text-muted small">({{ item.department }} &bull; Class of {{ item.graduation_year }})</span>
+                  {% if item.student_email %}
+                    <span class="text-muted small">&bull; <a href="mailto:{{ item.student_email }}" class="text-decoration-none text-secondary"><i class="fa-solid fa-envelope me-1"></i>{{ item.student_email }}</a></span>
+                  {% endif %}
+                </div>
+
+                <!-- Privacy-Preserving Explanation -->
+                <div class="bg-light-subtle border rounded-3 p-3 my-2.5">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-circle-exclamation text-primary mt-1"></i>
+                    <div>
+                      <div class="fw-semibold text-dark small mb-1">
+                        Explanation: <span class="fw-normal text-secondary">{{ item.explanation }}</span>
+                      </div>
+                      {% if item.explanation_detail %}
+                        <div class="text-muted small" style="font-size: 0.82rem;">
+                          <i class="fa-solid fa-shield-halved text-success me-1"></i>{{ item.explanation_detail }}
+                        </div>
+                      {% endif %}
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Suggested Follow-up Action -->
+                <div class="p-3 rounded-3 border border-primary-subtle bg-primary-subtle bg-opacity-10">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="fa-solid fa-lightbulb text-warning mt-1"></i>
+                    <div>
+                      <span class="fw-bold text-primary small">Suggested Follow-up Action:</span>
+                      <div class="text-dark small mt-0.5 fw-medium">
+                        {{ item.suggested_action }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Action Notes Display (if present) -->
+                {% if item.action_notes %}
+                  <div class="mt-2.5 p-2.5 bg-light rounded-3 border">
+                    <div class="small fw-semibold text-secondary mb-1">
+                      <i class="fa-solid fa-clipboard-list me-1"></i> Faculty Notes &amp; Action Log:
+                    </div>
+                    <pre class="small text-muted mb-0 font-monospace" style="white-space: pre-wrap; font-size: 0.78rem;">{{ item.action_notes }}</pre>
+                  </div>
+                {% endif %}
+              </div>
+
+              <!-- Right Column: Coordinator Action Buttons -->
+              <div class="d-flex flex-column gap-2 text-md-end ms-md-3 min-w-160">
+                <div class="btn-group-vertical w-100 shadow-sm rounded-3">
+                  {% if item.status != 'in_progress' %}
+                    <button class="btn btn-outline-primary btn-sm text-start" onclick="openActionModal('{{ item.id }}', 'in_progress', '{{ item.student_name }}')">
+                      <i class="fa-solid fa-play me-1.5"></i> Mark In Progress
+                    </button>
+                  {% endif %}
+                  {% if item.status != 'resolved' %}
+                    <button class="btn btn-outline-success btn-sm text-start" onclick="openActionModal('{{ item.id }}', 'resolved', '{{ item.student_name }}')">
+                      <i class="fa-solid fa-circle-check me-1.5"></i> Resolve Issue
+                    </button>
+                  {% endif %}
+                  {% if item.status != 'snoozed' %}
+                    <button class="btn btn-outline-warning btn-sm text-start text-dark" onclick="openActionModal('{{ item.id }}', 'snoozed', '{{ item.student_name }}')">
+                      <i class="fa-solid fa-clock me-1.5"></i> Snooze (7 Days)
+                    </button>
+                  {% endif %}
+                  <button class="btn btn-outline-secondary btn-sm text-start" onclick="openActionModal('{{ item.id }}', '{{ item.status }}', '{{ item.student_name }}', true)">
+                    <i class="fa-solid fa-pen-to-square me-1.5"></i> Add Note
+                  </button>
+                </div>
+                <span class="text-muted small mt-1" style="font-size: 0.75rem;">
+                  Alert added: {{ item.created_at[:10] }}
+                </span>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <!-- Empty State -->
+      <div class="card border-0 shadow-sm rounded-4 p-5 text-center bg-white my-4">
+        <div class="py-4">
+          <div class="d-inline-flex p-4 rounded-circle bg-success-subtle text-success mb-3">
+            <i class="fa-solid fa-circle-check fs-1"></i>
+          </div>
+          <h4 class="fw-bold text-dark mb-1">Queue is Clear!</h4>
+          <p class="text-muted max-w-500 mx-auto mb-4">
+            No students currently match the selected intervention filters. All placement preparation streaks, application deadlines, and mock interview trajectories are healthy.
+          </p>
+          <div class="d-flex justify-content-center gap-2">
+            <a href="/admin/intervention-queue?category=all&status=all" class="btn btn-outline-secondary rounded-pill px-3">
+              View All History
+            </a>
+            <button class="btn btn-primary rounded-pill px-4" onclick="runInterventionScan()">
+              <i class="fa-solid fa-arrows-rotate me-1"></i> Scan Roster Now
+            </button>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+  </main>
+
+  <!-- Coordinator Follow-up Action Modal -->
+  <div class="modal fade" id="actionModal" tabindex="-1" aria-labelledby="actionModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold" id="actionModalLabel">Record Faculty Action</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <input type="hidden" id="modalInterventionId">
+          <div class="mb-3">
+            <label class="form-label small fw-semibold text-muted">Student</label>
+            <input type="text" id="modalStudentName" class="form-control form-control-sm rounded-3" readonly>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold text-muted">Update Status</label>
+            <select id="modalStatusSelect" class="form-select form-select-sm rounded-3">
+              <option value="in_progress">In Progress (Follow-up Initiated)</option>
+              <option value="resolved">Resolved (Intervention Completed)</option>
+              <option value="snoozed">Snooze Alert (7 Days)</option>
+              <option value="dismissed">Dismissed (Exempt / Not Applicable)</option>
+              <option value="pending">Pending</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label small fw-semibold text-muted">Action Notes &amp; Follow-up Details</label>
+            <textarea id="modalNotes" class="form-control rounded-3" rows="3" placeholder="e.g. Conducted mentor check-in on Nov 24. Student was ill, resuming practice drills next week."></textarea>
+            <span class="small text-muted" style="font-size: 0.75rem;">Notes are saved in the coordinator audit trail.</span>
+          </div>
+        </div>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-light rounded-pill px-3" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSaveAction" onclick="submitFacultyAction()">Save Action</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
+
+  <script>
+    let actionModalInstance = null;
+
+    document.addEventListener("DOMContentLoaded", function () {
+      const modalEl = document.getElementById("actionModal");
+      if (modalEl) {
+        actionModalInstance = new bootstrap.Modal(modalEl);
+      }
+    });
+
+    function openActionModal(interventionId, targetStatus, studentName, notesOnly = false) {
+      document.getElementById("modalInterventionId").value = interventionId;
+      document.getElementById("modalStudentName").value = studentName || "Student";
+      document.getElementById("modalStatusSelect").value = targetStatus;
+      document.getElementById("modalNotes").value = "";
+      if (actionModalInstance) {
+        actionModalInstance.show();
+      }
+    }
+
+    async function submitFacultyAction() {
+      const interventionId = document.getElementById("modalInterventionId").value;
+      const status = document.getElementById("modalStatusSelect").value;
+      const notes = document.getElementById("modalNotes").value.trim();
+      const btn = document.getElementById("btnSaveAction");
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+
+      const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+      try {
+        const response = await fetch(`/api/admin/interventions/${interventionId}/action`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+          body: JSON.stringify({
+            status: status,
+            notes: notes,
+            snooze_days: 7,
+          }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          if (actionModalInstance) {
+            actionModalInstance.hide();
+          }
+          // Reload view with current query parameters
+          window.location.reload();
+        } else {
+          alert("Error updating intervention: " + (data.error || "Unknown error"));
+          btn.disabled = false;
+          btn.textContent = "Save Action";
+        }
+      } catch (err) {
+        alert("Failed to communicate with server: " + err);
+        btn.disabled = false;
+        btn.textContent = "Save Action";
+      }
+    }
+
+    async function runInterventionScan() {
+      const btn = document.getElementById("btnScanInterventions");
+      const icon = document.getElementById("scanIcon");
+      if (btn) btn.disabled = true;
+      if (icon) icon.classList.add("fa-spin");
+
+      const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+      try {
+        const response = await fetch("/api/admin/interventions/scan", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": csrfToken,
+          },
+          body: JSON.stringify({}),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          window.location.reload();
+        } else {
+          alert("Scan error: " + (data.error || "Unknown error"));
+          if (btn) btn.disabled = false;
+          if (icon) icon.classList.remove("fa-spin");
+        }
+      } catch (err) {
+        alert("Failed to trigger scan: " + err);
+        if (btn) btn.disabled = false;
+        if (icon) icon.classList.remove("fa-spin");
+      }
+    }
+  </script>
+</body>
+</html>

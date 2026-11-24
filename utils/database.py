@@ -811,6 +811,32 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
 
+        # Table 36: Store placement coordinator intervention queue records (#786)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS faculty_interventions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                student_name TEXT,
+                student_email TEXT,
+                department TEXT NOT NULL DEFAULT 'Computer Science',
+                graduation_year INTEGER NOT NULL DEFAULT 2026,
+                category TEXT NOT NULL,
+                urgency_level TEXT NOT NULL DEFAULT 'medium',
+                explanation TEXT NOT NULL,
+                explanation_detail TEXT,
+                suggested_action TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                snoozed_until TEXT,
+                action_notes TEXT,
+                resolved_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_status ON faculty_interventions(status, urgency_level)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_student ON faculty_interventions(student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_category ON faculty_interventions(category)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
