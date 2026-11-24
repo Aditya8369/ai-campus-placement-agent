@@ -705,6 +705,10 @@
             class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-file-lines me-1"></i> Read HTML report
           </a>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" data-bs-toggle="modal"
+            data-bs-target="#customizeReportModal" id="btnOpenCustomizeReportSummary">
+            <i class="fa-solid fa-sliders me-1"></i> Customize Report
+          </button>
         </div>
       </div>
 
@@ -1647,6 +1651,10 @@
               id="btnDownloadJsonCard" title="Download placement guide as JSON">
               <i class="fa-solid fa-code me-2"></i> Download JSON
             </a>
+            <button type="button" class="btn btn-custom-outline py-2 px-3 rounded-pill" data-bs-toggle="modal"
+              data-bs-target="#customizeReportModal" id="btnCustomizeReportCard">
+              <i class="fa-solid fa-sliders me-2"></i> Customize Report
+            </button>
             <button type="button" class="btn btn-outline-secondary py-2 px-3 rounded-pill btn-print-page"
               id="btnPrintThisPageCard" onclick="window.print()" title="Print this page" aria-label="Print this page">
               <i class="fa-solid fa-print me-2"></i> Print this page
@@ -5938,6 +5946,155 @@
     <i class="fa-solid fa-arrow-up"></i>
   </button>
 
+  <!-- Customize Report Modal (#761) -->
+  <div class="modal fade" id="customizeReportModal" tabindex="-1" aria-labelledby="customizeReportModalLabel" aria-hidden="true" role="dialog">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-bottom pb-3">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">Report Personalization</span>
+            <h5 class="modal-title fw-bold mb-0" id="customizeReportModalLabel">
+              <i class="fa-solid fa-sliders text-primary me-2"></i> Customize Report Content &amp; Sections
+            </h5>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="text-secondary small mb-3">
+            Tailor your placement readiness report: add your candidate name, specify a target role, and select or re-order report sections. Excluded sections will not appear in PDF, Markdown, JSON, or HTML exports.
+          </p>
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <label for="custModalStudentName" class="form-label fw-semibold small">Candidate / Student Name (optional)</label>
+              <input type="text" class="form-control" id="custModalStudentName" placeholder="e.g. Alex Smith" maxlength="100">
+            </div>
+            <div class="col-md-6">
+              <label for="custModalTargetRole" class="form-label fw-semibold small">Target Role Title (optional)</label>
+              <input type="text" class="form-control" id="custModalTargetRole" placeholder="e.g. SDE-1 Backend" maxlength="100">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="form-label fw-semibold small mb-0">Select Sections &amp; Order</label>
+              <div class="btn-group btn-group-sm">
+                <button type="button" class="btn btn-outline-secondary py-0 px-2" id="btnSelectAllSections">Select All</button>
+                <button type="button" class="btn btn-outline-secondary py-0 px-2" id="btnResetDefaultSections">Reset Default</button>
+              </div>
+            </div>
+            <div class="list-group list-group-flush border rounded-3 p-1" id="custModalSectionsList">
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="scores">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="scores" id="chkCustScores" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustScores">Readiness Scores &amp; ATS Evaluation</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="summary">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="summary" id="chkCustSummary" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustSummary">Executive Resume Summary</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="overall_recommendation">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="overall_recommendation" id="chkCustRecommendation" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustRecommendation">Overall Placement Recommendation</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="resume_analysis">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="resume_analysis" id="chkCustResumeAnalysis" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustResumeAnalysis">Resume Feedback &amp; Suggestions</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="job_adjustments">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="job_adjustments" id="chkCustJobAdjustments" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustJobAdjustments">Top Recommended Resume Adjustments</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="skill_gaps">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="skill_gaps" id="chkCustSkillGaps" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustSkillGaps">Skill Gap Assessment</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="interview_tips">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="interview_tips" id="chkCustInterviewTips" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustInterviewTips">Interview Tips &amp; Guidance</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+              <div class="list-group-item d-flex align-items-center justify-content-between py-2 px-3 border-0 rounded-2 mb-1 bg-light" data-section="learning_roadmap">
+                <div class="form-check mb-0">
+                  <input class="form-check-input cust-section-chk" type="checkbox" value="learning_roadmap" id="chkCustRoadmap" checked>
+                  <label class="form-check-label fw-semibold" for="chkCustRoadmap">Six-Week Learning Roadmap</label>
+                </div>
+                <div class="btn-group btn-group-sm">
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-up" title="Move Up"><i class="fa-solid fa-arrow-up"></i></button>
+                  <button type="button" class="btn btn-outline-secondary py-0 px-2 cust-btn-down" title="Move Down"><i class="fa-solid fa-arrow-down"></i></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="custSaveAlert" class="alert alert-success py-2 px-3 small d-none" role="alert">
+            Preferences saved for this session! Your exports will reflect these customizations.
+          </div>
+        </div>
+        <div class="modal-footer border-top bg-light rounded-bottom-4 d-flex justify-content-between flex-wrap gap-2">
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm rounded-pill" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary btn-sm rounded-pill" id="btnSaveReportPreferences">
+              <i class="fa-solid fa-floppy-disk me-1"></i> Save Choices
+            </button>
+          </div>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="/download/{{ analysis_id }}" class="btn btn-outline-primary btn-sm rounded-pill" id="btnModalDownloadPdf">
+              <i class="fa-solid fa-file-pdf me-1"></i> Download PDF
+            </a>
+            <a href="/download/{{ analysis_id }}/markdown" class="btn btn-outline-primary btn-sm rounded-pill" id="btnModalDownloadMd">
+              <i class="fa-brands fa-markdown me-1"></i> Download MD
+            </a>
+            <a href="/download/{{ analysis_id }}/json" class="btn btn-outline-secondary btn-sm rounded-pill" id="btnModalDownloadJson">
+              <i class="fa-solid fa-code me-1"></i> Download JSON
+            </a>
+            <a href="{{ url_for('view_html_report', analysis_id=analysis_id) }}" class="btn btn-outline-dark btn-sm rounded-pill" id="btnModalViewHtml">
+              <i class="fa-solid fa-eye me-1"></i> View HTML
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Footer -->
   <footer class="bg-white border-top py-4">
     <div class="container text-center text-secondary small">
@@ -6200,6 +6357,115 @@
               alertTimetable.textContent = "Error generating timetable: " + e.message;
               alertTimetable.classList.remove("d-none");
             }
+          }
+        });
+      }
+
+      // Customize Report Modal Script (#761)
+      const listContainer = document.getElementById("custModalSectionsList");
+      if (listContainer) {
+        const analysisId = document.getElementById("dashboardContainer")?.dataset?.analysisId || "{{ analysis_id }}";
+
+        listContainer.addEventListener("click", function(e) {
+          const upBtn = e.target.closest(".cust-btn-up");
+          const downBtn = e.target.closest(".cust-btn-down");
+          if (upBtn) {
+            const item = upBtn.closest(".list-group-item");
+            if (item && item.previousElementSibling) {
+              listContainer.insertBefore(item, item.previousElementSibling);
+            }
+          } else if (downBtn) {
+            const item = downBtn.closest(".list-group-item");
+            if (item && item.nextElementSibling) {
+              listContainer.insertBefore(item.nextElementSibling, item);
+            }
+          }
+        });
+
+        document.getElementById("btnSelectAllSections")?.addEventListener("click", function() {
+          listContainer.querySelectorAll(".cust-section-chk").forEach(chk => chk.checked = true);
+        });
+
+        document.getElementById("btnResetDefaultSections")?.addEventListener("click", function() {
+          const nameInput = document.getElementById("custModalStudentName");
+          const roleInput = document.getElementById("custModalTargetRole");
+          if (nameInput) nameInput.value = "";
+          if (roleInput) roleInput.value = "";
+          listContainer.querySelectorAll(".cust-section-chk").forEach(chk => chk.checked = true);
+        });
+
+        function getCustomizationPayload() {
+          const name = document.getElementById("custModalStudentName")?.value?.trim() || "";
+          const role = document.getElementById("custModalTargetRole")?.value?.trim() || "";
+          const items = Array.from(listContainer.querySelectorAll(".list-group-item"));
+          const order = items.map(el => el.getAttribute("data-section"));
+          const included = items.filter(el => el.querySelector(".cust-section-chk").checked).map(el => el.getAttribute("data-section"));
+          return { student_name: name, target_role: role, included_sections: included, section_order: order };
+        }
+
+        function updateDownloadUrls(params) {
+          const query = new URLSearchParams();
+          if (params.student_name) query.set("name", params.student_name);
+          if (params.target_role) query.set("role", params.target_role);
+          if (params.included_sections && params.included_sections.length) query.set("sections", params.included_sections.join(","));
+          if (params.section_order && params.section_order.length) query.set("order", params.section_order.join(","));
+          const qs = query.toString() ? "?" + query.toString() : "";
+
+          const pdfBtn = document.getElementById("btnModalDownloadPdf");
+          if (pdfBtn) pdfBtn.href = `/download/${analysisId}` + qs;
+
+          const mdBtn = document.getElementById("btnModalDownloadMd");
+          if (mdBtn) mdBtn.href = `/download/${analysisId}/markdown` + qs;
+
+          const jsonBtn = document.getElementById("btnModalDownloadJson");
+          if (jsonBtn) jsonBtn.href = `/download/${analysisId}/json` + qs;
+
+          const htmlBtn = document.getElementById("btnModalViewHtml");
+          if (htmlBtn) htmlBtn.href = `/report/${analysisId}` + qs;
+        }
+
+        document.getElementById("btnSaveReportPreferences")?.addEventListener("click", async function() {
+          const payload = getCustomizationPayload();
+          updateDownloadUrls(payload);
+          try {
+            const res = await fetch(`/api/analysis/${analysisId}/customize-report`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+            });
+            if (res.ok) {
+              const alertBox = document.getElementById("custSaveAlert");
+              if (alertBox) {
+                alertBox.classList.remove("d-none");
+                setTimeout(() => alertBox.classList.add("d-none"), 4000);
+              }
+            }
+          } catch (err) {
+            console.warn("Failed saving report preferences:", err);
+          }
+        });
+
+        const modalEl = document.getElementById("customizeReportModal");
+        modalEl?.addEventListener("show.bs.modal", async function() {
+          try {
+            const res = await fetch(`/api/analysis/${analysisId}/customize-report`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.customization) {
+                const c = data.customization;
+                if (c.student_name) document.getElementById("custModalStudentName").value = c.student_name;
+                if (c.target_role) document.getElementById("custModalTargetRole").value = c.target_role;
+                if (c.included_sections) {
+                  const incSet = new Set(c.included_sections);
+                  listContainer.querySelectorAll(".cust-section-chk").forEach(chk => {
+                    chk.checked = incSet.has(chk.value);
+                  });
+                }
+                updateDownloadUrls(c);
+              }
+            }
+          } catch (err) {
+            console.warn("Could not pre-fetch customization:", err);
           }
         });
       }
