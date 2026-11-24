@@ -6,6 +6,7 @@
  */
 
 import { escapeHtml } from "./utils.js";
+import { createAnalysisRun } from "./analysis_lifecycle.js";
 import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
 import { isReducedMotion } from "./motion.js";
 
@@ -395,6 +396,20 @@ export function initFormUpload() {
 
   let isAnalysisRunning = false;
   let isSubmitting = false;
+  let activeRun = null;
+  let eventSource = null;
+  let pollInterval = null;
+  let redirectTimer = null;
+  let interruptedOnLeave = false;
+
+  function stopAnalysisWatching() {
+    if (pollInterval !== null) clearInterval(pollInterval);
+    pollInterval = null;
+    if (eventSource) eventSource.close();
+    eventSource = null;
+    if (redirectTimer !== null) clearTimeout(redirectTimer);
+    redirectTimer = null;
+  }
 
   function setActionButtonsProcessing(processing) {
     isSubmitting = processing;
@@ -413,12 +428,18 @@ export function initFormUpload() {
   }
 
   function enableSubmitButton() {
+    activeRun?.finish();
+    stopAnalysisWatching();
     isAnalysisRunning = false;
     setActionButtonsProcessing(false);
     if (btnSubmitAnalysis) {
       btnSubmitAnalysis.disabled = false;
       btnSubmitAnalysis.classList.remove("disabled");
       btnSubmitAnalysis.removeAttribute("aria-disabled");
+    }
+    if (btnCancelAnalysis) {
+      btnCancelAnalysis.disabled = true;
+      btnCancelAnalysis.classList.add("d-none");
     }
     if (submitBtnSpan) submitBtnSpan.textContent = "Analyze Readiness";
     if (submitBtnIcon) submitBtnIcon.className = "fa-solid fa-wand-magic-sparkles me-2";
@@ -472,7 +493,8 @@ export function initFormUpload() {
   // Handle Cancel Button Action (#465, #764)
   if (btnCancelAnalysis) {
     btnCancelAnalysis.addEventListener("click", () => {
-      if (!currentTaskId) return;
+      if (!currentTaskId || !activeRun || activeRun.stopped) return;
+      const cancellingRun = activeRun;
       btnCancelAnalysis.disabled = true;
       btnCancelAnalysis.classList.add("disabled");
       btnCancelAnalysis.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Cancelling...';
@@ -483,8 +505,13 @@ export function initFormUpload() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ task_id: currentTaskId }),
       })
-        .then((res) => res.json())
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok || !data.success) throw new Error("Cancellation was not accepted.");
+          return data;
+        })
         .then((data) => {
+          if (cancellingRun?.stopped || activeRun !== cancellingRun) return;
           if (progressTitle) progressTitle.textContent = "Analysis Cancelled";
           if (progressSubtitle) {
             progressSubtitle.textContent =
@@ -501,8 +528,12 @@ export function initFormUpload() {
           enableSubmitButton();
         })
         .catch((err) => {
+          if (cancellingRun?.stopped || activeRun !== cancellingRun) return;
           console.warn("Cancel request failed:", err);
-          enableSubmitButton();
+          btnCancelAnalysis.disabled = false;
+          btnCancelAnalysis.classList.remove("disabled");
+          btnCancelAnalysis.textContent = "Cancel Analysis";
+          if (progressSubtitle) progressSubtitle.textContent = "Cancellation failed. Please try again.";
         });
     });
   }
@@ -605,7 +636,7 @@ export function initFormUpload() {
     if (btnViewPartialDashboard) btnViewPartialDashboard.classList.add("d-none");
     if (btnCancelAnalysis) {
       btnCancelAnalysis.disabled = false;
-      btnCancelAnalysis.classList.remove("disabled");
+      btnCancelAnalysis.classList.remove("disabled", "d-none");
       btnCancelAnalysis.innerHTML = '<i class="fa-solid fa-ban me-1"></i> Cancel Analysis';
     }
     receivedSections.clear();
@@ -638,16 +669,20 @@ export function initFormUpload() {
     });
   }
 
-  function startPolling(statusUrl, onMilestone, onError) {
-    if (!statusUrl) return;
+  function startPolling(statusUrl, onMilestone, onError, run = activeRun) {
+    if (!statusUrl || !run || run.stopped) return;
+    if (pollInterval !== null) clearInterval(pollInterval);
     let pollCount = 0;
     const maxPolls = 120;
-    const pollInterval = setInterval(async () => {
+    pollInterval = setInterval(async () => {
+      if (run.stopped) return;
       pollCount++;
       try {
-        const res = await fetch(statusUrl);
+        const res = await fetch(statusUrl, { signal: run.signal });
+        if (run.stopped) return;
         if (!res.ok) throw new Error("Status check failed");
         const statusData = await res.json();
+        if (run.stopped) return;
 
         if (statusData.milestones && statusData.milestones.length > 0) {
           const latest = statusData.milestones[statusData.milestones.length - 1];
@@ -674,6 +709,7 @@ export function initFormUpload() {
           onError("Analysis pipeline timed out. Please try again.");
         }
       } catch (err) {
+        if (run.stopped || err.name === "AbortError") return;
         if (pollCount >= maxPolls) {
           clearInterval(pollInterval);
           onError("Failed to poll analysis status: " + err.message);
@@ -918,11 +954,35 @@ export function initFormUpload() {
   });
 
   // Periodic autosave every 4 seconds when user is actively editing
-  const draftPeriodicInterval = setInterval(saveFormDraft, 4000);
+  let draftPeriodicInterval = setInterval(saveFormDraft, 4000);
 
   // Before unload listener to save last-second edits
   window.addEventListener("beforeunload", () => {
     saveFormDraft();
+  });
+
+  window.addEventListener("pagehide", () => {
+    saveFormDraft();
+    interruptedOnLeave = Boolean(activeRun && !activeRun.stopped);
+    activeRun?.leave();
+    stopAnalysisWatching();
+    clearInterval(draftPeriodicInterval);
+    clearTimeout(draftAutosaveDebounce);
+    clearTimeout(draftIndicatorTimeout);
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    if (!event.persisted) return;
+    const interrupted = interruptedOnLeave;
+    interruptedOnLeave = false;
+    activeRun = null;
+    enableSubmitButton();
+    if (interrupted && progressTitle) progressTitle.textContent = "Analysis interrupted";
+    if (interrupted && progressSubtitle) {
+      progressSubtitle.textContent = "Start again to continue, or review partial results below.";
+    }
+    clearInterval(draftPeriodicInterval);
+    draftPeriodicInterval = setInterval(saveFormDraft, 4000);
   });
 
   // Discard draft button handler
@@ -1156,6 +1216,12 @@ export function initFormUpload() {
       return;
     }
 
+    stopAnalysisWatching();
+    activeRun = createAnalysisRun();
+    currentTaskId = null;
+    currentAnalysisId = null;
+    cancelUrl = null;
+    const run = activeRun;
     disableSubmitButton();
 
     if (batchModeSwitch && batchModeSwitch.checked) {
@@ -1179,10 +1245,12 @@ export function initFormUpload() {
       fetch("/api/analysis/batch-compare", {
         method: "POST",
         body: formData,
-        headers: { "X-Requested-With": "XMLHttpRequest" }
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        signal: run.signal,
       })
         .then(async (response) => {
           const data = await response.json();
+          if (run.stopped) return;
           if (!response.ok || !data.success) {
             throw new Error(data.error || "Batch comparison failed.");
           }
@@ -1193,15 +1261,18 @@ export function initFormUpload() {
           }
           if (progressSpinner) progressSpinner.classList.add("d-none");
           if (progressSuccessIcon) progressSuccessIcon.classList.remove("d-none");
+          run.finish();
+          stopAnalysisWatching();
           if (progressTitle) progressTitle.textContent = "Comparison Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your Company Comparison Matrix...";
           clearFormDraft();
-          setTimeout(() => {
+          redirectTimer = setTimeout(() => {
+            if (run.departed || activeRun !== run) return;
             window.location.href = data.redirect_url;
           }, 500);
         })
         .catch((err) => {
-          enableSubmitButton();
+          if (run.stopped || err.name === "AbortError") return;
           showPipelineError(err.message || "An unexpected error occurred during batch comparison.", "Batch Comparison");
         });
       return;
@@ -1210,9 +1281,8 @@ export function initFormUpload() {
     resetProgressPanel();
     if (progressOverlay) progressOverlay.classList.remove("d-none");
 
-    let eventSource = null;
-
     function handleMilestone(milestone) {
+      if (run.stopped) return;
       const step = milestone.step;
       const progress = milestone.progress || 0;
       const message = milestone.message || "";
@@ -1314,6 +1384,8 @@ export function initFormUpload() {
       }
 
       if (status === "completed" || step === "completed") {
+        run.finish();
+        stopAnalysisWatching();
         stepOrder.forEach((sId, idx) => {
           const el = document.getElementById(sId);
           if (el) {
@@ -1348,7 +1420,8 @@ export function initFormUpload() {
 
         const redirectUrl =
           milestone.redirect_url || (milestone.extra && milestone.extra.redirect_url) || "/";
-        setTimeout(() => {
+        redirectTimer = setTimeout(() => {
+          if (run.departed || activeRun !== run) return;
           window.location.href = redirectUrl;
         }, 500);
       } else if (status === "error" || step === "error") {
@@ -1366,6 +1439,7 @@ export function initFormUpload() {
     }
 
     function showPipelineError(errMsg, failedStepName, failedStepKey) {
+      if (run.stopped) return;
       enableSubmitButton();
       if (progressOverlay) progressOverlay.setAttribute("data-state", "error");
       if (progressSpinner) progressSpinner.classList.add("d-none");
@@ -1434,7 +1508,8 @@ export function initFormUpload() {
 
     fetch("/api/analysis/start", {
       method: "POST",
-      body: formData
+      body: formData,
+      signal: run.signal,
     })
       .then(async (response) => {
         let data = {};
@@ -1444,6 +1519,8 @@ export function initFormUpload() {
           data = {};
         }
 
+        run.acknowledgeTask(data.success ? data.task_id : null);
+        if (run.stopped) return;
         currentTaskId = data.task_id;
         currentAnalysisId = data.analysis_id;
         cancelUrl = data.cancel_url || `/api/analysis/cancel/${data.task_id}`;
@@ -1469,6 +1546,8 @@ export function initFormUpload() {
         }
 
         if (data.cached && data.redirect_url) {
+          run.finish();
+          stopAnalysisWatching();
           if (progressOverlay) progressOverlay.setAttribute("data-state", "success");
           if (analysisProgressBar) {
             analysisProgressBar.style.width = "100%";
@@ -1479,7 +1558,8 @@ export function initFormUpload() {
           if (progressTitle) progressTitle.textContent = "Analysis Complete!";
           if (progressSubtitle) progressSubtitle.textContent = "Redirecting to your dashboard...";
           clearFormDraft();
-          setTimeout(() => {
+          redirectTimer = setTimeout(() => {
+            if (run.departed || activeRun !== run) return;
             window.location.href = data.redirect_url;
           }, 400);
           return;
@@ -1501,6 +1581,7 @@ export function initFormUpload() {
           };
 
           eventSource.onerror = (err) => {
+            if (run.stopped) return;
             console.warn("EventSource disconnected; switching to polling fallback.", err);
             if (eventSource) {
               eventSource.close();
@@ -1513,8 +1594,8 @@ export function initFormUpload() {
         }
       })
       .catch((err) => {
+        if (run.stopped || err.name === "AbortError") return;
         console.error("Async analysis dispatch failed:", err);
-        enableSubmitButton();
         showPipelineError(err.message || "Could not start analysis. Please check your network and retry.", "Dispatch");
       });
   });
