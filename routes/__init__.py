@@ -437,6 +437,21 @@ def create_app(config_override=None) -> Flask:
         set_current_request_id(req_id)
 
 
+    @app.before_request
+    def check_request_size_limits():
+        """
+        Enforces size limits on JSON request bodies, text parameters, and uploaded files (#784).
+        Returns field-specific error details, max allowed size, and logs with request ID.
+        """
+        # Validate size on API endpoints or endpoints receiving JSON/payload
+        if request.path.startswith("/api/") or request.is_json:
+            from utils.request_size_diagnostics import validate_request_size, build_size_error_response
+            error_info = validate_request_size(request)
+            if error_info:
+                resp, code = build_size_error_response(error_info, request, status_code=413)
+                return resp, code
+
+
     @app.after_request
     def inject_correlation_headers(response):
         """Echo the X-Request-ID correlation header in every response for client observability."""
@@ -474,11 +489,35 @@ def create_app(config_override=None) -> Flask:
 
 
     @app.errorhandler(413)
+    @app.errorhandler(RequestEntityTooLarge)
     def request_entity_too_large(error):
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-        if request.path.startswith("/api/") or request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": msg}), 413
+        """
+        Handles HTTP 413 Payload Too Large / RequestEntityTooLarge errors (#153, #784).
+        Extracts field-specific details (file field, JSON body, etc.), includes the
+        maximum allowed size, and logs the failure with the correlation Request ID.
+        """
+        from utils.request_size_diagnostics import (
+            diagnose_413_exception,
+            build_size_error_response,
+            log_size_failure,
+        )
+
+        error_info = diagnose_413_exception(error, request)
+        req_id = log_size_failure(error_info, request)
+
+        is_api = (
+            request.path.startswith("/api/")
+            or request.is_json
+            or request.args.get("async") == "true"
+            or request.headers.get("Accept") == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+
+        if is_api:
+            resp, code = build_size_error_response(error_info, request, status_code=413)
+            return resp, code
+
+        msg = error_info["message"]
         flash(msg, "error")
         return redirect(url_for("index"))
 

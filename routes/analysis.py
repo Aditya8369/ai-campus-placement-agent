@@ -386,17 +386,18 @@ def analyze():
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
     except (RequestEntityTooLarge, ValueError) as ve:
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        err_msg = (
-            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            if isinstance(ve, RequestEntityTooLarge)
-            else str(ve)
-        )
-        logger.warning(f"Validation error in analysis workflow: {err_msg}")
+        if isinstance(ve, RequestEntityTooLarge):
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(ve, request)
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                resp, code = build_size_error_response(err_info, request, status_code=413)
+                return resp, code
+            flash(err_info["message"], "error")
+            return redirect(url_for("index"))
+        logger.warning(f"Validation error in analysis workflow: {str(ve)}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
-            status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
-            return jsonify({"success": False, "error": err_msg}), status_code
-        flash(err_msg, "error")
+            return jsonify({"success": False, "error": str(ve)}), 400
+        flash(str(ve), "error")
         return redirect(url_for("index"))
     except AIAnalysisError as aie:
         logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
@@ -578,19 +579,18 @@ def start_analysis_async():
         }), 202
 
     except (RequestEntityTooLarge, ValueError) as ve:
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        err_msg = (
-            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            if isinstance(ve, RequestEntityTooLarge)
-            else str(ve)
-        )
-        status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
-        return jsonify({"success": False, "error": err_msg}), status_code
+        if isinstance(ve, RequestEntityTooLarge):
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(ve, request)
+            resp, code = build_size_error_response(err_info, request, status_code=413)
+            return resp, code
+        return jsonify({"success": False, "error": str(ve)}), 400
     except Exception as e:
         if isinstance(e, HTTPException) and e.code == 413:
-            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            return jsonify({"success": False, "error": msg}), 413
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(e, request)
+            resp, code = build_size_error_response(err_info, request, status_code=413)
+            return resp, code
         logger.error(f"Failed to start async analysis: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500

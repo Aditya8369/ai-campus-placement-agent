@@ -118,6 +118,58 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
+        "/api/v1/diagnostics/request-size": {
+            "get": {
+                "tags": ["System & Utilities"],
+                "summary": "Get Request Size Limits and Diagnostic Failure Log",
+                "description": (
+                    "Retrieves active request payload size limits (JSON, file uploads), "
+                    "field-level constraints, failure metrics, and recent size violation logs (#784)."
+                ),
+                "operationId": "getRequestSizeDiagnosticsV1",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Maximum number of recent size violation records to return (default 50).",
+                        "required": False,
+                        "schema": {"type": "integer", "default": 50}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Request size diagnostics summary and active limits.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RequestSizeDiagnosticsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/diagnostics/request-size": {
+            "get": {
+                "tags": ["System & Utilities"],
+                "summary": "Get Request Size Limits and Diagnostic Failure Log (Legacy Alias)",
+                "description": "Legacy unversioned alias for /api/v1/diagnostics/request-size.",
+                "operationId": "getRequestSizeDiagnosticsLegacy",
+                "responses": {
+                    "200": {
+                        "description": "Request size diagnostics summary and active limits.",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/RequestSizeDiagnosticsResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/analysis/start": {
             "post": {
                 "tags": ["Placement Analysis"],
@@ -159,6 +211,16 @@ OPENAPI_SPEC: Dict[str, Any] = {
                             "application/json": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        }
+                    },
+                    "413": {
+                        "description": "Payload Too Large: uploaded file or JSON body exceeds maximum allowed size (#784).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PayloadTooLargeResponse"
                                 }
                             }
                         }
@@ -1410,6 +1472,38 @@ OPENAPI_SPEC: Dict[str, Any] = {
                     "code": {"type": "string", "example": "VALIDATION_ERROR"}
                 }
             },
+            "PayloadTooLargeResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": False},
+                    "error": {
+                        "type": "string",
+                        "example": "The uploaded file for 'resume' ('resume.pdf', 6.2 MB) exceeds the maximum allowed size of 5 MB."
+                    },
+                    "code": {"type": "string", "example": "REQUEST_ENTITY_TOO_LARGE"},
+                    "error_code": {"type": "string", "example": "PAYLOAD_TOO_LARGE"},
+                    "request_id": {"type": "string", "example": "9b8a7c6d-5e4f-3a2b-1c0d-e1f2a3b4c5d6"},
+                    "field": {"type": "string", "example": "resume"},
+                    "field_type": {"type": "string", "enum": ["file", "json", "text", "payload"], "example": "file"},
+                    "max_allowed_size": {"type": "string", "example": "5 MB"},
+                    "max_allowed_size_bytes": {"type": "integer", "example": 5242880},
+                    "received_size": {"type": "string", "example": "6.2 MB"},
+                    "received_size_bytes": {"type": "integer", "example": 6501171},
+                    "details": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string"},
+                            "field_type": {"type": "string"},
+                            "filename": {"type": "string", "nullable": True},
+                            "max_allowed_size": {"type": "string"},
+                            "max_allowed_size_bytes": {"type": "integer"},
+                            "received_size": {"type": "string"},
+                            "received_size_bytes": {"type": "integer"},
+                            "message": {"type": "string"}
+                        }
+                    }
+                }
+            },
             "AnalysisStartRequest": {
                 "type": "object",
                 "properties": {
@@ -1831,6 +1925,33 @@ OPENAPI_SPEC: Dict[str, Any] = {
                             "sunset_header": {"type": "string"},
                             "link_header_rel": {"type": "string"}
                         }
+                    }
+                }
+            },
+            "RequestSizeDiagnosticsResponse": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "example": "success"},
+                    "total_failures": {"type": "integer", "example": 2},
+                    "configured_limits": {
+                        "type": "object",
+                        "properties": {
+                            "max_upload_size_mb": {"type": "integer", "example": 5},
+                            "max_resume_file_size_bytes": {"type": "integer", "example": 5242880},
+                            "max_resume_file_size_human": {"type": "string", "example": "5 MB"},
+                            "max_json_payload_bytes": {"type": "integer", "example": 2097152},
+                            "max_json_payload_human": {"type": "string", "example": "2 MB"},
+                            "max_csv_file_size_bytes": {"type": "integer", "example": 5242880},
+                            "max_csv_file_size_human": {"type": "string", "example": "5 MB"},
+                            "max_content_length_bytes": {"type": "integer", "example": 10485760},
+                            "max_content_length_human": {"type": "string", "example": "10 MB"}
+                        }
+                    },
+                    "field_breakdown": {"type": "object"},
+                    "type_breakdown": {"type": "object"},
+                    "recent_failures": {
+                        "type": "array",
+                        "items": {"type": "object"}
                     }
                 }
             }
