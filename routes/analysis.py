@@ -1634,6 +1634,30 @@ def dashboard(analysis_id: str) -> str:
             "summary": "Evidence cards could not be loaded."
         }
 
+    # Prepare Resume Timeline & Date Consistency Review (#840)
+    try:
+        from utils.resume_timeline_service import analyze_resume_timeline
+        dismissed_timeline_ids = flask_session.get(f"dismissed_timeline_flags_{analysis_id}", [])
+        resume_timeline = analyze_resume_timeline(
+            raw_resume,
+            gap_threshold_months=6,
+            dismissed_flag_ids=dismissed_timeline_ids
+        )
+    except Exception as tl_err:
+        logger.warning(f"Error computing resume timeline review for dashboard: {tl_err}")
+        resume_timeline = {
+            "status": "error",
+            "has_flags": False,
+            "has_active_flags": False,
+            "total_flags": 0,
+            "active_flags_count": 0,
+            "dismissed_flags_count": 0,
+            "gap_threshold_months": 6,
+            "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+            "flags": [],
+            "timeline_items": []
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1680,6 +1704,8 @@ def dashboard(analysis_id: str) -> str:
         ats_confidence_json=json.dumps(ats_confidence),
         resume_evidence=resume_evidence,
         resume_evidence_json=json.dumps(resume_evidence),
+        resume_timeline=resume_timeline,
+        resume_timeline_json=json.dumps(resume_timeline),
         initial_recommended_jobs=initial_recommended_jobs,
         initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
     )
@@ -2227,6 +2253,135 @@ def api_evaluate_resume_ats_score():
         }), 200
     except Exception as exc:
         logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/timeline", methods=["GET"])
+def api_get_analysis_timeline(analysis_id: str):
+    """
+    Returns the date consistency, timeline gaps, and overlaps review for a candidate resume (#840).
+    Guarantees neutral phrasing without assumed reasons, constructive suggestions, and
+    reflects any flags dismissed by the candidate.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    from utils.resume_timeline_service import analyze_resume_timeline
+    dismissed_ids = flask_session.get(f"dismissed_timeline_flags_{analysis_id}", [])
+    gap_threshold = request.args.get("gap_threshold", default=6, type=int)
+
+    timeline_data = analyze_resume_timeline(
+        raw_resume,
+        gap_threshold_months=gap_threshold,
+        dismissed_flag_ids=dismissed_ids
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "timeline": timeline_data
+    }), 200
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/dismiss-timeline-flag", methods=["POST"])
+def api_dismiss_timeline_flag(analysis_id: str):
+    """
+    Allows a student to dismiss or restore a timeline gap/overlap flag (#840).
+    Saves state in session and updates persistent record if present.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    flag_id = payload.get("flag_id")
+    dismissed = payload.get("dismissed", True)
+    if isinstance(dismissed, str):
+        dismissed = dismissed.lower() in ("true", "1", "yes")
+
+    if not flag_id:
+        return jsonify({"status": "error", "success": False, "error": "flag_id is required."}), 400
+
+    session_key = f"dismissed_timeline_flags_{analysis_id}"
+    dismissed_set = set(flask_session.get(session_key, []))
+
+    if dismissed:
+        dismissed_set.add(flag_id)
+    else:
+        dismissed_set.discard(flag_id)
+
+    flask_session[session_key] = list(dismissed_set)
+    flask_session.modified = True
+
+    # Re-evaluate timeline to return updated counts
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    from utils.resume_timeline_service import analyze_resume_timeline
+    updated_timeline = analyze_resume_timeline(
+        raw_resume,
+        dismissed_flag_ids=list(dismissed_set)
+    )
+
+    # If results dictionary is in analysis_record, update timeline_analysis
+    if isinstance(analysis_record.get("results"), dict):
+        analysis_record["results"]["timeline_analysis"] = updated_timeline
+        try:
+            update_analysis_section(
+                analysis_id=analysis_id,
+                section_db_key="timeline_analysis",
+                section_payload=updated_timeline,
+                section_key="timeline_analysis",
+            )
+        except Exception as save_err:
+            logger.debug(f"Could not persist updated timeline to db: {save_err}")
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "flag_id": flag_id,
+        "is_dismissed": bool(dismissed),
+        "active_flags_count": updated_timeline["active_flags_count"],
+        "dismissed_flags_count": updated_timeline["dismissed_flags_count"],
+        "has_active_flags": updated_timeline["has_active_flags"],
+    }), 200
+
+
+@analysis_bp.route("/api/resume/timeline-check", methods=["POST"])
+def api_check_resume_timeline():
+    """
+    Direct stateless endpoint to parse and evaluate resume timeline consistency (#840).
+    Accepts JSON body:
+      - resume_text: raw text of resume
+      - gap_threshold_months: (optional, default 6)
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text", "")
+        gap_threshold = int(data.get("gap_threshold_months", 6))
+
+        from utils.resume_timeline_service import analyze_resume_timeline
+        timeline_result = analyze_resume_timeline(resume_text, gap_threshold_months=gap_threshold)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "timeline": timeline_result
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_check_resume_timeline: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 

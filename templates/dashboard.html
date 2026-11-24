@@ -3103,6 +3103,168 @@
           {% endif %}
 
           
+          <!-- Resume Timeline & Date Consistency Review (#840) -->
+          {% set timeline = resume_timeline if resume_timeline is defined and resume_timeline else (analysis.results.timeline_analysis if analysis is defined and analysis.results is mapping and analysis.results.timeline_analysis is defined else none) %}
+          {% if timeline %}
+          <div class="card border-0 bg-white rounded-4 shadow-sm mb-4" id="resumeTimelineSection">
+            <div class="card-header bg-white border-bottom-0 pb-0 pt-3 px-3">
+              <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <div>
+                  <h6 class="fw-bold mb-0 text-dark">
+                    <i class="fa-regular fa-calendar-check text-primary me-2"></i> Timeline & Date Consistency Review
+                  </h6>
+                  <p class="small text-muted mb-0">
+                    Detects gaps, overlapping roles, and date ordering issues across your experience and education.
+                  </p>
+                </div>
+                <div class="d-flex align-items-center gap-2 flex-wrap" id="timelineBadgesContainer">
+                  {% if timeline.has_active_flags %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill small" id="activeFlagsBadge">
+                    <i class="fa-solid fa-triangle-exclamation me-1"></i> {{ timeline.active_flags_count }} Active Flag{{ 's' if timeline.active_flags_count != 1 else '' }}
+                  </span>
+                  {% else %}
+                  <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill small" id="activeFlagsBadge">
+                    <i class="fa-solid fa-circle-check me-1"></i> No Date Flags
+                  </span>
+                  {% endif %}
+                  {% if timeline.summary and timeline.summary.gaps_count > 0 %}
+                  <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill small">
+                    {{ timeline.summary.gaps_count }} Gap{{ 's' if timeline.summary.gaps_count != 1 else '' }}
+                  </span>
+                  {% endif %}
+                  {% if timeline.summary and timeline.summary.overlaps_count > 0 %}
+                  <span class="badge bg-primary-subtle text-primary-emphasis border border-primary-subtle rounded-pill small">
+                    {{ timeline.summary.overlaps_count }} Overlap{{ 's' if timeline.summary.overlaps_count != 1 else '' }}
+                  </span>
+                  {% endif %}
+                  {% if timeline.summary and timeline.summary.inverted_count > 0 %}
+                  <span class="badge bg-danger-subtle text-danger-emphasis border border-danger-subtle rounded-pill small">
+                    {{ timeline.summary.inverted_count }} Inverted
+                  </span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
+            <div class="card-body p-3">
+              {% if not timeline.has_active_flags and (not timeline.flags or timeline.dismissed_flags_count == timeline.total_flags) %}
+              <div class="alert alert-success border-0 rounded-3 mb-0 p-3" id="timelineConsistentAlert">
+                <div class="d-flex align-items-center">
+                  <i class="fa-solid fa-circle-check fs-5 text-success me-2"></i>
+                  <div class="small">
+                    <strong>Timeline Consistent:</strong> All dates, roles, and education milestones are chronologically consistent with no unexplained gaps or date overlaps.
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+
+              <div class="vstack gap-2 mt-2" id="timelineFlagsList">
+                {% for flag in timeline.flags %}
+                <div class="card border rounded-3 {% if flag.is_dismissed %}bg-light opacity-75{% else %}bg-white shadow-none{% endif %} p-3 timeline-flag-card"
+                  id="flag-card-{{ flag.flag_id }}" data-flag-id="{{ flag.flag_id }}">
+                  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                    <div>
+                      <span class="badge {% if flag.type == 'inverted_dates' %}bg-danger{% elif flag.type == 'gap' and flag.severity == 'warning' %}bg-warning text-dark{% elif flag.type == 'overlap' %}bg-info text-dark{% elif flag.type == 'future_date' %}bg-secondary{% else %}bg-secondary-subtle text-dark border{% endif %} rounded-pill me-2 small">
+                        {{ flag.type|replace('_', ' ')|title }}
+                      </span>
+                      <strong class="text-dark small">{{ flag.title }}</strong>
+                      <div class="small text-muted mt-1">
+                        <i class="fa-regular fa-calendar me-1"></i> {{ flag.dates }}
+                        {% if flag.line %}
+                        <span class="mx-1">&bull;</span>
+                        <span class="font-monospace text-secondary" style="font-size: 0.78rem;">"{{ flag.line }}"</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div>
+                      <button type="button" class="btn btn-sm {% if flag.is_dismissed %}btn-outline-primary{% else %}btn-outline-secondary{% endif %} rounded-pill px-3 py-1 btn-dismiss-timeline-flag"
+                        data-flag-id="{{ flag.flag_id }}"
+                        data-dismissed="{{ 'true' if flag.is_dismissed else 'false' }}"
+                        data-analysis-id="{{ analysis_id }}"
+                        style="font-size: 0.78rem;">
+                        {% if flag.is_dismissed %}
+                          <i class="fa-solid fa-rotate-left me-1"></i> Restore
+                        {% else %}
+                          <i class="fa-regular fa-circle-xmark me-1"></i> Dismiss
+                        {% endif %}
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Neutral Chronological Explanation -->
+                  <div class="small text-secondary mb-2" style="font-size: 0.8rem;">
+                    <i class="fa-solid fa-circle-info text-primary me-1"></i>
+                    <span>{{ flag.explanation }}</span>
+                  </div>
+
+                  <!-- Constructive Actionable Suggestion -->
+                  <div class="p-2 rounded-2 bg-light border border-light-subtle small" style="font-size: 0.78rem;">
+                    <strong class="text-primary me-1"><i class="fa-solid fa-lightbulb text-warning me-1"></i> Suggestion:</strong>
+                    <span class="text-dark">{{ flag.suggestion }}</span>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+          <script>
+            document.addEventListener("DOMContentLoaded", function() {
+              document.querySelectorAll(".btn-dismiss-timeline-flag").forEach(function(btn) {
+                btn.addEventListener("click", function() {
+                  const flagId = this.getAttribute("data-flag-id");
+                  const isCurrentlyDismissed = this.getAttribute("data-dismissed") === "true";
+                  const analysisId = this.getAttribute("data-analysis-id") || "{{ analysis_id }}";
+                  const targetDismissed = !isCurrentlyDismissed;
+                  const self = this;
+
+                  self.disabled = true;
+                  fetch(`/api/analysis/${analysisId}/dismiss-timeline-flag`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ flag_id: flagId, dismissed: targetDismissed })
+                  })
+                  .then(function(res) { return res.json(); })
+                  .then(function(data) {
+                    if (data.success) {
+                      self.setAttribute("data-dismissed", targetDismissed ? "true" : "false");
+                      const card = document.getElementById("flag-card-" + flagId);
+                      if (targetDismissed) {
+                        self.className = "btn btn-sm btn-outline-primary rounded-pill px-3 py-1 btn-dismiss-timeline-flag";
+                        self.innerHTML = '<i class="fa-solid fa-rotate-left me-1"></i> Restore';
+                        if (card) {
+                          card.classList.add("bg-light", "opacity-75");
+                          card.classList.remove("shadow-none");
+                        }
+                      } else {
+                        self.className = "btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 btn-dismiss-timeline-flag";
+                        self.innerHTML = '<i class="fa-regular fa-circle-xmark me-1"></i> Dismiss';
+                        if (card) {
+                          card.classList.remove("bg-light", "opacity-75");
+                          card.classList.add("shadow-none");
+                        }
+                      }
+                      if (typeof data.active_flags_count !== "undefined") {
+                        const badge = document.getElementById("activeFlagsBadge");
+                        if (badge) {
+                          if (data.active_flags_count > 0) {
+                            badge.className = "badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill small";
+                            badge.innerHTML = '<i class="fa-solid fa-triangle-exclamation me-1"></i> ' + data.active_flags_count + ' Active Flag' + (data.active_flags_count !== 1 ? 's' : '');
+                          } else {
+                            badge.className = "badge bg-success-subtle text-success-emphasis border border-success-subtle rounded-pill small";
+                            badge.innerHTML = '<i class="fa-solid fa-circle-check me-1"></i> No Date Flags';
+                          }
+                        }
+                      }
+                    }
+                  })
+                  .catch(function(err) { console.error("Error toggling timeline flag:", err); })
+                  .finally(function() { self.disabled = false; });
+                });
+              });
+            });
+          </script>
+          {% endif %}
+
           <!-- Resume Evidence Cards (#599) -->
           {% if resume_evidence and resume_evidence.has_evidence_cards %}
           <div class="card border-0 bg-white rounded-4 shadow-sm mb-4" id="resumeEvidenceSection">

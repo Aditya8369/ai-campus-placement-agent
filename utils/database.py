@@ -6731,6 +6731,13 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from utils.interview_helpful_service import (
+    toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
+)
+
 from db.connection import (
     create_connection,
     get_connection,

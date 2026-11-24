@@ -262,10 +262,30 @@ class CoordinatorAgent:
             logger.warning(f"CoordinatorAgent: Error computing deterministic ATS score: {ats_err}")
             ats_breakdown = None
 
-        # 10. Combine validated data into a final coordinated results payload
+        # 10. Run resume timeline consistency and gap analysis (#840)
+        try:
+            from utils.resume_timeline_service import analyze_resume_timeline
+            timeline_analysis = analyze_resume_timeline(resume_text or sanitized_resume)
+        except Exception as timeline_err:
+            logger.warning(f"CoordinatorAgent: Error analyzing resume timeline: {timeline_err}")
+            timeline_analysis = {
+                "status": "error",
+                "has_flags": False,
+                "has_active_flags": False,
+                "total_flags": 0,
+                "active_flags_count": 0,
+                "dismissed_flags_count": 0,
+                "gap_threshold_months": 6,
+                "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+                "flags": [],
+                "timeline_items": []
+            }
+
+        # 11. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
             "ats_breakdown": ats_breakdown,
+            "timeline_analysis": timeline_analysis,
             "job_match": processed_job_match,
             "skill_gap": processed_skill_gap,
             "learning_roadmap": processed_roadmap,
@@ -489,9 +509,29 @@ class CoordinatorAgent:
 
         ats_breakdown = final_resume.get("ats_breakdown")
 
+        # Run resume timeline consistency and gap analysis (#840)
+        try:
+            from utils.resume_timeline_service import analyze_resume_timeline
+            timeline_analysis = analyze_resume_timeline(resume_text or sanitized_resume)
+        except Exception as timeline_err:
+            logger.warning(f"CoordinatorAgent (stream): Error analyzing resume timeline: {timeline_err}")
+            timeline_analysis = {
+                "status": "error",
+                "has_flags": False,
+                "has_active_flags": False,
+                "total_flags": 0,
+                "active_flags_count": 0,
+                "dismissed_flags_count": 0,
+                "gap_threshold_months": 6,
+                "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+                "flags": [],
+                "timeline_items": []
+            }
+
         result_payload = {
             "resume_analysis": final_resume,
             "ats_breakdown": ats_breakdown,
+            "timeline_analysis": timeline_analysis,
             "job_match": final_job_match,
             "skill_gap": final_skill_gap,
             "learning_roadmap": final_roadmap,
