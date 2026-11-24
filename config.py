@@ -134,6 +134,12 @@ CAPTCHA_VERIFY_TIMEOUT = float(os.getenv("CAPTCHA_VERIFY_TIMEOUT", "5.0"))
 CAPTCHA_ALWAYS_ENFORCE = os.getenv("CAPTCHA_ALWAYS_ENFORCE", "true").lower() in ("true", "1", "yes")
 CAPTCHA_REQUIRE_AFTER_FAILURES = int(os.getenv("CAPTCHA_REQUIRE_AFTER_FAILURES", "0"))
 
+# Performance Monitoring & Latency Tracking Configurations (#task-performance-monitoring)
+PERFORMANCE_MONITORING_ENABLED = os.getenv("PERFORMANCE_MONITORING_ENABLED", "true").lower() in ("true", "1", "yes")
+SLOW_REQUEST_THRESHOLD_MS = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "500.0"))
+PERFORMANCE_RETENTION_DAYS = int(os.getenv("PERFORMANCE_RETENTION_DAYS", "30"))
+EXCLUDE_STATIC_PERFORMANCE = os.getenv("EXCLUDE_STATIC_PERFORMANCE", "true").lower() in ("true", "1", "yes")
+
 # SMTP & Transactional Email Configurations (#186, #298)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))

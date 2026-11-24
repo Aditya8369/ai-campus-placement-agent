@@ -141,6 +141,14 @@ def create_app(config_override=None) -> Flask:
 
     initialize_database(config.DATABASE_PATH)
 
+    # Initialize performance monitoring & latency breakdown service (#task-performance-monitoring)
+    try:
+        from utils.performance_monitor import init_performance_table, init_performance_monitoring
+        init_performance_table()
+        init_performance_monitoring(app)
+    except Exception as e:
+        logger.error(f"Error initializing performance monitoring: {e}")
+
     # Initialize CSRF protection extension (#300)
     csrf.init_app(app)
 

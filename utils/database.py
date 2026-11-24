@@ -17,8 +17,14 @@ def get_db_connection() -> sqlite3.Connection:
     Establishes and returns a connection to the SQLite database.
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
+    Instruments query execution timing safely (#task-performance-monitoring).
     """
-    conn = sqlite3.connect(Config.DATABASE_PATH)
+    db_path = getattr(config, "DATABASE_PATH", None) or getattr(Config, "DATABASE_PATH", "placement_agent.db")
+    try:
+        from utils.performance_monitor import MonitoredConnection
+        conn = sqlite3.connect(db_path, timeout=10.0, factory=MonitoredConnection)
+    except Exception:
+        conn = sqlite3.connect(db_path, timeout=10.0)
     conn.row_factory = sqlite3.Row
     return conn
 

@@ -21,9 +21,14 @@ def create_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
     - Enables WAL mode and busy timeout for concurrent safety.
     - Sets row_factory = sqlite3.Row for dictionary-like column access.
     - Enforces foreign key constraints.
+    - Uses MonitoredConnection to safely record query latency metrics (#task-performance-monitoring).
     """
     target_path = db_path or config.DATABASE_PATH
-    conn = sqlite3.connect(target_path, timeout=10.0)
+    try:
+        from utils.performance_monitor import MonitoredConnection
+        conn = sqlite3.connect(target_path, timeout=10.0, factory=MonitoredConnection)
+    except Exception:
+        conn = sqlite3.connect(target_path, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
