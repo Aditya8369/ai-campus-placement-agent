@@ -943,6 +943,47 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+### Reproducible Local Development Seed Command (#task-seed-command)
+
+To explore dashboards, job application pipelines, mock interviews, and reports without needing to manually upload resumes or configure API keys, contributors can populate their local setup with safe synthetic sample data:
+
+```bash
+# Seed an isolated local development database (placement_agent_dev.db)
+python utils/seed_data.py
+# or using Flask CLI:
+flask seed run
+
+# Run the application targeting the development database
+# Linux / macOS
+export DATABASE_PATH="placement_agent_dev.db" && python app.py
+# Windows (PowerShell)
+$env:DATABASE_PATH="placement_agent_dev.db"; python app.py
+
+# Or seed your primary local database directly
+python utils/seed_data.py --app-db
+# or
+flask seed run --app-db
+```
+
+#### Contributor Test Logins
+- **Student Account**: `contributor.demo@seed.local` | Password: `Password123!`
+- **Administrator Account**: `admin.demo@seed.local` | Password: `AdminPassword123!`
+
+#### Data Safety & Reset
+- **Clear Distinction**: All synthetic data is prefixed with `[SEED]`, uses the `@seed.local` email domain, and uses `seed_*` identifiers.
+- **Inspect Seed Data Status**:
+  ```bash
+  python utils/seed_data.py --status
+  # or
+  flask seed status
+  ```
+- **Safe Reset**: Purges *only* synthetic seed records while leaving all user-created data intact:
+  ```bash
+  python utils/seed_data.py --reset
+  # or
+  flask seed reset
+  ```
+
 ---
 
 ## Community & Support

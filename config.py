@@ -29,7 +29,8 @@ else:
 
 UPLOAD_FOLDER = STORAGE_DIR / "uploads"
 REPORT_FOLDER = STORAGE_DIR / "reports"
-DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(STORAGE_DIR / "placement_agent.db")))
+DEV_DATABASE_PATH = STORAGE_DIR / "placement_agent_dev.db"
 BACKUP_DIR = STORAGE_DIR / "backups"
 
 # Ensure folders exist safely with graceful fallback
@@ -42,7 +43,8 @@ except (PermissionError, OSError):
     STORAGE_DIR = Path(tempfile.gettempdir()) / "placement_agent_fallback"
     UPLOAD_FOLDER = STORAGE_DIR / "uploads"
     REPORT_FOLDER = STORAGE_DIR / "reports"
-    DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+    DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(STORAGE_DIR / "placement_agent.db")))
+    DEV_DATABASE_PATH = STORAGE_DIR / "placement_agent_dev.db"
     BACKUP_DIR = STORAGE_DIR / "backups"
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
