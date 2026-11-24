@@ -332,7 +332,8 @@ def api_admin_restore_database():
     admin_user = flask_session.get("user", {}).get("email") or "admin"
     admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
     if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
-        logger.warning(f"Unauthorized restoration attempt from IP {request.remote_addr}")
+        from utils.security_activity_service import anonymize_ip
+        logger.warning(f"Unauthorized restoration attempt from IP {anonymize_ip(request.remote_addr)}")
         return jsonify({"success": False, "error": "Unauthorized: Administrator privileges required to restore database."}), 403
 
     payload = request.get_json(silent=True) or request.form
