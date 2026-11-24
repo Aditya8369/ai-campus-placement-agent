@@ -453,6 +453,16 @@ export function initFormUpload() {
   }
 
   function handleRetryAction() {
+    if (btnRetryAnalysis) {
+      btnRetryAnalysis.disabled = true;
+      btnRetryAnalysis.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Replaying...';
+    }
+    const retryBadge = document.getElementById("retryRecordStatusBadge");
+    if (retryBadge) {
+      retryBadge.textContent = "Replaying...";
+      retryBadge.className = "badge bg-info text-white rounded-pill px-2 py-1 small";
+    }
+
     if (progressOverlay) progressOverlay.classList.add("d-none");
     if (progressSpinner) progressSpinner.classList.remove("d-none");
     if (progressErrorAlert) progressErrorAlert.classList.add("d-none");
@@ -1423,6 +1433,53 @@ export function initFormUpload() {
       if (progressErrorAlert && progressErrorMessage) {
         progressErrorMessage.textContent = displayMsg;
         progressErrorAlert.classList.remove("d-none");
+
+        const retryBadge = document.getElementById("retryRecordStatusBadge");
+        const retryMeta = document.getElementById("retryRecordMetaInfo");
+        const retryExpiry = document.getElementById("retryRecordExpiryText");
+        const retryAttempts = document.getElementById("retryRecordAttemptsText");
+
+        if (retryBadge) {
+          retryBadge.classList.remove("d-none");
+          retryBadge.textContent = "Ready to Replay";
+          retryBadge.className = "badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill px-2 py-1 small";
+        }
+        if (retryMeta) {
+          retryMeta.classList.remove("d-none");
+          if (retryExpiry) retryExpiry.textContent = "Expires in 15m";
+          if (retryAttempts) retryAttempts.textContent = "Attempt 0 of 3";
+        }
+
+        // Asynchronously save safe retry record to server
+        fetch("/api/retry-records", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            operation_type: "analysis_run",
+            endpoint: "/api/analysis/start",
+            http_method: "POST",
+            payload: {
+              company: uploadForm?.querySelector("[name='company']")?.value || "",
+              target_role: uploadForm?.querySelector("[name='target_role']")?.value || ""
+            },
+            error_message: `Failed at ${stepLabel}: ${displayMsg}`,
+            ttl_seconds: 900
+          })
+        }).then(r => r.json()).then(res => {
+          if (res.success && res.record) {
+            const rec = res.record;
+            if (retryBadge) {
+              retryBadge.textContent = rec.status === "failed" ? "Ready to Replay" : rec.status;
+            }
+            if (retryExpiry) {
+              const mins = Math.max(1, Math.round((rec.seconds_until_expiry || 900) / 60));
+              retryExpiry.textContent = `Expires in ${mins}m`;
+            }
+            if (retryAttempts) {
+              retryAttempts.textContent = `Attempt ${rec.retry_count} of ${rec.max_retries}`;
+            }
+          }
+        }).catch(() => {});
       } else {
         alert(`Failed at ${stepLabel}: ${displayMsg}`);
         if (progressOverlay) progressOverlay.classList.add("d-none");

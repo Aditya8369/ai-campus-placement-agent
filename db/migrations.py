@@ -665,6 +665,32 @@ def _migration_009_student_profile_college(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE student_profiles ADD COLUMN college TEXT")
 
 
+def _migration_010_api_retry_records(cursor: sqlite3.Cursor) -> None:
+    """Create api_retry_records table for failed API operations and request replay."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_retry_records (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT 'default_student',
+            operation_type TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            http_method TEXT NOT NULL DEFAULT 'POST',
+            payload_json TEXT NOT NULL,
+            idempotency_key TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL DEFAULT 'failed',
+            error_message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            last_response_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_user ON api_retry_records (user_id, status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_expires ON api_retry_records (expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -676,6 +702,7 @@ MIGRATIONS: List[Migration] = [
     Migration("007_monitoring_and_practice", "Create analysis cache, aptitude, gd attempts, gemini logs, telemetry", _migration_007_monitoring_and_practice),
     Migration("008_reports_and_sharing", "Create shared reports and view logs for mentor reviews", _migration_008_reports_and_sharing),
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
+    Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
 ]
 
 

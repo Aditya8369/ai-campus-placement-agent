@@ -237,6 +237,11 @@ def create_app(config_override=None) -> Flask:
             "api_session_resume_compare_reset",
             "api_get_role_templates",
             "api_get_role_template_by_id",
+            "api_get_retry_records",
+            "api_create_retry_record",
+            "api_get_retry_record_item",
+            "api_replay_retry_record",
+            "api_cancel_retry_record",
         }
 
         user_id = flask_session.get("user_id")
