@@ -313,8 +313,10 @@ def rate_limit(
                     f"Please {retry_hint}."
                 )
 
+                from utils.security_activity_service import anonymize_ip
+                safe_client_ip = anonymize_ip(client_ip)
                 logger.warning(
-                    f"Rate limit exceeded for client {client_ip} on '{bucket_key}'. "
+                    f"Rate limit exceeded for client {safe_client_ip} on '{scope}'. "
                     f"Throttled for {reset_seconds:.1f}s ({retry_hint})."
                 )
 
