@@ -175,6 +175,17 @@ SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", os.getenv("TIMEZONE", "Asia/Kolkata")).strip() or "Asia/Kolkata"
 TIMEZONE = DISPLAY_TIMEZONE
 
+# IP Address Anonymization for User Privacy (#852)
+# Truncates IPv4 to /24 and IPv6 to /48 in logs and security activity history
+ANONYMIZE_IPS = os.getenv("ANONYMIZE_IPS", "true").lower() in ("true", "1", "yes")
+
+
+# HTTP Response Compression and Static Asset Caching (#857)
+RESPONSE_COMPRESSION_ENABLED = os.getenv("RESPONSE_COMPRESSION_ENABLED", "true").lower() in ("true", "1", "yes")
+RESPONSE_COMPRESSION_MIN_SIZE = int(os.getenv("RESPONSE_COMPRESSION_MIN_SIZE", "500"))
+STATIC_CACHE_MAX_AGE_VERSIONED = int(os.getenv("STATIC_CACHE_MAX_AGE_VERSIONED", "31536000"))
+STATIC_CACHE_MAX_AGE_DEFAULT = int(os.getenv("STATIC_CACHE_MAX_AGE_DEFAULT", "86400"))
+
 
 # Compatibility alias for modules or tests importing `Config` class / namespace
 class Config:
@@ -187,3 +198,4 @@ class Config:
     RATE_LIMIT_ENABLED = RATE_LIMIT_ENABLED
     RATE_LIMIT_DEFAULT = RATE_LIMIT_DEFAULT
     MAX_PLACEMENT_BATCH_SIZE = MAX_PLACEMENT_BATCH_SIZE
+    ANONYMIZE_IPS = ANONYMIZE_IPS
