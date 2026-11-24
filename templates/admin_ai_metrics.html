@@ -176,17 +176,71 @@
         <h5 class="fw-bold mb-0 text-dark">
           <i class="fa-solid fa-chart-column text-primary me-2"></i>Daily Call Volume &amp; Latency Trends
         </h5>
-        <span class="small text-muted">
-          Showing daily performance metrics
-        </span>
+        <div class="d-flex align-items-center gap-2">
+          <span class="small text-muted d-none d-md-inline">
+            Showing daily performance metrics
+          </span>
+          {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+            id="btnToggleDailyMetricsTable"
+            data-target-chart="dailyMetricsChartWrapper"
+            data-target-table="dailyMetricsTableWrapper"
+            aria-expanded="false"
+            aria-controls="dailyMetricsTableWrapper"
+            title="Switch to accessible data table view">
+            <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+          </button>
+          {% endif %}
+        </div>
       </div>
 
       {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
-        <div style="position: relative; height: 260px; width: 100%;">
+        <!-- Chart Canvas View Container -->
+        <div id="dailyMetricsChartWrapper" style="position: relative; height: 260px; width: 100%;">
           <canvas id="dailyMetricsChart" role="img" aria-label="Daily AI call volume and latency chart"></canvas>
         </div>
+
+        <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+        <div id="dailyMetricsTableWrapper" class="d-none chart-data-table-wrapper bg-white rounded-3 p-2 border" tabindex="0" role="region" aria-label="Daily AI call volume and latency trends data table">
+          <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover align-middle mb-0" id="dailyMetricsTable">
+              <caption class="small text-muted py-2">
+                <i class="fa-solid fa-table me-1"></i> Daily AI invocation volume, error counts, and latency percentiles.
+              </caption>
+              <thead class="table-light">
+                <tr>
+                  <th scope="col">Date</th>
+                  <th scope="col">Total Calls (count)</th>
+                  <th scope="col">Successful Calls (count)</th>
+                  <th scope="col">Failed Calls (count)</th>
+                  <th scope="col">Avg Latency (ms)</th>
+                  <th scope="col">p95 Latency (ms)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for m in summary.daily_metrics %}
+                <tr>
+                  <th scope="row" class="fw-semibold">{{ m.date }}</th>
+                  <td><span class="badge bg-light text-dark border fw-bold">{{ m.total_calls }} calls</span></td>
+                  <td><span class="badge bg-success-subtle text-success fw-bold">{{ m.successful_calls }}</span></td>
+                  <td>
+                    {% if m.failed_calls > 0 %}
+                      <span class="badge bg-danger-subtle text-danger fw-bold">{{ m.failed_calls }}</span>
+                    {% else %}
+                      <span class="text-muted small">0</span>
+                    {% endif %}
+                  </td>
+                  <td>{{ m.avg_latency_ms }} ms</td>
+                  <td>{{ m.p95_latency_ms }} ms</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
       {% else %}
-        <div class="p-5 text-center text-muted bg-light rounded-4" id="emptyMetricsChartBanner">
+        <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+        <div class="p-5 text-center text-muted bg-light rounded-4 chart-empty-state" id="emptyMetricsChartBanner" role="status" aria-live="polite">
           <i class="fa-solid fa-chart-line fa-3x mb-3 text-secondary opacity-50"></i>
           <h6 class="fw-semibold text-dark">No AI calls recorded yet</h6>
           <p class="small text-secondary mb-0">
@@ -409,7 +463,8 @@
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-geWF76RCwLtnZ8qwWowPQNguL3RmwHVBC9FhGdlKrxdiJJigb/j/68SIy3Te4Bkz" crossorigin="anonymous"></script>
 
-  <!-- Chart.js Initialization -->
+  <!-- Chart.js Palette & Initialization -->
+  <script type="module" src="{{ url_for('static', filename='js/modules/chart_palette.js') }}"></script>
   {% if summary.daily_metrics and summary.daily_metrics|length > 0 %}
   <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -420,8 +475,18 @@
       const avgLatencies = dailyData.map(d => d.avg_latency_ms);
       const p95Latencies = dailyData.map(d => d.p95_latency_ms);
 
-      const ctx = document.getElementById("dailyMetricsChart");
-      if (!ctx) return;
+      const canvas = document.getElementById("dailyMetricsChart");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+
+      // Generate pattern fills for non-color differentiation
+      const palette = window.ChartPalette;
+      const successFill = palette && palette.createAccessiblePattern
+        ? palette.createAccessiblePattern(ctx, "diagonal-stripes", "#009E73", "rgba(0, 158, 115, 0.25)")
+        : "rgba(0, 158, 115, 0.7)";
+      const failFill = palette && palette.createAccessiblePattern
+        ? palette.createAccessiblePattern(ctx, "cross-hatch", "#D55E00", "rgba(213, 94, 0, 0.25)")
+        : "rgba(213, 94, 0, 0.7)";
 
       new Chart(ctx, {
         type: "bar",
@@ -429,42 +494,50 @@
           labels: dates,
           datasets: [
             {
-              label: "Successful Calls",
+              label: "✔ Successful Calls",
               data: dailyData.map(d => d.successful_calls),
-              backgroundColor: "rgba(34, 197, 94, 0.7)",
-              borderColor: "rgb(34, 197, 94)",
-              borderWidth: 1,
+              backgroundColor: successFill,
+              borderColor: "#009E73",
+              borderWidth: 1.5,
               yAxisID: "y"
             },
             {
-              label: "Failed Calls",
+              label: "✖ Failed Calls",
               data: failedCalls,
-              backgroundColor: "rgba(239, 68, 68, 0.7)",
-              borderColor: "rgb(239, 68, 68)",
-              borderWidth: 1,
+              backgroundColor: failFill,
+              borderColor: "#D55E00",
+              borderWidth: 1.5,
               yAxisID: "y"
             },
             {
               type: "line",
-              label: "Average Latency (ms)",
+              label: "● Average Latency (ms)",
               data: avgLatencies,
-              borderColor: "rgb(59, 130, 246)",
-              backgroundColor: "rgba(59, 130, 246, 0.1)",
-              borderWidth: 2,
+              borderColor: "#0072B2",
+              backgroundColor: "rgba(0, 114, 178, 0.12)",
+              borderWidth: 2.5,
+              pointStyle: "circle",
+              pointRadius: 5,
+              pointHoverRadius: 7,
+              pointBackgroundColor: "#0072B2",
+              pointBorderColor: "#ffffff",
               tension: 0.3,
-              pointRadius: 3,
               yAxisID: "y1"
             },
             {
               type: "line",
-              label: "p95 Latency (ms)",
+              label: "◆ p95 Latency (ms)",
               data: p95Latencies,
-              borderColor: "rgb(245, 158, 11)",
-              backgroundColor: "rgba(245, 158, 11, 0.1)",
-              borderWidth: 2,
-              borderDash: [5, 5],
+              borderColor: "#E69F00",
+              backgroundColor: "rgba(230, 159, 0, 0.12)",
+              borderWidth: 2.5,
+              borderDash: [6, 4],
+              pointStyle: "rectRot",
+              pointRadius: 5,
+              pointHoverRadius: 7,
+              pointBackgroundColor: "#E69F00",
+              pointBorderColor: "#ffffff",
               tension: 0.3,
-              pointRadius: 3,
               yAxisID: "y1"
             }
           ]
@@ -509,5 +582,6 @@
     });
   </script>
   {% endif %}
+  <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
 </body>
 </html>

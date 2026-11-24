@@ -245,6 +245,7 @@ def api_evaluate_code(analysis_id: str = None):
         }), 500
 
 
+@coding_practice_bp.route("/practice", methods=["GET", "POST"])
 @coding_practice_bp.route("/coding-practice", methods=["GET", "POST"])
 def coding_practice_view():
     """
@@ -683,43 +684,17 @@ def api_reset_spaced_repetition(problem_id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@coding_practice_bp.route("/api/coding/languages", methods=["GET"])
-def api_get_supported_coding_languages():
-    """Lists supported programming languages and boilerplate (#614)."""
-    from utils.coding_language_service import get_supported_languages
-    return jsonify({
-        "status": "success",
-        "languages": get_supported_languages()
-    }), 200
-
-
-@coding_practice_bp.route("/api/coding/switch-language", methods=["POST"])
-def api_switch_coding_language():
-    """Saves per-language draft code and returns new language boilerplate (#614)."""
-    from utils.coding_language_service import is_language_supported, get_language_config
+@coding_practice_bp.route("/api/coding/performance/compare", methods=["POST"])
+def api_compare_coding_performance():
+    """Compares candidate solution runtime and memory against canonical baselines (#617)."""
+    from utils.coding_performance_service import compare_performance
     data = request.get_json(silent=True) or {}
-    lang_id = data.get("language", "").lower().strip()
     problem_id = data.get("problem_id", "default")
-    code = data.get("code", "")
+    runtime = data.get("runtime_ms")
+    memory = data.get("memory_mb")
 
-    if not is_language_supported(lang_id):
-        return jsonify({
-            "status": "error",
-            "message": f"Unsupported language: '{lang_id}'. Supported languages: Python, JavaScript, Java, C++."
-        }), 400
-
-    cfg = get_language_config(lang_id)
-    drafts = flask_session.get("coding_drafts", {})
-    key = f"{problem_id}_{lang_id}"
-    if code:
-        drafts[key] = code
-        flask_session["coding_drafts"] = drafts
-
-    return jsonify({
-        "status": "success",
-        "language": cfg,
-        "draft_code": drafts.get(key, cfg["default_boilerplate"])
-    }), 200
+    result = compare_performance(problem_id, runtime, memory)
+    return jsonify({"status": "success", "metrics": result}), 200
 
 
 

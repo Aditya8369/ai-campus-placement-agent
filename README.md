@@ -655,6 +655,29 @@ The following features are being considered:
 
 ---
 
+## Behavioural Story Bank: Save STAR Stories Linked to Competencies (#687)
+
+To help candidates master behavioral interview rounds without starting from scratch each time or forgetting their best past experiences, the platform includes a dedicated **My Stories** bank:
+
+- **Structured STAR Framework**: Record stories organized across **Situation, Task, Action, and Result** with titles and competency tags.
+- **Core Competency Tagging**: Pre-configured with core placement behavioral competencies:
+  - `Teamwork` (collaboration, peer conflict resolution)
+  - `Leadership` (mentoring, ownership, driving initiatives)
+  - `Problem Solving` (debugging, analytical troubleshooting, overcoming obstacles)
+  - `Failure` (learning from mistakes, setbacks, missed deadlines)
+  - `Initiative` (proactive opportunities, innovations without being asked)
+  - Custom user tags (e.g. `conflict resolution`, `deadline pressure`, `adaptability`).
+- **Live Completeness & Word Count Intelligence**:
+  - Live completeness indicator tracking which of the 4 STAR parts are filled (`4/4 Complete`).
+  - Word count meter with recommended 150–300 word interview length benchmark (ideal for natural 2-minute answers).
+- **In-Interview Prompt Integration**:
+  - During mock interviews, the **"Use one of my stories"** action analyzes the current question text and surfaces matching stories ranked by relevance.
+  - Serves as a **prompt/reference talking point only**—never automatically pastes or submits text, encouraging genuine vocal articulation.
+- **Strict Privacy & Owner Isolation**:
+  - Stories are strictly private to each candidate. Cross-user access, editing, or deletion is strictly blocked.
+
+---
+
 ## Company Interview Cheat Sheet (One-Page Revision PDF)
 
 To help candidates quickly revise on the way to campus drives, a downloadable one-page printable cheat sheet is available for every recruiter in `data/companies.json`:
@@ -786,6 +809,31 @@ All JSON exports adhere to a versioned, stable JSON schema (`v1.0`):
 
 ---
 
+## Keyboard Shortcuts & Accessibility (#691)
+
+The platform provides a lightweight, accessible keyboard navigation layer and modal help dialog to enable efficient navigation without relying solely on the mouse:
+
+### Global Navigation Sequences
+Press <kbd>g</kbd> followed by the destination key:
+- <kbd>g</kbd> then <kbd>d</kbd> : Jump to **Dashboard** (`/`)
+- <kbd>g</kbd> then <kbd>i</kbd> : Jump to **Mock Interview Practice** (`/interview`)
+- <kbd>g</kbd> then <kbd>t</kbd> : Jump to **Applications Tracker** (`/applications`)
+- <kbd>g</kbd> then <kbd>c</kbd> : Jump to **Coding Practice** (`/coding-practice`)
+
+### Actions & Search
+- <kbd>/</kbd> : Focus the primary search input on the current page (or navigate to `/search`)
+- <kbd>?</kbd> : Open the **Keyboard Shortcuts Help Dialog** (accessible with `role="dialog"`, `aria-modal="true"`, and Tab focus trapping)
+- <kbd>Esc</kbd> : Close open modal dialogs or offcanvas drawers and restore focus to the triggering element
+- <kbd>Ctrl</kbd> + <kbd>Enter</kbd> : Submit active form answers or run code editor problem evaluation
+
+### Accessibility Guarantees
+- **Form Protection**: All shortcuts are automatically ignored whenever focus is within an `<input>`, `<textarea>`, `<select>`, or `contenteditable` code editor.
+- **Modifier Key Safety**: Shortcuts do not trigger when modifier keys (<kbd>Ctrl</kbd>, <kbd>Alt</kbd>, <kbd>Meta</kbd>) are active, preventing any conflict with browser navigation or operating system commands.
+- **Screen Reader & Keyboard Friendly**: The help dialog follows WCAG 2.1 AA specifications with explicit focus traps, descriptive ARIA labels, and keyboard dismissibility.
+- **REST Endpoint**: Platform bindings are also retrievable programmatically via `GET /api/shortcuts`.
+
+---
+
 ## Privacy & Data Protection
 
 The AI Campus Placement Agent is committed to transparent, student-friendly data practices:
@@ -887,6 +935,15 @@ Here are solutions to the most common setup and runtime issues:
     del data\campus_agent.db
     ```
   - Restart `python app.py`. The database and all necessary tables will be automatically recreated.
+
+---
+
+## Security & Dependency Management
+
+We take application security and dependency hygiene seriously:
+- **Automated Dual-Ecosystem Scans**: CI workflows audit Python (`requirements.txt`) and JavaScript (`package.json`) dependencies on every pull request and weekly schedule.
+- **Maintainer Guide**: See [docs/DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md) for step-by-step instructions on reviewing, remediating, and managing time-limited exemptions.
+- **Security Policy & Responsible Disclosure**: See [SECURITY.md](SECURITY.md) for reporting vulnerabilities privately.
 
 ---
 

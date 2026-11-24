@@ -81,18 +81,78 @@
     <!-- Performance Trend & Domain Breakdown -->
     <div class="row g-4 mb-4">
       <div class="col-lg-8">
-        <div class="card border-0 shadow-sm rounded-4 p-4 h-100">
-          <h5 class="fw-bold mb-3"><i class="fa-solid fa-arrow-trend-up text-primary me-2"></i>Performance Score Progression</h5>
+        <div class="card border-0 shadow-sm rounded-4 p-4 h-100" id="scoreTrendCard">
+          <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+            <h5 class="fw-bold mb-0"><i class="fa-solid fa-arrow-trend-up text-primary me-2"></i>Performance Score Progression</h5>
+            {% if analytics.score_trend %}
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+              id="btnToggleScoreTrendTable"
+              data-target-chart="scoreTrendChartWrapper"
+              data-target-table="scoreTrendTableWrapper"
+              aria-expanded="false"
+              aria-controls="scoreTrendTableWrapper"
+              title="Switch to accessible data table view">
+              <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+            </button>
+            {% endif %}
+          </div>
+
           {% if analytics.score_trend %}
-          <div style="position: relative; height: 260px;">
+          <!-- Chart View Container -->
+          <div id="scoreTrendChartWrapper" style="position: relative; height: 260px;">
             <canvas id="scoreTrendChart" role="img" aria-label="Mock interview performance score progression trend chart">
               <p>Performance score progression chart visualization</p>
             </canvas>
           </div>
+
+          <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+          <div id="scoreTrendTableWrapper" class="d-none chart-data-table-wrapper" tabindex="0" role="region" aria-label="Mock interview performance score progression data table">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped table-hover align-middle mb-0" id="scoreTrendTable">
+                <caption class="small text-muted py-2">
+                  <i class="fa-solid fa-table me-1"></i> Historical mock interview scores and performance ratings over time.
+                </caption>
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Session #</th>
+                    <th scope="col">Target Company</th>
+                    <th scope="col">Session Date</th>
+                    <th scope="col">Performance Score (0-100%)</th>
+                    <th scope="col">Readiness Rating</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for session_item in analytics.score_trend %}
+                  <tr>
+                    <th scope="row">#{{ loop.index }}</th>
+                    <td class="fw-semibold">{{ session_item.company }}</td>
+                    <td>{{ session_item.date }}</td>
+                    <td>
+                      <span class="badge {% if session_item.score >= 80 %}bg-success-subtle text-success{% elif session_item.score >= 60 %}bg-warning-subtle text-warning-emphasis{% else %}bg-danger-subtle text-danger{% endif %} fw-bold">
+                        {{ session_item.score }}%
+                      </span>
+                    </td>
+                    <td>
+                      {% if session_item.score >= 80 %}
+                        <span class="text-success small fw-semibold"><i class="fa-solid fa-circle-check me-1"></i>Interview Ready</span>
+                      {% elif session_item.score >= 60 %}
+                        <span class="text-warning-emphasis small fw-semibold"><i class="fa-solid fa-triangle-exclamation me-1"></i>Moderate Fit</span>
+                      {% else %}
+                        <span class="text-danger small fw-semibold"><i class="fa-solid fa-circle-xmark me-1"></i>Needs Practice</span>
+                      {% endif %}
+                    </td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
           {% else %}
-          <div class="text-center py-5 text-muted">
+          <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+          <div class="text-center py-5 text-muted chart-empty-state" role="status" aria-live="polite" id="scoreTrendEmptyState">
             <i class="fa-solid fa-chart-area fa-3x mb-3 text-secondary opacity-50"></i>
-            <p class="mb-0">No historical interview scores recorded yet. Complete mock interview sessions to unlock trend insights!</p>
+            <h6 class="fw-bold mb-1 text-dark">No Historical Interview Scores</h6>
+            <p class="mb-0">No mock interview sessions recorded yet. Complete mock interview sessions to unlock trend insights!</p>
           </div>
           {% endif %}
         </div>
@@ -160,6 +220,7 @@
           <thead class="table-light">
             <tr>
               <th>Target Company</th>
+              <th>Persona</th>
               <th>Date</th>
               <th>Progress</th>
               <th>Avg Score</th>
@@ -175,6 +236,11 @@
             <tr>
               <td class="fw-semibold text-truncate" style="max-width: 150px;">
                 <i class="fa-solid fa-building text-secondary me-1"></i> {{ s.company_name }}
+              </td>
+              <td>
+                <span class="badge {{ s.interviewer_style_badge or 'bg-success-subtle text-success border border-success-subtle' }} rounded-pill small">
+                  <i class="fa-solid {{ s.interviewer_style_icon or 'fa-face-smile' }} me-1"></i>{{ s.interviewer_style_name or 'Friendly HR' }}
+                </span>
               </td>
               <td class="small text-muted">{{ s.date | format_date_ist if s.date else 'N/A' }}</td>
               <td>
@@ -228,15 +294,17 @@
       data: {
         labels: trendData.map(d => `${d.company} (${d.date})`),
         datasets: [{
-          label: 'Interview Score',
+          label: '◆ Interview Score',
           data: trendData.map(d => d.score),
-          borderColor: '#4f46e5',
-          backgroundColor: 'rgba(79, 70, 229, 0.1)',
+          borderColor: '#0072B2',
+          backgroundColor: 'rgba(0, 114, 178, 0.12)',
           fill: true,
           tension: 0.35,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-          pointBackgroundColor: '#4f46e5'
+          pointStyle: 'rectRot',
+          pointRadius: 6,
+          pointHoverRadius: 8,
+          pointBackgroundColor: '#0072B2',
+          pointBorderColor: '#ffffff'
         }]
       },
       options: {

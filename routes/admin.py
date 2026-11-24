@@ -740,4 +740,209 @@ def api_enroll_student_batch():
     return jsonify({"status": "success", "profile": profile}), 201
 
 
+# =====================================================================
+# STUDENT BULK INVITATION ROUTES (#690)
+# =====================================================================
+
+def _check_admin_access() -> bool:
+    """Verifies that the current requester has administrative credentials."""
+    admin_session = (
+        flask_session.get("is_admin")
+        or (flask_session.get("user", {}).get("role") == "admin")
+        or flask_session.get("user_role") in ["admin", "coordinator"]
+    )
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+    return bool(
+        admin_session
+        or (admin_header and admin_header == configured_key)
+        or (admin_param and admin_param == configured_key)
+    )
+
+
+@admin_bp.route("/admin/invite-students", methods=["GET"])
+@admin_bp.route("/admin/invitations", methods=["GET"])
+def admin_invite_students_view():
+    """Renders the placement officer student invitation and batch onboarding portal (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import list_invitations
+    status_filter = request.args.get("status", "all")
+    search_query = request.args.get("search", "").strip()
+
+    data = list_invitations(status_filter=status_filter, search_query=search_query)
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "data": data}), 200
+
+    return render_template(
+        "admin_invite_students.html",
+        invitations=data.get("invitations", []),
+        counts=data.get("counts", {}),
+        status_filter=status_filter,
+        search_query=search_query,
+    )
+
+
+@admin_bp.route("/admin/invitations/template.csv", methods=["GET"])
+@admin_bp.route("/admin/invite-students/template", methods=["GET"])
+def admin_download_invitation_csv_template():
+    """Provides a downloadable sample CSV template for bulk student onboarding (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import generate_invitation_csv_template
+    csv_text = generate_invitation_csv_template()
+    return Response(
+        csv_text,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=student_invitations_template.csv"},
+    )
+
+
+@admin_bp.route("/api/admin/invitations/preview", methods=["POST"])
+def api_admin_preview_invitations_csv():
+    """Parses and validates uploaded CSV and returns preview with error reporting (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import parse_and_validate_invitation_csv
+
+    csv_data = ""
+    if "file" in request.files:
+        uploaded_file = request.files["file"]
+        if not uploaded_file.filename:
+            return jsonify({"success": False, "error": "No file selected."}), 400
+        csv_data = uploaded_file.read()
+    else:
+        payload = request.get_json(silent=True) or request.form
+        csv_data = payload.get("csv_content", "")
+
+    if not csv_data:
+        return jsonify({"success": False, "error": "No CSV content provided."}), 400
+
+    preview = parse_and_validate_invitation_csv(csv_data)
+    status_code = 200 if preview.get("success") else 400
+    return jsonify(preview), status_code
+
+
+@admin_bp.route("/api/admin/invitations/send", methods=["POST"])
+def api_admin_send_invitations():
+    """Creates single-use, 14-day expiring invitations and dispatches emails (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import (
+        create_and_send_invitations,
+        parse_and_validate_invitation_csv,
+    )
+
+    admin_id = flask_session.get("user_id") or "admin"
+    client_ip = request.remote_addr
+
+    candidate_rows = []
+    if "file" in request.files:
+        uploaded_file = request.files["file"]
+        csv_data = uploaded_file.read()
+        preview = parse_and_validate_invitation_csv(csv_data)
+        if not preview.get("success") or not preview.get("valid_rows"):
+            return jsonify({
+                "success": False,
+                "error": preview.get("error") or "No valid rows found in CSV.",
+                "preview": preview,
+            }), 400
+        candidate_rows = preview["valid_rows"]
+    else:
+        payload = request.get_json(silent=True) or request.form
+        candidate_rows = payload.get("rows") or []
+
+    if not candidate_rows:
+        return jsonify({"success": False, "error": "No candidate rows to invite."}), 400
+
+    base_url = request.host_url
+    result = create_and_send_invitations(
+        candidate_rows=candidate_rows,
+        admin_id=admin_id,
+        base_url=base_url,
+        ip_address=client_ip,
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@admin_bp.route("/api/admin/invitations/<invite_id>/revoke", methods=["POST"])
+def api_admin_revoke_invitation(invite_id: str):
+    """Revokes an active invitation link so it stops functioning (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import revoke_invitation
+    admin_id = flask_session.get("user_id") or "admin"
+    payload = request.get_json(silent=True) or request.form
+    reason = payload.get("reason", "Revoked by placement officer")
+
+    result = revoke_invitation(
+        invitation_id=invite_id,
+        admin_id=admin_id,
+        reason=reason,
+        ip_address=request.remote_addr,
+    )
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@admin_bp.route("/api/admin/invitations/<invite_id>/resend", methods=["POST"])
+def api_admin_resend_invitation(invite_id: str):
+    """Resends an invitation with a refreshed 14-day expiry window (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import resend_invitation
+    admin_id = flask_session.get("user_id") or "admin"
+
+    result = resend_invitation(
+        invitation_id=invite_id,
+        admin_id=admin_id,
+        base_url=request.host_url,
+        ip_address=request.remote_addr,
+    )
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@admin_bp.route("/admin/invitations/export.csv", methods=["GET"])
+def admin_export_invitations_csv():
+    """Exports invitation statuses with CSV formula injection sanitization (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import export_invitations_csv
+    status_filter = request.args.get("status")
+    search_query = request.args.get("search")
+
+    csv_data = export_invitations_csv(status_filter=status_filter, search_query=search_query)
+    filename = f"student_invitations_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@admin_bp.route("/api/admin/invitations/audit-log", methods=["GET"])
+def api_admin_invitations_audit_log():
+    """Retrieves immutable admin invitation audit logs (#690)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.student_invitation_service import get_invitation_audit_logs
+    limit = min(request.args.get("limit", 50, type=int), 200)
+    logs = get_invitation_audit_logs(limit=limit)
+    return jsonify({"success": True, "logs": logs}), 200
+
+
+
 

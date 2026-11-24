@@ -116,29 +116,89 @@
             <i class="fa-solid fa-chart-radar text-primary me-2"></i> Comparative Readiness Radar
           </h4>
         </div>
-        <div class="small text-muted">
-          <i class="fa-solid fa-circle-info text-primary me-1"></i> Click company pills below to toggle datasets on the radar
+        <div class="d-flex align-items-center gap-2">
+          <div class="small text-muted d-none d-md-inline">
+            <i class="fa-solid fa-circle-info text-primary me-1"></i> Click company pills below to toggle datasets
+          </div>
+          {% if comparisons and comparisons|length > 0 %}
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+            id="btnToggleRadarTable"
+            data-target-chart="radarChartWrapper"
+            data-target-table="radarTableWrapper"
+            aria-expanded="false"
+            aria-controls="radarTableWrapper"
+            title="Switch to accessible data table view">
+            <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+          </button>
+          {% endif %}
         </div>
       </div>
 
+      {% if comparisons and comparisons|length > 0 %}
       <!-- Interactive Company Dataset Toggles -->
       <div class="d-flex flex-wrap gap-2 mb-4 p-2 bg-light rounded-pill border align-items-center" id="radarLegendContainer">
         <span class="small fw-bold text-secondary ms-2 me-1">
           <i class="fa-solid fa-toggle-on text-primary me-1"></i> Active Datasets:
         </span>
         {% for c in comparisons %}
-          <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold radar-toggle-btn active border" data-dataset-index="{{ loop.index0 }}" style="background-color: {{ c.style.background }}; border-color: {{ c.style.border }} !important; color: {{ c.style.border }};">
+          <button type="button" class="btn btn-sm rounded-pill px-3 py-1 fw-semibold radar-toggle-btn active border" data-dataset-index="{{ loop.index0 }}" style="background-color: {{ c.style.background }}; border-color: {{ c.style.border }} !important; color: {{ c.style.border }};" aria-pressed="true" aria-label="Toggle dataset for {{ c.company_name }}">
             <i class="fa-solid fa-circle me-1" style="color: {{ c.style.border }}; font-size: 0.65rem;"></i> {{ c.company_name }}
           </button>
         {% endfor %}
       </div>
 
-      <!-- Radar Canvas Container -->
-      <div style="position: relative; height: 380px; width: 100%;">
+      <!-- Radar Canvas View Container -->
+      <div id="radarChartWrapper" style="position: relative; height: 380px; width: 100%;">
         <canvas id="companyRadarCanvas" data-radar='{{ radar_data_json|safe }}' role="img" aria-label="Comparative multi-company fit radar chart">
           <p>Comparative multi-company fit radar chart visualization</p>
         </canvas>
       </div>
+
+      <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+      <div id="radarTableWrapper" class="d-none chart-data-table-wrapper bg-white rounded-4 p-3 border mb-3" tabindex="0" role="region" aria-label="Comparative readiness radar dimensions data table">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped table-hover align-middle mb-0" id="radarDimensionsTable">
+            <caption class="small text-muted py-2">
+              <i class="fa-solid fa-table me-1"></i> Multi-dimensional competency scores (0-100 pts) per target company evaluated.
+            </caption>
+            <thead class="table-light">
+              <tr>
+                <th scope="col">Target Company</th>
+                <th scope="col">Coding &amp; DSA (0-100 pts)</th>
+                <th scope="col">System Design (0-100 pts)</th>
+                <th scope="col">Tech Stack (0-100 pts)</th>
+                <th scope="col">Project Impact (0-100 pts)</th>
+                <th scope="col">Culture Fit (0-100 pts)</th>
+                <th scope="col">ATS Score (0-100 pts)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in comparisons %}
+              <tr>
+                <th scope="row" class="fw-semibold">
+                  <i class="fa-solid fa-circle me-1" style="color: {{ c.style.border }}; font-size: 0.65rem;"></i>
+                  {{ c.company_name }}
+                </th>
+                <td><span class="badge bg-light text-dark border fw-bold">{{ c.radar_scores[0] }} pts</span></td>
+                <td><span class="badge bg-light text-dark border fw-bold">{{ c.radar_scores[1] }} pts</span></td>
+                <td><span class="badge bg-light text-dark border fw-bold">{{ c.radar_scores[2] }} pts</span></td>
+                <td><span class="badge bg-light text-dark border fw-bold">{{ c.radar_scores[3] }} pts</span></td>
+                <td><span class="badge bg-light text-dark border fw-bold">{{ c.radar_scores[4] }} pts</span></td>
+                <td><span class="badge bg-primary-subtle text-primary fw-bold">{{ c.radar_scores[5] }} pts</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% else %}
+      <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+      <div class="chart-empty-state text-center py-5 bg-light rounded-4 border" role="status" aria-live="polite" id="radarEmptyState">
+        <i class="fa-solid fa-chart-radar fa-3x mb-3 text-secondary opacity-50"></i>
+        <h6 class="fw-bold mb-1 text-dark">No Company Comparisons Available</h6>
+        <p class="small text-muted mb-0">Select multiple target companies during analysis to compare competency requirements.</p>
+      </div>
+      {% endif %}
     </div>
 
     <!-- Company Comparison Matrix & Rankings Table -->
@@ -346,7 +406,67 @@
   <!-- Chart.js for Radar Chart -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js" integrity="sha384-Emf5ZVIUiarAdhkgtqK+5/Z5qIvM6QoVrS+qAVtfyZVuD5lIHrac0me485+Antp0" crossorigin="anonymous"></script>
   <!-- Custom JS -->
+  <script type="module" src="{{ url_for('static', filename='js/modules/chart_palette.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      const canvas = document.getElementById("companyRadarCanvas");
+      if (!canvas || !window.Chart) return;
+
+      let radarPayload = null;
+      try {
+        radarPayload = JSON.parse(canvas.getAttribute("data-radar") || "{}");
+      } catch (e) {
+        console.warn("Failed to parse company radar data:", e);
+      }
+
+      if (!radarPayload || !Array.isArray(radarPayload.datasets) || radarPayload.datasets.length === 0) return;
+
+      const isDark = document.documentElement.getAttribute("data-bs-theme") === "dark";
+      const textColor = isDark ? "#f0f2f5" : "#1f1f1f";
+      const gridColor = isDark ? "rgba(255, 255, 255, 0.15)" : "rgba(0, 0, 0, 0.10)";
+
+      const radarChart = new window.Chart(canvas.getContext("2d"), {
+        type: "radar",
+        data: radarPayload,
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false }
+          },
+          scales: {
+            r: {
+              min: 0,
+              max: 100,
+              ticks: { stepSize: 20, color: textColor, backdropColor: "transparent" },
+              pointLabels: { color: textColor, font: { size: 12, family: "'Outfit', sans-serif", weight: "600" } },
+              grid: { color: gridColor },
+              angleLines: { color: gridColor }
+            }
+          }
+        }
+      });
+
+      // Interactive toggle buttons
+      document.querySelectorAll(".radar-toggle-btn").forEach(btn => {
+        btn.addEventListener("click", function() {
+          const idx = parseInt(this.getAttribute("data-dataset-index"), 10);
+          if (isNaN(idx)) return;
+          const isVisible = radarChart.isDatasetVisible(idx);
+          radarChart.setDatasetVisibility(idx, !isVisible);
+          radarChart.update();
+          if (isVisible) {
+            this.classList.remove("active");
+            this.style.opacity = "0.45";
+          } else {
+            this.classList.add("active");
+            this.style.opacity = "1.0";
+          }
+        });
+      });
+    });
+  </script>
 </body>
 </html>
 

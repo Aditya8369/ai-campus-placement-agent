@@ -301,18 +301,31 @@ class InterviewAgent:
         }
 
     def evaluate_answer(
-        self, question_type: str, question: str, answer: str, is_behavioral: Any = None
+        self,
+        question_type: str,
+        question: str,
+        answer: str,
+        is_behavioral: Any = None,
+        interviewer_style: str = "friendly",
     ) -> Dict[str, Any]:
         """
         Performs a dynamic API evaluation call to score a single answer response,
         including verbal communication indicators (clarity, filler words, STAR approach).
         For behavioral questions, evaluates STAR method parts (Situation, Task, Action, Result)
         and returns which are present, missing or weak, plus one improvement tip (#303).
+        Adapts tone and probing follow-up behavior according to interviewer_style persona (#686).
         """
+        from utils.interviewer_style_service import get_style_config
+
+        style_cfg = get_style_config(interviewer_style)
+
         if is_behavioral is None:
             is_behavioral = self.is_behavioral_question(question, question_type)
 
-        logger.info(f"InterviewAgent: Dynamic response evaluation started for type: '{question_type}' (is_behavioral={is_behavioral})")
+        logger.info(
+            f"InterviewAgent: Dynamic response evaluation started for type: '{question_type}' "
+            f"(is_behavioral={is_behavioral}, style={style_cfg['id']})"
+        )
 
         if not answer or not answer.strip():
             star_analysis = None
@@ -324,6 +337,9 @@ class InterviewAgent:
                     "result": "missing",
                     "tip": "Provide a descriptive answer detailing the Situation, Task, Action, and Result."
                 }
+            probing_follow_up = None
+            if style_cfg.get("probing_follow_up"):
+                probing_follow_up = "Follow-up Challenge: What are the primary trade-offs, edge cases, and worst-case Big-O complexities of this approach?"
             return {
                 "confidence_score": 0,
                 "communication_score": 0,
@@ -344,7 +360,12 @@ class InterviewAgent:
                     "Answer field was submitted empty.",
                     "Please formulate a response of at least 2-3 sentences."
                 ],
-                "feedback": "The candidate did not provide an answer. Prompt evaluation requires written or spoken input."
+                "feedback": "The candidate did not provide an answer. Prompt evaluation requires written or spoken input.",
+                "interviewer_style": style_cfg["id"],
+                "interviewer_style_name": style_cfg["name"],
+                "interviewer_style_badge": style_cfg["badge_class"],
+                "interviewer_style_icon": style_cfg["icon"],
+                "probing_follow_up": probing_follow_up,
             }
 
         safe_answer = sanitize_untrusted_text(answer.strip(), max_length=5000)
@@ -355,11 +376,17 @@ class InterviewAgent:
             question=question,
             candidate_answer=encapsulated_answer
         )
+        if style_cfg.get("prompt_fragment"):
+            prompt += f"\n\n{style_cfg['prompt_fragment']}"
+
+        system_instruction = prompts.INTERVIEW_EVAL_SYSTEM_INSTRUCTION
+        if style_cfg.get("system_instruction_addon"):
+            system_instruction += f"\n\n{style_cfg['system_instruction_addon']}"
 
         try:
             # Query Gemini for the answer evaluation with hardened security instructions
             res = generate_json_response(
-                system_instruction=build_secure_system_instruction(prompts.INTERVIEW_EVAL_SYSTEM_INSTRUCTION),
+                system_instruction=build_secure_system_instruction(system_instruction),
                 prompt=prompt,
                 feature="interview"
             )
@@ -436,6 +463,17 @@ class InterviewAgent:
                 else:
                     tip = "Anchor your explanation with a concrete technical example or architectural tradeoff."
 
+            probing_follow_up = None
+            if style_cfg.get("probing_follow_up"):
+                probing_follow_up = str(
+                    res.get("probing_follow_up")
+                    or res.get("probing_question")
+                    or res.get("follow_up")
+                    or ""
+                ).strip()
+                if not probing_follow_up:
+                    probing_follow_up = "Follow-up Challenge: What are the primary trade-offs, edge cases, and worst-case Big-O complexities of this approach?"
+
             return {
                 "confidence_score": conf,
                 "communication_score": comm,
@@ -450,7 +488,12 @@ class InterviewAgent:
                 "star_method_analysis": star_data,
                 "star_analysis": star_analysis,
                 "suggestions": self._sanitize_list(res.get("suggestions")) or ["Incorporate clear structured responses (STAR method)."],
-                "feedback": str(res.get("feedback", "Feedback generation completed."))
+                "feedback": str(res.get("feedback", "Feedback generation completed.")),
+                "interviewer_style": style_cfg["id"],
+                "interviewer_style_name": style_cfg["name"],
+                "interviewer_style_badge": style_cfg["badge_class"],
+                "interviewer_style_icon": style_cfg["icon"],
+                "probing_follow_up": probing_follow_up,
             }
 
         except Exception as e:
@@ -468,6 +511,9 @@ class InterviewAgent:
             structure = "Response structure could not be fully analyzed."
             relevance = "Relevance could not be fully verified."
             tip = "Structure your answer logically with an opening summary, supporting details, and concrete results."
+            probing_follow_up = None
+            if style_cfg.get("probing_follow_up"):
+                probing_follow_up = "Follow-up Challenge: What are the primary trade-offs, edge cases, and worst-case Big-O complexities of this approach?"
             return {
                 "confidence_score": 50,
                 "communication_score": 50,
@@ -488,7 +534,12 @@ class InterviewAgent:
                     "Use quantitative metrics where possible.",
                     "Break down explanations into clear steps."
                 ],
-                "feedback": f"Evaluation system was unable to analyze this response due to a temporary AI service limitation. ({format_ai_error_for_user(e)})"
+                "feedback": f"Evaluation system was unable to analyze this response due to a temporary AI service limitation. ({format_ai_error_for_user(e)})",
+                "interviewer_style": style_cfg["id"],
+                "interviewer_style_name": style_cfg["name"],
+                "interviewer_style_badge": style_cfg["badge_class"],
+                "interviewer_style_icon": style_cfg["icon"],
+                "probing_follow_up": probing_follow_up,
             }
 
     def calculate_session_summary(self, answers_list: List[Dict[str, Any]]) -> Dict[str, Any]:

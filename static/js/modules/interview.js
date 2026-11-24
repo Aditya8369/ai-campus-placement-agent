@@ -13,6 +13,7 @@
 import { escapeHtml, showToast, getCsrfToken } from "./utils.js";
 import { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup } from "./common.js";
 import { handleRateLimitResponse, syncRateLimitFromHeaders, formatCountdown } from "./rate_limit.js";
+import { isReducedMotion } from "./motion.js";
 
 export { clearAllInterviewDrafts, initInterviewDraftLogoutCleanup };
 
@@ -678,7 +679,7 @@ export function initMockInterview() {
           submitBtn.disabled = false;
           answerInput.value = "";
           answerInput.focus();
-          answerInput.scrollIntoView({ behavior: "smooth", block: "center" });
+          answerInput.scrollIntoView({ behavior: isReducedMotion() ? "auto" : "smooth", block: "center" });
         }
       }
     });
@@ -1417,6 +1418,16 @@ export function initMockInterview() {
         `;
       }
 
+      let probingFollowUpHtml = "";
+      if (evalData.probing_follow_up) {
+        probingFollowUpHtml = `
+          <div class="p-2 bg-warning-subtle text-warning-emphasis rounded-3 border border-warning-subtle mb-2 probing-follow-up-card">
+            <div class="fw-bold small mb-1"><i class="fa-solid fa-bolt me-1"></i> Strict Technical Probing Follow-Up:</div>
+            <div class="small">${escapeHtml(evalData.probing_follow_up)}</div>
+          </div>
+        `;
+      }
+
       let perAnswerFeedbackHtml = "";
       if (evalData.clarity || evalData.structure || evalData.relevance || evalData.tip) {
         perAnswerFeedbackHtml = `
@@ -1573,6 +1584,7 @@ export function initMockInterview() {
         </div>
         ${fillersHtml}
         ${starHtml}
+        ${probingFollowUpHtml}
         ${perAnswerFeedbackHtml}
         ${comparisonHtml}
         <b>Suggestions:</b><br/>

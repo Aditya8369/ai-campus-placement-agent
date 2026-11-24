@@ -48,38 +48,35 @@ When using this application:
 - **Database**: SQLite is used for development. For production, consider PostgreSQL or MySQL with proper authentication
 - **Session Management**: Flask secret keys should be set to strong, random values in production
 
-### Dependency Management
+### Dependency Management & Automated Vulnerability Scanning
 
-We regularly update dependencies to address security vulnerabilities. To check for updates:
+We actively audit and update dependencies across Python and JavaScript to remediate known security vulnerabilities:
 
-```bash
-pip list --outdated
-pip install --upgrade [package-name]
-```
-
-For automated dependency scanning, consider using tools like:
-- `safety` (Python package vulnerability scanner)
-- `pip-audit` (Audits Python dependencies for known vulnerabilities)
-- `bandit` (Finds common security issues in Python code)
+- **Python Dependencies**: Audited using `pip-audit` against PyPI/OSV advisories.
+- **JavaScript Dependencies**: Audited using `npm audit` against GitHub Security Advisories.
+- **Automated Dependabot**: Weekly pull requests for `github-actions`, `pip`, and `npm` ecosystems.
+- **Comprehensive Guide**: See [docs/DEPENDENCY_SECURITY.md](docs/DEPENDENCY_SECURITY.md) for step-by-step triage, remediation, and exemption instructions.
 
 ### Dependency Vulnerability Management & CI Audits (#649)
 
-To ensure dependencies remain secure and reproducible:
-1. **Automated Audits in CI**: A scheduled and pull-request CI workflow executes `pip-audit -r requirements.txt`. The job fails on any unhandled known high/critical vulnerabilities.
-2. **Pinned Dependencies**: All direct runtime dependencies in `requirements.txt` are pinned to exact versions (`==`) to guarantee reproducible builds across developer machines and production environments.
-3. **Automated Grouped Updates**: Dependabot (`.github/dependabot.yml`) checks for updates to Python packages and GitHub Actions weekly, grouping minor and patch updates into batched pull requests.
+To ensure dependencies remain secure and reliable across environments:
+1. **Automated Dual-Ecosystem Scanning in CI**: Pull requests, main-branch commits, and weekly scheduled workflows execute automated audits via `python utils/dependency_audit.py`. The runner audits both Python (`requirements.txt`) and JavaScript (`package.json`).
+2. **Production Focus & Dev-Warning Policy**: To avoid failing builds on irrelevant development-only tools (e.g., test runners, linters, code formatters), the scan audits production dependencies (`--omit=dev`) and enforces high/critical thresholds (`--audit-level=high`). Any excluded dev-only warnings are logged informatively with clear explanations in the GitHub Step Summary.
+3. **Automated Grouped Updates**: Dependabot (`.github/dependabot.yml`) checks weekly for updates to Python packages, JavaScript packages, and GitHub Actions, grouping minor and patch updates into batched pull requests.
 
 #### Handling Unfixable or Deferred Security Advisories
-When a vulnerability is detected in an upstream package where no immediate patch is available or where an upgrade would introduce breaking changes, maintainers may record a **time-limited exemption** in `.pip-audit-ignore.yml`.
+When a vulnerability is detected in an upstream package where no immediate patch is available or where an upgrade would introduce breaking changes, maintainers may record a **time-limited exemption**:
+- **Python**: In `.pip-audit-ignore.yml`
+- **JavaScript**: In `.npm-audit-ignore.json`
 
-Every ignored advisory in `.pip-audit-ignore.yml` **strictly requires**:
-- `id`: The vulnerability identifier (e.g., `PYSEC-2026-2151` or `CVE-2026-XXXX`).
+Every ignored advisory in either file **strictly requires**:
+- `id`: The vulnerability identifier (e.g., `PYSEC-2026-2151`, `CVE-2026-XXXX`, or `GHSA-xxxx-yyyy-zzzz`).
 - `package`: The name of the affected library.
 - `reason`: A clear, documented technical justification explaining why the advisory cannot be upgraded immediately and any mitigations in place.
 - `expiry`: A strict expiration date in `YYYY-MM-DD` (maximum recommended window: 90 days).
 
 **Enforcement Policy**:
-- The CI audit runner (`utils/dependency_audit.py`) strictly validates `.pip-audit-ignore.yml`.
+- The CI audit runner (`utils/dependency_audit.py`) strictly validates both ignore files.
 - Any exemption missing a `reason` or `expiry` date is immediately rejected, causing CI to fail.
 - Once the expiration date passes (`expiry < today`), the exemption automatically expires and the CI build fails until the dependency is upgraded or a renewed justification with a new expiration date is reviewed and merged.
 

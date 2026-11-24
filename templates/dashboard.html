@@ -19,6 +19,21 @@
   <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/print.css') }}" rel="stylesheet" media="print">
+  <!-- Early Reduced Motion & Theme Resolution (Prevents FOUM / FOUC) -->
+  <script>
+    (function () {
+      try {
+        var pref = localStorage.getItem("placement_motion_pref") || "system";
+        var sys = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var isRed = pref === "reduce" || (pref === "system" && sys);
+        document.documentElement.setAttribute("data-motion-pref", pref);
+        document.documentElement.setAttribute("data-reduced-motion", isRed ? "true" : "false");
+        if (isRed) {
+          document.documentElement.classList.add("reduced-motion");
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 
 <body>
@@ -36,6 +51,38 @@
           aria-label="Toggle theme">
           <i class="fa-solid fa-moon"></i>
         </button>
+        <!-- Motion Preference Selector (#task-reduced-motion) -->
+        <div class="dropdown d-inline-block">
+          <button class="btn btn-outline-secondary btn-sm rounded-pill px-2 py-1 motion-toggle-btn dropdown-toggle"
+            type="button" id="dashboardMotionPrefDropdown" data-bs-toggle="dropdown" aria-expanded="false"
+            title="Motion preferences: System, Reduced, or Standard" aria-label="Motion preference settings">
+            <i class="fa-solid fa-person-running me-1" id="motionNavIcon"></i>
+            <span class="small d-none d-md-inline" id="motionNavLabel">Motion</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow-sm border-0 motion-dropdown-menu" aria-labelledby="dashboardMotionPrefDropdown">
+            <li><h6 class="dropdown-header"><i class="fa-solid fa-sliders me-1"></i> Motion Preference</h6></li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="system">
+                <span><i class="fa-solid fa-desktop me-2 text-secondary"></i> System Default (Auto)</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="system"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="reduce">
+                <span><i class="fa-solid fa-person-walking me-2 text-warning"></i> Reduced Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="reduce"></i>
+              </button>
+            </li>
+            <li>
+              <button class="dropdown-item d-flex justify-content-between align-items-center motion-pref-item" type="button" data-motion-value="allow">
+                <span><i class="fa-solid fa-person-running me-2 text-success"></i> Standard Motion</span>
+                <i class="fa-solid fa-check small text-primary d-none motion-check" data-for="allow"></i>
+              </button>
+            </li>
+            <li><hr class="dropdown-divider my-1"></li>
+            <li><span class="dropdown-item-text text-muted small py-1" style="font-size: 0.75rem;">Disables animations while keeping progress indicators visible.</span></li>
+          </ul>
+        </div>
         <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-2 px-sm-3">
           <i class="fa-solid fa-arrow-left me-1"></i> <span class="d-none d-sm-inline">New</span> Analysis
         </a>
@@ -1125,6 +1172,49 @@
         </div>
         {% endif %}
 
+        <!-- Keyword Balance Card (#685) -->
+        {% if breakdown.keyword_balance and breakdown.keyword_balance.has_warnings %}
+        <div class="card border-0 mb-4 rounded-4 shadow-sm bg-warning-subtle bg-opacity-25 border border-warning-subtle" id="atsKeywordBalanceCard">
+          <div class="card-body p-3">
+            <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-scale-unbalanced text-warning fs-5"></i>
+                <h6 class="mb-0 fw-bold text-dark">Keyword Balance Warning</h6>
+              </div>
+              <span class="badge bg-warning text-dark rounded-pill px-3 py-1 small">
+                Score Impact: -{{ breakdown.keyword_balance.score_penalty }} pts (capped at max {{ breakdown.keyword_balance.max_penalty_cap }} pts)
+              </span>
+            </div>
+            <p class="small text-secondary mb-2">
+              Unusually frequent keyword repetition or long skill dumps can trigger ATS spam filters and discourage recruiters.
+              <strong>Suggestion:</strong> Mention it once in skills and once with evidence in a project.
+            </p>
+            {% if breakdown.keyword_balance.flagged_terms %}
+            <div class="mb-2">
+              <span class="small fw-bold text-dark d-block mb-1">Flagged Repeated Terms (Threshold > {{ breakdown.keyword_balance.repetition_threshold }}x):</span>
+              <div class="d-flex flex-wrap gap-2">
+                {% for item in breakdown.keyword_balance.flagged_terms %}
+                <span class="badge bg-white text-dark border rounded-pill px-3 py-1 shadow-xs">
+                  <i class="fa-solid fa-triangle-exclamation text-warning me-1"></i>
+                  <strong>{{ item.term }}</strong>: {{ item.count }} times
+                </span>
+                {% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            {% if breakdown.keyword_balance.skill_dump_detected %}
+            <div class="alert alert-warning py-1 px-2 rounded-3 small mb-2 d-flex align-items-center gap-2">
+              <i class="fa-solid fa-list-ul"></i>
+              <span><strong>Skill Dump Detected:</strong> Found {{ breakdown.keyword_balance.skill_dump_count }} items in skills listing (threshold: {{ breakdown.keyword_balance.dump_threshold }}). Focus on your core 15-20 skills backed by practical examples.</span>
+            </div>
+            {% endif %}
+            <div class="small text-muted mt-1 fst-italic" style="font-size: 0.75rem;">
+              {{ breakdown.keyword_balance.documentation }}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
         <!-- Section-Wise Breakdown Cards -->
         <div class="row g-3 mb-4" id="atsSectionsGrid">
           {% for sec_key, sec in breakdown.sections.items() %}
@@ -1431,6 +1521,9 @@
           </a>
           <a href="#selfIntroSectionCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-id-card-clip me-1 text-primary"></i> Self Introduction
+          </a>
+          <a href="#jobRecommendationsCard" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnNavJobRecommendations">
+            <i class="fa-solid fa-briefcase me-1 text-primary"></i> Job Recommendations
           </a>
           <a href="/aptitude" class="btn btn-sm btn-outline-secondary rounded-pill px-3">
             <i class="fa-solid fa-stopwatch me-1 text-primary"></i> Aptitude Practice
@@ -1879,23 +1972,80 @@
         </div>
       </div>
 
-      <!-- Longitudinal Trend Visualization (Chart.js) -->
+      <!-- Longitudinal Trend Visualization (Chart.js & Accessible Data Table) -->
       <div class="p-3 bg-light rounded-4 border mb-3">
         <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
           <span class="small fw-bold text-dark">
             <i class="fa-solid fa-chart-line text-primary me-1"></i> ATS Compatibility &amp; Match Progression (v1 - v{{
             versions|length }})
           </span>
-          <span class="small text-muted">
-            <i class="fa-regular fa-calendar me-1"></i> {{ trend_series.dates[0] }} to {{ trend_series.dates[-1] }}
-          </span>
+          <div class="d-flex align-items-center gap-2">
+            {% if trend_series and trend_series.dates and trend_series.dates|length > 0 %}
+              <span class="small text-muted d-none d-md-inline">
+                <i class="fa-regular fa-calendar me-1"></i> {{ trend_series.dates[0] }} to {{ trend_series.dates[-1] }}
+              </span>
+              <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 py-1 chart-table-toggle-btn"
+                id="btnToggleProgressTrendTable"
+                data-target-chart="progressTrendChartWrapper"
+                data-target-table="progressTrendTableWrapper"
+                aria-expanded="false"
+                aria-controls="progressTrendTableWrapper"
+                title="Switch to accessible data table view">
+                <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Data Table</span>
+              </button>
+            {% endif %}
+          </div>
         </div>
-        <div style="position: relative; height: 220px; width: 100%;">
-          <canvas id="progressTrendChart" role="img"
-            aria-label="Placement readiness progress and score trend chart across recent evaluations">
-            <p>Placement readiness progress trend chart visualization</p>
-          </canvas>
-        </div>
+
+        {% if trend_series and trend_series.labels and trend_series.labels|length > 0 %}
+          <!-- Chart View Container -->
+          <div id="progressTrendChartWrapper" style="position: relative; height: 220px; width: 100%;">
+            <canvas id="progressTrendChart" role="img"
+              aria-label="Placement readiness progress and score trend chart across recent evaluations">
+              <p>Placement readiness progress trend chart visualization</p>
+            </canvas>
+          </div>
+
+          <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+          <div id="progressTrendTableWrapper" class="d-none chart-data-table-wrapper bg-white rounded-3 p-2 border" tabindex="0" role="region" aria-label="Placement readiness progress trend data table">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped table-hover align-middle mb-0" id="progressTrendTable">
+                <caption class="small text-muted py-2">
+                  <i class="fa-solid fa-table me-1"></i> Placement readiness ATS scores and skill gaps progression across resume versions.
+                </caption>
+                <thead class="table-light">
+                  <tr>
+                    <th scope="col">Version</th>
+                    <th scope="col">Date Evaluated</th>
+                    <th scope="col">ATS Profile Score (0-100 pts)</th>
+                    <th scope="col">Job Match Score (%)</th>
+                    <th scope="col">Skill Gaps (count)</th>
+                    <th scope="col">Resume File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for i in range(trend_series.labels|length) %}
+                  <tr>
+                    <th scope="row" class="fw-semibold">{{ trend_series.labels[i] }}</th>
+                    <td>{{ trend_series.dates[i] }}</td>
+                    <td><span class="badge bg-primary-subtle text-primary fw-bold">{{ trend_series.ats_scores[i] }} pts</span></td>
+                    <td><span class="badge bg-success-subtle text-success fw-bold">{{ trend_series.match_scores[i] }}%</span></td>
+                    <td><span class="badge bg-danger-subtle text-danger fw-bold">{{ trend_series.gap_counts[i] }} gaps</span></td>
+                    <td class="small text-muted text-truncate" style="max-width: 180px;">{{ trend_series.filenames[i] if trend_series.filenames else 'Resume' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        {% else %}
+          <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+          <div class="chart-empty-state text-center py-4 bg-white rounded-3 border" role="status" aria-live="polite" id="progressTrendEmptyState">
+            <i class="fa-solid fa-chart-line fa-2x mb-2 text-secondary opacity-50"></i>
+            <h6 class="fw-bold mb-1 text-dark">No Historical Progress Data Available</h6>
+            <p class="small text-muted mb-0">Longitudinal score and skill progression trends will appear here as you evaluate multiple resume iterations.</p>
+          </div>
+        {% endif %}
       </div>
 
       <!-- Incremental Keywords & Resolved Gaps Breakdown -->
@@ -2727,6 +2877,210 @@
       </div>
     </div>
 
+    <!-- Targeted Campus Job Recommendations (#533) -->
+    <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="jobRecommendationsCard" data-analysis-id="{{ analysis_id }}" data-initial-jobs='{{ initial_recommended_jobs_json|safe if initial_recommended_jobs_json is defined else "[]" }}'>
+      <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom gap-2">
+        <div class="d-flex align-items-center gap-2">
+          <div class="rounded-circle p-2 bg-primary-subtle text-primary d-flex align-items-center justify-content-center" style="width: 38px; height: 38px;">
+            <i class="fa-solid fa-briefcase"></i>
+          </div>
+          <div>
+            <h4 class="fw-bold mb-0">Targeted Campus Drive Recommendations</h4>
+            <small class="text-muted">Job openings ranked by technical skill overlap with candidate evaluation</small>
+          </div>
+        </div>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="badge bg-primary-subtle text-primary border rounded-pill px-3 py-2 fw-semibold" id="jobMatchedCountBadge">
+            <i class="fa-solid fa-list-check me-1"></i> <span id="jobMatchedCount">{{ initial_recommended_jobs|default([])|length }}</span> Openings Matched
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3" id="btnResetJobFilters" title="Reset all filters to show all openings">
+            <i class="fa-solid fa-rotate-left me-1"></i> Reset Filters
+          </button>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">
+        Explore active recruitment drives and internships filtered by location, role type, and experience level. Every recommendation displays your matched skills and explains why it fits your evaluated profile.
+      </p>
+
+      <!-- Filter Controls Bar -->
+      <div class="p-3 bg-light rounded-4 border mb-4" id="jobFiltersBar">
+        <div class="row g-3 align-items-center">
+          <!-- Location Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobLocationFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-location-dot text-danger me-1"></i> Location:
+            </label>
+            <select class="form-select form-select-sm" id="jobLocationFilter" aria-label="Filter jobs by location">
+              <option value="all">All Locations</option>
+              <option value="Bengaluru">Bengaluru</option>
+              <option value="Hyderabad">Hyderabad</option>
+              <option value="Pune">Pune</option>
+              <option value="Mumbai">Mumbai</option>
+              <option value="Noida">Noida</option>
+              <option value="Gurugram">Gurugram</option>
+              <option value="Remote">Remote</option>
+            </select>
+          </div>
+
+          <!-- Role Type Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobRoleTypeFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-id-badge text-primary me-1"></i> Role Type:
+            </label>
+            <select class="form-select form-select-sm" id="jobRoleTypeFilter" aria-label="Filter jobs by role type">
+              <option value="all">All Roles</option>
+              <option value="Full-time">Full-time</option>
+              <option value="Internship">Internship</option>
+            </select>
+          </div>
+
+          <!-- Experience Level Filter -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobExperienceFilter" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-graduation-cap text-success me-1"></i> Experience Level:
+            </label>
+            <select class="form-select form-select-sm" id="jobExperienceFilter" aria-label="Filter jobs by experience level">
+              <option value="all">All Experience Levels</option>
+              <option value="fresher">Fresher / 0-1 Years</option>
+              <option value="intern">Student / Pre-final Year</option>
+              <option value="final year">Final Year / 2026 Batch</option>
+            </select>
+          </div>
+
+          <!-- Search Input -->
+          <div class="col-lg-3 col-md-6 col-12">
+            <label for="jobSearchInput" class="form-label small fw-bold text-secondary mb-1">
+              <i class="fa-solid fa-magnifying-glass text-info me-1"></i> Search:
+            </label>
+            <div class="input-group input-group-sm">
+              <input type="text" class="form-control" id="jobSearchInput" placeholder="Company, title or skill..." aria-label="Search jobs by keyword">
+              <button class="btn btn-outline-secondary" type="button" id="btnClearJobSearch" title="Clear search">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty State with Broaden Suggestions (#533) -->
+      <div id="jobRecommendationsEmptyState" class="alert alert-warning border-0 rounded-4 shadow-sm p-4 text-center {% if initial_recommended_jobs|default([])|length > 0 %}d-none{% endif %}" role="alert">
+        <div class="mb-3">
+          <i class="fa-solid fa-filter-circle-xmark text-warning fa-3x"></i>
+        </div>
+        <h5 class="fw-bold text-dark mb-2">No Matching Openings Found</h5>
+        <p class="text-secondary small mb-3">No campus job openings currently match your selected combination of location, role type, and experience filters.</p>
+
+        <div class="p-3 bg-white rounded-3 border text-start mx-auto mb-3" style="max-width: 600px;">
+          <h6 class="fw-bold text-dark mb-2"><i class="fa-solid fa-lightbulb text-warning me-2"></i>Suggestions to Broaden Your Search:</h6>
+          <ul class="mb-0 text-secondary small ps-3" id="jobBroadenSuggestionsList">
+            <li>Switch location to 'All Locations' to see positions across all tech hubs and remote drives.</li>
+            <li>Broaden role type to 'All Roles' to include both Full-time and Internship opportunities.</li>
+            <li>Clear specific experience criteria to explore all student and early-career drives.</li>
+          </ul>
+        </div>
+
+        <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" id="btnEmptyStateReset">
+          <i class="fa-solid fa-rotate-left me-1"></i> Reset All Filters
+        </button>
+      </div>
+
+      <!-- Job Recommendations Grid List -->
+      <div class="row g-3" id="jobRecommendationsList">
+        {% for job in initial_recommended_jobs|default([]) %}
+          <div class="col-lg-6 col-12 job-recommendation-item" data-job-id="{{ job.id }}">
+            <div class="card h-100 border rounded-4 p-3 bg-white shadow-sm d-flex flex-column">
+              <!-- Top Row: Company & Match Badge -->
+              <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <div class="rounded-3 px-2 py-1 text-white fw-bold small text-center" style="background-color: {{ job.logo_color|default('#4f46e5') }}; min-width: 36px;">
+                    {{ job.company[:2]|upper if job.company else 'CO' }}
+                  </div>
+                  <div>
+                    <h6 class="fw-bold mb-0 text-dark">{{ job.title }}</h6>
+                    <small class="text-muted fw-semibold">{{ job.company }}</small>
+                  </div>
+                </div>
+                <div class="text-end flex-shrink-0">
+                  <span class="badge {{ 'bg-success text-white' if job.match_percentage >= 80 else ('bg-primary text-white' if job.match_percentage >= 65 else 'bg-warning text-dark') }} rounded-pill px-3 py-1 fw-bold">
+                    {{ job.match_percentage }}% Match
+                  </span>
+                  {% if job.is_target_company %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill d-block mt-1 small">
+                      <i class="fa-solid fa-bullseye me-1"></i> Target
+                    </span>
+                  {% endif %}
+                </div>
+              </div>
+
+              <!-- Metadata Badges (Location, Role Type, Experience, Salary) -->
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-location-dot text-danger me-1"></i> {{ job.location }}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-briefcase text-primary me-1"></i> {{ job.role_type }}
+                </span>
+                <span class="badge bg-light text-secondary border rounded-pill small py-1 px-2">
+                  <i class="fa-solid fa-graduation-cap text-success me-1"></i> {{ job.experience_level }}
+                </span>
+                {% if job.salary_range %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small py-1 px-2">
+                    <i class="fa-solid fa-indian-rupee-sign me-1"></i> {{ job.salary_range }}
+                  </span>
+                {% endif %}
+              </div>
+
+              <!-- Why It Fits (Recommendation Reason) (#533) -->
+              <div class="p-2 px-3 bg-light rounded-3 small border mb-3">
+                <i class="fa-solid fa-wand-magic-sparkles text-primary me-1"></i>
+                <strong>Why this fits:</strong>
+                <span class="text-secondary">{{ job.recommendation_reason|default(job.fit_reason)|default(job.fit_summary) }}</span>
+              </div>
+
+              <!-- Matched Skills Pills (#533) -->
+              <div class="mb-2">
+                <span class="small fw-bold text-success d-block mb-1">
+                  <i class="fa-solid fa-circle-check me-1"></i> Matched Skills ({{ job.matched_skills|length }}):
+                </span>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for s in job.matched_skills %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill small">{{ s }}</span>
+                  {% else %}
+                    <span class="text-muted small fst-italic">Standard campus baseline</span>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <!-- Missing / Recommended Skills Pills -->
+              {% if job.missing_skills %}
+                <div class="mb-3">
+                  <span class="small fw-bold text-secondary d-block mb-1">
+                    <i class="fa-solid fa-circle-info me-1"></i> Skills to Brush Up:
+                  </span>
+                  <div class="d-flex flex-wrap gap-1">
+                    {% for s in job.missing_skills[:5] %}
+                      <span class="badge bg-light text-secondary border rounded-pill small">{{ s }}</span>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+
+              <!-- Footer with Apply & Deadline Info -->
+              <div class="mt-auto pt-2 border-top d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                  <i class="fa-regular fa-clock me-1"></i> {{ job.deadline|default('Active Hiring Drive') }}
+                </small>
+                <a href="{{ job.apply_url|default('#') }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-custom-primary rounded-pill px-3">
+                  <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Apply / View Drive
+                </a>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
     <!-- Resume Feedback Panel -->
     <div class="row g-4 mb-4" id="resumeFeedbackSection">
 
@@ -3282,10 +3636,10 @@
             sc.missing_percentage }}%</span>
         </div>
         <div class="progress rounded-pill shadow-xs" style="height: 12px;">
-          <div class="progress-bar bg-success" role="progressbar" style="width: {{ sc.match_percentage }}%"
+          <div class="progress-bar progress-bar-striped" role="progressbar" style="width: {{ sc.match_percentage }}%; background-color: #009E73;"
             aria-valuenow="{{ sc.match_percentage }}" aria-valuemin="0" aria-valuemax="100"
             title="Matching Skills: {{ sc.match_percentage }}%"></div>
-          <div class="progress-bar bg-danger" role="progressbar" style="width: {{ sc.missing_percentage }}%"
+          <div class="progress-bar" role="progressbar" style="width: {{ sc.missing_percentage }}%; background-color: #D55E00;"
             aria-valuenow="{{ sc.missing_percentage }}" aria-valuemin="0" aria-valuemax="100"
             title="Missing Skills: {{ sc.missing_percentage }}%"></div>
         </div>
@@ -3297,37 +3651,103 @@
         <div class="col-lg-5 col-12 text-center">
           <div
             class="p-3 bg-light rounded-4 border h-100 d-flex flex-column align-items-center justify-content-center position-relative">
-            <div class="d-flex justify-content-between w-100 small text-secondary mb-2 px-2">
+            <div class="d-flex justify-content-between align-items-center w-100 small text-secondary mb-2 px-2 flex-wrap gap-1">
               <span class="fw-bold"><i class="fa-solid fa-chart-pie me-1 text-primary"></i> Skills Proportion</span>
-              <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills }} Total Evaluated</span>
-            </div>
-
-            <!-- Chart.js Canvas Container -->
-            <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
-              <canvas id="skillsComparisonChart" role="img"
-                aria-label="Visual skills comparison chart comparing candidate skills against role requirements">
-                <p>Visual skills comparison chart visualization</p>
-              </canvas>
-              <!-- Center Metric Overlay -->
-              <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
-                <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
-                <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-white text-dark border rounded-pill">{{ sc.total_skills|default(0) }} Total Evaluated</span>
+                {% if sc and sc.total_skills and sc.total_skills > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1 chart-table-toggle-btn"
+                  id="btnToggleSkillsComparisonTable"
+                  data-target-chart="skillsChartContainer"
+                  data-target-table="skillsTableWrapper"
+                  aria-expanded="false"
+                  aria-controls="skillsTableWrapper"
+                  title="Switch to accessible data table view">
+                  <i class="fa-solid fa-table me-1"></i> <span class="toggle-text">View Table</span>
+                </button>
+                {% endif %}
               </div>
             </div>
 
-            <!-- Chart Legend Badges -->
-            <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
-              <div class="d-flex align-items-center gap-1">
-                <span class="legend-indicator bg-success rounded-circle"
-                  style="width: 10px; height: 10px; display: inline-block;"></span>
-                <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }})</span>
+            {% if sc and sc.total_skills and sc.total_skills > 0 %}
+            <!-- Chart Container -->
+            <div id="skillsChartContainer" class="w-100 d-flex flex-column align-items-center">
+              <!-- Chart.js Canvas Container -->
+              <div class="skills-chart-wrapper position-relative" style="height: 250px; width: 100%; max-width: 320px;">
+                <canvas id="skillsComparisonChart" role="img"
+                  aria-label="Visual skills comparison chart comparing candidate skills against role requirements">
+                  <p>Visual skills comparison chart visualization</p>
+                </canvas>
+                <!-- Center Metric Overlay -->
+                <div class="skills-chart-center-metric d-flex flex-column align-items-center justify-content-center">
+                  <span class="fw-bold fs-3 text-dark lh-1" id="skillsChartCenterVal">{{ sc.match_percentage }}%</span>
+                  <span class="small text-muted" style="font-size: 0.72rem;">Matched</span>
+                </div>
               </div>
-              <div class="d-flex align-items-center gap-1">
-                <span class="legend-indicator bg-danger rounded-circle"
-                  style="width: 10px; height: 10px; display: inline-block;"></span>
-                <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }})</span>
+
+              <!-- Chart Legend Badges -->
+              <div class="d-flex justify-content-center gap-3 mt-3 flex-wrap small">
+                <div class="d-flex align-items-center gap-1">
+                  <span class="legend-indicator bg-success rounded-circle"
+                    style="width: 10px; height: 10px; display: inline-block;"></span>
+                  <span class="text-secondary fw-medium">Matching ({{ sc.matched_count }} skills)</span>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                  <span class="legend-indicator bg-danger rounded-circle"
+                    style="width: 10px; height: 10px; display: inline-block;"></span>
+                  <span class="text-secondary fw-medium">Missing ({{ sc.missing_count }} skills)</span>
+                </div>
               </div>
             </div>
+
+            <!-- Accessible Data Table Container (#task-accessible-chart-tables) -->
+            <div id="skillsTableWrapper" class="d-none chart-data-table-wrapper w-100 bg-white rounded-3 p-2 border my-2" tabindex="0" role="region" aria-label="Skills proportion comparison data table">
+              <div class="table-responsive">
+                <table class="table table-sm table-striped table-hover align-middle mb-0" id="skillsComparisonTable">
+                  <caption class="small text-muted py-2">
+                    <i class="fa-solid fa-table me-1"></i> Proportion and counts of matched versus missing skills against role criteria.
+                  </caption>
+                  <thead class="table-light">
+                    <tr>
+                      <th scope="col">Skill Category</th>
+                      <th scope="col">Skill Count</th>
+                      <th scope="col">Requirement Share (%)</th>
+                      <th scope="col">Alignment Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row" class="fw-semibold text-success"><i class="fa-solid fa-circle-check me-1"></i> Matching Skills</th>
+                      <td><span class="badge bg-success-subtle text-success fw-bold">{{ sc.matched_count }} skills</span></td>
+                      <td>{{ sc.match_percentage }}%</td>
+                      <td><span class="badge bg-success">Aligned</span></td>
+                    </tr>
+                    <tr>
+                      <th scope="row" class="fw-semibold text-danger"><i class="fa-solid fa-circle-xmark me-1"></i> Missing Skills</th>
+                      <td><span class="badge bg-danger-subtle text-danger fw-bold">{{ sc.missing_count }} skills</span></td>
+                      <td>{{ sc.missing_percentage }}%</td>
+                      <td><span class="badge bg-danger">Action Required</span></td>
+                    </tr>
+                  </tbody>
+                  <tfoot class="table-light fw-bold">
+                    <tr>
+                      <th scope="row">Total Evaluated</th>
+                      <td>{{ sc.total_skills }} skills</td>
+                      <td>100%</td>
+                      <td>-</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+            {% else %}
+            <!-- Empty State: Clearly identify chart has no data (#task-accessible-chart-tables) -->
+            <div class="chart-empty-state text-center py-4 bg-white rounded-3 border w-100 my-2" role="status" aria-live="polite" id="skillsComparisonEmptyState">
+              <i class="fa-solid fa-chart-pie fa-2x mb-2 text-secondary opacity-50"></i>
+              <h6 class="fw-bold mb-1 text-dark">No Skills Comparison Data</h6>
+              <p class="small text-muted mb-0">No matching or missing skills identified for this role.</p>
+            </div>
+            {% endif %}
           </div>
         </div>
 
@@ -3803,6 +4223,28 @@
             {% else %}
             <span class="text-muted small fst-italic">No matched competencies detected for this role yet.</span>
             {% endfor %}
+          </div>
+        </div>
+
+        <!-- Role-based Preparation Difficulty Estimate Strip (#604) -->
+        <div class="mt-3 pt-3 border-top" id="roleDifficultyEstimateStrip">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 bg-white rounded-3 border">
+            <div>
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="small fw-bold text-dark text-uppercase" style="font-size: 0.75rem;">
+                  <i class="fa-solid fa-gauge-simple-high text-primary me-1"></i> Preparation Difficulty:
+                </span>
+                <span class="badge rounded-pill px-3 py-1 bg-warning text-dark border" id="roleDifficultyBadge">
+                  Moderate
+                </span>
+                <span class="badge bg-light text-muted border rounded-pill small" id="rolePracticeWeeksBadge">
+                  ~4 Practice Weeks
+                </span>
+              </div>
+              <p class="small text-secondary mb-0" id="roleDifficultyExplanation" style="font-size: 0.8rem;">
+                Estimated practice duration based on skill gaps and target role competencies. Educational estimate; not a guarantee.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -4473,71 +4915,57 @@
         </div>
       </div>
 
-      <!-- Preparation Task Dependency View (#606) -->
-      <div class="card glass-card p-4 border-0 mb-4 mt-4" id="taskDependencyViewCard">
+      <!-- Personalized Weekly Preparation Timetable (#605) -->
+      <div class="card glass-card p-4 border-0 mb-4 mt-4" id="weeklyPrepTimetableCard">
         <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
           <div>
-            <span class="text-primary fw-semibold text-uppercase small">Prerequisite Hierarchy</span>
+            <span class="text-primary fw-semibold text-uppercase small">Time Allocation Planner</span>
             <h4 class="fw-bold mb-1">
-              <i class="fa-solid fa-diagram-project text-primary me-2"></i> Preparation Task Dependencies
+              <i class="fa-solid fa-calendar-days text-primary me-2"></i> Personalized Weekly Study Timetable
             </h4>
             <p class="text-secondary small mb-0">
-              Complete prerequisite topics before unlocking advanced topics. Circular dependencies are rejected.
+              Transform roadmap tasks into a realistic study timetable tailored to your available daily hours.
             </p>
           </div>
-          <div class="d-flex gap-2">
-            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-3 py-1" id="depCompletedBadge">0 Done</span>
-            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3 py-1" id="depAvailableBadge">2 Available</span>
-            <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle rounded-pill px-3 py-1" id="depLockedBadge">6 Locked</span>
-          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary rounded-pill px-3" id="btnToggleTimetableInputs">
+            <i class="fa-solid fa-sliders me-1"></i> Adjust Availability
+          </button>
         </div>
 
-        <div id="dependencyTasksGrid" class="row g-3">
-          <div class="col-md-6 col-lg-4">
-            <div class="p-3 bg-white rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-success">
-              <div>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <strong class="text-dark small">Arrays & Two-Pointer Basics</strong>
-                  <span class="badge bg-success-subtle text-success rounded-pill">Available</span>
-                </div>
-                <p class="small text-muted mb-2">Master array operations and two-pointer techniques.</p>
-                <div class="small text-secondary mb-2"><i class="fa-solid fa-link-slash me-1"></i> No prerequisites</div>
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 btn-mark-dep-complete" data-task-id="task_arrays">
-                <i class="fa-solid fa-check me-1"></i> Mark as Completed
-              </button>
+        <!-- Availability Input Form -->
+        <div class="p-3 bg-light rounded-4 border mb-3" id="timetableAvailabilityForm">
+          <h6 class="small fw-bold text-dark mb-2">Available Study Hours Per Day:</h6>
+          <div class="row g-2 mb-2">
+            {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
+            <div class="col-sm col-6">
+              <label class="form-label small text-muted mb-1" style="font-size: 0.75rem;">{{ day[:3] }}</label>
+              <input type="number" min="0" max="16" step="0.5" class="form-control form-control-sm text-center day-hours-input" data-day="{{ day }}" value="{{ '3' if loop.index <= 5 else '5' }}">
             </div>
+            {% endfor %}
           </div>
-          <div class="col-md-6 col-lg-4">
-            <div class="p-3 bg-light rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-secondary opacity-75">
-              <div>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <strong class="text-dark small">Linked Lists & Pointers</strong>
-                  <span class="badge bg-secondary rounded-pill"><i class="fa-solid fa-lock me-1"></i>Locked</span>
-                </div>
-                <p class="small text-muted mb-2">Singly & doubly linked lists, fast/slow pointers.</p>
-                <div class="small text-danger mb-2"><i class="fa-solid fa-lock me-1"></i> Prerequisite: Arrays & Two-Pointer Basics</div>
-              </div>
-              <button type="button" class="btn btn-sm btn-secondary rounded-pill w-100 disabled" disabled>
-                <i class="fa-solid fa-lock me-1"></i> Complete Prerequisite First
-              </button>
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+            <div class="d-flex align-items-center gap-2">
+              <label class="small text-secondary fw-semibold">Preferred Study Block:</label>
+              <select class="form-select form-select-sm" id="selectTimetableSlot" style="width: auto;">
+                <option value="Morning (08:00 - 11:00)">Morning (08:00 - 11:00)</option>
+                <option value="Afternoon (14:00 - 17:00)">Afternoon (14:00 - 17:00)</option>
+                <option value="Evening (18:00 - 21:00)" selected>Evening (18:00 - 21:00)</option>
+              </select>
             </div>
+            <button type="button" class="btn btn-sm btn-primary rounded-pill px-4" id="btnGenerateTimetable">
+              <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Generate Timetable
+            </button>
           </div>
-          <div class="col-md-6 col-lg-4">
-            <div class="p-3 bg-white rounded-3 border h-100 d-flex flex-column justify-content-between border-start border-4 border-success">
-              <div>
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                  <strong class="text-dark small">Relational Databases & SQL</strong>
-                  <span class="badge bg-success-subtle text-success rounded-pill">Available</span>
-                </div>
-                <p class="small text-muted mb-2">CRUD, Joins, Group By, Primary & Foreign Keys.</p>
-                <div class="small text-secondary mb-2"><i class="fa-solid fa-link-slash me-1"></i> No prerequisites</div>
-              </div>
-              <button type="button" class="btn btn-sm btn-outline-success rounded-pill w-100 btn-mark-dep-complete" data-task-id="task_sql_basics">
-                <i class="fa-solid fa-check me-1"></i> Mark as Completed
-              </button>
-            </div>
+          <div id="timetableValidationAlert" class="alert alert-danger py-1 px-2 small mt-2 d-none rounded-2"></div>
+        </div>
+
+        <!-- Timetable View Grid -->
+        <div id="timetableViewContainer" class="d-none">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <span class="small fw-bold text-muted">Total Weekly Study Time: <span id="timetableTotalHours" class="text-primary fw-extrabold">25</span> hrs</span>
+            <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill">Adjustable Schedule</span>
           </div>
+          <div class="row g-3" id="timetableDaysRow"></div>
         </div>
       </div>
     </div>
@@ -5699,122 +6127,81 @@
         });
       }
 
-      // Resume Improvement Simulator (#600)
-      const simulatorCard = document.getElementById("resumeImprovementSimulatorCard");
-      if (simulatorCard) {
-        const simulatedSkills = new Set();
-        const simulatedProjects = new Set();
-        const baseAts = parseInt("{{ analysis.results.resume_analysis.ats_score|default(0) }}", 10) || 0;
-        const baseMatch = parseInt("{{ analysis.results.job_match.match_percentage|default(0) }}", 10) || 0;
+      // Personalized Weekly Timetable Planner (#605)
+      const btnGenTimetable = document.getElementById("btnGenerateTimetable");
+      const btnToggleTimetable = document.getElementById("btnToggleTimetableInputs");
+      const formTimetable = document.getElementById("timetableAvailabilityForm");
+      const containerTimetable = document.getElementById("timetableViewContainer");
+      const alertTimetable = document.getElementById("timetableValidationAlert");
+      const daysRow = document.getElementById("timetableDaysRow");
+      const totalHoursEl = document.getElementById("timetableTotalHours");
 
-        const elAts = document.getElementById("simulatedAtsScore");
-        const elAtsDelta = document.getElementById("simulatedAtsDelta");
-        const elMatch = document.getElementById("simulatedMatchScore");
-        const elMatchDelta = document.getElementById("simulatedMatchDelta");
-        const elStatusBadge = document.getElementById("simulatedStatusBadge");
-        const elFactorsText = document.getElementById("simulatedFactorsText");
-        const skillsTags = document.getElementById("simulatedSkillsTags");
-        const projectsTags = document.getElementById("simulatedProjectsTags");
+      if (btnToggleTimetable && formTimetable) {
+        btnToggleTimetable.addEventListener("click", () => {
+          formTimetable.classList.toggle("d-none");
+        });
+      }
 
-        function renderTags() {
-          if (skillsTags) {
-            skillsTags.innerHTML = Array.from(simulatedSkills).map(s => 
-              `<span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-2 py-1">${s} <i class="fa-solid fa-xmark ms-1 cursor-pointer" onclick="removeSimSkill('${s}')"></i></span>`
-            ).join("");
-          }
-          if (projectsTags) {
-            projectsTags.innerHTML = Array.from(simulatedProjects).map(p => 
-              `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle rounded-pill px-2 py-1">${p} <i class="fa-solid fa-xmark ms-1 cursor-pointer" onclick="removeSimProject('${p}')"></i></span>`
-            ).join("");
-          }
-        }
+      if (btnGenTimetable) {
+        btnGenTimetable.addEventListener("click", async () => {
+          const inputs = document.querySelectorAll(".day-hours-input");
+          const availability = {};
+          inputs.forEach(inp => {
+            const day = inp.dataset.day;
+            availability[day] = parseFloat(inp.value) || 0;
+          });
+          const slotSelect = document.getElementById("selectTimetableSlot");
+          const preferredSlot = slotSelect ? slotSelect.value : "Evening (18:00 - 21:00)";
 
-        window.removeSimSkill = (s) => {
-          simulatedSkills.delete(s);
-          renderTags();
-          triggerSimulation();
-        };
+          if (alertTimetable) alertTimetable.classList.add("d-none");
 
-        window.removeSimProject = (p) => {
-          simulatedProjects.delete(p);
-          renderTags();
-          triggerSimulation();
-        };
-
-        async function triggerSimulation() {
-          const selectedSuggestionIds = Array.from(document.querySelectorAll(".what-if-checkbox:checked")).map(cb => cb.value);
           try {
-            const resp = await fetch(`/api/analysis/{{ analysis.id }}/simulate-improvements`, {
+            const resp = await fetch("/api/timetable/generate", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                simulated_skills: Array.from(simulatedSkills),
-                simulated_projects: Array.from(simulatedProjects),
-                selected_suggestion_ids: selectedSuggestionIds
-              })
+              body: JSON.stringify({ availability, preferred_slot: preferredSlot })
             });
             const data = await resp.json();
-            if (data.success && data.simulation) {
-              const sim = data.simulation;
-              if (elAts) elAts.textContent = sim.estimated_metrics.ats_score;
-              if (elAtsDelta) elAtsDelta.textContent = (sim.deltas.ats_delta >= 0 ? "+" : "") + sim.deltas.ats_delta;
-              if (elMatch) elMatch.textContent = sim.estimated_metrics.match_percentage;
-              if (elMatchDelta) elMatchDelta.textContent = (sim.deltas.match_delta >= 0 ? "+" : "") + sim.deltas.match_delta;
-              if (elStatusBadge) elStatusBadge.textContent = sim.estimated_metrics.readiness_status;
-              if (elFactorsText) {
-                const count = sim.factors_applied.length;
-                elFactorsText.textContent = count > 0 
-                  ? `Applied ${count} simulated factor(s). Impact: +${sim.deltas.ats_delta} ATS points, +${sim.deltas.match_delta}% Job Match.`
-                  : "Select suggestions or add simulated skills to estimate readiness improvements.";
+            if (data.status === "success" && data.timetable) {
+              if (containerTimetable) containerTimetable.classList.remove("d-none");
+              if (totalHoursEl) totalHoursEl.textContent = data.total_allocated_hours;
+              if (daysRow) {
+                daysRow.innerHTML = Object.entries(data.timetable).map(([day, tasks]) => `
+                  <div class="col-lg-3 col-md-4 col-sm-6">
+                    <div class="p-3 bg-white rounded-3 border h-100">
+                      <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
+                        <strong class="text-dark small">${day}</strong>
+                        <span class="badge bg-light text-muted border rounded-pill">${availability[day] || 0} hrs</span>
+                      </div>
+                      ${tasks.length === 0 ? '<div class="text-muted small fst-italic py-2">Rest / Catch-up Day</div>' : ''}
+                      <div class="d-flex flex-column gap-2">
+                        ${tasks.map(t => `
+                          <div class="p-2 rounded bg-light border-start border-3 border-primary small">
+                            <div class="fw-bold text-dark" style="font-size: 0.78rem;">${t.title}</div>
+                            <div class="d-flex justify-content-between align-items-center mt-1 text-muted" style="font-size: 0.72rem;">
+                              <span><i class="fa-regular fa-clock me-1"></i>${t.allocated_hours}h</span>
+                              <span class="badge bg-secondary-subtle text-secondary">${t.category}</span>
+                            </div>
+                          </div>
+                        `).join("")}
+                      </div>
+                    </div>
+                  </div>
+                `).join("");
+              }
+            } else {
+              if (alertTimetable) {
+                alertTimetable.textContent = data.error || "Failed to generate timetable.";
+                alertTimetable.classList.remove("d-none");
               }
             }
           } catch (e) {
-            console.error("Simulation error", e);
+            if (alertTimetable) {
+              alertTimetable.textContent = "Error generating timetable: " + e.message;
+              alertTimetable.classList.remove("d-none");
+            }
           }
-        }
-
-        document.querySelectorAll(".what-if-checkbox").forEach(cb => {
-          cb.addEventListener("change", triggerSimulation);
         });
-
-        const btnAddSkill = document.getElementById("btnAddSimulatedSkill");
-        const inputSkill = document.getElementById("simulatedSkillsInput");
-        if (btnAddSkill && inputSkill) {
-          btnAddSkill.addEventListener("click", () => {
-            const val = inputSkill.value.trim();
-            if (val) {
-              val.split(",").map(s => s.trim()).filter(Boolean).forEach(s => simulatedSkills.add(s));
-              inputSkill.value = "";
-              renderTags();
-              triggerSimulation();
-            }
-          });
-        }
-
-        const btnAddProject = document.getElementById("btnAddSimulatedProject");
-        const inputProject = document.getElementById("simulatedProjectsInput");
-        if (btnAddProject && inputProject) {
-          btnAddProject.addEventListener("click", () => {
-            const val = inputProject.value.trim();
-            if (val) {
-              simulatedProjects.add(val);
-              inputProject.value = "";
-              renderTags();
-              triggerSimulation();
-            }
-          });
-        }
-
-        const btnReset = document.getElementById("btnResetSimulation");
-        if (btnReset) {
-          btnReset.addEventListener("click", () => {
-            simulatedSkills.clear();
-            simulatedProjects.clear();
-            document.querySelectorAll(".what-if-checkbox").forEach(cb => cb.checked = false);
-            renderTags();
-            triggerSimulation();
-          });
-        }
       }
     });
   </script>
