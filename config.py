@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -51,10 +50,19 @@ except (PermissionError, OSError):
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY")
-if not FLASK_SECRET_KEY:
-    if os.getenv("FLASK_ENV") == "production" and not IS_VERCEL:
-        raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
-    # On Vercel or non-production fallback, avoid crashing serverless function invocation
+if IS_VERCEL or os.getenv("FLASK_ENV", "").strip().lower() == "production":
+    # A serverless deployment must never sign sessions with the shared local default.
+    secret_value = (FLASK_SECRET_KEY or "").strip()
+    if (
+        len(secret_value.encode("utf-8")) < 32
+        or len(set(secret_value)) < 2
+        or secret_value.lower().startswith(("replace_", "change-", "changeme", "your_", "your-"))
+    ):
+        raise RuntimeError(
+            "Production requires FLASK_SECRET_KEY (or SECRET_KEY) with at least "
+            "32 bytes of random secret material, not a default or placeholder."
+        )
+elif not FLASK_SECRET_KEY:
     FLASK_SECRET_KEY = os.getenv("DEFAULT_SECRET_KEY", "dev-secret-key-12345")
 
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
@@ -179,9 +187,3 @@ class Config:
     RATE_LIMIT_ENABLED = RATE_LIMIT_ENABLED
     RATE_LIMIT_DEFAULT = RATE_LIMIT_DEFAULT
     MAX_PLACEMENT_BATCH_SIZE = MAX_PLACEMENT_BATCH_SIZE
-
-
-
-
-
-
