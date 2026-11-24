@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Union
 from db.connection import create_connection, get_connection, transaction
 import config
+from config import Config
 
 logger = logging.getLogger(__name__)
 
