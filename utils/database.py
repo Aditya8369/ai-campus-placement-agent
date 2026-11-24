@@ -6847,6 +6847,12 @@ from db.tracker import (
     get_default_checklist,
     get_dashboard_drive_reminder,
 )
+from utils.interview_helpful_service import (
+    check_voting_rate_limit,
+    get_contributor_helped_students_count,
+    get_user_helpful_votes,
+    toggle_helpful_vote,
+)
 
 logger = logging.getLogger(__name__)
 
