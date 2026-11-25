@@ -1720,6 +1720,27 @@ def dashboard(analysis_id: str) -> str:
             "timeline_items": []
         }
 
+    # Prepare Resume Links Health Check Card (#845)
+    try:
+        from utils.resume_link_service import analyze_resume_links
+        resume_links = analyze_resume_links(
+            resume_text=raw_resume,
+            check_reachability=True,
+            user_id=student_id
+        )
+    except Exception as link_err:
+        logger.warning(f"Error checking resume links for dashboard: {link_err}")
+        resume_links = {
+            "total_links": 0,
+            "working_count": 0,
+            "broken_count": 0,
+            "malformed_count": 0,
+            "unverified_count": 0,
+            "has_issues": False,
+            "links": [],
+            "summary": "Could not analyze resume links."
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1771,8 +1792,74 @@ def dashboard(analysis_id: str) -> str:
         initial_recommended_jobs=initial_recommended_jobs,
         initial_recommended_jobs_json=json.dumps(initial_recommended_jobs),
         pdf_metadata_hygiene=pdf_metadata_hygiene,
-        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene)
+        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene),
+        resume_links=resume_links,
+        resume_links_json=json.dumps(resume_links)
     )
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/resume-links", methods=["GET"])
+def api_get_resume_links(analysis_id: str):
+    """
+    Returns profile and external links extracted from resume with format
+    and reachability health check statuses (#845).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
+    from utils.resume_link_service import analyze_resume_links
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or analysis_record.get("student_id")
+    check_reachability = request.args.get("check_reachability", "true").lower() in ("true", "1", "yes")
+
+    links_data = analyze_resume_links(
+        resume_text=raw_resume,
+        check_reachability=check_reachability,
+        user_id=student_id
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "resume_links": links_data
+    }), 200
+
+
+@analysis_bp.route("/api/resume/check-links", methods=["POST"])
+def api_check_resume_links_stateless():
+    """
+    Stateless endpoint to extract and evaluate links from resume text (#845).
+    Body: {"resume_text": "...", "check_reachability": true}
+    """
+    data = request.get_json(silent=True) or request.form or {}
+    resume_text = data.get("resume_text", "")
+    check_reachability = str(data.get("check_reachability", "true")).lower() in ("true", "1", "yes")
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "anonymous"
+
+    from utils.resume_link_service import analyze_resume_links
+    try:
+        links_data = analyze_resume_links(
+            resume_text=resume_text,
+            check_reachability=check_reachability,
+            user_id=student_id
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "resume_links": links_data
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error checking resume links: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @analysis_bp.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])

@@ -1139,6 +1139,185 @@
       </div>
       {% endif %}
 
+      <!-- Resume Profile Links Health Card (#845) -->
+      {% set links_data = resume_links|default(analysis.results.resume_links if analysis and analysis.results else none) %}
+      {% if links_data and links_data.links and links_data.links|length > 0 %}
+      <div class="card glass-card p-4 border-0 mb-4 shadow-sm {% if links_data.has_issues %}border border-warning-subtle{% endif %}" id="resumeLinksHealthCard">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+          <div>
+            <span class="{% if links_data.has_issues %}text-warning-emphasis{% else %}text-primary{% endif %} fw-semibold text-uppercase small">Online Presence & Integrity</span>
+            <h4 class="fw-bold mb-1">
+              <i class="fa-solid fa-link {% if links_data.has_issues %}text-warning{% else %}text-primary{% endif %} me-2"></i> Resume Profile Links
+            </h4>
+            <p class="text-secondary small mb-0">
+              Validates formatting and reachability for your GitHub, LinkedIn, portfolio, and coding profile links.
+            </p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-light text-dark border px-3 py-2 rounded-pill fs-6" id="totalLinksCountBadge">
+              <i class="fa-solid fa-globe me-1 text-primary"></i> {{ links_data.total_links }} Link(s)
+            </span>
+            {% if links_data.working_count > 0 %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fs-6">
+              <i class="fa-solid fa-circle-check me-1"></i> {{ links_data.working_count }} Verified
+            </span>
+            {% endif %}
+            {% if links_data.broken_count > 0 %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fs-6">
+              <i class="fa-solid fa-circle-xmark me-1"></i> {{ links_data.broken_count }} Broken
+            </span>
+            {% endif %}
+            {% if links_data.malformed_count > 0 %}
+            <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle px-3 py-2 rounded-pill fs-6">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> {{ links_data.malformed_count }} Malformed
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Links List Grid -->
+        <div class="row g-3" id="resumeLinksListGrid">
+          {% for link_item in links_data.links %}
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 rounded-3 h-100 border {% if link_item.status == 'working' %}border-success-subtle bg-success-subtle bg-opacity-10{% elif link_item.status == 'broken' %}border-danger-subtle bg-danger-subtle bg-opacity-10{% elif link_item.status == 'malformed' %}border-warning-subtle bg-warning-subtle bg-opacity-10{% else %}border-light-subtle bg-light bg-opacity-50{% endif %}">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <span class="badge bg-light text-dark border rounded-pill text-capitalize px-2.5 py-1">
+                  {% if link_item.link_type == 'github' %}
+                  <i class="fa-brands fa-github me-1 text-dark"></i> GitHub
+                  {% elif link_item.link_type == 'linkedin' %}
+                  <i class="fa-brands fa-linkedin me-1 text-primary"></i> LinkedIn
+                  {% elif link_item.link_type == 'leetcode' %}
+                  <i class="fa-solid fa-code me-1 text-warning"></i> LeetCode
+                  {% else %}
+                  <i class="fa-solid fa-globe me-1 text-secondary"></i> Portfolio / Web
+                  {% endif %}
+                </span>
+                {% if link_item.status == 'working' %}
+                <span class="badge bg-success text-white rounded-pill px-2 py-1" style="font-size: 0.65rem;">
+                  <i class="fa-solid fa-check me-1"></i> Working
+                </span>
+                {% elif link_item.status == 'broken' %}
+                <span class="badge bg-danger text-white rounded-pill px-2 py-1" style="font-size: 0.65rem;">
+                  <i class="fa-solid fa-xmark me-1"></i> Broken
+                </span>
+                {% elif link_item.status == 'malformed' %}
+                <span class="badge bg-warning text-dark rounded-pill px-2 py-1" style="font-size: 0.65rem;">
+                  <i class="fa-solid fa-triangle-exclamation me-1"></i> Malformed
+                </span>
+                {% else %}
+                <span class="badge bg-secondary text-white rounded-pill px-2 py-1" style="font-size: 0.65rem;">
+                  Could Not Verify
+                </span>
+                {% endif %}
+              </div>
+
+              <!-- Link URL preview -->
+              <div class="mb-2">
+                <a href="{{ link_item.url }}" target="_blank" rel="noopener noreferrer" class="fw-semibold text-truncate d-block small text-decoration-none" title="{{ link_item.url }}">
+                  {{ link_item.url }} <i class="fa-solid fa-arrow-up-right-from-square ms-1 text-muted" style="font-size: 0.65rem;"></i>
+                </a>
+                <small class="text-secondary d-block" style="font-size: 0.75rem;">
+                  {{ link_item.detail }}
+                </small>
+              </div>
+
+              <!-- Fix Suggestion -->
+              {% if link_item.fix_suggestion %}
+              <div class="small pt-2 border-top border-light-subtle" style="font-size: 0.75rem;">
+                <span class="fw-semibold text-dark"><i class="fa-solid fa-wrench me-1 text-muted"></i>Fix:</span>
+                <span class="text-secondary">{{ link_item.fix_suggestion }}</span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Resume Profile Links Health Card (#845) -->
+      {% set r_links = resume_links|default(analysis.results.resume_links if analysis and analysis.results else none) %}
+      {% if r_links and r_links.links and r_links.links|length > 0 %}
+      <div class="card glass-card p-4 border-0 mb-4 shadow-sm" id="resumeLinksCard">
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+          <div>
+            <span class="text-primary fw-semibold text-uppercase small">Profile Reachability</span>
+            <h4 class="fw-bold mb-1">
+              <i class="fa-solid fa-link text-primary me-2"></i> Resume Profile Links
+            </h4>
+            <p class="text-secondary small mb-0">
+              Broken, malformed, or private URLs (GitHub, LinkedIn, portfolios) cause immediate candidate rejection.
+            </p>
+          </div>
+          <div class="d-flex align-items-center gap-2">
+            {% if r_links.broken_count > 0 or r_links.malformed_count > 0 %}
+            <span class="badge bg-danger-subtle text-danger border border-danger-subtle px-3 py-2 rounded-pill fs-6" id="resumeLinksIssueBadge">
+              <i class="fa-solid fa-triangle-exclamation me-1"></i> Issues Found ({{ r_links.broken_count + r_links.malformed_count }})
+            </span>
+            {% else %}
+            <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 rounded-pill fs-6" id="resumeLinksOkBadge">
+              <i class="fa-solid fa-circle-check me-1"></i> All Links Accessible
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="row g-3" id="resumeLinksList">
+          {% for l in r_links.links %}
+          <div class="col-md-6 col-lg-4">
+            <div class="p-3 rounded-3 h-100 border bg-white shadow-2xs d-flex flex-column justify-content-between">
+              <div>
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                  <span class="fw-bold small text-dark d-flex align-items-center gap-1.5">
+                    {% if l.link_type == 'github' %}
+                    <i class="fa-brands fa-github text-dark"></i> GitHub
+                    {% elif l.link_type == 'linkedin' %}
+                    <i class="fa-brands fa-linkedin text-primary"></i> LinkedIn
+                    {% elif l.link_type == 'leetcode' %}
+                    <i class="fa-solid fa-code text-warning"></i> LeetCode
+                    {% else %}
+                    <i class="fa-solid fa-globe text-secondary"></i> Portfolio / Web
+                    {% endif %}
+                  </span>
+                  {% if l.status == 'working' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" style="font-size: 0.65rem;">
+                    <i class="fa-solid fa-check me-1"></i> {{ l.status_label }}
+                  </span>
+                  {% elif l.status == 'broken' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill" style="font-size: 0.65rem;">
+                    <i class="fa-solid fa-xmark me-1"></i> {{ l.status_label }}
+                  </span>
+                  {% elif l.status == 'malformed' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill" style="font-size: 0.65rem;">
+                    <i class="fa-solid fa-bug me-1"></i> Malformed
+                  </span>
+                  {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary border rounded-pill" style="font-size: 0.65rem;">
+                    <i class="fa-solid fa-circle-question me-1"></i> {{ l.status_label }}
+                  </span>
+                  {% endif %}
+                </div>
+                <div class="small text-truncate mb-2" style="font-size: 0.78rem;">
+                  <a href="{{ l.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none fw-semibold text-primary">
+                    {{ l.url }} <i class="fa-solid fa-arrow-up-right-from-square ms-1 text-muted" style="font-size: 0.65rem;"></i>
+                  </a>
+                </div>
+                <p class="small text-secondary mb-2" style="font-size: 0.78rem; line-height: 1.35;">
+                  {{ l.detail }}
+                </p>
+              </div>
+              {% if l.fix_suggestion and (l.status == 'broken' or l.status == 'malformed') %}
+              <div class="small pt-2 border-top border-light-subtle text-danger-emphasis bg-danger-subtle bg-opacity-25 p-2 rounded-2 mt-2" style="font-size: 0.72rem;">
+                <span class="fw-semibold"><i class="fa-solid fa-wrench me-1"></i>Fix:</span> {{ l.fix_suggestion }}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
       <!-- ATS-Style Resume Score & Section-Wise Breakdown (#494) -->
       {% if ats_breakdown or r_sum.ats_breakdown %}
       {% set breakdown = ats_breakdown|default(r_sum.ats_breakdown) %}
