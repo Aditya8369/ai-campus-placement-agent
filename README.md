@@ -454,6 +454,22 @@ pytest tests/test_resume_parser.py
 
 ---
 
+## Performance Monitoring & Latency Breakdown (#task-performance-monitoring)
+
+To diagnose slow requests in production without risking user privacy, the application includes safe, automated performance monitoring:
+
+- **Component Latency Breakdown**: Decomposes request duration into four distinct operational subsystems:
+  - **Database (`db_duration_ms`)**: Query execution time and statement counts via monitored SQLite connections.
+  - **AI Service (`ai_duration_ms`)**: Latency of upstream Gemini API calls and invocation counts.
+  - **File Processing (`file_duration_ms`)**: PDF and DOCX text extraction and normalization duration.
+  - **Template Rendering (`render_duration_ms`)**: Jinja template rendering duration.
+- **Primary Bottleneck Identification**: Automatically diagnoses whether delays stem from the `ai_service`, `database`, `file_processing`, `rendering`, or general `application` logic.
+- **W3C Server-Timing Headers**: Returns standard `Server-Timing` response headers (`total`, `db`, `ai`, `file`, `render`) for instant browser DevTools observability.
+- **Admin Observability Dashboard**: Accessible at `/admin/performance` and via JSON API at `/api/admin/performance-metrics`, featuring endpoint aggregation tables, bottleneck distribution graphs, and CSV telemetry exports.
+- **Strict Privacy Assurance**: Never logs or stores resume text, candidate responses, passwords, authorization tokens, or session secrets. All URL query strings are sanitized.
+
+---
+
 ## Rate Limiting & Security Quotas
 
 To protect quota-limited AI endpoints (Gemini API calls) from accidental exhaustion or abuse, the application includes a sliding-window in-memory rate limiter with configurable thresholds.
