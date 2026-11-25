@@ -797,13 +797,14 @@ def create_app(config_override=None) -> Flask:
         return response
 
 
+    import click
+
     @app.cli.command("send-deadline-reminders")
     def send_deadline_reminders_cli():
         """
         CLI scheduled command to find items due in the next 2 days and dispatch reminder emails (#298).
         Designed for crontab, systemd timers, or APScheduler invocations.
         """
-        import click
         logger.info("Executing scheduled CLI job: send-deadline-reminders...")
         result = send_upcoming_deadline_reminders()
         click.echo(
@@ -811,42 +812,45 @@ def create_app(config_override=None) -> Flask:
             f"skipped={result['skipped_count']}, failed={result['failed_count']}"
         )
 
-    # Local development synthetic seed CLI commands (#task-seed-command)
-    @app.cli.group("seed")
-    def seed_cli_group():
-        """Manage reproducible local development synthetic seed data."""
-        pass
+    @app.cli.command("validate-company-data")
+    @click.argument("paths", nargs=-1, type=click.Path())
+    @click.option("--live", "--check-live-links", "check_live_links", is_flag=True, default=False, help="Verify external URLs via live HTTP requests.")
+    @click.option("--strict", is_flag=True, default=False, help="Treat warnings as errors.")
+    @click.option("--json", "json_output", is_flag=True, default=False, help="Output validation findings as JSON.")
+    @click.option("--quiet", is_flag=True, default=False, help="Suppress output on successful validation.")
+    def validate_company_data_cli(paths, check_live_links, strict, json_output, quiet):
+        """
+        Validate contributor company JSON files for schema, required fields, duplicates, and broken links (#785).
+        """
+        from utils.company_data_validator import validate_paths, format_terminal_report
+        import json as json_module
 
-    @seed_cli_group.command("run")
-    @click.option("--reset", is_flag=True, help="Safely reset existing seed data before seeding.")
-    @click.option("--dev", is_flag=True, default=False, help="Target isolated development database.")
-    @click.option("--app-db", is_flag=True, default=False, help="Target primary application database.")
-    @click.option("--db-path", default=None, help="Explicit target database path.")
-    def seed_run_cli(reset, dev, app_db, db_path):
-        """Populates safe synthetic development data for local testing."""
-        from utils.seed_data import resolve_target_database, seed_development_data, print_seed_summary
-        target = resolve_target_database(db_path=db_path, use_dev=dev and not app_db, use_app_db=app_db)
-        result = seed_development_data(target, reset_first=reset)
-        print_seed_summary(result)
+        results = validate_paths(
+            paths=list(paths) if paths else None,
+            check_live_links=check_live_links,
+            strict=strict,
+        )
 
-    @seed_cli_group.command("reset")
-    @click.option("--all", "reset_all", is_flag=True, help="Reset all tables in target database.")
-    @click.option("--db-path", default=None, help="Target database path.")
-    def seed_reset_cli(reset_all, db_path):
-        """Safely resets synthetic seed data without touching user records."""
-        from utils.seed_data import resolve_target_database, reset_seed_data
-        target = resolve_target_database(db_path=db_path)
-        result = reset_seed_data(target, reset_all=reset_all)
-        click.echo(result["message"])
+        if json_output:
+            payload = {
+                "all_valid": all(r.is_valid for r in results),
+                "total_files": len(results),
+                "total_companies": sum(r.company_count for r in results),
+                "total_errors": sum(len(r.errors) for r in results),
+                "total_warnings": sum(len(r.warnings) for r in results),
+                "files": [r.to_dict() for r in results],
+            }
+            click.echo(json_module.dumps(payload, indent=2))
+        else:
+            report_text = format_terminal_report(results, quiet=quiet)
+            click.echo(report_text)
 
-    @seed_cli_group.command("status")
-    @click.option("--db-path", default=None, help="Target database path.")
-    def seed_status_cli(db_path):
-        """Displays count of seed records vs real user records in database."""
-        from utils.seed_data import resolve_target_database, get_seed_status, print_status_report
-        target = resolve_target_database(db_path=db_path)
-        status = get_seed_status(target)
-        print_status_report(status)
+        is_success = all(r.is_valid for r in results)
+        if strict and any(len(r.warnings) > 0 for r in results):
+            is_success = False
+
+        if not is_success:
+            raise SystemExit(1)
 
     # Register all feature Blueprints
     app.register_blueprint(auth_bp)

@@ -256,6 +256,94 @@ When adding or modifying routes, place them in the corresponding Blueprint modul
 
 Use the Blueprint decorator for your area (e.g. `@interview_bp.route("/path")` rather than `@app.route(...)`). URL endpoints remain backwards-compatible across templates and tests with automatic alias mapping.
 
+## Contributing Company Interview Preparation Guides
+
+We welcome contributions of new company interview guides, hiring process breakdowns, commonly asked questions, and verified campus recruitment criteria.
+
+### Company Data Locations
+
+Company data is stored as JSON in the `data/` directory:
+- **`data/companies.json`**: Comprehensive recruitment and hiring guide profiles keyed by canonical company name.
+- **`data/company_interview_prep.json`**: Interview preparation guides, typical rounds, and tested topics.
+- **`data/company_contribution_template.json`**: A reference template showing the exact JSON format for submitting a new company profile.
+
+### Schema Requirements
+
+When contributing or updating a company entry, make sure all required fields are present and properly typed:
+
+#### 1. Hiring Guide Profiles (`data/companies.json`)
+- `overview` (`string`): Summary of the company, engineering culture, and work domains.
+- `hiring_process` (`string`): Step-by-step description of recruitment stages (e.g. Online Assessment -> Technical -> Managerial -> HR).
+- `technical_rounds` (`string`): Breakdown of coding, system design, or domain-specific questions asked.
+- `hr_rounds` (`string`): Behavioral and cultural round expectations.
+- `frequent_topics` (`list` of non-empty `string`s): Core topics commonly tested (e.g. `["DSA", "System Design", "SQL"]`).
+- `required_skills` (`list` of non-empty `string`s): Essential technical and soft skills.
+- `prep_tips` (`string`): Actionable advice for students preparing for this company's hiring drive.
+- `eligibility` (`string`): CGPA cutoffs, allowed backlogs, and eligible academic branches.
+- `last_updated` (`string`): Revision date in strict ISO 8601 calendar format (`YYYY-MM-DD`, e.g. `2026-11-20`).
+- `source_name` (`string`): Name of the reference source or careers portal (e.g. `Google Careers`).
+- `source_url` (`string`): Canonical URL starting with `http://` or `https://` with a valid domain.
+
+#### 2. Interview Prep Profiles (`data/company_interview_prep.json`)
+- `company_name` (`string`): Display name of the company.
+- `typical_rounds` (`list` of non-empty `string`s): Ordered list of interview stages.
+- `commonly_tested_topics` (`list` of non-empty `string`s): Key technical domains tested.
+- `preparation_tips` (`list` of non-empty `string`s): Specific tips for candidates.
+- `last_updated` (`string`): Revision date in strict ISO 8601 calendar format (`YYYY-MM-DD`).
+
+### Running the Contributor Company Data Validator
+
+Before opening a pull request that modifies or adds company data, run the validation tool to ensure there are no syntax errors, missing fields, duplicate company names, or broken URLs:
+
+```bash
+# Validate standard company data files in data/
+python utils/company_data_validator.py
+
+# Or run using the scripts runner
+python scripts/validate_company_data.py
+
+# Or run via Flask CLI
+flask validate-company-data
+```
+
+#### Advanced Validator Options:
+
+- **Check specific files or custom contributor submissions**:
+  ```bash
+  python scripts/validate_company_data.py path/to/my_company.json
+  ```
+- **Perform live URL verification** (confirms that links are reachable over HTTP/HTTPS):
+  ```bash
+  python scripts/validate_company_data.py --live
+  ```
+- **Strict mode** (treats warnings as fatal errors):
+  ```bash
+  python scripts/validate_company_data.py --strict
+  ```
+- **Structured JSON output** (useful for CI and pre-commit automation):
+  ```bash
+  python scripts/validate_company_data.py --json
+  ```
+- **Quiet mode** (only reports errors when validation fails):
+  ```bash
+  python scripts/validate_company_data.py --quiet
+  ```
+
+### Understanding Validator Error Output
+
+The validator pinpoints the exact file, company, and field name for each issue so you can resolve it quickly:
+
+```text
+[FAIL] data/companies.json (Errors: 1, Warnings: 0):
+  1. File   : data/companies.json
+     Company: [ExampleCorp]
+     Field  : 'source_url'
+     Type   : invalid_url
+     Issue  : Invalid URL in 'source_url': Invalid scheme 'ftp'. URL must start with http:// or https://.
+     Value  : 'ftp://example.com'
+     Remedy : Provide a valid canonical URL starting with http:// or https:// with a valid domain name.
+```
+
 ## Pull Request Process
 
 1. **Update Documentation**: If your changes affect functionality, update the README or relevant documentation
