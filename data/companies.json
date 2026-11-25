@@ -23,7 +23,13 @@
     "source_url": "https://www.accenture.com/in-en/careers/life-at-accenture/entry-level",
     "verification_status": "verified",
     "verified_by": "Accenture Talent Acquisition & Placement Cell",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.5,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Accenture Campus Recruitment & Careers Portal"
   },
   "Adobe": {
     "overview": "Adobe is an industry-leading multinational computer software company renowned for digital media creation tools (Creative Cloud, Photoshop), document solutions (Acrobat), and enterprise experience cloud platforms.",
@@ -50,7 +56,15 @@
     "source_url": "https://www.adobe.com/careers/university.html",
     "verification_status": "verified",
     "verified_by": "Adobe University Recruiting Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 7.0,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "ECE"
+    ],
+    "eligibility_source": "Adobe University Programs & Careers"
   },
   "Amazon": {
     "overview": "Amazon is an e-commerce, cloud computing (AWS), digital streaming, and artificial intelligence giant, driven by customer obsession and operational excellence.",
@@ -77,7 +91,15 @@
     "source_url": "https://amazon.jobs/en/business_categories/student-programs",
     "verification_status": "verified",
     "verified_by": "Amazon Student Programs Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.5,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "STEM"
+    ],
+    "eligibility_source": "Amazon Jobs - Student Programs"
   },
   "Capgemini": {
     "overview": "Capgemini is a French multinational information technology service and consulting company, specializing in engineering services, digital transformation, and cloud.",
@@ -103,7 +125,13 @@
     "source_url": "https://www.capgemini.com/in-en/careers/students-and-graduates/",
     "verification_status": "verified",
     "verified_by": "Capgemini Campus Hiring Cell",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Capgemini India Campus Excellence Portal"
   },
   "Cognizant": {
     "overview": "Cognizant is a leading American multinational information technology services and consulting enterprise, operating high-volume campus hiring across GenC, GenC Elevate, and GenC Next career tracks.",
@@ -130,7 +158,13 @@
     "source_url": "https://careers.cognizant.com/global/en/student-programs",
     "verification_status": "verified",
     "verified_by": "Cognizant Talent Acquisition",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Cognizant GenC Early Career Portal"
   },
   "Deloitte": {
     "overview": "Deloitte is one of the world's leading professional services networks (Big Four), recruiting campus graduates for advisory, enterprise technology transformation, cloud analytics, and cyber risk consulting practices.",
@@ -157,7 +191,13 @@
     "source_url": "https://www2.deloitte.com/ui/en/pages/careers/articles/student-opportunities.html",
     "verification_status": "verified",
     "verified_by": "Deloitte University Relations",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.5,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Deloitte USI Campus Recruitment Portal"
   },
   "Flipkart": {
     "overview": "Flipkart is India's leading e-commerce marketplace and technology innovator (a subsidiary of Walmart Inc.), known for engineering large-scale distributed architectures handling hundreds of millions of customers.",
@@ -185,13 +225,21 @@
     "source_url": "https://www.flipkartcareers.com/",
     "verification_status": "verified",
     "verified_by": "Flipkart University Talent Acquisition",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 7.0,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "ECE"
+    ],
+    "eligibility_source": "Flipkart Careers & GRiD Campus Challenge"
   },
   "Google": {
     "overview": "Google is a global technology leader focusing on search, cloud computing, online advertising technologies, and hardware, renowned for its highly engineering-driven culture.",
     "hiring_process": "Typically consists of an Online Coding Assessment, followed by 3-4 Technical Rounds focusing on core DSA and System Design, ending with a 'Googleyness' (behavioral) round.",
     "technical_rounds": "In-depth testing on Data Structures & Algorithms, complex problem solving, space/time complexity optimization, and system design for scale.",
-    "hr_rounds": "Focuses on 'Googleyness'—assessing cognitive ability, leadership, cultural fit, ethics, and collaboration in ambiguous situations.",
+    "hr_rounds": "Focuses on 'Googleyness'\u2014assessing cognitive ability, leadership, cultural fit, ethics, and collaboration in ambiguous situations.",
     "frequent_topics": [
       "Graph Algorithms (BFS/DFS, Dijkstra)",
       "Dynamic Programming",
@@ -212,7 +260,15 @@
     "source_url": "https://careers.google.com/students/",
     "verification_status": "verified",
     "verified_by": "Google University Programs Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 7.0,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "STEM"
+    ],
+    "eligibility_source": "Google Students & University Programs"
   },
   "HCLTech": {
     "overview": "HCLTech is a global technology company providing digital, engineering, and cloud solutions, recruiting fresh engineering graduates through its First Careers and Graduate Engineer Trainee (GET) programs.",
@@ -239,7 +295,13 @@
     "source_url": "https://www.hcltech.com/careers/early-careers",
     "verification_status": "verified",
     "verified_by": "HCLTech Graduate Recruitment Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "HCLTech Early Careers & First Careers"
   },
   "Infosys": {
     "overview": "Infosys is a global leader in next-generation digital services and consulting, serving clients in over 50 countries.",
@@ -265,7 +327,13 @@
     "source_url": "https://www.infosys.com/careers/graduates.html",
     "verification_status": "verified",
     "verified_by": "Infosys Talent Fulfillment Function",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Infosys Springboard & Campus Recruitment"
   },
   "Microsoft": {
     "overview": "Microsoft is a multinational technology corporation that produces computer software, consumer electronics, personal computers, and cloud services (Azure).",
@@ -292,7 +360,16 @@
     "source_url": "https://careers.microsoft.com/v2/global/en/early-in-career",
     "verification_status": "verified",
     "verified_by": "Microsoft University Recruiting Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 7.0,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "ECE",
+      "EE"
+    ],
+    "eligibility_source": "Microsoft Early Career & University Hiring"
   },
   "TCS": {
     "overview": "Tata Consultancy Services (TCS) is an Indian multinational information technology services and consulting company, one of the largest IT service brands globally.",
@@ -318,7 +395,13 @@
     "source_url": "https://nextstep.tcs.com/campus/",
     "verification_status": "verified",
     "verified_by": "TCS Talent Acquisition Group (TAG)",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 1,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "TCS NextStep & National Qualifier Test (NQT)"
   },
   "Tech Mahindra": {
     "overview": "Tech Mahindra is a major multinational IT services and consulting enterprise, part of the Mahindra Group, specializing in digital transformation, telecommunications software, and enterprise business solutions.",
@@ -345,7 +428,17 @@
     "source_url": "https://www.techmahindra.com/en-in/careers/",
     "verification_status": "verified",
     "verified_by": "Tech Mahindra University Relations",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 0,
+    "branches": [
+      "CS",
+      "IT",
+      "ECE",
+      "EE",
+      "MCA"
+    ],
+    "eligibility_source": "Tech Mahindra Early Careers & Campus Portal"
   },
   "Wipro": {
     "overview": "Wipro Limited is a leading technology services and consulting company focused on building innovative solutions that address clients' most complex digital transformation needs.",
@@ -371,7 +464,13 @@
     "source_url": "https://careers.wipro.com/early-careers",
     "verification_status": "verified",
     "verified_by": "Wipro Global Campus Hiring Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": 6.0,
+    "max_backlogs": 1,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Wipro Elite National Talent Hunt (NTH)"
   },
   "Zoho": {
     "overview": "Zoho Corporation is an Indian multinational technology corporation that makes computer software and web-based business tools, celebrated for its unique hands-on engineering culture and language-agnostic development.",
@@ -399,6 +498,12 @@
     "source_url": "https://www.zoho.com/careers/",
     "verification_status": "verified",
     "verified_by": "Zoho Recruitment Team",
-    "is_verified": true
+    "is_verified": true,
+    "min_cgpa": null,
+    "max_backlogs": 0,
+    "branches": [
+      "All"
+    ],
+    "eligibility_source": "Zoho Careers - College Recruitment Drive"
   }
 }

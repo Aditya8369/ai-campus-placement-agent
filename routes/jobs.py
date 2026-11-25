@@ -147,6 +147,44 @@ def get_company_profile(company_name: str):
     return jsonify({"success": False, "error": f"Profile for '{company_name}' not found."}), 404
 
 
+@jobs_bp.route("/api/company/<company_name>/eligibility", methods=["POST", "GET"])
+def api_calculate_company_eligibility(company_name: str):
+    """
+    Calculates candidate eligibility against verified company rules (#603, #844).
+    Private to student, supports optional CGPA, backlogs, branch, passing year.
+    Defaults to logged in student profile if fields not passed.
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    
+    # Check session for default student profile if not fully passed
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "default_student"
+    from db.coding_practice import get_student_profile
+    profile_rec = get_student_profile(student_id) or {}
+
+    student_profile = {
+        "cgpa": payload.get("cgpa") if payload.get("cgpa") is not None else profile_rec.get("cgpa"),
+        "backlogs": payload.get("backlogs") if payload.get("backlogs") is not None else profile_rec.get("backlogs", 0),
+        "passing_year": payload.get("passing_year") if payload.get("passing_year") is not None else profile_rec.get("grad_year"),
+        "branch": payload.get("branch") if payload.get("branch") is not None else (profile_rec.get("department") or ""),
+        "department": payload.get("branch") if payload.get("branch") is not None else (profile_rec.get("department") or "")
+    }
+
+    from utils.company_eligibility_service import calculate_company_eligibility
+    try:
+        eligibility_result = calculate_company_eligibility(
+            company_name=company_name,
+            student_profile=student_profile
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "eligibility": eligibility_result
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error calculating eligibility for {company_name}: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @jobs_bp.route("/api/company/<company_name>/process-timeline", methods=["GET"])
 def api_get_company_process_timeline(company_name: str):
     """Returns typical stages, average durations, and official/community split (#624)."""
@@ -558,6 +596,7 @@ def companies_search_view():
     industry_filter = (request.args.get("industry") or "All").strip()
     tech_filter = (request.args.get("tech") or "All").strip()
     process_query = (request.args.get("process") or "").strip()
+    eligible_only = request.args.get("eligible_only", "").lower() in ("true", "1", "yes")
 
     companies = list_company_profiles(
         search_query=search_query or None,
@@ -572,12 +611,35 @@ def companies_search_view():
     available_industries = get_distinct_industries()
     available_techs = get_distinct_tech_stacks()
 
-    # Enriched profiles with verification & freshness for modal details
+    # Fetch current student profile for eligibility evaluations (#844)
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "default_student"
+    from db.coding_practice import get_student_profile
+    profile_rec = get_student_profile(student_id) or {}
+    student_profile = {
+        "cgpa": profile_rec.get("cgpa"),
+        "backlogs": profile_rec.get("backlogs", 0),
+        "branch": profile_rec.get("department") or "",
+        "department": profile_rec.get("department") or "",
+        "passing_year": profile_rec.get("grad_year")
+    }
+
+    from utils.company_eligibility_service import calculate_company_eligibility
+
+    # Enriched profiles with verification & freshness for modal details and eligibility (#844)
     enriched_companies = []
     for c in companies:
         c_copy = dict(c)
-        c_copy["enriched"] = enrich_company_hiring_guide(c.get("company_name", ""), c)
-        c_copy["frequently_asked_questions"] = get_frequently_asked_questions(c.get("company_name", ""))
+        comp_name = c.get("company_name", "")
+        c_copy["enriched"] = enrich_company_hiring_guide(comp_name, c)
+        c_copy["frequently_asked_questions"] = get_frequently_asked_questions(comp_name)
+        
+        # Calculate eligibility
+        eligibility_eval = calculate_company_eligibility(comp_name, student_profile)
+        c_copy["eligibility"] = eligibility_eval
+
+        if eligible_only and not eligibility_eval.get("eligible"):
+            continue
+
         enriched_companies.append(c_copy)
 
     # Check if AJAX or JSON response is requested
@@ -604,6 +666,8 @@ def companies_search_view():
         industry_filter=industry_filter,
         tech_filter=tech_filter,
         process_query=process_query,
+        eligible_only=eligible_only,
+        student_profile=student_profile,
         available_tiers=available_tiers,
         available_industries=available_industries,
         available_techs=available_techs,

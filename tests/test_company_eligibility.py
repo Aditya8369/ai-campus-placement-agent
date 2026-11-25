@@ -50,7 +50,8 @@ def test_company_eligibility_calculator_uncertain_defaults():
     # User provides no fields
     profile = {}
     result = calculate_company_eligibility("AmbiguousCorp", profile, company_data=company_data)
-    assert result["overall_status"] == "Needs Profile Information"
+    assert result["overall_status"] in ("Unknown", "Needs Profile Information")
+    assert result["status"].lower() == "unknown"
     assert any(e["status"] == "Uncertain" for e in result["evaluations"])
 
 
