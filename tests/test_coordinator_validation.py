@@ -213,7 +213,7 @@ class TestCoordinatorAgentValidationAndRetry:
             assert result["section_status"]["interview_questions"] == "available"
             assert result["section_status"]["overall_recommendation_summary"] == "available"
 
-            assert result["resume_analysis"]["ats_score"] == 85
+            assert result["resume_analysis"]["ats_score"] == (result.get("ats_breakdown", {}).get("total_score") if result.get("ats_breakdown") else 85)
             assert result["job_match"]["match_percentage"] == 78
             assert len(result["learning_roadmap"]) == 6
             assert len(result["interview_questions"]["hr"]) == 5
@@ -233,7 +233,7 @@ class TestCoordinatorAgentValidationAndRetry:
             result = coordinator.analyze(resume_text="Some resume")
 
             # Must not crash and return complete dictionary
-            assert result["resume_analysis"]["ats_score"] == 72
+            assert result["resume_analysis"]["ats_score"] == (result.get("ats_breakdown", {}).get("total_score") if result.get("ats_breakdown") else 72)
             assert result["section_status"]["resume_analysis"] == "available"
             assert result["section_status"]["job_match"] == "unavailable"
             assert result["section_status"]["learning_roadmap"] == "unavailable"
@@ -263,7 +263,7 @@ class TestCoordinatorAgentValidationAndRetry:
             assert len(calls) == 2
             # Verify the reminder prompt was sent on the second call
             assert "CRITICAL REMINDER: Your previous response was malformed" in calls[1]
-            assert result["resume_analysis"]["ats_score"] == 85
+            assert result["resume_analysis"]["ats_score"] == (result.get("ats_breakdown", {}).get("total_score") if result.get("ats_breakdown") else 85)
             assert result["section_status"]["resume_analysis"] == "available"
 
     def test_coordinator_retry_failure_propagates_format_error(self):

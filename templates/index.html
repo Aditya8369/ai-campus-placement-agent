@@ -1045,11 +1045,21 @@
 
       <!-- Live Stream Error Alert -->
       <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3" role="alert">
-        <div class="d-flex align-items-center mb-1">
-          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
-          <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <div class="d-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
+            <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+          </div>
+          <span id="retryRecordStatusBadge" class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill px-2 py-1 small d-none">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i> Ready to Replay
+          </span>
         </div>
-        <div id="progressErrorMessage" class="small mb-3"></div>
+        <div id="progressErrorMessage" class="small mb-2"></div>
+        <div id="retryRecordMetaInfo" class="small text-muted mb-3 d-none">
+          <i class="fa-regular fa-clock me-1"></i>
+          <span id="retryRecordExpiryText">Expires in 15m</span> &bull;
+          <span id="retryRecordAttemptsText">Attempt 0 of 3</span>
+        </div>
         <div class="d-flex justify-content-end gap-2 flex-wrap">
           <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3 d-none" id="btnViewPartialDashboard">
             <i class="fa-solid fa-gauge-high me-1"></i> View Saved Sections

@@ -53,7 +53,7 @@ from utils.deadline_reminders import *
 from utils.company_profile_manager import *
 from utils.interview_helpful_service import get_contributor_helped_students_count
 from utils.progress_tracker import *
-from utils.password_security import evaluate_password_strength
+from utils.password_security import evaluate_password_strength, validate_password_security
 from utils.pagination import Pagination
 from utils.cohort_analytics import CohortAnalyticsService
 from utils.resume_info_extractor import *
@@ -994,11 +994,15 @@ def account_change_password():
         flash(msg, "error")
         return redirect(next_url)
 
-    if len(new_password) < 8:
-        msg = "New password must be at least 8 characters long."
+    valid, pwd_err = validate_password_security(
+        new_password,
+        email=user.get("email"),
+        name=user.get("name"),
+    )
+    if not valid:
         if is_json:
-            return jsonify({"status": "error", "success": False, "error": msg}), 400
-        flash(msg, "error")
+            return jsonify({"status": "error", "success": False, "error": pwd_err}), 400
+        flash(pwd_err, "error")
         return redirect(next_url)
 
     if new_password != confirm_password:
@@ -1258,11 +1262,14 @@ def reset_password(token):
             flash("Passwords do not match.", "error")
             return render_template("reset_password.html", token=token)
 
-        if len(new_password) < 8:
-            flash(
-                "Password must contain at least 8 characters.",
-                "error"
-            )
+        user = get_user_by_id(reset_record.get("user_id")) if reset_record else None
+        valid, pwd_err = validate_password_security(
+            new_password,
+            email=user.get("email") if user else None,
+            name=user.get("name") if user else None,
+        )
+        if not valid:
+            flash(pwd_err, "error")
             return render_template("reset_password.html", token=token)
 
         # Hash the new password before storing it
@@ -1369,8 +1376,9 @@ def register():
                 invited_info=invited_info,
             )
 
-        if len(password) < 8:
-            flash("Password must be at least 8 characters long.", "error")
+        valid, pwd_err = validate_password_security(password, email=email, name=name)
+        if not valid:
+            flash(pwd_err, "error")
             return render_template(
                 "register.html",
                 name=name,
