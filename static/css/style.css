@@ -2655,9 +2655,15 @@ textarea:focus-visible {
 
 .notes-page .note-description {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   word-break: break-word;
   max-height: 220px;
   overflow-y: auto;
+}
+
+.notes-page .note-title {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .badge-note-technical {
@@ -2673,6 +2679,46 @@ textarea:focus-visible {
 }
 
 .badge-note-dsa {
+  background-color: rgba(13, 202, 240, 0.12);
+  color: #0dcaf0;
+  border: 1px solid rgba(13, 202, 240, 0.25);
+}
+
+/* Safe Long-Text & User-Generated Content Wrapping */
+.safe-text-break {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-break: loose;
+}
+
+.safe-long-text {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  white-space: pre-wrap;
+}
+
+.user-notes-content {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.55;
+}
+
+.user-comment-content {
+  overflow-wrap: anywhere !important;
+  word-break: break-word !important;
+  line-height: 1.5;
+}
+
+.safe-link {
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
+  text-decoration: underline;
+}
+
+.safe-link:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
 /* Job Application Tracker Pipeline & Kanban Styling */
 .stage-stat-card {
   transition: transform 0.2s ease, box-shadow 0.2s ease;

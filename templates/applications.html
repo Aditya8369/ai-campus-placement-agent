@@ -402,13 +402,13 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if app.job_url %}
-                    <a href="{{ app.job_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 me-1" aria-label="Open job posting for {{ app.company_name }}">
+                  {% if app.job_url and (app.job_url|is_safe_url) %}
+                    <a href="{{ app.job_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill py-0 px-2 me-1" aria-label="Open job posting for {{ app.company_name }}">
                       <i class="fa-solid fa-arrow-up-right-from-square"></i>
                     </a>
                   {% endif %}
                   {% if app.notes %}
-                    <span class="small text-muted text-truncate d-inline-block app-notes-preview" style="max-width: 140px;" title="{{ app.notes }}">
+                    <span class="small text-muted text-truncate d-inline-block app-notes-preview safe-text-break" style="max-width: 140px;" title="{{ app.notes|e }}">
                       <i class="fa-solid fa-note-sticky text-warning me-1"></i>{{ app.notes }}
                     </span>
                   {% else %}
@@ -688,12 +688,12 @@
 
           <div class="mb-3" id="viewAppUrlWrapper">
             <span class="small fw-semibold text-muted d-block mb-1">Job Posting URL:</span>
-            <a href="#" target="_blank" rel="noopener noreferrer" id="viewAppLink" class="small text-truncate d-inline-block text-break"></a>
+            <a href="#" target="_blank" rel="noopener noreferrer" id="viewAppLink" class="small safe-link safe-text-break d-inline-block"></a>
           </div>
 
           <div>
             <span class="small fw-semibold text-muted d-block mb-1">Notes &amp; Referral Details:</span>
-            <p class="small text-secondary bg-white border rounded-3 p-3 mb-0" id="viewAppNotes" style="white-space: pre-wrap;">No notes recorded.</p>
+            <p class="small text-secondary bg-white border rounded-3 p-3 mb-0 safe-text-break user-notes-content" id="viewAppNotes" style="white-space: pre-wrap;">No notes recorded.</p>
           </div>
           <div class="mt-3">
             <span class="small fw-semibold text-muted d-block mb-1">Submitted Materials:</span>
@@ -839,6 +839,22 @@
         console.error("Failed to parse applications JSON", e);
       }
 
+      function escapeHtml(str) {
+        if (!str) return "";
+        return String(str)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function isSafeClientUrl(url) {
+        if (!url || typeof url !== "string") return false;
+        const trimmed = url.trim().toLowerCase();
+        return trimmed.startsWith("http://") || trimmed.startsWith("https://") || trimmed.startsWith("mailto:");
+      }
+
       // Initialize Bootstrap Modals and Toast
       const viewModalEl = document.getElementById("viewAppModal");
       const editModalEl = document.getElementById("editAppModal");
@@ -930,7 +946,7 @@
                 <span class="badge bg-info-subtle text-info rounded-pill small">${app.job_type || 'Full-Time'}</span>
               </div>
               ${app.application_date ? `<div class="text-muted small mb-2"><i class="fa-regular fa-calendar me-1"></i>${formatDisplayDate(app.application_date)}</div>` : ''}
-              ${app.notes ? `<div class="text-secondary small text-truncate mb-2" title="${app.notes}"><i class="fa-solid fa-note-sticky text-warning me-1"></i>${app.notes}</div>` : ''}
+              ${app.notes ? `<div class="text-secondary small text-truncate mb-2 safe-text-break" title="${escapeHtml(app.notes)}"><i class="fa-solid fa-note-sticky text-warning me-1"></i>${escapeHtml(app.notes)}</div>` : ''}
               <div class="d-flex justify-content-between align-items-center pt-2 border-top">
                 <div class="d-flex gap-1">
                   <button class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-0 btn-view-app" data-app-id="${app.id}" title="View details" aria-label="View details">
@@ -1072,10 +1088,14 @@
 
               const urlWrapper = document.getElementById("viewAppUrlWrapper");
               const linkEl = document.getElementById("viewAppLink");
-              if (app.job_url) {
+              if (app.job_url && isSafeClientUrl(app.job_url)) {
                 urlWrapper.classList.remove("d-none");
-                linkEl.href = app.job_url;
-                linkEl.textContent = app.job_url;
+                linkEl.href = app.job_url.trim();
+                linkEl.textContent = app.job_url.trim();
+              } else if (app.job_url) {
+                urlWrapper.classList.remove("d-none");
+                linkEl.removeAttribute("href");
+                linkEl.textContent = app.job_url.trim();
               } else {
                 urlWrapper.classList.add("d-none");
               }

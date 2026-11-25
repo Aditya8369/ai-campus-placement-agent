@@ -424,7 +424,7 @@
                         <span class="badge bg-white text-primary border rounded-pill small">{{ sk }}</span>
                       {% endfor %}
                     </div>
-                    <a href="{{ q.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
+                    <a href="{{ q.practice_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary rounded-pill px-3">
                       Solve <i class="fa-solid fa-arrow-up-right-from-square ms-1 small"></i>
                     </a>
                   </div>

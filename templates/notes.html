@@ -159,9 +159,9 @@
       <div class="col-md-6 col-lg-4 note-item-col" 
            id="note-card-{{ note.id }}"
            data-note-id="{{ note.id }}"
-           data-category="{{ note.category }}"
-           data-title="{{ note.title }}"
-           data-description="{{ note.description }}">
+           data-category="{{ note.category|e }}"
+           data-title="{{ note.title|e }}"
+           data-description="{{ note.description|e }}">
         <div class="card border-0 shadow-sm rounded-4 h-100 note-card p-4 d-flex flex-column justify-content-between position-relative">
           <div>
             <!-- Note Header -->
@@ -185,20 +185,20 @@
                 <button type="button" 
                         class="btn btn-sm btn-outline-secondary btn-edit-note rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
                         data-note-id="{{ note.id }}"
-                        data-note-title="{{ note.title }}"
-                        data-note-category="{{ note.category }}"
-                        data-note-description="{{ note.description }}"
+                        data-note-title="{{ note.title|e }}"
+                        data-note-category="{{ note.category|e }}"
+                        data-note-description="{{ note.description|e }}"
                         title="Edit Note"
-                        aria-label="Edit {{ note.title }}"
+                        aria-label="Edit {{ note.title|e }}"
                         style="width: 34px; height: 34px;">
                   <i class="fa-solid fa-pen-to-square"></i>
                 </button>
                 <button type="button" 
                         class="btn btn-sm btn-outline-danger btn-delete-note rounded-circle p-2 d-inline-flex align-items-center justify-content-center"
                         data-note-id="{{ note.id }}"
-                        data-note-title="{{ note.title }}"
+                        data-note-title="{{ note.title|e }}"
                         title="Delete Note"
-                        aria-label="Delete {{ note.title }}"
+                        aria-label="Delete {{ note.title|e }}"
                         style="width: 34px; height: 34px;">
                   <i class="fa-solid fa-trash-can"></i>
                 </button>
@@ -206,11 +206,11 @@
             </div>
 
             <!-- Title -->
-            <h5 class="fw-bold text-dark note-title mb-2 mt-1">{{ note.title }}</h5>
+            <h5 class="fw-bold text-dark note-title safe-text-break mb-2 mt-1">{{ note.title }}</h5>
 
             <!-- Description / Content -->
-            <div class="note-description text-secondary small mb-3">
-              {{ note.description }}
+            <div class="note-description user-notes-content safe-text-break text-secondary small mb-3">
+              {{ note.description|safe_notes }}
             </div>
           </div>
 
@@ -335,7 +335,7 @@
         </div>
         <div class="modal-body py-3">
           <p class="text-secondary mb-1">Are you sure you want to delete this note?</p>
-          <div class="p-3 bg-light rounded-3 border fw-semibold text-dark my-2" id="deleteNoteTitleDisplay">
+          <div class="p-3 bg-light rounded-3 border fw-semibold text-dark my-2 safe-text-break" id="deleteNoteTitleDisplay">
             Note Title
           </div>
           <p class="text-muted small mb-0">This action cannot be undone. Only you can delete your private notes.</p>

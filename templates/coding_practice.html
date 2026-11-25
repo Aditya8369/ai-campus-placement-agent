@@ -178,7 +178,7 @@
                 <i class="fa-solid fa-bookmark text-warning me-1"></i> Saved Question
                 {% endif %}
               </span>
-              <a href="{{ prob.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+              <a href="{{ prob.practice_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm rounded-pill px-3">
                 Solve on {{ prob.platform or 'LeetCode' }} <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
               </a>
             </div>
@@ -264,7 +264,7 @@
             <span class="small text-muted">
               <i class="fa-solid fa-clock me-1"></i> {{ prob.time_complexity }} | <i class="fa-solid fa-memory me-1"></i> {{ prob.space_complexity }}
             </span>
-            <a href="{{ prob.practice_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+            <a href="{{ prob.practice_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary btn-sm rounded-pill px-3">
               Solve on {{ prob.platform }} <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
             </a>
           </div>
