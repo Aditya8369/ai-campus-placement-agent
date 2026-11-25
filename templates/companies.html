@@ -122,7 +122,7 @@
           </div>
 
           <!-- Process / Round Query -->
-          <div class="col-md-8 col-sm-6">
+          <div class="col-md-5 col-sm-6">
             <label for="processInput" class="form-label small fw-semibold text-secondary">Hiring Process & Assessment Rounds</label>
             <div class="input-group">
               <span class="input-group-text bg-light border-end-0 text-muted"><i class="fa-solid fa-list-ol"></i></span>
@@ -137,12 +137,34 @@
             </div>
           </div>
 
+          <!-- Eligibility Filter Toggle (#844) -->
+          <div class="col-md-3 col-sm-6 d-flex flex-column justify-content-end">
+            <div class="form-check form-switch mb-2">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                role="switch"
+                id="eligibleOnlySwitch"
+                name="eligible_only"
+                value="true"
+                {% if eligible_only %}checked{% endif %}
+                onchange="this.form.submit()"
+              >
+              <label class="form-check-label small fw-semibold text-dark" for="eligibleOnlySwitch">
+                <i class="fa-solid fa-user-check text-success me-1"></i> Only companies I am eligible for
+              </label>
+            </div>
+            <small class="text-muted" style="font-size: 0.72rem;">
+              Based on profile CGPA, backlogs & branch.
+            </small>
+          </div>
+
           <!-- Actions -->
           <div class="col-md-4 col-sm-6 d-flex align-items-end gap-2">
             <button type="submit" class="btn btn-primary rounded-3 flex-grow-1">
               <i class="fa-solid fa-filter me-1"></i> Apply Filters
             </button>
-            {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query %}
+            {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query or eligible_only %}
             <a href="/companies" class="btn btn-outline-secondary rounded-3" title="Reset all filters">
               <i class="fa-solid fa-rotate-left"></i> Reset
             </a>
@@ -152,9 +174,14 @@
       </form>
 
       <!-- Active Filter Badges -->
-      {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query %}
+      {% if search_query or tier_filter != 'All' or industry_filter != 'All' or tech_filter != 'All' or process_query or eligible_only %}
       <div class="d-flex flex-wrap align-items-center gap-2 pt-3 mt-3 border-top">
         <span class="small text-muted fw-semibold me-1">Active Filters:</span>
+        {% if eligible_only %}
+        <span class="badge bg-success-subtle text-success border border-success-subtle p-2 rounded-pill">
+          <i class="fa-solid fa-check-circle me-1"></i> Eligible Drives Only
+        </span>
+        {% endif %}
         {% if search_query %}
         <span class="badge bg-light text-dark border p-2 rounded-pill">
           Query: "{{ search_query }}"
@@ -234,7 +261,49 @@
               <i class="fa-solid fa-indian-rupee-sign me-1"></i> {{ company.typical_ctc_range }}
             </span>
             {% endif %}
+            <!-- Eligibility Status Badge (#844) -->
+            {% if company.eligibility %}
+              {% if company.eligibility.status == 'eligible' %}
+              <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill" title="{{ company.eligibility.reason }}">
+                <i class="fa-solid fa-circle-check me-1"></i> Eligible
+              </span>
+              {% elif company.eligibility.status == 'not_eligible' or company.eligibility.status == 'not eligible' %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill" title="{{ company.eligibility.reason }}">
+                <i class="fa-solid fa-circle-xmark me-1"></i> Not Eligible
+              </span>
+              {% else %}
+              <span class="badge bg-secondary-subtle text-secondary border rounded-pill" title="{{ company.eligibility.reason }}">
+                <i class="fa-solid fa-circle-question me-1"></i> Unknown Eligibility
+              </span>
+              {% endif %}
+            {% endif %}
           </div>
+
+          <!-- Eligibility criteria & explanation notice (#844) -->
+          {% if company.eligibility %}
+          <div class="mb-3 p-2.5 rounded-3 bg-light border border-light-subtle small">
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <span class="fw-semibold text-secondary" style="font-size: 0.76rem;">
+                <i class="fa-solid fa-shield-halved me-1 text-primary"></i> Drive Eligibility:
+              </span>
+              {% if company.eligibility.status == 'eligible' %}
+              <span class="text-success fw-bold" style="font-size: 0.72rem;">Meets Criteria</span>
+              {% elif company.eligibility.status in ('not_eligible', 'not eligible') %}
+              <span class="text-danger fw-bold text-truncate" style="font-size: 0.72rem; max-width: 140px;" title="{{ company.eligibility.reason }}">{{ company.eligibility.reason }}</span>
+              {% else %}
+              <span class="text-muted" style="font-size: 0.72rem;">Criteria Unconfirmed</span>
+              {% endif %}
+            </div>
+            <div class="text-muted" style="font-size: 0.72rem; line-height: 1.3;">
+              {% if company.min_cgpa or company.eligibility.min_cgpa %}Min CGPA: <b>{{ company.min_cgpa or company.eligibility.min_cgpa }}</b> | {% endif %}
+              {% if company.max_backlogs is not none or company.eligibility.max_backlogs is not none %}Max Backlogs: <b>{{ company.max_backlogs if company.max_backlogs is not none else company.eligibility.max_backlogs }}</b> | {% endif %}
+              Branches: <b>{{ (company.branches or company.eligibility.branches or ['All']) | join(', ') }}</b>
+            </div>
+            <div class="text-secondary mt-1 fst-italic" style="font-size: 0.68rem;">
+              * {{ company.eligibility.drive_disclaimer or "Criteria vary by drive." }}
+            </div>
+          </div>
+          {% endif %}
 
           <!-- Overview -->
           <p class="text-secondary small mb-3 flex-grow-1" style="display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">
