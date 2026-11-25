@@ -819,29 +819,31 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
 
-        # Table: API request retry and replay records for failed operations
+        # Table 36: Store placement coordinator intervention queue records (#786)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS api_retry_records (
+            CREATE TABLE IF NOT EXISTS faculty_interventions (
                 id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL DEFAULT 'default_student',
-                operation_type TEXT NOT NULL,
-                endpoint TEXT NOT NULL,
-                http_method TEXT NOT NULL DEFAULT 'POST',
-                payload_json TEXT NOT NULL,
-                idempotency_key TEXT UNIQUE NOT NULL,
-                status TEXT NOT NULL DEFAULT 'failed',
-                error_message TEXT,
-                retry_count INTEGER NOT NULL DEFAULT 0,
-                max_retries INTEGER NOT NULL DEFAULT 3,
-                last_response_json TEXT,
+                student_id TEXT NOT NULL,
+                student_name TEXT,
+                student_email TEXT,
+                department TEXT NOT NULL DEFAULT 'Computer Science',
+                graduation_year INTEGER NOT NULL DEFAULT 2026,
+                category TEXT NOT NULL,
+                urgency_level TEXT NOT NULL DEFAULT 'medium',
+                explanation TEXT NOT NULL,
+                explanation_detail TEXT,
+                suggested_action TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                snoozed_until TEXT,
+                action_notes TEXT,
+                resolved_by TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                expires_at TIMESTAMP NOT NULL
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_user ON api_retry_records (user_id, status)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_expires ON api_retry_records (expires_at)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_status ON faculty_interventions(status, urgency_level)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_student ON faculty_interventions(student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_category ON faculty_interventions(category)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
