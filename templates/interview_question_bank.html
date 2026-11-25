@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token is defined else '' }}">
+  <title>Common Interview Question Bank - AI Campus Placement Agent</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <style>
+    .question-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 1rem;
+    }
+    .question-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08) !important;
+    }
+    .badge-cat-technical {
+      background-color: #e0f2fe;
+      color: #0369a1;
+      border: 1px solid #bae6fd;
+    }
+    .badge-cat-behavioral {
+      background-color: #dcfce7;
+      color: #15803d;
+      border: 1px solid #bbf7d0;
+    }
+    .badge-cat-hr {
+      background-color: #fef3c7;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-cat-projects {
+      background-color: #f3e8ff;
+      color: #7e22ce;
+      border: 1px solid #e9d5ff;
+    }
+    .badge-diff-easy {
+      background-color: #ecfdf5;
+      color: #047857;
+      border: 1px solid #a7f3d0;
+    }
+    .badge-diff-medium {
+      background-color: #fffbeb;
+      color: #b45309;
+      border: 1px solid #fde68a;
+    }
+    .badge-diff-hard {
+      background-color: #fef2f2;
+      color: #b91c1c;
+      border: 1px solid #fecaca;
+    }
+    .outline-box {
+      background-color: #f8fafc;
+      border-left: 3px solid #3b82f6;
+    }
+    .btn-fav-active {
+      background-color: #fef3c7 !important;
+      color: #b45309 !important;
+      border-color: #f59e0b !important;
+    }
+  </style>
+</head>
+
+<body class="bg-light">
+  <!-- Accessibility Skip-to-Content Link -->
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- Navigation -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+      </a>
+      <div class="d-flex align-items-center flex-wrap gap-2 ms-auto ms-lg-0">
+        <a href="/" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-house me-1"></i> Home
+        </a>
+        <a href="/interview/bookmarks" class="btn btn-outline-secondary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-regular fa-bookmark me-1"></i> Saved Questions
+        </a>
+        <a href="/interview/question-bank" class="btn btn-primary btn-sm rounded-pill px-3 py-1">
+          <i class="fa-solid fa-layer-group me-1"></i> Question Bank
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="container py-4" id="main-content">
+    <!-- Header Hero -->
+    <div class="row align-items-center mb-4">
+      <div class="col-lg-8">
+        <h2 class="fw-bold mb-1 text-dark">
+          <i class="fa-solid fa-layer-group text-primary me-2"></i> Common Interview Question Bank
+        </h2>
+        <p class="text-muted mb-0">
+          Browse common campus placement questions tagged by category, difficulty, and role. Review key answer outlines and save favorites for rapid revision.
+        </p>
+      </div>
+      <div class="col-lg-4 text-lg-end mt-3 mt-lg-0">
+        <div class="d-inline-flex gap-2">
+          <button type="button" class="btn btn-outline-warning rounded-pill px-3 py-2 btn-sm fw-semibold shadow-sm" id="btnOpenFavoritesModal" data-bs-toggle="modal" data-bs-target="#favoritesModal">
+            <i class="fa-solid fa-star text-warning me-1"></i> Favorites (<span id="favCountBadge">{{ session_favorites|length }}</span>)
+          </button>
+          <button type="button" class="btn btn-custom-primary rounded-pill px-3 py-2 btn-sm fw-semibold shadow-sm" id="btnCopyFavoritesTop">
+            <i class="fa-regular fa-copy me-1"></i> Copy Favorites List
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast Notification for Copy -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index: 1080;">
+      <div id="copyToast" class="toast align-items-center text-bg-dark border-0 rounded-3 shadow" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="d-flex">
+          <div class="toast-body">
+            <i class="fa-solid fa-check-circle text-success me-2"></i> <span id="copyToastMsg">Copied favorites to clipboard!</span>
+          </div>
+          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search & Filter Card -->
+    <div class="card border-0 bg-white rounded-4 shadow-sm p-4 mb-4">
+      <form id="questionFilterForm" method="GET" action="/interview/question-bank">
+        <div class="row g-3">
+          <!-- Search Box -->
+          <div class="col-lg-5">
+            <label for="searchBox" class="form-label small fw-bold text-secondary">Search Keywords</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-end-0 rounded-start-pill"><i class="fa-solid fa-magnifying-glass text-muted"></i></span>
+              <input type="text" class="form-control bg-light border-start-0 rounded-end-pill" id="searchBox" name="q"
+                placeholder="Search question, concept, or outline (e.g. DNS, ACID, STAR)..."
+                value="{{ current_query }}">
+            </div>
+          </div>
+
+          <!-- Category Filter -->
+          <div class="col-sm-6 col-lg-2">
+            <label for="categorySelect" class="form-label small fw-bold text-secondary">Category</label>
+            <select class="form-select rounded-pill" id="categorySelect" name="category">
+              <option value="all" {% if current_category == 'all' %}selected{% endif %}>All Categories</option>
+              {% for cat in filter_options.categories %}
+                <option value="{{ cat }}" {% if current_category == cat %}selected{% endif %}>{{ cat|title }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Difficulty Filter -->
+          <div class="col-sm-6 col-lg-2">
+            <label for="difficultySelect" class="form-label small fw-bold text-secondary">Difficulty</label>
+            <select class="form-select rounded-pill" id="difficultySelect" name="difficulty">
+              <option value="all" {% if current_difficulty == 'all' %}selected{% endif %}>All Difficulties</option>
+              {% for diff in filter_options.difficulties %}
+                <option value="{{ diff }}" {% if current_difficulty == diff %}selected{% endif %}>{{ diff }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Target Role Filter -->
+          <div class="col-sm-8 col-lg-2">
+            <label for="roleSelect" class="form-label small fw-bold text-secondary">Target Role</label>
+            <select class="form-select rounded-pill" id="roleSelect" name="role">
+              <option value="all" {% if current_role == 'all' %}selected{% endif %}>All Roles</option>
+              {% for r in filter_options.roles %}
+                <option value="{{ r }}" {% if current_role == r %}selected{% endif %}>{{ r }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="col-sm-4 col-lg-1 d-flex align-items-end">
+            <a href="/interview/question-bank" class="btn btn-outline-secondary rounded-pill w-100" title="Reset all filters">
+              <i class="fa-solid fa-rotate-left"></i>
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <!-- Active Filters Bar & Result Counter -->
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3 px-1">
+      <div class="small text-muted" id="resultsCountText">
+        Showing <strong class="text-dark">{{ total_matching }}</strong> question{{ 's' if total_matching != 1 else '' }}
+        {% if current_query or current_category != 'all' or current_difficulty != 'all' or current_role != 'all' %}
+          for active search & filters
+        {% endif %}
+      </div>
+      <div>
+        {% if current_query %}
+          <span class="badge bg-secondary-subtle text-secondary rounded-pill me-1 small">
+            Query: "{{ current_query }}"
+          </span>
+        {% endif %}
+        {% if current_category != 'all' %}
+          <span class="badge bg-primary-subtle text-primary rounded-pill me-1 small">
+            Category: {{ current_category|title }}
+          </span>
+        {% endif %}
+        {% if current_difficulty != 'all' %}
+          <span class="badge bg-warning-subtle text-dark rounded-pill me-1 small">
+            Difficulty: {{ current_difficulty }}
+          </span>
+        {% endif %}
+        {% if current_role != 'all' %}
+          <span class="badge bg-info-subtle text-dark rounded-pill me-1 small">
+            Role: {{ current_role }}
+          </span>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Empty State Banner (AC: An empty result shows a clear message) -->
+    {% if not questions %}
+    <div class="card border-0 bg-white rounded-4 shadow-sm p-5 text-center my-4" id="emptyStateCard">
+      <div class="py-3">
+        <i class="fa-solid fa-magnifying-glass fa-3x text-muted mb-3 opacity-50"></i>
+        <h5 class="fw-bold text-dark">No interview questions matched your search criteria</h5>
+        <p class="text-muted mb-4 max-w-md mx-auto" style="max-width: 500px;">
+          Try adjusting your search keywords, clearing active filters, or exploring questions from all categories and roles.
+        </p>
+        <a href="/interview/question-bank" class="btn btn-primary rounded-pill px-4 py-2 fw-semibold">
+          <i class="fa-solid fa-rotate-left me-1"></i> Clear All Filters
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Questions Grid -->
+    <div class="row g-4" id="questionsContainer">
+      {% for q in questions %}
+      <div class="col-12 question-item-col" data-id="{{ q.id }}" data-category="{{ q.category }}" data-difficulty="{{ q.difficulty }}">
+        <div class="card question-card shadow-sm p-4 h-100">
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+            <!-- Badges -->
+            <div class="d-flex align-items-center flex-wrap gap-2">
+              <!-- Category Badge -->
+              {% if q.category == 'technical' %}
+                <span class="badge badge-cat-technical rounded-pill px-3 py-1 small fw-semibold">Technical</span>
+              {% elif q.category == 'behavioral' %}
+                <span class="badge badge-cat-behavioral rounded-pill px-3 py-1 small fw-semibold">Behavioral</span>
+              {% elif q.category == 'hr' %}
+                <span class="badge badge-cat-hr rounded-pill px-3 py-1 small fw-semibold">HR</span>
+              {% elif q.category == 'projects' %}
+                <span class="badge badge-cat-projects rounded-pill px-3 py-1 small fw-semibold">Projects</span>
+              {% else %}
+                <span class="badge bg-secondary rounded-pill px-3 py-1 small fw-semibold">{{ q.category|title }}</span>
+              {% endif %}
+
+              <!-- Difficulty Badge -->
+              {% if q.difficulty == 'Easy' %}
+                <span class="badge badge-diff-easy rounded-pill px-3 py-1 small">Easy</span>
+              {% elif q.difficulty == 'Medium' %}
+                <span class="badge badge-diff-medium rounded-pill px-3 py-1 small">Medium</span>
+              {% elif q.difficulty == 'Hard' %}
+                <span class="badge badge-diff-hard rounded-pill px-3 py-1 small">Hard</span>
+              {% else %}
+                <span class="badge bg-light text-secondary rounded-pill px-3 py-1 small">{{ q.difficulty }}</span>
+              {% endif %}
+
+              <!-- Target Roles -->
+              {% for role in q.roles[:2] %}
+                <span class="badge bg-light text-muted border rounded-pill px-2 py-1 small" style="font-size: 0.75rem;">
+                  <i class="fa-solid fa-user-tag me-1 text-primary"></i> {{ role }}
+                </span>
+              {% endfor %}
+              {% if q.roles|length > 2 %}
+                <span class="badge bg-light text-muted border rounded-pill px-2 py-1 small" title="{{ q.roles|join(', ') }}" style="font-size: 0.75rem;">
+                  +{{ q.roles|length - 2 }} roles
+                </span>
+              {% endif %}
+            </div>
+
+            <!-- Favorite Toggle Button -->
+            <div>
+              {% set is_fav = q.id in session_favorites %}
+              <button type="button" class="btn btn-sm rounded-pill px-3 py-1 btn-toggle-favorite {% if is_fav %}btn-fav-active{% else %}btn-outline-secondary{% endif %}"
+                data-question-id="{{ q.id }}"
+                data-is-fav="{{ 'true' if is_fav else 'false' }}"
+                title="Mark as favorite for this session">
+                <i class="fa-{% if is_fav %}solid{% else %}regular{% endif %} fa-star me-1 text-warning"></i>
+                <span class="fav-label">{% if is_fav %}Favorited{% else %}Favorite{% endif %}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Question Title -->
+          <h5 class="fw-bold text-dark mt-2 mb-3">
+            {{ q.question }}
+          </h5>
+
+          <!-- Tags -->
+          {% if q.tags %}
+          <div class="d-flex flex-wrap gap-1 mb-3">
+            {% for tag in q.tags %}
+              <span class="badge bg-light-subtle text-secondary border rounded-pill px-2 py-1" style="font-size: 0.72rem;">
+                #{{ tag }}
+              </span>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- Short Answer Outline -->
+          <div class="outline-box p-3 rounded-3 mb-3">
+            <h6 class="fw-bold text-primary mb-2 small text-uppercase">
+              <i class="fa-solid fa-list-check me-1"></i> Short Answer Outline:
+            </h6>
+            <ul class="mb-0 ps-3 small text-secondary">
+              {% for point in q.short_answer_outline %}
+                <li class="mb-1">{{ point }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+
+          <!-- Key Takeaway -->
+          {% if q.key_takeaway %}
+          <div class="d-flex align-items-start gap-2 p-2 rounded-2 bg-light border small text-muted">
+            <i class="fa-solid fa-lightbulb text-warning mt-1 flex-shrink-0"></i>
+            <div>
+              <strong class="text-dark">Key Takeaway:</strong> {{ q.key_takeaway }}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </main>
+
+  <!-- Favorites Modal -->
+  <div class="modal fade" id="favoritesModal" tabindex="-1" aria-labelledby="favoritesModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold" id="favoritesModalLabel">
+            <i class="fa-solid fa-star text-warning me-2"></i> Session Favorites (<span id="modalFavCount">0</span>)
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="small text-muted mb-3">
+            Questions saved as favorites during your current session. You can review them here or copy them as an organized study list.
+          </p>
+          <div id="favoritesListContainer" class="vstack gap-3">
+            <!-- Dynamically populated or empty message -->
+          </div>
+        </div>
+        <div class="modal-footer border-top bg-light rounded-bottom-4 d-flex justify-content-between">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-3 btn-sm" data-bs-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-primary rounded-pill px-4 btn-sm" id="btnCopyFavoritesModal">
+            <i class="fa-regular fa-copy me-1"></i> Copy Favorites as List
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-white border-top py-4 mt-5 text-center text-muted small">
+    <div class="container">
+      AI Campus Placement Agent &bull; Searchable Interview Question Bank &bull; All Rights Reserved
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // State management for session favorites
+    let favoritesSet = new Set({{ session_favorites_json|safe }});
+
+    function updateFavBadges() {
+      const count = favoritesSet.size;
+      const topBadge = document.getElementById("favCountBadge");
+      const modalBadge = document.getElementById("modalFavCount");
+      if (topBadge) topBadge.textContent = count;
+      if (modalBadge) modalBadge.textContent = count;
+    }
+
+    // Toggle favorite via POST /api/interview/question-bank/favorites/toggle
+    async function toggleFavorite(questionId, btnEl) {
+      btnEl.disabled = true;
+      try {
+        const resp = await fetch("/api/interview/question-bank/favorites/toggle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question_id: questionId })
+        });
+        const data = await resp.json();
+        if (data.success) {
+          if (data.is_favorite) {
+            favoritesSet.add(questionId);
+            btnEl.classList.add("btn-fav-active");
+            btnEl.classList.remove("btn-outline-secondary");
+            btnEl.innerHTML = '<i class="fa-solid fa-star me-1 text-warning"></i> <span class="fav-label">Favorited</span>';
+          } else {
+            favoritesSet.delete(questionId);
+            btnEl.classList.remove("btn-fav-active");
+            btnEl.classList.add("btn-outline-secondary");
+            btnEl.innerHTML = '<i class="fa-regular fa-star me-1 text-warning"></i> <span class="fav-label">Favorite</span>';
+          }
+          updateFavBadges();
+        }
+      } catch (err) {
+        console.error("Error toggling favorite:", err);
+      } finally {
+        btnEl.disabled = false;
+      }
+    }
+
+    // Copy favorites as formatted list
+    async function copyFavoritesList() {
+      if (favoritesSet.size === 0) {
+        showToast("No favorite questions to copy! Mark some questions as favorites first.");
+        return;
+      }
+      try {
+        const resp = await fetch("/api/interview/question-bank/favorites/export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ favorite_ids: Array.from(favoritesSet), include_outlines: true })
+        });
+        const data = await resp.json();
+        if (data.success && data.formatted_text) {
+          await navigator.clipboard.writeText(data.formatted_text);
+          showToast(`Copied ${favoritesSet.size} favorite question${favoritesSet.size > 1 ? 's' : ''} to clipboard!`);
+        }
+      } catch (err) {
+        console.error("Failed to copy favorites:", err);
+        showToast("Failed to copy favorites to clipboard.");
+      }
+    }
+
+    function showToast(message) {
+      const toastEl = document.getElementById("copyToast");
+      const msgEl = document.getElementById("copyToastMsg");
+      if (msgEl) msgEl.textContent = message;
+      if (toastEl) {
+        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+        toast.show();
+      }
+    }
+
+    // Populate favorites modal
+    async function populateFavoritesModal() {
+      const container = document.getElementById("favoritesListContainer");
+      if (!container) return;
+      if (favoritesSet.size === 0) {
+        container.innerHTML = '<div class="text-center py-4 text-muted"><i class="fa-regular fa-star fa-2x mb-2 d-block"></i>No favorite questions saved yet. Click the star on any question card to save it.</div>';
+        return;
+      }
+      container.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Loading favorites...</div>';
+      try {
+        const resp = await fetch("/api/interview/question-bank/favorites");
+        const data = await resp.json();
+        if (data.success && data.questions && data.questions.length > 0) {
+          container.innerHTML = data.questions.map((q, idx) => `
+            <div class="card border rounded-3 p-3 bg-light-subtle shadow-none">
+              <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
+                <span class="badge bg-secondary-subtle text-secondary rounded-pill small">${q.category.toUpperCase()} &bull; ${q.difficulty}</span>
+                <button type="button" class="btn btn-sm btn-link text-danger p-0 text-decoration-none btn-remove-fav-modal" data-id="${q.id}">
+                  <i class="fa-solid fa-trash-can me-1"></i> Remove
+                </button>
+              </div>
+              <strong class="text-dark mb-2">${idx + 1}. ${q.question}</strong>
+              ${q.short_answer_outline ? `
+                <div class="small text-muted mt-1 ps-2 border-start border-2 border-primary">
+                  ${q.short_answer_outline.map(o => `<div>&bull; ${o}</div>`).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `).join('');
+
+          container.querySelectorAll(".btn-remove-fav-modal").forEach(btn => {
+            btn.addEventListener("click", async function() {
+              const qid = this.getAttribute("data-id");
+              const mainBtn = document.querySelector(`.btn-toggle-favorite[data-question-id="${qid}"]`);
+              if (mainBtn) {
+                await toggleFavorite(qid, mainBtn);
+              } else {
+                favoritesSet.delete(qid);
+                updateFavBadges();
+              }
+              populateFavoritesModal();
+            });
+          });
+        } else {
+          container.innerHTML = '<div class="text-center py-4 text-muted">No favorite questions saved yet.</div>';
+        }
+      } catch (e) {
+        container.innerHTML = '<div class="text-danger small text-center py-3">Failed to load favorites.</div>';
+      }
+    }
+
+    // Attach event listeners
+    document.addEventListener("DOMContentLoaded", function() {
+      updateFavBadges();
+
+      // Favorite toggle buttons
+      document.querySelectorAll(".btn-toggle-favorite").forEach(btn => {
+        btn.addEventListener("click", function() {
+          const qid = this.getAttribute("data-question-id");
+          toggleFavorite(qid, this);
+        });
+      });
+
+      // Copy favorites buttons
+      const btnCopyTop = document.getElementById("btnCopyFavoritesTop");
+      if (btnCopyTop) btnCopyTop.addEventListener("click", copyFavoritesList);
+
+      const btnCopyModal = document.getElementById("btnCopyFavoritesModal");
+      if (btnCopyModal) btnCopyModal.addEventListener("click", copyFavoritesList);
+
+      // Favorites modal open
+      const favModal = document.getElementById("favoritesModal");
+      if (favModal) {
+        favModal.addEventListener("show.bs.modal", populateFavoritesModal);
+      }
+
+      // Auto-submit form when selects change
+      ["categorySelect", "difficultySelect", "roleSelect"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener("change", function() {
+            document.getElementById("questionFilterForm").submit();
+          });
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>

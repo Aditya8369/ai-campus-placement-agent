@@ -1,0 +1,373 @@
+[
+  {
+    "id": "q_hr_001",
+    "question": "Tell me about yourself.",
+    "category": "hr",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst", "DevOps Engineer"],
+    "tags": ["Introduction", "Communication", "Background", "Elevator Pitch"],
+    "short_answer_outline": [
+      "Present: Current academic focus, degree program, and primary technical strengths (e.g., CS senior specializing in distributed backend systems).",
+      "Past: Key accomplishments, hands-on internships, or impactful university capstone projects that built foundational skills.",
+      "Future: Why you are passionate about this specific role and how your skills directly support the company's engineering goals."
+    ],
+    "key_takeaway": "Keep it between 90 and 120 seconds; focus on relevant engineering achievements rather than life history."
+  },
+  {
+    "id": "q_hr_002",
+    "question": "Why do you want to join our company?",
+    "category": "hr",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst", "DevOps Engineer"],
+    "tags": ["Company Knowledge", "Motivation", "Culture Fit"],
+    "short_answer_outline": [
+      "Mission & Engineering Culture: Highlight specific products, engineering blogs, open source tools, or architectural scale that inspire you.",
+      "Growth Alignment: Connect their technological roadmap with your personal career aspirations and eagerness to contribute.",
+      "Specific Contribution: State clearly where your technical background (e.g. cloud optimization, data pipelines) can deliver early value."
+    ],
+    "key_takeaway": "Show concrete research beyond the company's landing page (e.g. recent tech stack announcements or engineering whitepapers)."
+  },
+  {
+    "id": "q_hr_003",
+    "question": "What are your greatest strengths and areas for improvement?",
+    "category": "hr",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst"],
+    "tags": ["Self Awareness", "Strengths", "Weaknesses", "Continuous Learning"],
+    "short_answer_outline": [
+      "Strength: Choose an engineering-relevant trait (e.g., rigorous automated testing, proactive debugging, breaking down ambiguous specs) backed by a concrete project example.",
+      "Area for Improvement: Name a genuine, non-fatal development area (e.g. over-optimizing code prematurely, initial hesitation delegating in team hackathons).",
+      "Corrective Action: Explain the systematic steps you are taking to overcome it (e.g., setting strict MVP time-boxes, adopting structured peer reviews)."
+    ],
+    "key_takeaway": "Never use cliches like 'I am too much of a perfectionist'; demonstrate authentic self-reflection and proactive growth."
+  },
+  {
+    "id": "q_hr_004",
+    "question": "Where do you see yourself in 3 to 5 years?",
+    "category": "hr",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "DevOps Engineer"],
+    "tags": ["Career Goals", "Ambition", "Commitment"],
+    "short_answer_outline": [
+      "Technical Depth: Mastering system architecture, writing clean production code, and owning core services end-to-end.",
+      "Team Impact: Mentoring junior team members, participating in code reviews, and contributing to technical RFCs.",
+      "Company Alignment: Demonstrating long-term commitment by driving business value through robust technical systems."
+    ],
+    "key_takeaway": "Show commitment to growing within the company rather than treating the role as a short-term stepping stone."
+  },
+  {
+    "id": "q_hr_005",
+    "question": "Why should we hire you over other qualified candidates?",
+    "category": "hr",
+    "difficulty": "Hard",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst"],
+    "tags": ["Value Proposition", "Confidence", "Differentiation"],
+    "short_answer_outline": [
+      "Technical Competence: Highlight hands-on experience building real-world software, not just classroom theory.",
+      "Execution Speed & Agility: Share evidence of quickly picking up unfamiliar technologies to solve urgent blockers.",
+      "Collaborative Drive: Emphasize proactive communication, openness to constructive code feedback, and enthusiasm for the team's mission."
+    ],
+    "key_takeaway": "Ground your answer in unique evidence (e.g. personal projects, open source, hackathons) without putting down other applicants."
+  },
+  {
+    "id": "q_tech_001",
+    "question": "What happens under the hood when you enter a URL in your browser and press Enter?",
+    "category": "technical",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer", "Frontend Developer"],
+    "tags": ["Networking", "DNS", "HTTP", "Browser Architecture", "Web Fundamentals"],
+    "short_answer_outline": [
+      "DNS Resolution: Browser cache check, OS hosts file, recursive resolver queries to root, TLD, and authoritative nameservers.",
+      "Transport Layer: TCP three-way handshake (SYN, SYN-ACK, ACK) followed by TLS 1.3 handshake for HTTPS encryption.",
+      "HTTP Exchange: Browser sends HTTP GET request with headers; server processes via web server/reverse proxy and app backend.",
+      "Server Response: HTTP response payload (status code, headers, HTML body) returned to client.",
+      "Browser Rendering: Parsing HTML to DOM, CSS to CSSOM, constructing Render Tree, calculating layout (reflow), and painting pixels."
+    ],
+    "key_takeaway": "Demonstrates holistic mastery from networking to browser rendering pipelines."
+  },
+  {
+    "id": "q_tech_002",
+    "question": "Explain the difference between Process and Thread, and how inter-process communication (IPC) works.",
+    "category": "technical",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Backend Developer", "DevOps Engineer"],
+    "tags": ["Operating Systems", "Concurrency", "Memory Management", "IPC"],
+    "short_answer_outline": [
+      "Definition: A process is an independent execution unit with its own private virtual memory space; a thread is a lightweight execution stream within a process sharing heap and globals.",
+      "Resource Sharing: Threads share address space, code, and file descriptors but have independent program counters and stacks.",
+      "Overhead: Context switching between processes requires TLB invalidation and is expensive; thread context switching is significantly faster.",
+      "IPC Mechanisms: Pipes, named pipes (FIFOs), message queues, shared memory (fastest), and network sockets."
+    ],
+    "key_takeaway": "Emphasize memory isolation tradeoffs and potential thread synchronization challenges like race conditions."
+  },
+  {
+    "id": "q_tech_003",
+    "question": "What are ACID properties in Database Management Systems, and why are they critical?",
+    "category": "technical",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer", "Data Analyst"],
+    "tags": ["DBMS", "Transactions", "SQL", "Data Integrity"],
+    "short_answer_outline": [
+      "Atomicity: All operations in a transaction succeed completely or all are rolled back (all-or-nothing principle).",
+      "Consistency: Transaction transitions database from one valid state to another according to constraints and triggers.",
+      "Isolation: Concurrent transactions execute without cross-interference, configurable via isolation levels (Read Committed, Serializable).",
+      "Durability: Once committed, state changes persist even in the event of sudden server failure or power outage (WAL/journals)."
+    ],
+    "key_takeaway": "Use a clear banking transfer example (debiting account A and crediting account B) to illustrate all four properties."
+  },
+  {
+    "id": "q_tech_004",
+    "question": "How does a Hash Map work internally, and how are hash collisions handled?",
+    "category": "technical",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Backend Developer", "Frontend Developer", "Full Stack Developer"],
+    "tags": ["Data Structures", "Algorithms", "Hashing", "Complexity"],
+    "short_answer_outline": [
+      "Internal Structure: Array of buckets indexed by computing hash(key) % array_length.",
+      "Collision Handling: Separate Chaining (linked lists or balanced trees at bucket index) vs Open Addressing (linear probing, quadratic probing, double hashing).",
+      "Time Complexity: Average O(1) for insert/lookup/delete; degrades to O(N) in worst case when multiple keys hash to identical bucket.",
+      "Rehashing: When load factor exceeds threshold (typically 0.75), bucket array doubles in size and entries are re-indexed."
+    ],
+    "key_takeaway": "Explain the role of a uniform hash function and how Java 8+ converts linked lists to red-black trees when bucket length exceeds 8."
+  },
+  {
+    "id": "q_tech_005",
+    "question": "Compare SQL vs NoSQL databases. When would you choose one over the other?",
+    "category": "technical",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer", "Data Analyst"],
+    "tags": ["Database Design", "SQL", "NoSQL", "System Design"],
+    "short_answer_outline": [
+      "Data Model: SQL uses relational tables with strict schemas; NoSQL uses document (JSON), key-value, column-family, or graph models.",
+      "Scaling: SQL scales primarily vertically; NoSQL databases (e.g. MongoDB, Cassandra) are designed to scale horizontally across distributed clusters.",
+      "Consistency vs Availability: Relational systems favor ACID guarantees; NoSQL typically embraces BASE (Eventual Consistency) as per CAP theorem.",
+      "Selection Criteria: Choose SQL for financial transactions, complex relational joins, and strict schema validation; choose NoSQL for unstructured data, high write throughput, and dynamic schema needs."
+    ],
+    "key_takeaway": "Highlight that modern architectures often use polyglot persistence combining both SQL and NoSQL for different services."
+  },
+  {
+    "id": "q_tech_006",
+    "question": "Design a URL Shortener service like TinyURL. What are the key architecture components and scaling bottlenecks?",
+    "category": "technical",
+    "difficulty": "Hard",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer", "DevOps Engineer"],
+    "tags": ["System Design", "Scalability", "Caching", "Distributed Systems"],
+    "short_answer_outline": [
+      "Requirements: Shorten long URL to 7-character hash (Base62), redirect 301/302, support high read:write ratio (100:1).",
+      "Encoding Strategy: MD5/SHA256 truncated hash with collision resolution OR distributed counter with Base62 encoding to guarantee uniqueness.",
+      "Data Storage: Key-value store or relational DB mapping short_code to original_url and created_at.",
+      "Caching & Performance: Redis caching hot URLs (80/20 rule) to achieve sub-10ms redirect latency without hitting database.",
+      "Scalability: Horizontal stateless API servers behind Nginx load balancers; database sharding by hash prefix."
+    ],
+    "key_takeaway": "Clarify difference between 301 (Permanent Redirect, browser caches) and 302 (Temporary Redirect, allows tracking analytics)."
+  },
+  {
+    "id": "q_tech_007",
+    "question": "What is the Virtual DOM in React, and how does the reconciliation algorithm optimize rendering?",
+    "category": "technical",
+    "difficulty": "Medium",
+    "roles": ["Frontend Developer", "Full Stack Developer", "Software Engineer"],
+    "tags": ["React", "Frontend", "Virtual DOM", "JavaScript"],
+    "short_answer_outline": [
+      "Concept: Virtual DOM is an in-memory lightweight JavaScript object tree mirroring the actual browser DOM.",
+      "Reconciliation Process: When component state changes, a new VDOM tree is created and diffed against the previous tree (heuristic O(N) diff algorithm).",
+      "Batching: Differences (patches) are calculated in memory and applied to the real DOM in a single batched repaint.",
+      "Optimization: Prevents expensive direct browser layout reflows and repaints for every single micro-state mutation."
+    ],
+    "key_takeaway": "Explain why stable unique 'key' props are critical during list reconciliation to prevent unnecessary DOM node recreations."
+  },
+  {
+    "id": "q_tech_008",
+    "question": "What is the difference between Index Scan, Index Seek, and Full Table Scan in SQL queries?",
+    "category": "technical",
+    "difficulty": "Hard",
+    "roles": ["Data Analyst", "Backend Developer", "Software Engineer"],
+    "tags": ["SQL", "Query Optimization", "Indexing", "Performance"],
+    "short_answer_outline": [
+      "Index Seek: Uses B-tree index traversal to navigate directly to matching rows using equality or range filters (fastest, O(log N)).",
+      "Index Scan: Traverses the entire leaf level of the index tree when the query touches indexed columns but lacks selective search predicate.",
+      "Full Table Scan: Reads every single page/row of the table from disk when no suitable index exists or table is very small.",
+      "Optimization Impact: Adding composite indexes matching WHERE/JOIN clauses transforms costly table scans into high-speed index seeks."
+    ],
+    "key_takeaway": "Mention inspecting EXPLAIN / EXPLAIN ANALYZE execution plans to diagnose query bottlenecks."
+  },
+  {
+    "id": "q_tech_009",
+    "question": "Explain Docker containerization vs Virtual Machines and how Linux namespaces and cgroups enable isolation.",
+    "category": "technical",
+    "difficulty": "Medium",
+    "roles": ["DevOps Engineer", "Backend Developer", "Software Engineer"],
+    "tags": ["Docker", "Linux", "DevOps", "Virtualization"],
+    "short_answer_outline": [
+      "VM vs Container: VMs virtualize hardware and run complete guest OS on a hypervisor; containers virtualize OS kernel and share host kernel.",
+      "Linux Namespaces: Provide isolation for process trees (PID), network interfaces (NET), mount points (MNT), and user IDs.",
+      "Control Groups (cgroups): Restrict and monitor physical resource consumption (CPU limits, memory quotas, I/O bandwidth).",
+      "Benefits: Instant startup (milliseconds), tiny disk footprints (megabytes), reproducible runtime environment."
+    ],
+    "key_takeaway": "Clarify that containers are isolated processes on the host kernel rather than virtual machines."
+  },
+  {
+    "id": "q_tech_010",
+    "question": "What is the difference between synchronous and asynchronous programming in Node.js or Python?",
+    "category": "technical",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer"],
+    "tags": ["Asynchronous", "Event Loop", "Node.js", "Python"],
+    "short_answer_outline": [
+      "Synchronous: Operations execute sequentially; blocking I/O halts code execution until current operation completes.",
+      "Asynchronous: Non-blocking execution using an Event Loop, callbacks, Promises, or async/await syntax.",
+      "Event Loop: Delegates I/O operations (file reading, network requests) to kernel/thread pool, executing callback when data is ready.",
+      "Use Case: Asynchronous excels at I/O-bound tasks (high concurrent web requests); synchronous is straightforward for sequential workflows."
+    ],
+    "key_takeaway": "Emphasize that async does not mean multithreaded; single-threaded event loops handle high concurrent I/O efficiently."
+  },
+  {
+    "id": "q_behav_001",
+    "question": "Describe a situation where you had a disagreement with a team member. How did you resolve it?",
+    "category": "behavioral",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst", "DevOps Engineer"],
+    "tags": ["Conflict Resolution", "Communication", "Teamwork", "STAR"],
+    "short_answer_outline": [
+      "Situation: College capstone project where two teammates disagreed on selecting SQL vs MongoDB for user data storage.",
+      "Task: Reaching consensus quickly to avoid missing sprint milestone while selecting the technically sound architecture.",
+      "Action: Scheduled a 30-minute sync, listed data access patterns objectively, benchmarked query complexity, and agreed to test both in a quick spike.",
+      "Result: Team aligned on PostgreSQL with JSONB columns for flexible attributes, meeting sprint deadline with unanimous team buy-in."
+    ],
+    "key_takeaway": "Frame disagreement around objective technical metrics rather than personal egos; focus on collaborative problem-solving."
+  },
+  {
+    "id": "q_behav_002",
+    "question": "Tell me about a time you faced a tight deadline or high-pressure situation. How did you manage your workload?",
+    "category": "behavioral",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "Data Analyst", "DevOps Engineer"],
+    "tags": ["Time Management", "Prioritization", "Pressure", "STAR"],
+    "short_answer_outline": [
+      "Situation: 48-hour national hackathon where the initial machine learning pipeline broke 8 hours before submission.",
+      "Task: Delivering a working end-to-end prototype before the judging panel convened.",
+      "Action: Triaged core MVP user flow, replaced slow complex model with an optimized heuristic fallback, and clearly divided tasks among teammates.",
+      "Result: Submitted 30 minutes ahead of deadline, successfully demonstrated live demo, and secured 2nd place in track."
+    ],
+    "key_takeaway": "Demonstrate calm prioritization, clear communication, and willingness to protect core functionality under constraints."
+  },
+  {
+    "id": "q_behav_003",
+    "question": "Give an example of a project that failed or did not go as planned. What did you learn?",
+    "category": "behavioral",
+    "difficulty": "Hard",
+    "roles": ["Software Engineer", "Backend Developer", "Frontend Developer", "Full Stack Developer"],
+    "tags": ["Failure & Learning", "Resilience", "Accountability", "STAR"],
+    "short_answer_outline": [
+      "Situation: Developed a campus event booking app that suffered severe database locking when 500+ students registered simultaneously.",
+      "Task: Diagnosing system crash during campus placement drive and preventing future outages.",
+      "Action: Conducted a post-mortem, identified lack of connection pooling and unindexed foreign keys, and added automated load testing using Locust.",
+      "Result: Reworked transaction handling with optimistic concurrency; system handled subsequent 2,000+ registration drive smoothly."
+    ],
+    "key_takeaway": "Take ownership of mistakes without deflecting blame; focus heavily on the systematic improvements implemented."
+  },
+  {
+    "id": "q_behav_004",
+    "question": "Tell me about a time you had to learn a completely new technology or framework under a short deadline.",
+    "category": "behavioral",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "DevOps Engineer"],
+    "tags": ["Adaptability", "Learning Agility", "Curiosity", "STAR"],
+    "short_answer_outline": [
+      "Situation: Joined a summer internship team requiring Docker and Kubernetes, technologies not taught in academic curriculum.",
+      "Task: Containerizing a microservices application within the first two weeks of onboarding.",
+      "Action: Implemented structured learning plan: read official documentation, built sample containerized toy apps, and requested feedback from senior mentors.",
+      "Result: Successfully containerized three microservices and authored setup documentation that onboarded subsequent interns."
+    ],
+    "key_takeaway": "Highlight your structured learning methodology: reading docs, building small prototypes, and validating with peers."
+  },
+  {
+    "id": "q_behav_005",
+    "question": "How do you handle constructive criticism or harsh feedback during a code review?",
+    "category": "behavioral",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer"],
+    "tags": ["Code Review", "Humility", "Collaboration", "STAR"],
+    "short_answer_outline": [
+      "Mindset: View code reviews as an opportunity to elevate code quality and learn senior engineering best practices, not as personal attacks.",
+      "Situation: A senior contributor left 15+ comments questioning error handling, variable naming, and test coverage on a Pull Request.",
+      "Action: Thanked reviewer for thoroughness, scheduled a quick call to clarify architectural suggestions, and implemented requested unit tests.",
+      "Result: The merged PR became the template for subsequent module development; learned robust exception handling patterns."
+    ],
+    "key_takeaway": "Emphasize psychological safety, separating personal identity from the code, and gratitude for team standards."
+  },
+  {
+    "id": "q_proj_001",
+    "question": "Walk me through the most technically challenging project on your resume. What was your role and biggest technical hurdle?",
+    "category": "projects",
+    "difficulty": "Hard",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer", "Frontend Developer"],
+    "tags": ["Project Walkthrough", "Architecture", "Problem Solving", "STAR"],
+    "short_answer_outline": [
+      "Context & Scope: High-level overview of project goal, your individual contribution, and tech stack chosen (e.g. FastAPI, PostgreSQL, React).",
+      "Technical Challenge: Specific non-trivial obstacle (e.g. race conditions in inventory booking, high latency rendering 10k rows).",
+      "Solution Strategy: Quantitative explanation of how you diagnosed the root cause (profiling, query analysis) and engineered the fix.",
+      "Outcome & Impact: Measurable performance improvement (e.g. reduced response times from 1.2s to 120ms, supported 5x traffic)."
+    ],
+    "key_takeaway": "Start with a 30-second executive summary before diving into technical depth; quantify impact with metrics."
+  },
+  {
+    "id": "q_proj_002",
+    "question": "Why did you choose your specific tech stack for your primary project? What tradeoffs did you make?",
+    "category": "projects",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer"],
+    "tags": ["Tech Stack", "Tradeoffs", "Decision Making", "Engineering Judgement"],
+    "short_answer_outline": [
+      "Selection Rationale: Why tech A was selected over tech B (e.g. chosen FastAPI over Django for async concurrency and automatic OpenAPI docs).",
+      "Tradeoffs Evaluated: Acknowledged limitations of the choice (e.g. smaller ecosystem and fewer built-in battery features compared to Django).",
+      "Mitigation: How you addressed those limitations (e.g. using SQLAlchemy ORM and Alembic for robust database migrations).",
+      "Reflective Assessment: Whether the choice proved advantageous in retrospect or what alternative you would consider today."
+    ],
+    "key_takeaway": "Show engineering maturity by demonstrating that every technical choice involves deliberate tradeoffs."
+  },
+  {
+    "id": "q_proj_003",
+    "question": "Describe a difficult bug you encountered in one of your projects that took hours or days to solve. How did you track it down?",
+    "category": "projects",
+    "difficulty": "Medium",
+    "roles": ["Software Engineer", "Backend Developer", "Frontend Developer", "Full Stack Developer"],
+    "tags": ["Debugging", "Root Cause Analysis", "Persistence"],
+    "short_answer_outline": [
+      "Symptom: Describe the mysterious or intermittent behavior (e.g. silent data corruption, intermittent token expiration, memory leak).",
+      "Systematic Isolation: Explain your deduction process (adding logging, isolating modules, creating minimal reproducible test case).",
+      "Root Cause: The actual underlying flaw (e.g. mutable default argument in Python function, race condition in asynchronous callback, timezone offset).",
+      "Permanent Fix: Code patch and regression test created to guarantee the bug can never reoccur in production."
+    ],
+    "key_takeaway": "Recruiters evaluate your debugging discipline; avoid saying 'I just randomly tried things until it worked'."
+  },
+  {
+    "id": "q_proj_004",
+    "question": "If you had two more weeks to work on your featured project, what would you improve or refactor?",
+    "category": "projects",
+    "difficulty": "Easy",
+    "roles": ["Software Engineer", "Frontend Developer", "Backend Developer", "Full Stack Developer", "DevOps Engineer"],
+    "tags": ["Refactoring", "Continuous Improvement", "Technical Debt"],
+    "short_answer_outline": [
+      "Test Coverage: Adding automated integration and end-to-end testing with CI/CD pipeline enforcement.",
+      "Performance & Scalability: Implementing Redis caching layer and database query indexing on frequently accessed endpoints.",
+      "Observability & Monitoring: Integrating structured logging, OpenTelemetry tracing, or Prometheus metrics to monitor system health."
+    ],
+    "key_takeaway": "Demonstrates awareness of technical debt and professional production readiness standards."
+  },
+  {
+    "id": "q_proj_005",
+    "question": "How did you handle security, authentication, and data validation in your projects?",
+    "category": "projects",
+    "difficulty": "Hard",
+    "roles": ["Software Engineer", "Backend Developer", "Full Stack Developer"],
+    "tags": ["Security", "Authentication", "JWT", "Data Validation"],
+    "short_answer_outline": [
+      "Authentication & Sessions: Implemented JWT with secure HTTP-only cookies and refresh token rotation, or Bcrypt password hashing.",
+      "Input Validation: Used schemas (Pydantic / Zod) to sanitize and validate request payloads, preventing SQL injection and XSS.",
+      "Authorization & RBAC: Role-based access control protecting administrative endpoints via custom middleware.",
+      "Secrets Management: Stored API keys and secrets in environment variables (.env) managed via secret management tools, never hardcoded in git."
+    ],
+    "key_takeaway": "Security cannot be an afterthought; reference OWASP Top 10 vulnerabilities and how your project defends against them."
+  }
+]
