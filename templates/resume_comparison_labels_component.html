@@ -1,11 +1,17 @@
 <!-- Custom Resume Label Badge & Rename Component (#523) -->
-<div class="d-inline-flex align-items-center gap-2 resume-custom-label-chip" id="resumeLabelChip-{{ resume_id }}">
-  <span class="badge bg-{{ label_info.color_tag or 'primary' }} px-2 py-1" id="labelBadge-{{ resume_id }}">
+<div class="d-inline-flex align-items-center gap-2 resume-custom-label-chip safe-text-break" id="resumeLabelChip-{{ resume_id }}">
+  <span class="badge bg-{{ label_info.color_tag or 'primary' }} px-2 py-1 safe-text-break" id="labelBadge-{{ resume_id }}">
     <i class="bi bi-tag-fill me-1"></i>
     <span id="labelText-{{ resume_id }}">{{ label_info.custom_label }}</span>
   </span>
 
-  <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none text-muted" onclick="openLabelModal('{{ resume_id }}', '{{ label_info.custom_label }}', '{{ label_info.color_tag or 'primary' }}', '{{ label_info.change_notes }}')" title="Edit resume version nickname">
+  <button type="button" class="btn btn-sm btn-link p-0 text-decoration-none text-muted"
+    data-resume-id="{{ resume_id }}"
+    data-custom-label="{{ label_info.custom_label|e }}"
+    data-color-tag="{{ label_info.color_tag or 'primary' }}"
+    data-change-notes="{{ label_info.change_notes|e }}"
+    onclick="openLabelModalFromButton(this)"
+    title="Edit resume version nickname">
     <i class="bi bi-pencil-square"></i>
   </button>
 </div>
@@ -51,6 +57,16 @@
 
 <script>
 let activeEditResumeId = null;
+
+function openLabelModalFromButton(btn) {
+  if (!btn) return;
+  openLabelModal(
+    btn.getAttribute('data-resume-id'),
+    btn.getAttribute('data-custom-label'),
+    btn.getAttribute('data-color-tag'),
+    btn.getAttribute('data-change-notes')
+  );
+}
 
 function openLabelModal(resumeId, currentLabel, currentColor, currentNotes) {
   activeEditResumeId = resumeId;

@@ -223,12 +223,12 @@
                   <td class="fw-semibold text-muted">Website / Careers</td>
                   <td>
                     {% if sugg.current_verified_profile.careers_url %}
-                    <a href="{{ sugg.current_verified_profile.careers_url }}" target="_blank" class="small">{{ sugg.current_verified_profile.careers_url }}</a>
+                    <a href="{{ sugg.current_verified_profile.careers_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="small safe-link safe-text-break">{{ sugg.current_verified_profile.careers_url }}</a>
                     {% else %}—{% endif %}
                   </td>
                   <td class="{% if sugg.careers_url and sugg.careers_url != sugg.current_verified_profile.careers_url %}bg-warning-subtle fw-bold{% endif %}">
                     {% if sugg.careers_url %}
-                    <a href="{{ sugg.careers_url }}" target="_blank" class="small">{{ sugg.careers_url }}</a>
+                    <a href="{{ sugg.careers_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="small safe-link safe-text-break">{{ sugg.careers_url }}</a>
                     {% else %}—{% endif %}
                   </td>
                 </tr>
@@ -260,12 +260,12 @@
           <div class="col-12 pt-2 border-top">
             <span class="text-muted me-2">Links:</span>
             {% if sugg.website_url %}
-            <a href="{{ sugg.website_url }}" target="_blank" class="text-primary me-3 text-truncate d-inline-block" style="max-width: 250px;">
+            <a href="{{ sugg.website_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="text-primary me-3 safe-link safe-text-break d-inline-block">
               <i class="fa-solid fa-globe me-1"></i>{{ sugg.website_url }}
             </a>
             {% endif %}
             {% if sugg.careers_url %}
-            <a href="{{ sugg.careers_url }}" target="_blank" class="text-success text-truncate d-inline-block" style="max-width: 250px;">
+            <a href="{{ sugg.careers_url|safe_url }}" target="_blank" rel="noopener noreferrer" class="text-success safe-link safe-text-break d-inline-block">
               <i class="fa-solid fa-briefcase me-1"></i>{{ sugg.careers_url }}
             </a>
             {% endif %}
@@ -307,8 +307,8 @@
 
         {% if sugg.notes %}
         <div class="p-2.5 bg-warning-subtle rounded-3 small mb-3 border border-warning-subtle">
-          <span class="fw-bold text-warning-emphasis"><i class="fa-solid fa-comment-dots me-1"></i> Submitter Notes:</span>
-          <span class="text-dark">{{ sugg.notes }}</span>
+          <span class="fw-bold text-warning-emphasis d-block mb-1"><i class="fa-solid fa-comment-dots me-1"></i> Submitter Notes:</span>
+          <div class="text-dark user-notes-content safe-text-break">{{ sugg.notes|safe_notes }}</div>
         </div>
         {% endif %}
 
@@ -318,7 +318,7 @@
           <i class="fa-solid fa-gavel me-1"></i>
           <strong>{{ sugg.status|capitalize }} by:</strong> {{ sugg.moderated_by or 'Admin' }}
           {% if sugg.moderated_at %}on {{ sugg.moderated_at[:10] }}{% endif %}
-          {% if sugg.moderator_notes %}&mdash; <em>"{{ sugg.moderator_notes }}"</em>{% endif %}
+          {% if sugg.moderator_notes %}&mdash; <em class="safe-text-break">"{{ sugg.moderator_notes|safe_notes }}"</em>{% endif %}
         </div>
         {% endif %}
 

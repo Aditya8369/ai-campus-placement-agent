@@ -533,6 +533,12 @@
                     </button>
                   </li>
                   <li class="nav-item" role="presentation">
+                    <button class="nav-link py-2" id="library-tab" data-bs-toggle="pill" data-bs-target="#library-pane"
+                      type="button" role="tab" aria-controls="library-pane" aria-selected="false">
+                      <i class="fa-solid fa-folder-open me-1"></i> My Resumes ({{ stored_resumes|length if stored_resumes else 0 }})
+                    </button>
+                  </li>
+                  <li class="nav-item" role="presentation">
                     <button class="nav-link py-2" id="text-tab" data-bs-toggle="pill" data-bs-target="#text-pane"
                       type="button" role="tab" aria-controls="text-pane" aria-selected="false">
                       <i class="fa-solid fa-file-lines me-1"></i> Paste Text
@@ -612,6 +618,52 @@
                       <span id="uploadTypeErrorMessage">Unsupported file type. Please upload a PDF or DOCX file.</span>
                     </div>
                   </div>
+
+                  <!-- Resume Library Selector Pane (#842) -->
+                  <div class="tab-pane fade" id="library-pane" role="tabpanel" aria-labelledby="library-tab" tabindex="0">
+                    <div class="card border rounded-3 p-3 bg-light shadow-sm">
+                      <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                        <span class="small fw-semibold text-secondary">
+                          <i class="fa-solid fa-bookmark me-1 text-primary"></i> Choose from your saved resumes
+                        </span>
+                        <a href="/resumes" class="btn btn-sm btn-outline-primary rounded-pill px-3 py-1" style="font-size: 0.78rem;">
+                          <i class="fa-solid fa-sliders me-1"></i> Manage Library ({{ stored_resumes|length if stored_resumes else 0 }}/5)
+                        </a>
+                      </div>
+
+                      {% if stored_resumes and stored_resumes|length > 0 %}
+                      <div class="row g-2 mt-1" id="storedResumesRadioGroup">
+                        {% for sr in stored_resumes %}
+                        <div class="col-12">
+                          <label class="p-2 border rounded-3 bg-white w-100 d-flex align-items-center justify-content-between cursor-pointer stored-resume-option mb-0" style="cursor: pointer;">
+                            <div class="d-flex align-items-center gap-2">
+                              <input type="radio" name="stored_resume_id" value="{{ sr.id }}" class="form-check-input mt-0" id="stored_resume_{{ sr.id }}">
+                              <div>
+                                <span class="fw-bold small text-dark d-block">{{ sr.label }}</span>
+                                <span class="badge bg-secondary-subtle text-secondary small" style="font-size: 0.7rem;">Focus: {{ sr.role_focus }}</span>
+                                <span class="text-muted small ms-2" style="font-size: 0.7rem;">&bull; {{ sr.word_count }} words &bull; {{ sr.created_at[:10] }}</span>
+                              </div>
+                            </div>
+                            <span class="badge bg-primary-subtle text-primary border rounded-pill px-2 py-1 small">Stored</span>
+                          </label>
+                        </div>
+                        {% endfor %}
+                      </div>
+                      <div class="form-text small mt-2">
+                        <i class="fa-solid fa-circle-info text-info me-1"></i> Selecting a stored resume will run evaluation directly without uploading again.
+                      </div>
+                      {% else %}
+                      <div class="text-center py-4 text-muted">
+                        <i class="fa-regular fa-folder-open fs-2 mb-2 d-block text-secondary"></i>
+                        <p class="small mb-2">No stored resumes found in your library yet.</p>
+                        <a href="/resumes" class="btn btn-sm btn-primary rounded-pill px-3">
+                          <i class="fa-solid fa-plus me-1"></i> Add Stored Resume to Library
+                        </a>
+                      </div>
+                      {% endif %}
+                    </div>
+                  </div>
+
                   <div class="tab-pane fade" id="text-pane" role="tabpanel" aria-labelledby="text-tab" tabindex="0">
                     <textarea name="resume_text" id="resumeTextInput" rows="5" class="form-control rounded-3"
                       aria-label="Paste complete resume text here"
@@ -1045,11 +1097,21 @@
 
       <!-- Live Stream Error Alert -->
       <div id="progressErrorAlert" class="alert alert-danger d-none text-start mb-3" role="alert">
-        <div class="d-flex align-items-center mb-1">
-          <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
-          <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <div class="d-flex align-items-center">
+            <i class="fa-solid fa-triangle-exclamation text-danger me-2"></i>
+            <span class="fw-semibold">Failed at step: <span id="progressErrorStepName">Resume Analysis</span></span>
+          </div>
+          <span id="retryRecordStatusBadge" class="badge bg-warning-subtle text-warning border border-warning-subtle rounded-pill px-2 py-1 small d-none">
+            <i class="fa-solid fa-clock-rotate-left me-1"></i> Ready to Replay
+          </span>
         </div>
-        <div id="progressErrorMessage" class="small mb-3"></div>
+        <div id="progressErrorMessage" class="small mb-2"></div>
+        <div id="retryRecordMetaInfo" class="small text-muted mb-3 d-none">
+          <i class="fa-regular fa-clock me-1"></i>
+          <span id="retryRecordExpiryText">Expires in 15m</span> &bull;
+          <span id="retryRecordAttemptsText">Attempt 0 of 3</span>
+        </div>
         <div class="d-flex justify-content-end gap-2 flex-wrap">
           <a href="#" class="btn btn-sm btn-outline-primary rounded-pill px-3 d-none" id="btnViewPartialDashboard">
             <i class="fa-solid fa-gauge-high me-1"></i> View Saved Sections

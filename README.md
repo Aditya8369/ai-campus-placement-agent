@@ -454,6 +454,22 @@ pytest tests/test_resume_parser.py
 
 ---
 
+## Performance Monitoring & Latency Breakdown (#task-performance-monitoring)
+
+To diagnose slow requests in production without risking user privacy, the application includes safe, automated performance monitoring:
+
+- **Component Latency Breakdown**: Decomposes request duration into four distinct operational subsystems:
+  - **Database (`db_duration_ms`)**: Query execution time and statement counts via monitored SQLite connections.
+  - **AI Service (`ai_duration_ms`)**: Latency of upstream Gemini API calls and invocation counts.
+  - **File Processing (`file_duration_ms`)**: PDF and DOCX text extraction and normalization duration.
+  - **Template Rendering (`render_duration_ms`)**: Jinja template rendering duration.
+- **Primary Bottleneck Identification**: Automatically diagnoses whether delays stem from the `ai_service`, `database`, `file_processing`, `rendering`, or general `application` logic.
+- **W3C Server-Timing Headers**: Returns standard `Server-Timing` response headers (`total`, `db`, `ai`, `file`, `render`) for instant browser DevTools observability.
+- **Admin Observability Dashboard**: Accessible at `/admin/performance` and via JSON API at `/api/admin/performance-metrics`, featuring endpoint aggregation tables, bottleneck distribution graphs, and CSV telemetry exports.
+- **Strict Privacy Assurance**: Never logs or stores resume text, candidate responses, passwords, authorization tokens, or session secrets. All URL query strings are sanitized.
+
+---
+
 ## Rate Limiting & Security Quotas
 
 To protect quota-limited AI endpoints (Gemini API calls) from accidental exhaustion or abuse, the application includes a sliding-window in-memory rate limiter with configurable thresholds.
@@ -942,6 +958,47 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+### Reproducible Local Development Seed Command (#task-seed-command)
+
+To explore dashboards, job application pipelines, mock interviews, and reports without needing to manually upload resumes or configure API keys, contributors can populate their local setup with safe synthetic sample data:
+
+```bash
+# Seed an isolated local development database (placement_agent_dev.db)
+python utils/seed_data.py
+# or using Flask CLI:
+flask seed run
+
+# Run the application targeting the development database
+# Linux / macOS
+export DATABASE_PATH="placement_agent_dev.db" && python app.py
+# Windows (PowerShell)
+$env:DATABASE_PATH="placement_agent_dev.db"; python app.py
+
+# Or seed your primary local database directly
+python utils/seed_data.py --app-db
+# or
+flask seed run --app-db
+```
+
+#### Contributor Test Logins
+- **Student Account**: `contributor.demo@seed.local` | Password: `Password123!`
+- **Administrator Account**: `admin.demo@seed.local` | Password: `AdminPassword123!`
+
+#### Data Safety & Reset
+- **Clear Distinction**: All synthetic data is prefixed with `[SEED]`, uses the `@seed.local` email domain, and uses `seed_*` identifiers.
+- **Inspect Seed Data Status**:
+  ```bash
+  python utils/seed_data.py --status
+  # or
+  flask seed status
+  ```
+- **Safe Reset**: Purges *only* synthetic seed records while leaving all user-created data intact:
+  ```bash
+  python utils/seed_data.py --reset
+  # or
+  flask seed reset
+  ```
 
 ---
 

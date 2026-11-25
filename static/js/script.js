@@ -208,7 +208,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     btn.disabled = true;
     const originalText = btn.textContent;
-    btn.textContent = "Requesting AI...";
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Replaying...';
+
+    const aiRetryMeta = document.getElementById("aiRetryRecordMeta");
+    const aiRetryStatusBadge = document.getElementById("aiRetryRecordStatusBadge");
+    const aiRetryExpiry = document.getElementById("aiRetryRecordExpiry");
+    const aiRetryAttempts = document.getElementById("aiRetryRecordAttempts");
+    if (aiRetryMeta) aiRetryMeta.classList.remove("d-none");
+    if (aiRetryStatusBadge) {
+      aiRetryStatusBadge.textContent = "Replaying...";
+      aiRetryStatusBadge.className = "badge bg-info text-white rounded-pill me-1";
+    }
 
     showAiBanner(
       "info",
@@ -253,6 +263,10 @@ document.addEventListener("DOMContentLoaded", () => {
           `${payload.message || "Could not regenerate section."}${retryHint}`,
           "Retry Available"
         );
+        if (aiRetryStatusBadge) {
+          aiRetryStatusBadge.textContent = "Pending Retry";
+          aiRetryStatusBadge.className = "badge bg-warning text-dark rounded-pill me-1";
+        }
         btn.disabled = false;
         btn.textContent = originalText;
         return;
@@ -267,6 +281,11 @@ document.addEventListener("DOMContentLoaded", () => {
           badge.className = "badge bg-success";
           badge.textContent = "Recovered";
         }
+      }
+
+      if (aiRetryStatusBadge) {
+        aiRetryStatusBadge.textContent = "Succeeded";
+        aiRetryStatusBadge.className = "badge bg-success text-white rounded-pill me-1";
       }
 
       const aiNotice =
@@ -289,6 +308,10 @@ document.addEventListener("DOMContentLoaded", () => {
         "Unable to reach the server to complete the AI request. Existing sections are safe; you may retry immediately.",
         "Retry Available"
       );
+      if (aiRetryStatusBadge) {
+        aiRetryStatusBadge.textContent = "Failed (Safe Record Stored)";
+        aiRetryStatusBadge.className = "badge bg-danger text-white rounded-pill me-1";
+      }
       btn.disabled = false;
       btn.textContent = originalText;
     }

@@ -325,7 +325,8 @@ def start_async_analysis(
     resume_filename: str,
     analysis_id: str,
     student_id: Optional[str] = None,
-    format_compatibility: Optional[Dict[str, Any]] = None
+    format_compatibility: Optional[Dict[str, Any]] = None,
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Dispatches the multi-agent analysis to the background ThreadPoolExecutor.
@@ -346,7 +347,8 @@ def start_async_analysis(
         resume_filename,
         analysis_id,
         student_id,
-        format_compatibility
+        format_compatibility,
+        pdf_metadata_hygiene
     )
 
 
@@ -360,7 +362,8 @@ def _run_analysis_pipeline(
     resume_filename: str,
     analysis_id: str,
     student_id: Optional[str] = None,
-    format_compatibility: Optional[Dict[str, Any]] = None
+    format_compatibility: Optional[Dict[str, Any]] = None,
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Worker thread routine running the sequential multi-agent analysis pipeline.
@@ -499,6 +502,12 @@ def _run_analysis_pipeline(
             _cleanup_cancelled_analysis(analysis_id)
             return
 
+        if isinstance(analysis_payload, dict):
+            if format_compatibility and "format_compatibility" not in analysis_payload:
+                analysis_payload["format_compatibility"] = format_compatibility
+            if pdf_metadata_hygiene and "pdf_metadata_hygiene" not in analysis_payload:
+                analysis_payload["pdf_metadata_hygiene"] = pdf_metadata_hygiene
+
         # Persist completed analysis to SQLite database
         try:
             save_analysis_func(
@@ -507,7 +516,9 @@ def _run_analysis_pipeline(
                 company_name=company_name,
                 job_description=job_description,
                 results_dict=analysis_payload,
-                student_id=student_id or "default_student"
+                student_id=student_id or "default_student",
+                stored_resume_id=stored_resume_id,
+                stored_resume_label=stored_resume_label
             )
         except TypeError:
             save_analysis_func(

@@ -665,6 +665,34 @@ def _migration_009_student_profile_college(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE student_profiles ADD COLUMN college TEXT")
 
 
+def _migration_010_faculty_interventions(cursor: sqlite3.Cursor) -> None:
+    """Create faculty_interventions table and indexes for coordinator intervention queue (#786)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS faculty_interventions (
+            id TEXT PRIMARY KEY,
+            student_id TEXT NOT NULL,
+            student_name TEXT,
+            student_email TEXT,
+            department TEXT NOT NULL DEFAULT 'Computer Science',
+            graduation_year INTEGER NOT NULL DEFAULT 2026,
+            category TEXT NOT NULL,
+            urgency_level TEXT NOT NULL DEFAULT 'medium',
+            explanation TEXT NOT NULL,
+            explanation_detail TEXT,
+            suggested_action TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            snoozed_until TEXT,
+            action_notes TEXT,
+            resolved_by TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_status ON faculty_interventions(status, urgency_level)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_student ON faculty_interventions(student_id, category)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_category ON faculty_interventions(category)")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -676,6 +704,7 @@ MIGRATIONS: List[Migration] = [
     Migration("007_monitoring_and_practice", "Create analysis cache, aptitude, gd attempts, gemini logs, telemetry", _migration_007_monitoring_and_practice),
     Migration("008_reports_and_sharing", "Create shared reports and view logs for mentor reviews", _migration_008_reports_and_sharing),
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
+    Migration("010_faculty_interventions", "Create faculty_interventions table and indexes for coordinator intervention queue", _migration_010_faculty_interventions),
 ]
 
 

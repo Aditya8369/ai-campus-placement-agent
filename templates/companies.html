@@ -299,7 +299,7 @@
             </a>
             {% if company.careers_url or company.website_url %}
             <a
-              href="{{ company.careers_url or company.website_url }}"
+              href="{{ (company.careers_url or company.website_url)|safe_url }}"
               target="_blank"
               rel="noopener noreferrer"
               class="btn btn-outline-secondary btn-sm rounded-3"
@@ -468,7 +468,7 @@
                   <i class="fa-solid fa-pen-to-square me-1"></i> Suggest Update
                 </a>
                 {% if company.careers_url or company.website_url %}
-                <a href="{{ company.careers_url or company.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary rounded-3">
+                <a href="{{ (company.careers_url or company.website_url)|safe_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary rounded-3">
                   <i class="fa-solid fa-arrow-up-right-from-square me-1"></i> Official Careers
                 </a>
                 {% endif %}

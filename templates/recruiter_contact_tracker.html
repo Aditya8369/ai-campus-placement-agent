@@ -57,8 +57,11 @@
             {% for c in contacts %}
             <tr id="contact-row-{{ c.id }}">
               <td>
-                <div class="fw-bold">{{ c.recruiter_name }}</div>
-                <small class="text-muted">{{ c.company_name }} &bull; {{ c.role_or_department }}</small>
+                <div class="fw-bold safe-text-break">{{ c.recruiter_name }}</div>
+                <small class="text-muted safe-text-break">{{ c.company_name }} &bull; {{ c.role_or_department }}</small>
+                {% if c.notes %}
+                <div class="mt-1 small text-secondary safe-text-break user-notes-content"><i class="bi bi-card-text me-1"></i>{{ c.notes|safe_notes }}</div>
+                {% endif %}
               </td>
               <td>
                 <span class="badge bg-light text-dark border">{{ c.interaction_channel }}</span>
