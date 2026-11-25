@@ -234,6 +234,120 @@ def api_admin_ai_metrics():
     })
 
 
+@admin_bp.route("/admin/performance", methods=["GET"])
+def admin_performance_view():
+    """
+    Admin dashboard displaying request performance telemetry and latency breakdowns (#task-performance-monitoring).
+    Identifies slow endpoints and breakdowns across database, AI service, file processing, and rendering.
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+    limit = min(500, max(10, int(request.args.get("limit", 100))))
+    offset = max(0, int(request.args.get("offset", 0)))
+
+    from utils.performance_monitor import get_performance_summary
+    summary = get_performance_summary(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+        limit=limit,
+        offset=offset,
+    )
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "data": summary})
+
+    return render_template("admin_performance.html", summary=summary)
+
+
+@admin_bp.route("/admin/performance/export.csv", methods=["GET"])
+def admin_performance_export_csv():
+    """
+    Admin-only CSV export of request performance telemetry (#task-performance-monitoring).
+    Guarantees no user content, passwords, or tokens are exported.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+
+    from utils.performance_monitor import export_performance_metrics_csv
+    csv_data = export_performance_metrics_csv(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+    )
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=request_performance_metrics.csv"}
+    )
+
+
+@admin_bp.route("/api/admin/performance-metrics", methods=["GET"])
+def api_admin_performance_metrics():
+    """
+    Admin-only JSON API exposing request latency breakdowns and bottleneck diagnostics (#task-performance-monitoring).
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+    limit = min(500, max(10, int(request.args.get("limit", 100))))
+    offset = max(0, int(request.args.get("offset", 0)))
+
+    from utils.performance_monitor import get_performance_summary
+    summary = get_performance_summary(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+        limit=limit,
+        offset=offset,
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": summary
+    })
+
+
 @admin_bp.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
@@ -332,7 +446,8 @@ def api_admin_restore_database():
     admin_user = flask_session.get("user", {}).get("email") or "admin"
     admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
     if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
-        logger.warning(f"Unauthorized restoration attempt from IP {request.remote_addr}")
+        from utils.security_activity_service import anonymize_ip
+        logger.warning(f"Unauthorized restoration attempt from IP {anonymize_ip(request.remote_addr)}")
         return jsonify({"success": False, "error": "Unauthorized: Administrator privileges required to restore database."}), 403
 
     payload = request.get_json(silent=True) or request.form

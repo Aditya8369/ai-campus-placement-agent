@@ -49,14 +49,31 @@ By participating in this project, you agree to abide by our [Code of Conduct](CO
      GEMINI_API_KEY=your_gemini_api_key_here
      ```
 
-3. Run the application:
+3. Populate Synthetic Local Development Data (Optional but Recommended):
+   Contributors can populate safe synthetic data to test dashboards, job applications, mock interviews, and reports without creating data manually or needing API keys:
    ```bash
-   python app.py
+   # Seed an isolated local development database
+   python utils/seed_data.py
+   # or
+   flask seed run
+
+   # Test logins:
+   # Student: contributor.demo@seed.local / Password123!
+   # Admin:   admin.demo@seed.local / AdminPassword123!
    ```
 
-4. Visit `http://127.0.0.1:5000/` in your browser
+4. Run the application:
+   ```bash
+   # To use the seeded development database:
+   # Linux / macOS:
+   export DATABASE_PATH="placement_agent_dev.db" && python app.py
+   # Windows (PowerShell):
+   $env:DATABASE_PATH="placement_agent_dev.db"; python app.py
+   ```
 
-5. Verify local tests and lint checks (matching CI workflow):
+5. Visit `http://127.0.0.1:5000/` in your browser
+
+6. Verify local tests and lint checks (matching CI workflow):
    ```bash
    # Run flake8 critical syntax and undefined name checks
    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics

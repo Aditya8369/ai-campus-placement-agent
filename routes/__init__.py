@@ -52,6 +52,11 @@ from utils.i18n import (
     LOCALE_NAMES,
 )
 from utils.api_versioning import register_api_versioning
+from utils.response_optimizer import (
+    apply_cache_headers,
+    compress_response,
+    get_static_file_version,
+)
 from utils.formatters import (
     format_date_ist,
     format_datetime_ist,
@@ -140,6 +145,14 @@ def create_app(config_override=None) -> Flask:
         app.config.update(config_override)
 
     initialize_database(config.DATABASE_PATH)
+
+    # Initialize performance monitoring & latency breakdown service (#task-performance-monitoring)
+    try:
+        from utils.performance_monitor import init_performance_table, init_performance_monitoring
+        init_performance_table()
+        init_performance_monitoring(app)
+    except Exception as e:
+        logger.error(f"Error initializing performance monitoring: {e}")
 
     # Initialize CSRF protection extension (#300)
     csrf.init_app(app)
@@ -237,6 +250,11 @@ def create_app(config_override=None) -> Flask:
             "api_session_resume_compare_reset",
             "api_get_role_templates",
             "api_get_role_template_by_id",
+            "api_get_retry_records",
+            "api_create_retry_record",
+            "api_get_retry_record_item",
+            "api_replay_retry_record",
+            "api_cancel_retry_record",
         }
 
         user_id = flask_session.get("user_id")
@@ -424,6 +442,15 @@ def create_app(config_override=None) -> Flask:
                 form_type=form_type,
             ),
         }
+
+    @app.url_defaults
+    def add_static_version(endpoint, values):
+        """Append deterministic content hash query string (?v=...) to static asset URLs (#857)."""
+        if (endpoint == "static" or endpoint.endswith(".static")) and "filename" in values:
+            if "v" not in values:
+                version = get_static_file_version(values["filename"], app.static_folder)
+                if version:
+                    values["v"] = version
 
 
     @app.before_request
@@ -733,11 +760,39 @@ def create_app(config_override=None) -> Flask:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(self), microphone=(self), geolocation=()"
 
-        # For authenticated sessions viewing HTML pages, prevent browser history/disk caching
-        if flask_session.get("user_id") and "text/html" in response.headers.get("Content-Type", ""):
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
+        # Apply caching directives and personal data protection (#857)
+        is_authenticated = bool(flask_session.get("user_id"))
+        max_age_ver = current_app.config.get(
+            "STATIC_CACHE_MAX_AGE_VERSIONED",
+            getattr(config, "STATIC_CACHE_MAX_AGE_VERSIONED", 31536000),
+        )
+        max_age_def = current_app.config.get(
+            "STATIC_CACHE_MAX_AGE_DEFAULT",
+            getattr(config, "STATIC_CACHE_MAX_AGE_DEFAULT", 86400),
+        )
+        response = apply_cache_headers(
+            response,
+            request,
+            is_authenticated=is_authenticated,
+            max_age_versioned=max_age_ver,
+            max_age_default=max_age_def,
+        )
+
+        # Apply gzip response compression (#857)
+        comp_enabled = current_app.config.get(
+            "RESPONSE_COMPRESSION_ENABLED",
+            getattr(config, "RESPONSE_COMPRESSION_ENABLED", True),
+        )
+        comp_min_size = current_app.config.get(
+            "RESPONSE_COMPRESSION_MIN_SIZE",
+            getattr(config, "RESPONSE_COMPRESSION_MIN_SIZE", 500),
+        )
+        response = compress_response(
+            response,
+            request,
+            min_size=comp_min_size,
+            enabled=comp_enabled,
+        )
 
         return response
 
@@ -755,6 +810,43 @@ def create_app(config_override=None) -> Flask:
             f"Deadline reminders complete: sent={result['sent_count']}, "
             f"skipped={result['skipped_count']}, failed={result['failed_count']}"
         )
+
+    # Local development synthetic seed CLI commands (#task-seed-command)
+    @app.cli.group("seed")
+    def seed_cli_group():
+        """Manage reproducible local development synthetic seed data."""
+        pass
+
+    @seed_cli_group.command("run")
+    @click.option("--reset", is_flag=True, help="Safely reset existing seed data before seeding.")
+    @click.option("--dev", is_flag=True, default=False, help="Target isolated development database.")
+    @click.option("--app-db", is_flag=True, default=False, help="Target primary application database.")
+    @click.option("--db-path", default=None, help="Explicit target database path.")
+    def seed_run_cli(reset, dev, app_db, db_path):
+        """Populates safe synthetic development data for local testing."""
+        from utils.seed_data import resolve_target_database, seed_development_data, print_seed_summary
+        target = resolve_target_database(db_path=db_path, use_dev=dev and not app_db, use_app_db=app_db)
+        result = seed_development_data(target, reset_first=reset)
+        print_seed_summary(result)
+
+    @seed_cli_group.command("reset")
+    @click.option("--all", "reset_all", is_flag=True, help="Reset all tables in target database.")
+    @click.option("--db-path", default=None, help="Target database path.")
+    def seed_reset_cli(reset_all, db_path):
+        """Safely resets synthetic seed data without touching user records."""
+        from utils.seed_data import resolve_target_database, reset_seed_data
+        target = resolve_target_database(db_path=db_path)
+        result = reset_seed_data(target, reset_all=reset_all)
+        click.echo(result["message"])
+
+    @seed_cli_group.command("status")
+    @click.option("--db-path", default=None, help="Target database path.")
+    def seed_status_cli(db_path):
+        """Displays count of seed records vs real user records in database."""
+        from utils.seed_data import resolve_target_database, get_seed_status, print_status_report
+        target = resolve_target_database(db_path=db_path)
+        status = get_seed_status(target)
+        print_status_report(status)
 
     # Register all feature Blueprints
     app.register_blueprint(auth_bp)

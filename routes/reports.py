@@ -66,6 +66,14 @@ from utils.ats_score_service import evaluate_resume_ats_score
 from utils.format_checker import *
 from utils.pdf_reader import *
 from utils.gemini import *
+from utils.analysis_export_service import (
+    export_analysis_to_json,
+    export_analysis_to_markdown,
+    build_analysis_export_payload,
+    get_export_filename,
+    normalize_report_customization,
+    CANONICAL_SECTIONS,
+)
 try:
     from utils.report_generator import *
 except ImportError:
@@ -170,16 +178,71 @@ def download_certificate_pdf(analysis_id: str):
         return redirect(url_for("certificate", analysis_id=analysis_id))
 
 
-@reports_bp.route("/download/<analysis_id>")
+def _get_request_customization(analysis_id: str = None) -> Dict[str, Any]:
+    """
+    Extracts report customization options from request query params, POST body, or session (#761).
+    Persists choices to session so they are remembered across formats during the session.
+    """
+    session_data = {}
+    if analysis_id and f"report_customization_{analysis_id}" in flask_session:
+        session_data = flask_session.get(f"report_customization_{analysis_id}") or {}
+    elif "report_customization" in flask_session:
+        session_data = flask_session.get("report_customization") or {}
+
+    custom_dict = dict(session_data) if isinstance(session_data, dict) else {}
+
+    # Check JSON payload if POST
+    if request.is_json:
+        payload = request.get_json(silent=True) or {}
+        if isinstance(payload, dict):
+            for k in ("student_name", "candidate_name", "name", "target_role", "role", "included_sections", "sections", "section_order", "order"):
+                if k in payload and payload[k] is not None:
+                    custom_dict[k] = payload[k]
+
+    # Check Form data if submitted via POST form
+    if request.form:
+        for k in ("student_name", "candidate_name", "name", "target_role", "role", "included_sections", "sections", "section_order", "order"):
+            if k in request.form and request.form[k] is not None:
+                custom_dict[k] = request.form[k]
+
+    # Check Query parameters (override session/form)
+    for k in ("student_name", "candidate_name", "name", "target_role", "role", "included_sections", "sections", "section_order", "order"):
+        val = request.args.get(k)
+        if val is not None:
+            custom_dict[k] = val
+
+    normalized = normalize_report_customization(custom_dict)
+
+    # Persist to session if customized, or if explicitly requested in query/POST
+    has_params = any(request.args.get(k) is not None for k in ("student_name", "candidate_name", "name", "target_role", "role", "included_sections", "sections", "section_order", "order"))
+    if normalized["is_customized"] or has_params or request.method == "POST":
+        flask_session["report_customization"] = normalized
+        if analysis_id:
+            flask_session[f"report_customization_{analysis_id}"] = normalized
+
+    return normalized
+
+
+@reports_bp.route("/download/<analysis_id>", endpoint="download_pdf_report")
 def download_pdf_report(analysis_id: str):
     """
     Compiles placement metrics into a ReportLab PDF and downloads the file.
+    Supports ?format=markdown and ?format=json query parameters (#534).
+    Supports student customization of candidate name, target role, and sections (#761).
     """
     try:
+        format_param = (request.args.get("format") or "").strip().lower()
+        if format_param in ("md", "markdown"):
+            return download_markdown_report(analysis_id)
+        if format_param in ("json",):
+            return download_json_report(analysis_id)
+
         analysis_record = get_analysis(analysis_id)
         if not analysis_record or not _is_student_authorized(analysis_record):
             flash("Cannot generate PDF. Placement record not found.", "error")
             return redirect(url_for("index"))
+
+        customization = _get_request_customization(analysis_id)
 
         output_language, used_language_fallback = resolve_output_locale(
             get_email_notification_preferences(
@@ -189,8 +252,12 @@ def download_pdf_report(analysis_id: str):
         if used_language_fallback:
             flash("This report is only available in English for the selected language.", "warning")
 
-        # Check if file has already been generated
-        pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
+        if customization["is_customized"]:
+            cust_hash = hashlib.md5(json.dumps(customization, sort_keys=True).encode()).hexdigest()[:8]
+            pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}_{cust_hash}.pdf"
+        else:
+            pdf_output_name = f"Placement_Report_{analysis_id}_{output_language}.pdf"
+
         pdf_full_path = os.path.join(config.REPORT_FOLDER, pdf_output_name)
 
         if not os.path.exists(pdf_full_path):
@@ -200,12 +267,20 @@ def download_pdf_report(analysis_id: str):
                 output_path=pdf_full_path,
                 report_type="Placement Readiness Comprehensive Report",
                 language=output_language,
+                customization=customization,
             )
+
+        company_clean = secure_filename(analysis_record.get("company_name", "Target_Company"))
+        if customization.get("student_name"):
+            cand_clean = secure_filename(customization["student_name"])
+            download_filename = f"Placement_Readiness_Report_{company_clean}_{cand_clean}_{output_language}.pdf"
+        else:
+            download_filename = f"Placement_Readiness_Report_{company_clean}_{output_language}.pdf"
 
         return send_file(
             pdf_full_path,
             as_attachment=True,
-            download_name=f"Placement_Readiness_Report_{analysis_record['company_name']}_{output_language}.pdf",
+            download_name=download_filename,
             mimetype="application/pdf"
         )
 
@@ -213,6 +288,135 @@ def download_pdf_report(analysis_id: str):
         logger.error(f"Failed to generate and serve PDF report: {str(e)}")
         flash(f"Error compiling report file: {str(e)}", "error")
         return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@reports_bp.route("/download/<analysis_id>/markdown", endpoint="download_markdown_report")
+@reports_bp.route("/download/markdown/<analysis_id>")
+def download_markdown_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a beautifully formatted Markdown document (#534).
+    Preserves all unicode, special characters, and non-English text without ASCII escaping.
+    Applies student report customization (sections, candidate name, target role) (#761).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate Markdown report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        customization = _get_request_customization(analysis_id)
+        markdown_content = export_analysis_to_markdown(analysis_record, customization=customization)
+        filename = get_export_filename(analysis_record, "md", customization=customization)
+
+        return Response(
+            markdown_content.encode("utf-8"),
+            mimetype="text/markdown; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "text/markdown; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve Markdown report: {str(e)}")
+        flash(f"Error compiling Markdown report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@reports_bp.route("/download/<analysis_id>/json", endpoint="download_json_report")
+@reports_bp.route("/download/json/<analysis_id>")
+def download_json_report(analysis_id: str):
+    """
+    Exports the placement readiness report as a structured JSON document (#534).
+    Preserves all unicode, special characters, and non-English text without ASCII escaping.
+    Applies student report customization (sections, candidate name, target role) (#761).
+    """
+    try:
+        analysis_record = get_analysis(analysis_id)
+        if not analysis_record or not _is_student_authorized(analysis_record):
+            flash("Cannot generate JSON report. Placement record not found.", "error")
+            return redirect(url_for("index"))
+
+        customization = _get_request_customization(analysis_id)
+        json_content = export_analysis_to_json(analysis_record, customization=customization)
+        filename = get_export_filename(analysis_record, "json", customization=customization)
+
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate and serve JSON report: {str(e)}")
+        flash(f"Error compiling JSON report: {str(e)}", "error")
+        return redirect(url_for("dashboard", analysis_id=analysis_id))
+
+
+@reports_bp.route("/api/analysis/<analysis_id>/export", methods=["GET", "POST"], endpoint="api_export_analysis")
+def api_export_analysis(analysis_id: str):
+    """
+    REST API endpoint for exporting placement analysis as JSON or Markdown (#534).
+    Supports format=json (default), format=markdown, or download=true query parameter.
+    Applies student report customization (#761).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    customization = _get_request_customization(analysis_id)
+    payload_body = request.get_json(silent=True) or {}
+    export_format = (request.args.get("format") or payload_body.get("format") or "json").lower().strip()
+    as_attachment = (request.args.get("download") or payload_body.get("download") or "false").lower() in ("true", "1", "yes")
+
+    if export_format in ("md", "markdown"):
+        markdown_content = export_analysis_to_markdown(analysis_record, customization=customization)
+        filename = get_export_filename(analysis_record, "md", customization=customization)
+        headers = {"Content-Type": "text/markdown; charset=utf-8"}
+        if as_attachment:
+            headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return Response(markdown_content.encode("utf-8"), mimetype="text/markdown; charset=utf-8", headers=headers)
+
+    payload = build_analysis_export_payload(analysis_record, customization=customization)
+    if as_attachment:
+        filename = get_export_filename(analysis_record, "json", customization=customization)
+        json_content = json.dumps(payload, indent=2, ensure_ascii=False)
+        return Response(
+            json_content.encode("utf-8"),
+            mimetype="application/json; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Type": "application/json; charset=utf-8",
+            }
+        )
+
+    return jsonify({"success": True, "analysis": payload}), 200
+
+
+@reports_bp.route("/api/analysis/<analysis_id>/customize-report", methods=["GET", "POST"], endpoint="api_customize_report")
+def api_customize_report(analysis_id: str):
+    """
+    API endpoint to fetch or update report customization settings for this session (#761).
+    Remembers preferences in flask_session across PDF, Markdown, JSON, and HTML exports.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or request.form.to_dict()
+        normalized = normalize_report_customization(payload)
+        flask_session["report_customization"] = normalized
+        flask_session[f"report_customization_{analysis_id}"] = normalized
+        return jsonify({"success": True, "customization": normalized}), 200
+
+    customization = _get_request_customization(analysis_id)
+    return jsonify({
+        "success": True,
+        "customization": customization,
+        "available_sections": CANONICAL_SECTIONS
+    }), 200
 
 
 @reports_bp.route("/download/skills-gap/<analysis_id>")
@@ -398,17 +602,20 @@ def api_download_outreach(analysis_id: str = None):
         return jsonify({"success": False, "error": f"Failed to download outreach: {str(e)}"}), 500
 
 
-@reports_bp.route("/report/<analysis_id>")
+@reports_bp.route("/report/<analysis_id>", endpoint="view_html_report")
 def view_html_report(analysis_id: str):
-    """Renders an accessible, responsive HTML version of the placement report."""
+    """Renders an accessible, responsive HTML version of the placement report with custom sections (#761)."""
     analysis_record = get_analysis(analysis_id)
     if not analysis_record or not _is_student_authorized(analysis_record):
         flash("The requested placement analysis report could not be found.", "error")
         return redirect(url_for("index"))
 
+    customization = _get_request_customization(analysis_id)
+
     return render_template(
         "placement_report.html",
         report_data=sanitize_report_data(analysis_record),
+        customization=customization,
     )
 
 

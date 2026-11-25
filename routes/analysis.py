@@ -383,6 +383,9 @@ def analyze():
             student_id=student_id
         )
 
+        if isinstance(analysis_payload, dict) and analysis_payload.get("security_warning"):
+            flash(analysis_payload["security_warning"], "warning")
+
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
     except (RequestEntityTooLarge, ValueError) as ve:

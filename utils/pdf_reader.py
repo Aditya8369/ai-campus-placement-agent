@@ -750,22 +750,31 @@ def extract_text_from_file(file_path: str, standardize: bool = True) -> str:
     if not is_valid_file:
         raise ValueError(file_err)
 
-    lower_path = file_path.lower()
-    if lower_path.endswith(".pdf"):
-        raw_text = extract_text_from_pdf(file_path)
-    elif lower_path.endswith(".docx"):
-        raw_text = extract_text_from_docx(file_path)
-    else:
-        raise ValueError(
-            "Unsupported file format. Only PDF (.pdf) and Word documents (.docx) are supported."
-        )
+    start_extraction_time = time.perf_counter()
+    try:
+        lower_path = file_path.lower()
+        if lower_path.endswith(".pdf"):
+            raw_text = extract_text_from_pdf(file_path)
+        elif lower_path.endswith(".docx"):
+            raw_text = extract_text_from_docx(file_path)
+        else:
+            raise ValueError(
+                "Unsupported file format. Only PDF (.pdf) and Word documents (.docx) are supported."
+            )
 
-    if standardize:
-        sections = standardize_resume_sections(raw_text)
-        standardized_text = format_standardized_resume(sections)
-        if standardized_text:
-            return standardized_text
-    return raw_text
+        if standardize:
+            sections = standardize_resume_sections(raw_text)
+            standardized_text = format_standardized_resume(sections)
+            if standardized_text:
+                return standardized_text
+        return raw_text
+    finally:
+        extraction_dur_ms = (time.perf_counter() - start_extraction_time) * 1000.0
+        try:
+            from utils.performance_monitor import record_file_timing
+            record_file_timing(extraction_dur_ms, op_count=1)
+        except Exception:
+            pass
 
 
 def check_pdf_format(file_path: str) -> Dict[str, Any]:

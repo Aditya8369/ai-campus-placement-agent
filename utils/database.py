@@ -18,8 +18,16 @@ def get_db_connection() -> sqlite3.Connection:
     Establishes and returns a connection to the SQLite database.
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
+    Instruments query execution timing safely (#task-performance-monitoring).
     """
-    return create_connection()
+    db_path = getattr(config, "DATABASE_PATH", None) or getattr(Config, "DATABASE_PATH", "placement_agent.db")
+    try:
+        from utils.performance_monitor import MonitoredConnection
+        conn = sqlite3.connect(db_path, timeout=10.0, factory=MonitoredConnection)
+    except Exception:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
@@ -810,6 +818,30 @@ def init_db() -> None:
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
+
+        # Table: API request retry and replay records for failed operations
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_retry_records (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL DEFAULT 'default_student',
+                operation_type TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                http_method TEXT NOT NULL DEFAULT 'POST',
+                payload_json TEXT NOT NULL,
+                idempotency_key TEXT UNIQUE NOT NULL,
+                status TEXT NOT NULL DEFAULT 'failed',
+                error_message TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                max_retries INTEGER NOT NULL DEFAULT 3,
+                last_response_json TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_user ON api_retry_records (user_id, status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_expires ON api_retry_records (expires_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
@@ -6731,6 +6763,13 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from utils.interview_helpful_service import (
+    toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
+)
+
 from db.connection import (
     create_connection,
     get_connection,
@@ -6846,6 +6885,12 @@ from db.tracker import (
     calculate_checklist_progress,
     get_default_checklist,
     get_dashboard_drive_reminder,
+)
+from utils.interview_helpful_service import (
+    check_voting_rate_limit,
+    get_contributor_helped_students_count,
+    get_user_helpful_votes,
+    toggle_helpful_vote,
 )
 
 logger = logging.getLogger(__name__)
