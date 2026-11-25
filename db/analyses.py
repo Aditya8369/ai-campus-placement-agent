@@ -55,6 +55,13 @@ def save_analysis(
             results_dict["resume_text"] = kwargs["resume_text"]
         if "ats_breakdown" in kwargs and not results_dict.get("ats_breakdown"):
             results_dict["ats_breakdown"] = kwargs["ats_breakdown"]
+        if "stored_resume_id" in kwargs:
+            results_dict["stored_resume_id"] = kwargs["stored_resume_id"]
+        if "stored_resume_label" in kwargs:
+            results_dict["stored_resume_label"] = kwargs["stored_resume_label"]
+
+    stored_resume_id = kwargs.get("stored_resume_id")
+    stored_resume_label = kwargs.get("stored_resume_label")
 
     with transaction() as cursor:
         if version_number is None or version_number <= 0:
@@ -66,9 +73,25 @@ def save_analysis(
 
         cursor.execute("PRAGMA table_info(analyses)")
         col_names = [c[1] for c in cursor.fetchall()]
-        if "target_role" in col_names:
+        if "stored_resume_id" in col_names and "stored_resume_label" in col_names and "target_role" in col_names:
             cursor.execute("""
-                INSERT INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number, target_role)
+                INSERT OR REPLACE INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number, target_role, stored_resume_id, stored_resume_label)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                analysis_id,
+                resume_filename,
+                company_name,
+                job_description,
+                json.dumps(results_dict),
+                effective_student_id,
+                version_number,
+                target_role,
+                stored_resume_id,
+                stored_resume_label
+            ))
+        elif "target_role" in col_names:
+            cursor.execute("""
+                INSERT OR REPLACE INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number, target_role)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 analysis_id,
@@ -82,7 +105,7 @@ def save_analysis(
             ))
         else:
             cursor.execute("""
-                INSERT INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number)
+                INSERT OR REPLACE INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (
                 analysis_id,

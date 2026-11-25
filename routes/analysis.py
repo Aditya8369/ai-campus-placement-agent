@@ -151,11 +151,21 @@ def index() -> str:
     companies_list = get_available_companies()
     student_id = flask_session.get("user_id")
     role_templates = load_role_templates()
+
+    stored_resumes = []
+    if student_id:
+        try:
+            from utils.resume_library_service import resume_library_service
+            stored_resumes = resume_library_service.list_resumes(student_id)
+        except Exception as e:
+            logger.warning(f"Could not load stored resumes for index view: {e}")
+
     return render_template(
         "index.html",
         companies=companies_list,
         role_templates=role_templates,
         saved_job_descriptions=get_saved_job_descriptions(student_id) if student_id else [],
+        stored_resumes=stored_resumes,
         walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
         walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
     )
@@ -335,6 +345,8 @@ def analyze():
                 company_name=selected_company,
                 resume_filename=resume_filename
             )
+            stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+            stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
             start_async_analysis(
                 task=task,
                 coordinator_agent=coordinator_agent,
@@ -345,7 +357,9 @@ def analyze():
                 resume_filename=resume_filename,
                 analysis_id=file_uuid,
                 student_id=student_id,
-                format_compatibility=format_compatibility
+                format_compatibility=format_compatibility,
+                stored_resume_id=stored_resume_id,
+                stored_resume_label=stored_resume_label
             )
             return jsonify({
                 "success": True,
@@ -363,10 +377,17 @@ def analyze():
             job_description=job_description,
             company_name=selected_company
         )
+        stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+        stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
+
         if isinstance(analysis_payload, dict):
             analysis_payload["extracted_resume_text"] = extracted_resume_text
             if format_compatibility:
                 analysis_payload["format_compatibility"] = format_compatibility
+            if stored_resume_id:
+                analysis_payload["stored_resume_id"] = stored_resume_id
+            if stored_resume_label:
+                analysis_payload["stored_resume_label"] = stored_resume_label
 
         save_analysis(
             analysis_id=file_uuid,
@@ -374,7 +395,9 @@ def analyze():
             company_name=selected_company,
             job_description=job_description,
             results_dict=analysis_payload,
-            student_id=student_id
+            student_id=student_id,
+            stored_resume_id=stored_resume_id,
+            stored_resume_label=stored_resume_label
         )
 
         set_cached_analysis(
@@ -557,6 +580,9 @@ def start_analysis_async():
             resume_filename=resume_filename
         )
 
+        stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+        stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
+
         start_async_analysis(
             task=task,
             coordinator_agent=coordinator_agent,
@@ -567,7 +593,9 @@ def start_analysis_async():
             resume_filename=resume_filename,
             analysis_id=file_uuid,
             student_id=student_id,
-            format_compatibility=format_compatibility
+            format_compatibility=format_compatibility,
+            stored_resume_id=stored_resume_id,
+            stored_resume_label=stored_resume_label
         )
 
         return jsonify({
@@ -4889,6 +4917,247 @@ def api_check_analysis_freshness():
 
     freshness = check_report_freshness(report_meta, current_profile)
     return jsonify({"status": "success", "freshness": freshness}), 200
+
+
+# ==============================================================================
+# RESUME LIBRARY: MY RESUMES (Issue #842)
+# ==============================================================================
+
+@analysis_bp.route("/resumes", methods=["GET"])
+def my_resumes_view():
+    """
+    Renders the 'My Resumes' library page where a student can store up to 5 named resumes
+    (label, role focus, uploaded date) with their extracted text (#842).
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        flash("Please log in to manage your resume library.", "info")
+        return redirect(url_for("index"))
+
+    from utils.resume_library_service import resume_library_service, MAX_STORED_RESUMES_PER_USER
+    resumes = resume_library_service.list_resumes(student_id)
+    return render_template(
+        "my_resumes.html",
+        resumes=resumes,
+        max_resumes=MAX_STORED_RESUMES_PER_USER,
+        current_count=len(resumes)
+    )
+
+
+@analysis_bp.route("/api/resumes", methods=["GET"])
+def api_list_resumes():
+    """Returns the authenticated student's stored resumes list (#842)."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import resume_library_service, MAX_STORED_RESUMES_PER_USER
+    resumes = resume_library_service.list_resumes(student_id)
+    return jsonify({
+        "success": True,
+        "resumes": resumes,
+        "count": len(resumes),
+        "max_resumes": MAX_STORED_RESUMES_PER_USER
+    }), 200
+
+
+@analysis_bp.route("/api/resumes", methods=["POST"])
+def api_create_resume():
+    """
+    Uploads/stores a new named resume into the student's library (#842).
+    Enforces maximum limit of 5.
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeLimitExceededError
+    )
+
+    label = request.form.get("label", "").strip()
+    role_focus = request.form.get("role_focus", "General").strip()
+    pasted_text = request.form.get("resume_text", "").strip()
+    uploaded_file = req = request.files.get("resume_file") or request.files.get("resume")
+
+    extracted_text = ""
+    resume_filename = f"{label}.pdf" if label else "resume.pdf"
+
+    if uploaded_file and uploaded_file.filename:
+        filename_lower = uploaded_file.filename.lower()
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        if ext not in (".pdf", ".docx"):
+            return jsonify({"success": False, "error": "Only PDF (.pdf) and Word (.docx) files are supported."}), 400
+
+        resume_filename = secure_filename(uploaded_file.filename)
+        temp_uuid = str(uuid.uuid4())
+        safe_path = os.path.join(config.UPLOAD_FOLDER, f"{temp_uuid}_{resume_filename}")
+        os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+        uploaded_file.save(safe_path)
+
+        try:
+            from utils.pdf_reader import extract_text_from_file
+            extracted_text = extract_text_from_file(safe_path)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Failed to extract text from resume: {str(e)}"}), 400
+        finally:
+            if os.path.exists(safe_path):
+                try:
+                    os.remove(safe_path)
+                except Exception:
+                    pass
+    elif pasted_text:
+        extracted_text = pasted_text
+        resume_filename = f"{label or 'Pasted'}_Resume.txt"
+    else:
+        return jsonify({"success": False, "error": "Please provide a resume file or paste text."}), 400
+
+    try:
+        new_resume = resume_library_service.create_resume(
+            student_id=student_id,
+            label=label,
+            role_focus=role_focus,
+            extracted_text=extracted_text,
+            resume_filename=resume_filename
+        )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "resume": new_resume, "message": f"Resume '{label}' saved successfully."}), 201
+
+        flash(f"Resume '{label}' stored successfully in your library.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeLimitExceededError as rle:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": str(rle)}), 400
+        flash(str(rle), "warning")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ValueError as ve:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": str(ve)}), 400
+        flash(str(ve), "error")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except Exception as e:
+        logger.error(f"Error creating stored resume: {e}")
+        return jsonify({"success": False, "error": "Failed to store resume."}), 500
+
+
+@analysis_bp.route("/api/resumes/<resume_id>", methods=["GET"])
+def api_get_resume(resume_id: str):
+    """Retrieves a single stored resume (#842)."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import resume_library_service, ResumeAccessDeniedError
+    try:
+        resume = resume_library_service.get_resume(resume_id, student_id)
+        if not resume:
+            return jsonify({"success": False, "error": "Resume not found"}), 404
+        return jsonify({"success": True, "resume": resume}), 200
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+
+
+@analysis_bp.route("/api/resumes/<resume_id>", methods=["PUT", "POST"])
+def api_update_resume(resume_id: str):
+    """
+    Renames or replaces an existing stored resume (#842).
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeNotFoundError,
+        ResumeAccessDeniedError
+    )
+
+    data = request.get_json(silent=True) or request.form
+    label = data.get("label")
+    role_focus = data.get("role_focus")
+    extracted_text = data.get("resume_text")
+    resume_filename = None
+
+    uploaded_file = request.files.get("resume_file") or request.files.get("resume")
+    if uploaded_file and uploaded_file.filename:
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        if ext not in (".pdf", ".docx"):
+            return jsonify({"success": False, "error": "Only PDF and Word documents are supported."}), 400
+        resume_filename = secure_filename(uploaded_file.filename)
+        temp_uuid = str(uuid.uuid4())
+        safe_path = os.path.join(config.UPLOAD_FOLDER, f"{temp_uuid}_{resume_filename}")
+        os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+        uploaded_file.save(safe_path)
+        try:
+            from utils.pdf_reader import extract_text_from_file
+            extracted_text = extract_text_from_file(safe_path)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Failed to extract text: {e}"}), 400
+        finally:
+            if os.path.exists(safe_path):
+                try:
+                    os.remove(safe_path)
+                except Exception:
+                    pass
+
+    try:
+        updated = resume_library_service.update_resume(
+            resume_id=resume_id,
+            student_id=student_id,
+            label=label,
+            role_focus=role_focus,
+            extracted_text=extracted_text,
+            resume_filename=resume_filename
+        )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "resume": updated, "message": "Resume updated successfully."}), 200
+
+        flash("Resume updated successfully.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except ResumeNotFoundError:
+        return jsonify({"success": False, "error": "Resume not found"}), 404
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error updating resume {resume_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to update resume."}), 500
+
+
+@analysis_bp.route("/api/resumes/<resume_id>/delete", methods=["POST", "DELETE"])
+@analysis_bp.route("/resumes/delete/<resume_id>", methods=["POST"])
+def api_delete_resume(resume_id: str):
+    """
+    Deletes a stored resume from the library (#842).
+    Past analyses remain readable as they maintain independent snapshots.
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeNotFoundError,
+        ResumeAccessDeniedError
+    )
+
+    try:
+        resume_library_service.delete_resume(resume_id, student_id)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "Resume deleted successfully."}), 200
+
+        flash("Resume deleted from your library.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except ResumeNotFoundError:
+        return jsonify({"success": False, "error": "Resume not found"}), 404
+    except Exception as e:
+        logger.error(f"Error deleting resume {resume_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to delete resume."}), 500
+
 
 
 

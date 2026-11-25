@@ -392,9 +392,10 @@ def _has_privacy_consent(req) -> bool:
 
 def _extract_and_validate_resume(req):
     """
-    Validates uploaded resume file or pasted text from Flask request.
+    Validates uploaded resume file, stored library resume, or pasted text from Flask request.
     Returns a tuple of (extracted_text, filename, file_uuid, error_message).
     """
+    stored_resume_id = req.form.get("stored_resume_id", "").strip()
     pasted_text = req.form.get("resume_text", "").strip()
     uploaded_file = req.files.get("resume")
     file_uuid = str(uuid.uuid4())
@@ -402,6 +403,41 @@ def _extract_and_validate_resume(req):
     jd_text = req.form.get("job_description", "").strip()
     if jd_text:
         register_sensitive_text(jd_text)
+
+    # 1. Stored Library Resume Selection (#842)
+    if stored_resume_id:
+        student_id = flask_session.get("user_id") or flask_session.get("student_id")
+        if not student_id:
+            return None, None, None, "You must be signed in to select a stored resume."
+        try:
+            from utils.resume_library_service import resume_library_service
+            stored_resume = resume_library_service.get_resume(stored_resume_id, student_id)
+            if not stored_resume:
+                return None, None, None, "Selected stored resume was not found in your library."
+
+            extracted_text = stored_resume["extracted_text"]
+            resume_filename = stored_resume["resume_filename"] or f"{stored_resume['label']}.pdf"
+            register_sensitive_text(extracted_text)
+
+            # Persist copy in upload folder so subsequent file operations can read it
+            try:
+                os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+                text_path = os.path.join(config.UPLOAD_FOLDER, f"{file_uuid}_resume.txt")
+                with open(text_path, "w", encoding="utf-8") as f:
+                    f.write(extracted_text)
+            except Exception as e:
+                logger.warning(f"Could not persist stored resume text copy: {e}")
+
+            # Store attribution in request context or session for analysis persistence
+            flask_session["active_stored_resume_id"] = stored_resume["id"]
+            flask_session["active_stored_resume_label"] = stored_resume["label"]
+
+            return extracted_text, resume_filename, file_uuid, None
+        except PermissionError as pe:
+            return None, None, None, str(pe)
+        except Exception as e:
+            logger.error(f"Error retrieving stored resume {stored_resume_id}: {e}")
+            return None, None, None, "Failed to load selected stored resume."
 
     if pasted_text:
         pasted_text = normalize_resume_text(pasted_text, store_raw=True, text_id=file_uuid)
