@@ -290,6 +290,7 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             department TEXT,
             grad_year INTEGER,
             cgpa REAL,
+            backlogs INTEGER DEFAULT 0,
             target_role TEXT,
             target_company TEXT,
             skills_json TEXT,
@@ -740,6 +741,14 @@ def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
 
 
+def _migration_012_student_profile_backlogs(cursor: sqlite3.Cursor) -> None:
+    """Add backlogs column to student_profiles table (#844)."""
+    cursor.execute("PRAGMA table_info(student_profiles)")
+    cols = [col[1] for col in cursor.fetchall()]
+    if "backlogs" not in cols:
+        cursor.execute("ALTER TABLE student_profiles ADD COLUMN backlogs INTEGER DEFAULT 0")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -753,6 +762,7 @@ MIGRATIONS: List[Migration] = [
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
+    Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
 ]
 
 

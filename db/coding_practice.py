@@ -231,6 +231,7 @@ def save_student_profile(
     department: Optional[str] = None,
     grad_year: Optional[int] = None,
     cgpa: Optional[float] = None,
+    backlogs: Optional[int] = None,
     target_role: Optional[str] = None,
     target_company: Optional[str] = None,
     skills: Optional[List[str]] = None,
@@ -256,6 +257,7 @@ def save_student_profile(
             u_dept = department if department is not None else rec.get("department")
             u_year = grad_year if grad_year is not None else rec.get("grad_year")
             u_cgpa = cgpa if cgpa is not None else rec.get("cgpa")
+            u_backlogs = backlogs if backlogs is not None else rec.get("backlogs", 0)
             u_role = target_role if target_role is not None else rec.get("target_role")
             u_comp = target_company if target_company is not None else rec.get("target_company")
             u_skills = skills_json if skills_json is not None else rec.get("skills_json")
@@ -272,30 +274,31 @@ def save_student_profile(
                 """
                 UPDATE student_profiles SET
                     full_name = ?, email = ?, phone = ?, department = ?,
-                    grad_year = ?, cgpa = ?, target_role = ?, target_company = ?,
+                    grad_year = ?, cgpa = ?, backlogs = ?, target_role = ?, target_company = ?,
                     skills_json = ?, linkedin_url = ?, github_url = ?,
                     has_resume_uploaded = ?, college = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE student_id = ?
                 """,
                 (
                     u_name, u_email, u_phone, u_dept,
-                    u_year, u_cgpa, u_role, u_comp,
+                    u_year, u_cgpa, u_backlogs, u_role, u_comp,
                     u_skills, u_li, u_gh, u_resume, u_college, s_id,
                 ),
             )
         else:
+            u_backlogs = backlogs if backlogs is not None else 0
             cursor.execute(
                 """
                 INSERT INTO student_profiles (
                     student_id, full_name, email, phone, department,
-                    grad_year, cgpa, target_role, target_company,
+                    grad_year, cgpa, backlogs, target_role, target_company,
                     skills_json, linkedin_url, github_url, has_resume_uploaded,
                     college, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
                 (
                     s_id, full_name, email, phone, department,
-                    grad_year, cgpa, target_role, target_company,
+                    grad_year, cgpa, u_backlogs, target_role, target_company,
                     skills_json, linkedin_url, github_url,
                     int(has_resume_uploaded or 0),
                     college,

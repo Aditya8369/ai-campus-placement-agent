@@ -791,6 +791,7 @@ def profile_view():
         department = request.form.get("department", "").strip()
         grad_year_raw = request.form.get("grad_year", "").strip()
         cgpa_raw = request.form.get("cgpa", "").strip()
+        backlogs_raw = request.form.get("backlogs", "").strip()
         target_role = request.form.get("target_role", "").strip()
         target_company = request.form.get("target_company", "").strip()
         skills_raw = request.form.get("skills", "").strip()
@@ -809,8 +810,20 @@ def profile_view():
 
         try:
             cgpa = float(cgpa_raw) if cgpa_raw else None
+            if cgpa is not None:
+                if cgpa < 0.0 or cgpa > 10.0:
+                    flash("CGPA must be between 0.0 and 10.0.", "error")
+                    return redirect("/profile")
         except ValueError:
             cgpa = None
+
+        try:
+            backlogs = int(backlogs_raw) if backlogs_raw else 0
+            if backlogs < 0:
+                flash("Active backlogs cannot be negative.", "error")
+                return redirect("/profile")
+        except ValueError:
+            backlogs = 0
 
         skills = [s.strip() for s in skills_raw.split(",") if s.strip()] if skills_raw else []
 
@@ -822,6 +835,7 @@ def profile_view():
             department=department,
             grad_year=grad_year,
             cgpa=cgpa,
+            backlogs=backlogs,
             target_role=target_role,
             target_company=target_company,
             skills=skills,
