@@ -196,6 +196,31 @@
       </div>
     </div>
     {% endif %}
+
+    <!-- Prompt Injection / Security Warning Banner (#762) -->
+    {% if result.security_warning or result.warning or (result.security_audit and result.security_audit.prompt_injection_detected) %}
+    <div
+      class="alert alert-warning border-0 rounded-4 shadow-sm mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3 p-3"
+      role="alert" id="promptInjectionWarningBanner"
+      style="background: linear-gradient(135deg, rgba(254, 243, 199, 0.95) 0%, rgba(255, 251, 235, 0.98) 100%); border-left: 5px solid #d97706 !important;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-warning text-dark p-2"
+          style="width: 44px; height: 44px;">
+          <i class="fa-solid fa-triangle-exclamation fs-5 text-dark"></i>
+        </div>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-warning text-dark rounded-pill px-2 py-1 small fw-bold">Security Notice</span>
+            <strong class="text-dark">Suspicious Resume Content Detected</strong>
+          </div>
+          <p class="text-muted small mb-0 mt-1" id="promptInjectionWarningText">
+            {{ result.security_warning or result.warning or (result.security_audit.warning if (result.security_audit is mapping and result.security_audit.warning) else (result.security_audit.warning_message if (result.security_audit is mapping and result.security_audit.warning_message) else '')) or 'Suspicious instruction-like text or hidden content was detected in this resume. All scores have been deterministically computed and model prompt overrides were neutralized.' }}
+          </p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Global AI Request Status Banner (Hidden until a section retry is triggered) -->
     <div id="aiRetryStatusBanner" class="alert alert-info d-none align-items-center justify-content-between mb-4"
       role="status" aria-live="polite">
