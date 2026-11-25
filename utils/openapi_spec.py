@@ -118,31 +118,31 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
-        "/api/v1/diagnostics/request-size": {
+        "/api/v1/metrics/deprecation": {
             "get": {
-                "tags": ["System & Utilities"],
-                "summary": "Get Request Size Limits and Diagnostic Failure Log",
+                "tags": ["API Versioning & Discovery"],
+                "summary": "Get Deprecated API Usage Metrics and Removal Schedule",
                 "description": (
-                    "Retrieves active request payload size limits (JSON, file uploads), "
-                    "field-level constraints, failure metrics, and recent size violation logs (#784)."
+                    "Retrieves invocation counts, breakdown by deprecated field and route, "
+                    "scheduled removal dates, and migration guide links (#445, #553)."
                 ),
-                "operationId": "getRequestSizeDiagnosticsV1",
+                "operationId": "getDeprecatedApiMetricsV1",
                 "parameters": [
                     {
                         "name": "limit",
                         "in": "query",
-                        "description": "Maximum number of recent size violation records to return (default 50).",
+                        "description": "Maximum number of recent invocation records to return (default 100, max 500).",
                         "required": False,
-                        "schema": {"type": "integer", "default": 50}
+                        "schema": {"type": "integer", "default": 100}
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Request size diagnostics summary and active limits.",
+                        "description": "Deprecated API invocation metrics and migration roadmap.",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/RequestSizeDiagnosticsResponse"
+                                    "$ref": "#/components/schemas/DeprecatedMetricsResponse"
                                 }
                             }
                         }
@@ -150,19 +150,19 @@ OPENAPI_SPEC: Dict[str, Any] = {
                 }
             }
         },
-        "/api/diagnostics/request-size": {
+        "/api/metrics/deprecation": {
             "get": {
-                "tags": ["System & Utilities"],
-                "summary": "Get Request Size Limits and Diagnostic Failure Log (Legacy Alias)",
-                "description": "Legacy unversioned alias for /api/v1/diagnostics/request-size.",
-                "operationId": "getRequestSizeDiagnosticsLegacy",
+                "tags": ["API Versioning & Discovery"],
+                "summary": "Get Deprecated API Usage Metrics (Legacy Alias)",
+                "description": "Legacy unversioned alias for /api/v1/metrics/deprecation.",
+                "operationId": "getDeprecatedApiMetricsLegacy",
                 "responses": {
                     "200": {
-                        "description": "Request size diagnostics summary and active limits.",
+                        "description": "Deprecated API invocation metrics and migration roadmap.",
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/RequestSizeDiagnosticsResponse"
+                                    "$ref": "#/components/schemas/DeprecatedMetricsResponse"
                                 }
                             }
                         }
@@ -1511,10 +1511,48 @@ OPENAPI_SPEC: Dict[str, Any] = {
                         "type": "string",
                         "description": "Raw text of the candidate resume."
                     },
-                    "company": {
+                    "company_name": {
                         "type": "string",
                         "default": "General",
-                        "description": "Target company name."
+                        "description": "Target company name (preferred replacement for deprecated 'company')."
+                    },
+                    "company": {
+                        "type": "string",
+                        "deprecated": True,
+                        "default": "General",
+                        "description": "DEPRECATED: Target company name. Scheduled for removal on 2030-01-01. Please migrate to 'company_name'."
+                    },
+                    "target_role": {
+                        "type": "string",
+                        "default": "Software Engineer",
+                        "description": "Target job role name (preferred replacement for deprecated 'role', 'role_id', and 'selected_role')."
+                    },
+                    "role": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Target job role. Scheduled for removal on 2030-01-01. Please migrate to 'target_role'."
+                    },
+                    "role_id": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Role template identifier. Scheduled for removal on 2030-01-01. Please migrate to 'target_role'."
+                    },
+                    "selected_role": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Selected target job role. Scheduled for removal on 2030-01-01. Please migrate to 'target_role'."
+                    },
+                    "analysis_mode": {
+                        "type": "string",
+                        "enum": ["upload", "text"],
+                        "default": "text",
+                        "description": "Analysis input mode ('upload' | 'text', preferred replacement for deprecated 'input_mode')."
+                    },
+                    "input_mode": {
+                        "type": "string",
+                        "deprecated": True,
+                        "enum": ["upload", "text"],
+                        "description": "DEPRECATED: Analysis input mode. Scheduled for removal on 2030-01-01. Please migrate to 'analysis_mode'."
                     },
                     "job_description": {
                         "type": "string",
@@ -1542,7 +1580,19 @@ OPENAPI_SPEC: Dict[str, Any] = {
                         "description": "PDF or DOCX resume document file."
                     },
                     "resume_text": {"type": "string"},
-                    "company": {"type": "string", "default": "General"},
+                    "company_name": {"type": "string", "default": "General", "description": "Target company name."},
+                    "company": {
+                        "type": "string",
+                        "deprecated": True,
+                        "default": "General",
+                        "description": "DEPRECATED: Target company name. Scheduled for removal on 2030-01-01. Please migrate to 'company_name'."
+                    },
+                    "target_role": {"type": "string", "default": "Software Engineer", "description": "Target job role name."},
+                    "role": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Target job role. Scheduled for removal on 2030-01-01. Please migrate to 'target_role'."
+                    },
                     "job_description": {"type": "string"},
                     "privacy_consent": {"type": "string", "enum": ["true", "1", "on"]}
                 }
@@ -1742,6 +1792,15 @@ OPENAPI_SPEC: Dict[str, Any] = {
                     "application_date": {"type": "string", "format": "date", "example": "2026-11-17"},
                     "location": {"type": "string", "example": "Mountain View, CA"},
                     "job_type": {"type": "string", "enum": ["Full-Time", "Internship", "Contract"], "default": "Full-Time"},
+                    "analysis_id": {
+                        "type": "string",
+                        "description": "Linked resume analysis ID (preferred replacement for deprecated 'resume_analysis_id')."
+                    },
+                    "resume_analysis_id": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Linked resume analysis record ID. Scheduled for removal on 2030-01-01. Please use 'analysis_id' instead."
+                    },
                     "notes": {"type": "string"}
                 }
             },
@@ -1911,10 +1970,16 @@ OPENAPI_SPEC: Dict[str, Any] = {
                         "items": {"type": "string"},
                         "example": ["legacy (unversioned /api/...)"]
                     },
+                    "deprecated_fields": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "example": ["batch_companies", "company", "cover_letter", "input_mode", "notes", "resume_analysis_id", "role", "role_id", "selected_role", "tags"]
+                    },
                     "sunset_date": {"type": "string", "example": "2030-01-01"},
                     "sunset_date_rfc": {"type": "string", "example": "Wed, 01 Jan 2030 00:00:00 GMT"},
                     "documentation_url": {"type": "string", "example": "/api/v1/docs"},
                     "openapi_url": {"type": "string", "example": "/api/v1/openapi.json"},
+                    "deprecation_metrics_url": {"type": "string", "example": "/api/v1/metrics/deprecation"},
                     "migration_guide": {"type": "string", "example": "/docs/api-versioning"},
                     "policy": {
                         "type": "object",
@@ -1923,37 +1988,126 @@ OPENAPI_SPEC: Dict[str, Any] = {
                             "backwards_compatibility": {"type": "string"},
                             "deprecation_header": {"type": "string"},
                             "sunset_header": {"type": "string"},
-                            "link_header_rel": {"type": "string"}
+                            "link_header_rel": {"type": "string"},
+                            "field_deprecation_header": {"type": "string"},
+                            "field_replacement_header": {"type": "string"},
+                            "field_removal_date_header": {"type": "string"}
                         }
                     }
                 }
             },
-            "RequestSizeDiagnosticsResponse": {
+            "CoverLetterDownloadRequest": {
+                "type": "object",
+                "properties": {
+                    "content": {
+                        "type": "string",
+                        "description": "Text content of the cover letter to download."
+                    },
+                    "cover_letter": {
+                        "type": "string",
+                        "deprecated": True,
+                        "description": "DEPRECATED: Text content of the cover letter. Scheduled for removal on 2030-01-01. Please migrate to 'content'."
+                    },
+                    "format": {
+                        "type": "string",
+                        "enum": ["docx", "txt"],
+                        "default": "docx",
+                        "description": "Desired file format for download."
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "default": "Company",
+                        "description": "Target company name for file naming and header."
+                    }
+                }
+            },
+            "BatchComparisonRequest": {
+                "type": "object",
+                "properties": {
+                    "companies": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of companies to compare against the candidate resume."
+                    },
+                    "batch_companies": {
+                        "type": "array",
+                        "deprecated": True,
+                        "items": {"type": "string"},
+                        "description": "DEPRECATED: List of companies for batch comparison. Scheduled for removal on 2030-01-01. Please migrate to 'companies'."
+                    }
+                }
+            },
+            "DeprecatedMetricsResponse": {
                 "type": "object",
                 "properties": {
                     "status": {"type": "string", "example": "success"},
-                    "total_failures": {"type": "integer", "example": 2},
-                    "configured_limits": {
-                        "type": "object",
-                        "properties": {
-                            "max_upload_size_mb": {"type": "integer", "example": 5},
-                            "max_resume_file_size_bytes": {"type": "integer", "example": 5242880},
-                            "max_resume_file_size_human": {"type": "string", "example": "5 MB"},
-                            "max_json_payload_bytes": {"type": "integer", "example": 2097152},
-                            "max_json_payload_human": {"type": "string", "example": "2 MB"},
-                            "max_csv_file_size_bytes": {"type": "integer", "example": 5242880},
-                            "max_csv_file_size_human": {"type": "string", "example": "5 MB"},
-                            "max_content_length_bytes": {"type": "integer", "example": 10485760},
-                            "max_content_length_human": {"type": "string", "example": "10 MB"}
+                    "total_deprecated_invocations": {"type": "integer", "example": 12},
+                    "field_deprecated_invocations": {"type": "integer", "example": 8},
+                    "route_deprecated_invocations": {"type": "integer", "example": 4},
+                    "fields_summary": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "field": {"type": "string"},
+                                "replacement": {"type": "string"},
+                                "removal_date": {"type": "string"},
+                                "call_count": {"type": "integer"},
+                                "last_used_at": {"type": "string", "nullable": True}
+                            }
                         }
                     },
-                    "field_breakdown": {"type": "object"},
-                    "type_breakdown": {"type": "object"},
-                    "recent_failures": {
+                    "routes_summary": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "route": {"type": "string"},
+                                "replacement": {"type": "string"},
+                                "removal_date": {"type": "string"},
+                                "call_count": {"type": "integer"},
+                                "last_used_at": {"type": "string", "nullable": True}
+                            }
+                        }
+                    },
+                    "recent_invocations": {
                         "type": "array",
                         "items": {"type": "object"}
-                    }
+                    },
+                    "sunset_date": {"type": "string", "example": "2030-01-01"},
+                    "sunset_date_rfc": {"type": "string", "example": "Wed, 01 Jan 2030 00:00:00 GMT"},
+                    "migration_guide": {"type": "string", "example": "/docs/api-versioning"}
                 }
+            }
+        },
+        "headers": {
+            "Deprecation": {
+                "description": "RFC 8594 Deprecation header indicating that the endpoint or an input field is deprecated.",
+                "schema": {"type": "string", "example": "true"}
+            },
+            "Sunset": {
+                "description": "RFC 8594 Sunset header indicating the date and time when the deprecated resource or field will be removed.",
+                "schema": {"type": "string", "example": "Wed, 01 Jan 2030 00:00:00 GMT"}
+            },
+            "Link": {
+                "description": "RFC 8288 Link header pointing to replacement route (rel=\"successor-version\") or migration guide (rel=\"deprecation\").",
+                "schema": {"type": "string", "example": "</api/v1/analysis/start>; rel=\"successor-version\""}
+            },
+            "X-API-Deprecated-Fields": {
+                "description": "Comma-separated list of deprecated fields detected in the request or response payload.",
+                "schema": {"type": "string", "example": "company, role"}
+            },
+            "X-API-Replacement": {
+                "description": "Recommended successor field names or replacement route mappings.",
+                "schema": {"type": "string", "example": "company -> company_name, role -> target_role"}
+            },
+            "X-API-Removal-Date": {
+                "description": "ISO 8601 date when the deprecated fields or routes are permanently decommissioned.",
+                "schema": {"type": "string", "example": "2030-01-01"}
+            },
+            "X-API-Deprecation-Notice": {
+                "description": "Human-readable explanation of the deprecation and required migration steps.",
+                "schema": {"type": "string", "example": "Field 'company' is deprecated and scheduled for removal on 2030-01-01. Please migrate to 'company_name'."}
             }
         }
     }

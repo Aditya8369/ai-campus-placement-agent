@@ -65,6 +65,112 @@ X-Request-ID: 8a1f2b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 - **`Sunset`**: RFC 8594 timestamp indicating the date after which the unversioned route may be decommissioned (`Wed, 01 Jan 2030 00:00:00 GMT`).
 - **`Link`**: RFC 8288 link header with `rel="successor-version"` directing the client to the canonical `/api/v1/...` equivalent.
 
+### Field Deprecation Headers (Input & Payload Deprecation)
+When a client sends a request (via JSON body, form data, or query parameters) or receives a response containing deprecated fields, the server automatically injects field deprecation headers alongside RFC 8594 Sunset headers:
+
+```http
+HTTP/1.1 200 OK
+Content-Type: application/json
+API-Version: v1
+Deprecation: true
+Sunset: Wed, 01 Jan 2030 00:00:00 GMT
+Link: </docs/api-versioning>; rel="deprecation"
+X-API-Deprecated-Fields: company, role
+X-API-Replacement: company -> company_name, role -> target_role
+X-API-Removal-Date: 2030-01-01
+X-API-Deprecation-Notice: Field 'company' is deprecated and scheduled for removal on 2030-01-01. Please migrate to 'company_name'. Field 'role' is deprecated and scheduled for removal on 2030-01-01. Please migrate to 'target_role'.
+```
+
+#### Field Deprecation Header Reference:
+- **`Deprecation`**: `true` (RFC 8594 standard).
+- **`Sunset`**: `Wed, 01 Jan 2030 00:00:00 GMT` (RFC 8594 / RFC 1123 removal deadline).
+- **`Link`**: Link to migration documentation (`rel="deprecation"`).
+- **`X-API-Deprecated-Fields`**: Comma-separated list of deprecated fields detected in the request.
+- **`X-API-Replacement`**: Direct mapping of deprecated fields to their modern replacements.
+- **`X-API-Removal-Date`**: ISO 8601 date (`2030-01-01`) after which the deprecated field will be rejected.
+- **`X-API-Deprecation-Notice`**: Human-readable warning and migration instructions for developers.
+
+### Deprecated Fields Catalog
+
+The platform maintains backwards-compatible support for legacy field names while providing direct modern replacements:
+
+| Deprecated Field | Canonical Replacement | Endpoints | Scheduled Removal | Notes |
+| :--- | :--- | :--- | :---: | :--- |
+| `company` | `company_name` | `/api/v1/analysis/start`, `/api/v1/role-prep/generate` | `2030-01-01` | Use `company_name` for target organization. |
+| `role` | `target_role` | `/api/v1/analysis/start`, `/api/v1/role-prep/generate` | `2030-01-01` | Use `target_role` for target job role title. |
+| `role_id` | `target_role` | `/api/v1/analysis/start`, `/api/v1/analyze` | `2030-01-01` | Template ID superseded by `target_role`. |
+| `selected_role` | `target_role` | `/api/v1/analysis/start`, `/api/v1/analyze` | `2030-01-01` | Use `target_role` for target job role. |
+| `input_mode` | `analysis_mode` | `/api/v1/analyze` | `2030-01-01` | Use `analysis_mode` (`upload` or `text`). |
+| `cover_letter` | `content` | `/api/v1/cover-letter/download` | `2030-01-01` | Use `content` for cover letter body. |
+| `batch_companies`| `companies` | `/api/v1/batch-compare`, `/api/v1/analysis/batch-compare` | `2030-01-01` | Use `companies` array. |
+| `resume_analysis_id` | `analysis_id` | `/api/v1/applications`, `/api/v1/applications/create` | `2030-01-01` | Use `analysis_id` to link resume analyses. |
+| `notes` | `change_notes` | `/api/v1/analysis/resume/label` | `2030-01-01` | Use `change_notes` for version labels. |
+| `tags` | `competencies` | `/api/v1/interview/experience` | `2030-01-01` | Use `competencies` for skill categories. |
+
+---
+
+## 4. Deprecation Metrics and Observability
+
+To help maintainers track real-world deprecated API usage and prioritize sunset timelines, all invocations of deprecated routes and fields are tracked in SQLite table `deprecated_api_metrics`.
+
+### Querying Deprecation Metrics: `GET /api/v1/metrics/deprecation`
+
+Maintainers and observability dashboards can query real-time usage statistics:
+
+```bash
+curl -X GET "https://your-domain.com/api/v1/metrics/deprecation?limit=50"
+```
+
+#### Sample Response:
+```json
+{
+  "status": "success",
+  "total_deprecated_invocations": 42,
+  "field_deprecated_invocations": 30,
+  "route_deprecated_invocations": 12,
+  "fields_summary": [
+    {
+      "field": "company",
+      "replacement": "company_name",
+      "removal_date": "2030-01-01",
+      "call_count": 18,
+      "last_used_at": "2026-11-24 10:15:32"
+    },
+    {
+      "field": "role",
+      "replacement": "target_role",
+      "removal_date": "2030-01-01",
+      "call_count": 12,
+      "last_used_at": "2026-11-24 10:15:32"
+    }
+  ],
+  "routes_summary": [
+    {
+      "route": "/api/analyze",
+      "replacement": "/api/v1/analysis/start",
+      "removal_date": "2030-01-01",
+      "call_count": 12,
+      "last_used_at": "2026-11-24 09:40:11"
+    }
+  ],
+  "recent_invocations": [
+    {
+      "id": "dep-a1b2c3d4e5f6",
+      "item_type": "field",
+      "item_name": "company",
+      "replacement": "company_name",
+      "endpoint": "/api/v1/analysis/start",
+      "http_method": "POST",
+      "user_id": "student_101",
+      "timestamp": "2026-11-24 10:15:32"
+    }
+  ],
+  "sunset_date": "2030-01-01",
+  "sunset_date_rfc": "Wed, 01 Jan 2030 00:00:00 GMT",
+  "migration_guide": "/docs/api-versioning"
+}
+```
+
 ---
 
 ## 4. API Version Discovery & Health Endpoints

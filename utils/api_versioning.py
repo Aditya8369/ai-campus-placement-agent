@@ -11,6 +11,16 @@ import logging
 from typing import Any, Dict, List, Optional
 from flask import Blueprint, Flask, jsonify, render_template, request
 
+from utils.api_deprecation import (
+    DEFAULT_SUNSET_DATE_ISO,
+    DEFAULT_SUNSET_DATE_RFC,
+    DEPRECATED_FIELDS,
+    detect_request_deprecations,
+    get_deprecated_metrics_summary,
+    inject_deprecation_headers,
+    record_deprecated_usage,
+)
+
 logger = logging.getLogger(__name__)
 
 # Canonical Version Configuration
@@ -18,8 +28,8 @@ CURRENT_API_VERSION: str = "v1"
 DEFAULT_API_VERSION: str = "v1"
 SUPPORTED_API_VERSIONS: List[str] = ["v1"]
 DEPRECATED_API_VERSIONS: List[str] = ["legacy (unversioned /api/...)"]
-SUNSET_DATE_RFC: str = "Wed, 01 Jan 2030 00:00:00 GMT"
-SUNSET_DATE_ISO: str = "2030-01-01"
+SUNSET_DATE_RFC: str = DEFAULT_SUNSET_DATE_RFC
+SUNSET_DATE_ISO: str = DEFAULT_SUNSET_DATE_ISO
 MIGRATION_DOCS_PATH: str = "/docs/api-versioning"
 
 
@@ -34,10 +44,12 @@ def get_api_version_info() -> Dict[str, Any]:
         "default_version": DEFAULT_API_VERSION,
         "supported_versions": list(SUPPORTED_API_VERSIONS),
         "deprecated_versions": list(DEPRECATED_API_VERSIONS),
+        "deprecated_fields": sorted(list(DEPRECATED_FIELDS.keys())),
         "sunset_date": SUNSET_DATE_ISO,
         "sunset_date_rfc": SUNSET_DATE_RFC,
         "documentation_url": "/api/v1/docs",
         "openapi_url": "/api/v1/openapi.json",
+        "deprecation_metrics_url": "/api/v1/metrics/deprecation",
         "migration_guide": MIGRATION_DOCS_PATH,
         "policy": {
             "strategy": "URI path prefixing (/api/v1/...) with legacy alias support",
@@ -45,6 +57,9 @@ def get_api_version_info() -> Dict[str, Any]:
             "deprecation_header": "Deprecation: true",
             "sunset_header": f"Sunset: {SUNSET_DATE_RFC}",
             "link_header_rel": "successor-version",
+            "field_deprecation_header": "X-API-Deprecated-Fields",
+            "field_replacement_header": "X-API-Replacement",
+            "field_removal_date_header": "X-API-Removal-Date",
         },
     }
 
@@ -149,7 +164,20 @@ def register_api_versioning(app: Flask) -> None:
         """Renders Redoc reference documentation for v1 endpoints (#445)."""
         return render_template("redoc.html", spec_url="/api/v1/openapi.json")
 
-    # 3. Mirror all unversioned /api/... rules under /api/v1/...
+    # 3. Deprecation metrics endpoint (#445, #553)
+    @app.route("/api/metrics/deprecation", methods=["GET"], endpoint="api_deprecation_metrics_legacy")
+    @app.route("/api/v1/metrics/deprecation", methods=["GET"], endpoint="api_deprecation_metrics_v1")
+    def api_deprecation_metrics():
+        """Returns real-time deprecation metrics, invocation logs, and removal schedule (#445, #553)."""
+        limit_param = request.args.get("limit", 100)
+        try:
+            limit = int(limit_param)
+        except (ValueError, TypeError):
+            limit = 100
+        summary = get_deprecated_metrics_summary(limit=limit)
+        return jsonify(summary), 200
+
+    # 4. Mirror all unversioned /api/... rules under /api/v1/...
     existing_rules = list(app.url_map.iter_rules())
     existing_patterns = {r.rule for r in existing_rules}
     alias_count = 0
@@ -176,7 +204,7 @@ def register_api_versioning(app: Flask) -> None:
 
     logger.info(f"API Versioning initialized: registered {alias_count} v1 route aliases.")
 
-    # 4. Standardized Response Headers Injection (RFC 8594 Sunset & Deprecation)
+    # 5. Standardized Response Headers Injection & Deprecation Tracking (#445, #553)
     @app.after_request
     def inject_api_version_headers(response):
         path = request.path
@@ -194,5 +222,57 @@ def register_api_versioning(app: Flask) -> None:
         elif version is not None:
             # Future version (e.g. v2, v3)
             response.headers["API-Version"] = version
+
+        # Detect and inject deprecated field and route headers (#445, #553)
+        if path.startswith("/api/"):
+            try:
+                route_info, detected_fields = detect_request_deprecations(request)
+                if route_info or detected_fields:
+                    inject_deprecation_headers(
+                        response=response,
+                        detected_fields=detected_fields,
+                        route_info=route_info,
+                        endpoint_path=path,
+                    )
+
+                    # Determine calling user and network metadata safely
+                    from flask import session as flask_session
+                    user_id = getattr(request, "user_id", None)
+                    if not user_id:
+                        try:
+                            user_id = flask_session.get("user_id") or "anonymous"
+                        except Exception:
+                            user_id = "anonymous"
+
+                    client_ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+                    user_agent = request.headers.get("User-Agent")
+
+                    # Record route-level deprecation metric
+                    if route_info:
+                        record_deprecated_usage(
+                            item_type="route",
+                            item_name=path,
+                            replacement=route_info.get("replacement"),
+                            endpoint=path,
+                            http_method=request.method,
+                            user_id=user_id,
+                            client_ip=client_ip,
+                            user_agent=user_agent,
+                        )
+
+                    # Record field-level deprecation metric
+                    for f_info in detected_fields:
+                        record_deprecated_usage(
+                            item_type="field",
+                            item_name=f_info["field"],
+                            replacement=f_info.get("replacement"),
+                            endpoint=path,
+                            http_method=request.method,
+                            user_id=user_id,
+                            client_ip=client_ip,
+                            user_agent=user_agent,
+                        )
+            except Exception as exc:
+                logger.debug(f"Deprecation tracking skipped due to: {exc}")
 
         return response
