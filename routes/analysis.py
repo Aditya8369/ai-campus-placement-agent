@@ -1469,21 +1469,9 @@ def dashboard(analysis_id: str) -> str:
     elif not isinstance(raw_missing, list):
         raw_missing = []
 
-    clean_matched = []
-    seen_matched = set()
-    for s in raw_matched:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_matched:
-            clean_matched.append(s_clean)
-            seen_matched.add(s_clean.lower())
-
-    clean_missing = []
-    seen_missing = set()
-    for s in raw_missing:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
-            clean_missing.append(s_clean)
-            seen_missing.add(s_clean.lower())
+    # Normalize skill synonyms and aliases before matching (#843)
+    from utils.skill_alias_service import reconcile_matched_and_missing_skills
+    clean_matched, clean_missing = reconcile_matched_and_missing_skills(raw_matched, raw_missing)
 
     matched_count = len(clean_matched)
     missing_count = len(clean_missing)
@@ -1718,6 +1706,22 @@ def dashboard(analysis_id: str) -> str:
             "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
             "flags": [],
             "timeline_items": []
+        }
+
+    # Prepare PDF Metadata & Filename Hygiene (#841)
+    try:
+        pdf_metadata_hygiene = get_or_compute_pdf_metadata_hygiene(analysis_record)
+    except Exception as meta_err:
+        logger.warning(f"Error evaluating PDF metadata hygiene for dashboard: {meta_err}")
+        pdf_metadata_hygiene = {
+            "has_warnings": False,
+            "warnings": [],
+            "metadata": {},
+            "filename": analysis_record.get("resume_filename") or "resume.pdf",
+            "clean_filename_pattern": "FirstName_LastName_Role.pdf",
+            "suggested_filename": "FirstName_LastName_Resume.pdf",
+            "has_any_metadata": False,
+            "is_clean": True,
         }
 
     return render_template(
