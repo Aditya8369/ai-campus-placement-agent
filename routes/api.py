@@ -469,4 +469,164 @@ def api_admin_resolve_incident(incident_id):
     return jsonify({"status": "success", "resolved": resolved}), 200
 
 
+# ==============================================================================
+# API Request Replay & Failed Operation Routes
+# ==============================================================================
+
+@api_bp.route("/api/retry-records", methods=["GET"], endpoint="api_get_retry_records")
+def api_get_retry_records():
+    """Returns list of active retry records for the current user."""
+    from utils.api_replay_service import list_retry_records
+    user_id = flask_session.get("user_id") or "default_student"
+    include_expired = request.args.get("include_expired", "").lower() in ("true", "1")
+    records = list_retry_records(user_id=user_id, include_expired=include_expired)
+    return jsonify({"success": True, "records": records}), 200
+
+
+@api_bp.route("/api/retry-records", methods=["POST"], endpoint="api_create_retry_record")
+def api_create_retry_record():
+    """Stores a safe retry record for a failed API operation."""
+    from utils.api_replay_service import store_retry_record
+    user_id = flask_session.get("user_id") or "default_student"
+    data = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    operation_type = data.get("operation_type") or "api_operation"
+    endpoint = data.get("endpoint")
+    if not endpoint:
+        return jsonify({"success": False, "error": "Missing required 'endpoint' field."}), 400
+
+    http_method = (data.get("http_method") or "POST").upper()
+    payload = data.get("payload") or {}
+    error_message = data.get("error_message") or "Operation failed."
+    idempotency_key = data.get("idempotency_key")
+    ttl_seconds = int(data.get("ttl_seconds") or 900)
+
+    record = store_retry_record(
+        user_id=user_id,
+        operation_type=operation_type,
+        endpoint=endpoint,
+        http_method=http_method,
+        payload=payload,
+        error_message=error_message,
+        idempotency_key=idempotency_key,
+        ttl_seconds=ttl_seconds,
+    )
+    return jsonify({"success": True, "record": record}), 201
+
+
+@api_bp.route("/api/retry-records/<record_id>", methods=["GET"], endpoint="api_get_retry_record_item")
+def api_get_retry_record_item(record_id: str):
+    """Fetches details and current status of a specific retry record."""
+    from utils.api_replay_service import get_retry_record
+    user_id = flask_session.get("user_id") or "default_student"
+    record = get_retry_record(record_id, user_id=user_id)
+    if not record:
+        return jsonify({"success": False, "error": "Retry record not found."}), 404
+    return jsonify({"success": True, "record": record}), 200
+
+
+@api_bp.route("/api/retry-records/<record_id>/replay", methods=["POST"], endpoint="api_replay_retry_record")
+def api_replay_retry_record(record_id: str):
+    """
+    Replays a failed operation safely, preventing duplicate submissions,
+    enforcing expiration, and recording the outcome.
+    """
+    from utils.api_replay_service import begin_replay, complete_replay, get_retry_record
+    user_id = flask_session.get("user_id") or "default_student"
+
+    can_replay, err, rec = begin_replay(record_id, user_id=user_id)
+    if not can_replay:
+        # Determine status code based on rejection reason
+        err_str = (err or "").lower()
+        if "replayed" in err_str:
+            status_code = 409
+        elif "expired" in err_str:
+            status_code = 410
+        elif "attempts" in err_str:
+            status_code = 429
+        else:
+            status_code = 400
+
+        current_rec = get_retry_record(record_id, user_id=user_id)
+        return jsonify({
+            "success": False,
+            "error": err,
+            "status": current_rec.get("status") if current_rec else "error",
+            "record": current_rec,
+        }), status_code
+
+    endpoint = rec["endpoint"]
+    method = rec["http_method"]
+    payload = rec.get("payload") or {}
+
+    try:
+        with current_app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess["user_id"] = user_id
+                sess["user_name"] = flask_session.get("user_name") or user_id
+
+            headers = {"Content-Type": "application/json"}
+            if method == "POST":
+                resp = client.post(endpoint, json=payload, headers=headers)
+            elif method == "PUT":
+                resp = client.put(endpoint, json=payload, headers=headers)
+            elif method == "DELETE":
+                resp = client.delete(endpoint, json=payload, headers=headers)
+            else:
+                resp = client.get(endpoint, headers=headers)
+
+            is_ok = 200 <= resp.status_code < 300
+            try:
+                resp_data = resp.get_json()
+            except Exception:
+                resp_data = {
+                    "status_code": resp.status_code,
+                    "text": resp.data.decode("utf-8", errors="ignore")[:500],
+                }
+
+            if is_ok:
+                updated_rec = complete_replay(record_id, success=True, result_payload=resp_data)
+                return jsonify({
+                    "success": True,
+                    "status": "succeeded",
+                    "message": "Operation successfully replayed.",
+                    "result": resp_data,
+                    "record": updated_rec,
+                }), 200
+            else:
+                err_msg = "Replay execution returned error."
+                if isinstance(resp_data, dict):
+                    err_msg = resp_data.get("error") or resp_data.get("message") or f"HTTP {resp.status_code}"
+                updated_rec = complete_replay(record_id, success=False, error_message=err_msg, result_payload=resp_data)
+                return jsonify({
+                    "success": False,
+                    "status": updated_rec["status"],
+                    "error": f"Replay failed: {err_msg}",
+                    "result": resp_data,
+                    "record": updated_rec,
+                }), 502
+
+    except Exception as exc:
+        logger.exception(f"Exception during replay execution for record {record_id}: {exc}")
+        updated_rec = complete_replay(record_id, success=False, error_message=str(exc))
+        return jsonify({
+            "success": False,
+            "status": updated_rec["status"],
+            "error": f"Internal replay execution error: {str(exc)}",
+            "record": updated_rec,
+        }), 500
+
+
+@api_bp.route("/api/retry-records/<record_id>", methods=["DELETE"], endpoint="api_cancel_retry_record")
+def api_cancel_retry_record(record_id: str):
+    """Cancels/dismisses an active retry record."""
+    from utils.api_replay_service import cancel_retry_record
+    user_id = flask_session.get("user_id") or "default_student"
+    cancelled = cancel_retry_record(record_id, user_id=user_id)
+    if cancelled:
+        return jsonify({"success": True, "message": "Retry record dismissed."}), 200
+    return jsonify({"success": False, "error": "Record not found or not cancellable."}), 404
+
+
+
 
