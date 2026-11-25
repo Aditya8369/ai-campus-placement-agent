@@ -1469,21 +1469,9 @@ def dashboard(analysis_id: str) -> str:
     elif not isinstance(raw_missing, list):
         raw_missing = []
 
-    clean_matched = []
-    seen_matched = set()
-    for s in raw_matched:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_matched:
-            clean_matched.append(s_clean)
-            seen_matched.add(s_clean.lower())
-
-    clean_missing = []
-    seen_missing = set()
-    for s in raw_missing:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
-            clean_missing.append(s_clean)
-            seen_missing.add(s_clean.lower())
+    # Normalize skill synonyms and aliases before matching (#843)
+    from utils.skill_alias_service import reconcile_matched_and_missing_skills
+    clean_matched, clean_missing = reconcile_matched_and_missing_skills(raw_matched, raw_missing)
 
     matched_count = len(clean_matched)
     missing_count = len(clean_missing)
@@ -1720,25 +1708,20 @@ def dashboard(analysis_id: str) -> str:
             "timeline_items": []
         }
 
-    # Prepare Resume Links Health Check Card (#845)
+    # Prepare PDF Metadata & Filename Hygiene (#841)
     try:
-        from utils.resume_link_service import analyze_resume_links
-        resume_links = analyze_resume_links(
-            resume_text=raw_resume,
-            check_reachability=True,
-            user_id=student_id
-        )
-    except Exception as link_err:
-        logger.warning(f"Error checking resume links for dashboard: {link_err}")
-        resume_links = {
-            "total_links": 0,
-            "working_count": 0,
-            "broken_count": 0,
-            "malformed_count": 0,
-            "unverified_count": 0,
-            "has_issues": False,
-            "links": [],
-            "summary": "Could not analyze resume links."
+        pdf_metadata_hygiene = get_or_compute_pdf_metadata_hygiene(analysis_record)
+    except Exception as meta_err:
+        logger.warning(f"Error evaluating PDF metadata hygiene for dashboard: {meta_err}")
+        pdf_metadata_hygiene = {
+            "has_warnings": False,
+            "warnings": [],
+            "metadata": {},
+            "filename": analysis_record.get("resume_filename") or "resume.pdf",
+            "clean_filename_pattern": "FirstName_LastName_Role.pdf",
+            "suggested_filename": "FirstName_LastName_Resume.pdf",
+            "has_any_metadata": False,
+            "is_clean": True,
         }
 
     return render_template(
