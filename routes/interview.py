@@ -3231,4 +3231,209 @@ def api_match_behavioural_stories():
     }), 200
 
 
+# ---------------------------------------------------------------------------
+# Searchable Interview Question Bank (#759)
+# ---------------------------------------------------------------------------
+
+@interview_bp.route("/interview/question-bank", methods=["GET"])
+@interview_bp.route("/question-bank", methods=["GET"])
+def view_question_bank():
+    """
+    Renders the searchable interview question bank with tag filters,
+    short answer outlines, and session favorites list (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+
+    query = request.args.get("q", "").strip()
+    category = request.args.get("category", "").strip() or None
+    difficulty = request.args.get("difficulty", "").strip() or None
+    role = request.args.get("role", "").strip() or None
+    tag = request.args.get("tag", "").strip() or None
+
+    filtered_questions = question_bank_service.search_and_filter(
+        query=query,
+        category=category,
+        difficulty=difficulty,
+        role=role,
+        tag=tag
+    )
+
+    filter_options = question_bank_service.get_filter_options()
+    session_favorites = flask_session.get("interview_question_favorites", [])
+
+    return render_template(
+        "interview_question_bank.html",
+        questions=filtered_questions,
+        filter_options=filter_options,
+        current_query=query,
+        current_category=category or "all",
+        current_difficulty=difficulty or "all",
+        current_role=role or "all",
+        current_tag=tag or "all",
+        session_favorites=session_favorites,
+        session_favorites_json=json.dumps(session_favorites),
+        total_matching=len(filtered_questions),
+    )
+
+
+@interview_bp.route("/api/interview/question-bank", methods=["GET"])
+def api_get_question_bank():
+    """
+    Returns filtered interview questions and session favorites state (#759).
+    Supports concurrent search query and category, difficulty, role, and tag filters.
+    """
+    from utils.question_bank_service import question_bank_service
+
+    query = request.args.get("q", "").strip()
+    category = request.args.get("category", "").strip() or None
+    difficulty = request.args.get("difficulty", "").strip() or None
+    role = request.args.get("role", "").strip() or None
+    tag = request.args.get("tag", "").strip() or None
+
+    filtered_questions = question_bank_service.search_and_filter(
+        query=query,
+        category=category,
+        difficulty=difficulty,
+        role=role,
+        tag=tag
+    )
+
+    favorites = flask_session.get("interview_question_favorites", [])
+
+    return jsonify({
+        "success": True,
+        "total": len(filtered_questions),
+        "questions": filtered_questions,
+        "favorites": favorites,
+        "active_filters": {
+            "query": query,
+            "category": category or "all",
+            "difficulty": difficulty or "all",
+            "role": role or "all",
+            "tag": tag or "all"
+        }
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-bank/filters", methods=["GET"])
+def api_get_question_bank_filters():
+    """
+    Returns dynamic categories, difficulties, roles, and tags for filter controls (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+    return jsonify({
+        "success": True,
+        "filter_options": question_bank_service.get_filter_options()
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-bank/<question_id>", methods=["GET"])
+def api_get_question_bank_item(question_id: str):
+    """
+    Retrieves a single question and its short answer outline by ID (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+    q = question_bank_service.get_question_by_id(question_id)
+    if not q:
+        return jsonify({"success": False, "error": "Question not found"}), 404
+    favorites = flask_session.get("interview_question_favorites", [])
+    return jsonify({
+        "success": True,
+        "question": q,
+        "is_favorite": q.get("id") in favorites
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-bank/favorites/toggle", methods=["POST"])
+def api_toggle_question_bank_favorite():
+    """
+    Toggles or sets a question as a session favorite (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+
+    payload = request.get_json(silent=True) or request.form or {}
+    question_id = payload.get("question_id")
+    if not question_id:
+        return jsonify({"success": False, "error": "question_id is required"}), 400
+
+    q = question_bank_service.get_question_by_id(question_id)
+    if not q:
+        return jsonify({"success": False, "error": "Question not found"}), 404
+
+    target_fav = payload.get("favorite")
+    favorites = set(flask_session.get("interview_question_favorites", []))
+
+    if target_fav is None:
+        if question_id in favorites:
+            favorites.remove(question_id)
+            is_fav = False
+        else:
+            favorites.add(question_id)
+            is_fav = True
+    elif bool(target_fav):
+        favorites.add(question_id)
+        is_fav = True
+    else:
+        favorites.discard(question_id)
+        is_fav = False
+
+    flask_session["interview_question_favorites"] = list(favorites)
+    flask_session.modified = True
+
+    return jsonify({
+        "success": True,
+        "question_id": question_id,
+        "is_favorite": is_fav,
+        "total_favorites": len(favorites),
+        "favorites": list(favorites)
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-bank/favorites", methods=["GET"])
+def api_get_question_bank_favorites():
+    """
+    Retrieves all questions currently marked as favorites in the session (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+    fav_ids = flask_session.get("interview_question_favorites", [])
+    questions = question_bank_service.load_questions()
+    q_map = {q.get("id"): q for q in questions if q.get("id")}
+    fav_questions = [q_map[fid] for fid in fav_ids if fid in q_map]
+
+    return jsonify({
+        "success": True,
+        "count": len(fav_questions),
+        "favorite_ids": fav_ids,
+        "questions": fav_questions
+    }), 200
+
+
+@interview_bp.route("/api/interview/question-bank/favorites/export", methods=["POST", "GET"])
+def api_export_question_bank_favorites():
+    """
+    Generates a cleanly formatted text/markdown list of favorite questions
+    with short answer outlines for one-click clipboard copying (#759).
+    """
+    from utils.question_bank_service import question_bank_service
+
+    payload = request.get_json(silent=True) or request.form or {}
+    custom_ids = payload.get("favorite_ids")
+    fav_ids = custom_ids if isinstance(custom_ids, list) else flask_session.get("interview_question_favorites", [])
+    include_outlines = payload.get("include_outlines", True)
+    if isinstance(include_outlines, str):
+        include_outlines = include_outlines.lower() not in ("false", "0", "no")
+
+    formatted_text = question_bank_service.format_favorites_as_text(
+        favorite_ids=fav_ids,
+        include_outlines=include_outlines
+    )
+
+    return jsonify({
+        "success": True,
+        "count": len(fav_ids),
+        "formatted_text": formatted_text
+    }), 200
+
+
+
 

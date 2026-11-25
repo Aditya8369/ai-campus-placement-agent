@@ -693,6 +693,32 @@ def _migration_010_faculty_interventions(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_category ON faculty_interventions(category)")
 
 
+def _migration_010_api_retry_records(cursor: sqlite3.Cursor) -> None:
+    """Create api_retry_records table for failed operation request replay (#445, #553)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS api_retry_records (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL DEFAULT 'default_student',
+            operation_type TEXT NOT NULL,
+            endpoint TEXT NOT NULL,
+            http_method TEXT NOT NULL DEFAULT 'POST',
+            payload_json TEXT NOT NULL,
+            idempotency_key TEXT UNIQUE NOT NULL,
+            status TEXT NOT NULL DEFAULT 'failed',
+            error_message TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3,
+            last_response_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_user ON api_retry_records (user_id, status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_expires ON api_retry_records (expires_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_retry_records_idempotency ON api_retry_records (idempotency_key)")
+
+
 def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
     """Create deprecated_api_metrics table to track deprecated field and route invocations (#445, #553)."""
     cursor.execute("""
