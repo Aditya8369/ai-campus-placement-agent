@@ -444,11 +444,23 @@ def _extract_and_validate_resume(req):
             return None, None, None, "The uploaded file is empty. Please upload a valid resume."
 
         if file_size > max_bytes:
+            from utils.request_size_diagnostics import log_size_failure, format_size_bytes
+            err_info = {
+                "field": "resume",
+                "field_type": "file",
+                "filename": uploaded_file.filename,
+                "max_allowed_size_bytes": max_bytes,
+                "max_allowed_size": f"{max_mb} MB",
+                "received_size_bytes": file_size,
+                "received_size": format_size_bytes(file_size),
+                "message": f"The uploaded file for 'resume' ('{uploaded_file.filename}', {format_size_bytes(file_size)}) exceeds the maximum allowed size of {max_mb} MB.",
+            }
+            log_size_failure(err_info, req)
             return (
                 None,
                 None,
                 None,
-                f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file.",
+                f"The uploaded file for 'resume' exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file.",
             )
 
         # Verify real content type (magic bytes) before saving and parsing (Issue #153)
@@ -619,8 +631,21 @@ def _read_application_import_csv(uploaded_file):
     if not uploaded_file.filename.lower().endswith(".csv"):
         raise ValueError("Only CSV files are supported.")
     uploaded_file.seek(0, os.SEEK_END)
-    if uploaded_file.tell() > APPLICATION_IMPORT_MAX_BYTES:
-        raise ValueError("CSV files must be 5 MB or smaller.")
+    file_size = uploaded_file.tell()
+    if file_size > APPLICATION_IMPORT_MAX_BYTES:
+        from utils.request_size_diagnostics import log_size_failure, format_size_bytes
+        err_info = {
+            "field": "csv_file",
+            "field_type": "file",
+            "filename": uploaded_file.filename,
+            "max_allowed_size_bytes": APPLICATION_IMPORT_MAX_BYTES,
+            "max_allowed_size": format_size_bytes(APPLICATION_IMPORT_MAX_BYTES),
+            "received_size_bytes": file_size,
+            "received_size": format_size_bytes(file_size),
+            "message": f"The uploaded CSV file for 'csv_file' ('{uploaded_file.filename}', {format_size_bytes(file_size)}) exceeds the maximum allowed size of {format_size_bytes(APPLICATION_IMPORT_MAX_BYTES)}.",
+        }
+        log_size_failure(err_info)
+        raise ValueError(f"CSV files must be {format_size_bytes(APPLICATION_IMPORT_MAX_BYTES)} or smaller.")
     uploaded_file.seek(0)
     try:
         content = uploaded_file.read().decode("utf-8-sig")

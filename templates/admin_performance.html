@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Performance &amp; Latency Breakdown Telemetry - Admin Portal</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <!-- FontAwesome Icons -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" integrity="sha384-iw3OoTErCYJJB9mCa8LNS2hbsQ7M3C0EpIsO/H5+EGAkPGc6rk+V8i04oW/K5xq0" crossorigin="anonymous">
+  <!-- Custom CSS -->
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.6.1/dist/chart.umd.min.js" integrity="sha384-Emf5ZVIUiarAdhkgtqK+5/Z5qIvM6QoVrS+qAVtfyZVuD5lIHrac0me485+Antp0" crossorigin="anonymous"></script>
+</head>
+<body class="bg-light d-flex flex-column min-vh-100">
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom py-2 py-md-3" aria-label="Admin Navigation">
+    <div class="container d-flex flex-wrap align-items-center justify-content-between gap-2">
+      <a class="navbar-brand navbar-brand-custom fs-5 fs-md-4 text-truncate" href="/">
+        <i class="fa-solid fa-graduation-cap"></i> AI Campus <span class="d-inline">Placement Agent</span>
+        <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill fs-7 ms-2 py-1 px-2">
+          <i class="fa-solid fa-shield-halved me-1"></i> Admin Portal
+        </span>
+      </a>
+      <div class="d-flex align-items-center gap-2">
+        <a href="/admin/ai-metrics" class="btn btn-outline-secondary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-microchip me-1"></i> AI Metrics
+        </a>
+        <a href="/" class="btn btn-outline-primary btn-sm rounded-pill px-3">
+          <i class="fa-solid fa-house me-1"></i> Dashboard Home
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="container py-4 my-auto" id="adminPerformanceContainer">
+    <!-- Header Title & Export Controls -->
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div>
+        <h2 class="fw-bold mb-1">
+          <i class="fa-solid fa-gauge-high text-primary me-2"></i>Route Performance &amp; Latency Telemetry
+        </h2>
+        <p class="text-secondary small mb-0">
+          Decomposes response latencies across Database, AI Service, File Processing, and Template Rendering.
+          Identifies slow endpoints without logging any resume text, passwords, tokens, or private content.
+        </p>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        {% set query_params = [] %}
+        {% if summary.filters.endpoint and summary.filters.endpoint != 'all' %}{% set _ = query_params.append('endpoint=' ~ summary.filters.endpoint) %}{% endif %}
+        {% if summary.filters.is_slow is not none %}{% set _ = query_params.append('is_slow=' ~ ('1' if summary.filters.is_slow else '0')) %}{% endif %}
+        {% if summary.filters.bottleneck and summary.filters.bottleneck != 'all' %}{% set _ = query_params.append('bottleneck=' ~ summary.filters.bottleneck) %}{% endif %}
+        {% if summary.filters.time_range and summary.filters.time_range != 'all' %}{% set _ = query_params.append('time_range=' ~ summary.filters.time_range) %}{% endif %}
+        {% set export_qs = ('?' ~ query_params|join('&')) if query_params else '' %}
+        <a href="/admin/performance/export.csv{{ export_qs }}" class="btn btn-outline-success btn-sm rounded-pill px-3 shadow-sm" id="btnExportPerfCsv" title="Export filtered performance telemetry as CSV">
+          <i class="fa-solid fa-file-csv me-1"></i> Export Telemetry CSV
+        </a>
+      </div>
+    </div>
+
+    <!-- Privacy Assurance Callout -->
+    <div class="alert alert-info border-0 shadow-sm rounded-4 mb-4 d-flex align-items-center gap-3">
+      <i class="fa-solid fa-user-shield fs-3 text-info"></i>
+      <div>
+        <h6 class="fw-bold mb-1">Strict Privacy &amp; Data Protection Assurance</h6>
+        <p class="small mb-0 text-muted">
+          All performance metrics are strictly operational timings. Request bodies, resume contents, candidate interview answers,
+          authorization headers, passwords, and secrets are never stored or logged. URLs are sanitized to strip confidential tokens.
+        </p>
+      </div>
+    </div>
+
+    <!-- Filter Form Bar -->
+    <div class="card border-0 shadow-sm rounded-4 mb-4 p-3 bg-white">
+      <form method="GET" action="/admin/performance" class="row g-2 align-items-end" id="perfFilterForm">
+        <div class="col-12 col-md-3">
+          <label for="filterEndpoint" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-code-fork me-1"></i> Endpoint
+          </label>
+          <select name="endpoint" id="filterEndpoint" class="form-select form-select-sm rounded-pill">
+            <option value="all" {% if summary.filters.endpoint == 'all' %}selected{% endif %}>All Endpoints</option>
+            {% for ep in summary.all_endpoints %}
+            <option value="{{ ep }}" {% if summary.filters.endpoint == ep %}selected{% endif %}>{{ ep }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label for="filterBottleneck" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-filter me-1"></i> Primary Bottleneck
+          </label>
+          <select name="bottleneck" id="filterBottleneck" class="form-select form-select-sm rounded-pill">
+            <option value="all" {% if summary.filters.bottleneck == 'all' %}selected{% endif %}>All Bottlenecks</option>
+            <option value="database" {% if summary.filters.bottleneck == 'database' %}selected{% endif %}>Database (Queries)</option>
+            <option value="ai_service" {% if summary.filters.bottleneck == 'ai_service' %}selected{% endif %}>AI Service (Gemini)</option>
+            <option value="file_processing" {% if summary.filters.bottleneck == 'file_processing' %}selected{% endif %}>File Processing (PDF/Docx)</option>
+            <option value="rendering" {% if summary.filters.bottleneck == 'rendering' %}selected{% endif %}>Template Rendering</option>
+            <option value="application" {% if summary.filters.bottleneck == 'application' %}selected{% endif %}>Application Logic</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-2">
+          <label for="filterTimeRange" class="form-label small fw-semibold text-secondary mb-1">
+            <i class="fa-solid fa-clock me-1"></i> Time Range
+          </label>
+          <select name="time_range" id="filterTimeRange" class="form-select form-select-sm rounded-pill">
+            <option value="all" {% if summary.filters.time_range == 'all' %}selected{% endif %}>All Time</option>
+            <option value="1h" {% if summary.filters.time_range == '1h' %}selected{% endif %}>Last 1 Hour</option>
+            <option value="24h" {% if summary.filters.time_range == '24h' %}selected{% endif %}>Last 24 Hours</option>
+            <option value="7d" {% if summary.filters.time_range == '7d' %}selected{% endif %}>Last 7 Days</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-2 d-flex align-items-center pb-1">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" role="switch" name="is_slow" value="1" id="filterIsSlow" {% if summary.filters.is_slow %}checked{% endif %}>
+            <label class="form-check-label small fw-semibold" for="filterIsSlow">
+              Slow Only (&gt;{{ summary.kpis.slow_threshold_ms }}ms)
+            </label>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-2 d-flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm rounded-pill px-3 flex-grow-1" id="btnApplyFilter">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Filter
+          </button>
+          <a href="/admin/performance" class="btn btn-outline-secondary btn-sm rounded-pill px-3" title="Clear filters">
+            <i class="fa-solid fa-rotate-left"></i>
+          </a>
+        </div>
+      </form>
+    </div>
+
+    <!-- KPI Summary Metric Cards -->
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary small fw-semibold">Total Requests</span>
+            <div class="badge bg-primary-subtle text-primary rounded-circle p-2">
+              <i class="fa-solid fa-server fs-6"></i>
+            </div>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiTotalRequests">{{ summary.kpis.total_requests }}</h3>
+          <span class="text-muted small">Monitored transactions</span>
+        </div>
+      </div>
+
+      <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary small fw-semibold">Average Latency</span>
+            <div class="badge bg-info-subtle text-info rounded-circle p-2">
+              <i class="fa-solid fa-stopwatch fs-6"></i>
+            </div>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiAvgDuration">{{ summary.kpis.avg_duration_ms }} ms</h3>
+          <span class="text-muted small">Across all active routes</span>
+        </div>
+      </div>
+
+      <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary small fw-semibold">95th Percentile (p95)</span>
+            <div class="badge bg-warning-subtle text-warning-emphasis rounded-circle p-2">
+              <i class="fa-solid fa-chart-line fs-6"></i>
+            </div>
+          </div>
+          <h3 class="fw-bold mb-0 text-dark" id="kpiP95Duration">{{ summary.kpis.p95_duration_ms }} ms</h3>
+          <span class="text-muted small">Tail latency experience</span>
+        </div>
+      </div>
+
+      <div class="col-6 col-lg-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 bg-white h-100">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="text-secondary small fw-semibold">Slow Request Rate</span>
+            <div class="badge {% if summary.kpis.slow_rate_pct > 10 %}bg-danger-subtle text-danger{% else %}bg-success-subtle text-success{% endif %} rounded-circle p-2">
+              <i class="fa-solid fa-triangle-exclamation fs-6"></i>
+            </div>
+          </div>
+          <h3 class="fw-bold mb-0 {% if summary.kpis.slow_rate_pct > 10 %}text-danger{% else %}text-dark{% endif %}" id="kpiSlowRate">
+            {{ summary.kpis.slow_rate_pct }}%
+          </h3>
+          <span class="text-muted small">{{ summary.kpis.slow_requests_count }} requests exceeded {{ summary.kpis.slow_threshold_ms }}ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Component Breakdown Bar Card -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+      <h5 class="fw-bold mb-3">
+        <i class="fa-solid fa-chart-pie text-primary me-2"></i>Average Component Latency Breakdown
+      </h5>
+      <div class="row g-3 mb-3 text-center">
+        <div class="col-6 col-md-3">
+          <div class="p-2 border rounded-3 bg-light">
+            <span class="small text-secondary d-block"><i class="fa-solid fa-database text-warning me-1"></i>Database</span>
+            <span class="fw-bold fs-6">{{ summary.kpis.avg_db_ms }} ms</span>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 border rounded-3 bg-light">
+            <span class="small text-secondary d-block"><i class="fa-solid fa-brain text-danger me-1"></i>AI Service</span>
+            <span class="fw-bold fs-6">{{ summary.kpis.avg_ai_ms }} ms</span>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 border rounded-3 bg-light">
+            <span class="small text-secondary d-block"><i class="fa-solid fa-file-lines text-info me-1"></i>File Processing</span>
+            <span class="fw-bold fs-6">{{ summary.kpis.avg_file_ms }} ms</span>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="p-2 border rounded-3 bg-light">
+            <span class="small text-secondary d-block"><i class="fa-solid fa-palette text-primary me-1"></i>Rendering</span>
+            <span class="fw-bold fs-6">{{ summary.kpis.avg_render_ms }} ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottleneck Badges -->
+      <div class="d-flex flex-wrap gap-2 align-items-center">
+        <span class="small fw-semibold text-secondary me-2">Primary Bottleneck Distribution:</span>
+        {% for b_name, b_count in summary.bottlenecks.items() %}
+        <span class="badge {% if b_name == 'ai_service' %}bg-danger-subtle text-danger border border-danger-subtle{% elif b_name == 'database' %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% elif b_name == 'file_processing' %}bg-info-subtle text-info border border-info-subtle{% elif b_name == 'rendering' %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %} rounded-pill px-3 py-1">
+          {{ b_name|replace('_', ' ')|title }}: {{ b_count }}
+        </span>
+        {% else %}
+        <span class="text-muted small">No bottleneck data recorded yet.</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- Endpoints Aggregation Table -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 mb-4 bg-white">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h5 class="fw-bold mb-0">
+          <i class="fa-solid fa-layer-group text-primary me-2"></i>Endpoint Latency Breakdown &amp; Bottlenecks
+        </h5>
+        <span class="badge bg-secondary-subtle text-secondary rounded-pill px-3">
+          {{ summary.endpoint_stats|length }} Endpoints
+        </span>
+      </div>
+
+      {% if summary.endpoint_stats %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0" id="endpointSummaryTable">
+          <caption class="small text-muted py-2">
+            Aggregated performance metrics and component latency distribution grouped by application endpoint.
+          </caption>
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Endpoint</th>
+              <th scope="col" class="text-center">Requests</th>
+              <th scope="col" class="text-center">Avg Total</th>
+              <th scope="col" class="text-center">p95 Tail</th>
+              <th scope="col" class="text-center">Slow Count</th>
+              <th scope="col" class="text-center">DB Avg</th>
+              <th scope="col" class="text-center">AI Avg</th>
+              <th scope="col" class="text-center">File Avg</th>
+              <th scope="col" class="text-center">Render Avg</th>
+              <th scope="col">Dominant Bottleneck</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ep in summary.endpoint_stats %}
+            <tr>
+              <td>
+                <span class="fw-semibold text-dark font-monospace small">{{ ep.endpoint }}</span>
+              </td>
+              <td class="text-center fw-medium">{{ ep.call_count }}</td>
+              <td class="text-center fw-bold {% if ep.avg_duration_ms > summary.kpis.slow_threshold_ms %}text-danger{% elif ep.avg_duration_ms > 200 %}text-warning-emphasis{% else %}text-success{% endif %}">
+                {{ ep.avg_duration_ms }} ms
+              </td>
+              <td class="text-center text-muted small">{{ ep.max_duration_ms }} ms</td>
+              <td class="text-center">
+                {% if ep.slow_count > 0 %}
+                <span class="badge bg-danger-subtle text-danger rounded-pill px-2">{{ ep.slow_count }}</span>
+                {% else %}
+                <span class="text-muted small">0</span>
+                {% endif %}
+              </td>
+              <td class="text-center small text-secondary">{{ ep.avg_db_ms }} ms</td>
+              <td class="text-center small text-secondary">{{ ep.avg_ai_ms }} ms</td>
+              <td class="text-center small text-secondary">{{ ep.avg_file_ms }} ms</td>
+              <td class="text-center small text-secondary">{{ ep.avg_render_ms }} ms</td>
+              <td>
+                <span class="badge {% if ep.dominant_bottleneck == 'ai_service' %}bg-danger-subtle text-danger border border-danger-subtle{% elif ep.dominant_bottleneck == 'database' %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% elif ep.dominant_bottleneck == 'file_processing' %}bg-info-subtle text-info border border-info-subtle{% elif ep.dominant_bottleneck == 'rendering' %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %} rounded-pill px-3 py-1">
+                  {{ ep.dominant_bottleneck|replace('_', ' ')|title }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted" role="status" aria-live="polite">
+        <i class="fa-solid fa-clock-rotate-left fa-3x mb-3 text-secondary opacity-50"></i>
+        <h6 class="fw-bold mb-1">No Performance Records Found</h6>
+        <p class="mb-0">No HTTP transactions matching the selected filter criteria have been recorded yet.</p>
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Recent Individual Requests Drilldown Table -->
+    <div class="card border-0 shadow-sm rounded-4 p-4 bg-white">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <h5 class="fw-bold mb-0">
+          <i class="fa-solid fa-list-check text-primary me-2"></i>Recent Request Telemetry
+        </h5>
+        <span class="small text-muted">Showing latest {{ summary.recent_requests|length }} transactions</span>
+      </div>
+
+      {% if summary.recent_requests %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0" id="recentRequestsTable">
+          <caption class="small text-muted py-2">
+            Chronological individual request timing logs with component breakdowns and safe path sanitization.
+          </caption>
+          <thead class="table-light">
+            <tr>
+              <th scope="col">Timestamp (UTC)</th>
+              <th scope="col">Method</th>
+              <th scope="col">Sanitized Path</th>
+              <th scope="col">Status</th>
+              <th scope="col" class="text-end">Total Duration</th>
+              <th scope="col" class="text-end">DB Time</th>
+              <th scope="col" class="text-end">AI Time</th>
+              <th scope="col" class="text-end">File Time</th>
+              <th scope="col" class="text-end">Render Time</th>
+              <th scope="col">Bottleneck</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for req in summary.recent_requests %}
+            <tr {% if req.is_slow %}class="table-warning-subtle"{% endif %}>
+              <td class="small text-muted font-monospace">{{ req.timestamp }}</td>
+              <td>
+                <span class="badge {% if req.method == 'GET' %}bg-primary-subtle text-primary{% elif req.method == 'POST' %}bg-success-subtle text-success{% else %}bg-secondary-subtle text-secondary{% endif %} fw-bold">
+                  {{ req.method }}
+                </span>
+              </td>
+              <td>
+                <span class="font-monospace small text-dark" title="{{ req.endpoint }}">{{ req.path }}</span>
+              </td>
+              <td>
+                <span class="badge {% if req.status_code >= 500 %}bg-danger text-white{% elif req.status_code >= 400 %}bg-warning text-dark{% else %}bg-light text-secondary border{% endif %}">
+                  {{ req.status_code }}
+                </span>
+              </td>
+              <td class="text-end fw-bold {% if req.is_slow %}text-danger{% else %}text-dark{% endif %}">
+                {{ req.duration_ms }} ms
+              </td>
+              <td class="text-end small text-secondary">
+                {{ req.db_duration_ms }} ms
+                {% if req.db_query_count > 0 %}
+                <span class="badge bg-light text-secondary border rounded-pill small">x{{ req.db_query_count }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end small text-secondary">
+                {% if req.ai_duration_ms > 0 %}
+                <span class="text-danger fw-semibold">{{ req.ai_duration_ms }} ms</span>
+                {% else %}
+                0.0 ms
+                {% endif %}
+              </td>
+              <td class="text-end small text-secondary">
+                {{ req.file_duration_ms }} ms
+              </td>
+              <td class="text-end small text-secondary">
+                {{ req.render_duration_ms }} ms
+              </td>
+              <td>
+                <span class="badge {% if req.primary_bottleneck == 'ai_service' %}bg-danger-subtle text-danger border border-danger-subtle{% elif req.primary_bottleneck == 'database' %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% elif req.primary_bottleneck == 'file_processing' %}bg-info-subtle text-info border border-info-subtle{% elif req.primary_bottleneck == 'rendering' %}bg-primary-subtle text-primary border border-primary-subtle{% else %}bg-secondary-subtle text-secondary border border-secondary-subtle{% endif %} rounded-pill px-2 py-1 small">
+                  {{ req.primary_bottleneck|replace('_', ' ')|title }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-muted" role="status" aria-live="polite">
+        <i class="fa-solid fa-list-ol fa-3x mb-3 text-secondary opacity-50"></i>
+        <h6 class="fw-bold mb-1">No Recent Requests Recorded</h6>
+        <p class="mb-0">Requests will appear here as users and tests navigate pages and call APIs.</p>
+      </div>
+      {% endif %}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-white border-top py-3 mt-auto">
+    <div class="container text-center text-secondary small">
+      AI Campus Placement Agent &bull; Safe Performance &amp; Latency Observability
+    </div>
+  </footer>
+
+</body>
+</html>

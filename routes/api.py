@@ -469,4 +469,22 @@ def api_admin_resolve_incident(incident_id):
     return jsonify({"status": "success", "resolved": resolved}), 200
 
 
+@api_bp.route("/api/diagnostics/request-size", methods=["GET"], endpoint="api_request_size_diagnostics_legacy")
+@api_bp.route("/api/v1/diagnostics/request-size", methods=["GET"], endpoint="api_request_size_diagnostics_v1")
+def api_request_size_diagnostics_endpoint():
+    """
+    Returns real-time request-size diagnostics summary, active limits,
+    and recent size failure incidents (#784).
+    """
+    from utils.request_size_diagnostics import get_size_diagnostics_summary
+    limit_param = request.args.get("limit", 50)
+    try:
+        limit = int(limit_param)
+    except (ValueError, TypeError):
+        limit = 50
+    summary = get_size_diagnostics_summary(limit=limit)
+    return jsonify(summary), 200
+
+
+
 

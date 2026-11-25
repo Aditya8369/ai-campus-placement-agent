@@ -114,6 +114,13 @@ def record_ai_call_metric(
     success_int = 1 if success else 0
     clean_error_type = (error_type.strip() if error_type else None) if not success else None
 
+    # Track AI latency in active request performance tracker (#task-performance-monitoring)
+    try:
+        from utils.performance_monitor import record_ai_timing
+        record_ai_timing(clean_latency, call_count=1)
+    except Exception:
+        pass
+
     metric_id = str(uuid.uuid4())
     conn = get_db_connection()
     try:

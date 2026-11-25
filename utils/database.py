@@ -18,8 +18,16 @@ def get_db_connection() -> sqlite3.Connection:
     Establishes and returns a connection to the SQLite database.
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
+    Instruments query execution timing safely (#task-performance-monitoring).
     """
-    return create_connection()
+    db_path = getattr(config, "DATABASE_PATH", None) or getattr(Config, "DATABASE_PATH", "placement_agent.db")
+    try:
+        from utils.performance_monitor import MonitoredConnection
+        conn = sqlite3.connect(db_path, timeout=10.0, factory=MonitoredConnection)
+    except Exception:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
@@ -6757,6 +6765,13 @@ from db.interviews import (
     update_preparation_note,
 )
 
+from utils.interview_helpful_service import (
+    toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
+)
+
 from db.connection import (
     create_connection,
     get_connection,
@@ -6872,6 +6887,12 @@ from db.tracker import (
     calculate_checklist_progress,
     get_default_checklist,
     get_dashboard_drive_reminder,
+)
+from utils.interview_helpful_service import (
+    check_voting_rate_limit,
+    get_contributor_helped_students_count,
+    get_user_helpful_votes,
+    toggle_helpful_vote,
 )
 
 logger = logging.getLogger(__name__)
