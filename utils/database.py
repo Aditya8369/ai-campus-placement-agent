@@ -2040,17 +2040,19 @@ def export_job_applications_csv(
         "Created At"
     ])
 
+    from db.tracker import escape_csv_cell
+
     for app_item in applications:
         writer.writerow([
-            app_item.get("id", ""),
-            app_item.get("company_name", ""),
-            app_item.get("role_title", ""),
-            app_item.get("status", ""),
-            app_item.get("application_date", ""),
-            app_item.get("job_url", ""),
-            app_item.get("job_description", ""),
-            app_item.get("notes", ""),
-            app_item.get("created_at", "")
+            escape_csv_cell(app_item.get("id", "")),
+            escape_csv_cell(app_item.get("company_name", "")),
+            escape_csv_cell(app_item.get("role_title", "")),
+            escape_csv_cell(app_item.get("status", "")),
+            escape_csv_cell(app_item.get("application_date", "")),
+            escape_csv_cell(app_item.get("job_url", "")),
+            escape_csv_cell(app_item.get("job_description", "")),
+            escape_csv_cell(app_item.get("notes", "")),
+            escape_csv_cell(app_item.get("created_at", ""))
         ])
 
     return output.getvalue()
@@ -6901,6 +6903,12 @@ from db.users import (
 )
 
 from db.tracker import (
+    MAX_BULK_BATCH_SIZE,
+    escape_csv_cell,
+    bulk_update_application_status,
+    bulk_add_application_tag,
+    bulk_delete_applications,
+    bulk_export_applications_csv,
     clear_recently_viewed_jobs,
     create_saved_job_description,
     delete_calendar_event,
@@ -7052,6 +7060,13 @@ __all__ = [
     "save_job_contact",
     "get_job_contacts",
     "delete_job_contact",
+    # Bulk Application Operations (#848)
+    "MAX_BULK_BATCH_SIZE",
+    "escape_csv_cell",
+    "bulk_update_application_status",
+    "bulk_add_application_tag",
+    "bulk_delete_applications",
+    "bulk_export_applications_csv",
     # Coding Practice
     "save_coding_submission",
     "get_coding_submissions",
