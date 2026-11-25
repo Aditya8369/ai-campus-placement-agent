@@ -1188,26 +1188,55 @@ def download_interview_transcript(analysis_id: str):
 @interview_bp.route("/interview-history")
 def interview_history_view():
     """
-    Mock Interview Performance History view (#144).
-    Displays historical mock interview attempts, scores by question type, and score progression trends.
+    Mock Interview Performance History view (#144, #787).
+    Displays historical mock interview attempts, scores by question type,
+    score progression trends, and directional interview readiness trend predictions.
     """
-    student_id = request.args.get("student_id", "default_student").strip()
+    from utils.interview_readiness_trend_service import predict_interview_readiness_trend
+    student_id = (request.args.get("student_id") or flask_session.get("user_id") or "default_student").strip()
     analytics = get_student_interview_performance_analytics(student_id=student_id)
-    return render_template("interview_history.html", analytics=analytics, student_id=student_id)
+    readiness_trend = predict_interview_readiness_trend(student_id=student_id)
+    return render_template(
+        "interview_history.html",
+        analytics=analytics,
+        student_id=student_id,
+        readiness_trend=readiness_trend,
+    )
 
 
 @interview_bp.route("/api/interview-history")
 def api_interview_history():
     """
-    API endpoint returning historical mock interview attempts and analytics (#144).
+    API endpoint returning historical mock interview attempts, analytics, and readiness trend (#144, #787).
     """
-    student_id = request.args.get("student_id", "default_student").strip()
+    from utils.interview_readiness_trend_service import predict_interview_readiness_trend
+    student_id = (request.args.get("student_id") or flask_session.get("user_id") or "default_student").strip()
     analytics = get_student_interview_performance_analytics(student_id=student_id)
+    readiness_trend = predict_interview_readiness_trend(student_id=student_id)
     return jsonify({
         "success": True,
         "student_id": student_id,
-        "analytics": analytics
+        "analytics": analytics,
+        "readiness_trend": readiness_trend,
     })
+
+
+@interview_bp.route("/api/interview/readiness-trend")
+@interview_bp.route("/api/interview-readiness-trend")
+def api_interview_readiness_trend():
+    """
+    API endpoint returning interview readiness trend predictions (#787).
+    Projects improving, stable, or at risk trajectory from recent practice scores
+    and completed tasks, clearly labeled as a directional planning estimate.
+    """
+    from utils.interview_readiness_trend_service import predict_interview_readiness_trend
+    student_id = (request.args.get("student_id") or flask_session.get("user_id") or "default_student").strip()
+    trend_prediction = predict_interview_readiness_trend(student_id=student_id)
+    return jsonify({
+        "success": True,
+        "student_id": student_id,
+        "readiness_trend": trend_prediction,
+    }), 200
 
 
 @interview_bp.route("/api/notifications/remind-interview", methods=["POST"])
