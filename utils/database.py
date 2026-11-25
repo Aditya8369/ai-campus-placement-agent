@@ -6732,10 +6732,10 @@ from db.interviews import (
 )
 
 from utils.interview_helpful_service import (
-    check_voting_rate_limit,
-    get_contributor_helped_students_count,
-    get_user_helpful_votes,
     toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
 )
 
 from db.connection import (
