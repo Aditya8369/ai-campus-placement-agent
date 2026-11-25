@@ -326,8 +326,7 @@ def start_async_analysis(
     analysis_id: str,
     student_id: Optional[str] = None,
     format_compatibility: Optional[Dict[str, Any]] = None,
-    stored_resume_id: Optional[str] = None,
-    stored_resume_label: Optional[str] = None
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Dispatches the multi-agent analysis to the background ThreadPoolExecutor.
@@ -349,8 +348,7 @@ def start_async_analysis(
         analysis_id,
         student_id,
         format_compatibility,
-        stored_resume_id,
-        stored_resume_label
+        pdf_metadata_hygiene
     )
 
 
@@ -365,8 +363,7 @@ def _run_analysis_pipeline(
     analysis_id: str,
     student_id: Optional[str] = None,
     format_compatibility: Optional[Dict[str, Any]] = None,
-    stored_resume_id: Optional[str] = None,
-    stored_resume_label: Optional[str] = None
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
 ) -> None:
     """
     Worker thread routine running the sequential multi-agent analysis pipeline.
@@ -508,10 +505,8 @@ def _run_analysis_pipeline(
         if isinstance(analysis_payload, dict):
             if format_compatibility and "format_compatibility" not in analysis_payload:
                 analysis_payload["format_compatibility"] = format_compatibility
-            if stored_resume_id and "stored_resume_id" not in analysis_payload:
-                analysis_payload["stored_resume_id"] = stored_resume_id
-            if stored_resume_label and "stored_resume_label" not in analysis_payload:
-                analysis_payload["stored_resume_label"] = stored_resume_label
+            if pdf_metadata_hygiene and "pdf_metadata_hygiene" not in analysis_payload:
+                analysis_payload["pdf_metadata_hygiene"] = pdf_metadata_hygiene
 
         # Persist completed analysis to SQLite database
         try:
