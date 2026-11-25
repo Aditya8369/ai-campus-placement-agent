@@ -326,6 +326,8 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             last_practiced_at TIMESTAMP,
             practice_answer TEXT DEFAULT '',
             practice_evaluation_json TEXT DEFAULT '{}',
+            last_score REAL,
+            good_score_count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(student_id, question_id)
         )
@@ -740,6 +742,16 @@ def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
 
 
+def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> None:
+    """Adds last_score and good_score_count columns to bookmarked_interview_questions (#846)."""
+    cursor.execute("PRAGMA table_info(bookmarked_interview_questions)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    if "last_score" not in existing_cols:
+        cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN last_score REAL")
+    if "good_score_count" not in existing_cols:
+        cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN good_score_count INTEGER NOT NULL DEFAULT 0")
+
+
 # Documented, sequential migration registry
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
@@ -753,6 +765,7 @@ MIGRATIONS: List[Migration] = [
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
+    Migration("012_saved_questions_score_tracking", "Add last_score and good_score_count to bookmarked_interview_questions", _migration_012_saved_questions_score_tracking),
 ]
 
 
