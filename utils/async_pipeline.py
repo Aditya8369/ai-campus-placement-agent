@@ -516,7 +516,9 @@ def _run_analysis_pipeline(
                 company_name=company_name,
                 job_description=job_description,
                 results_dict=analysis_payload,
-                student_id=student_id or "default_student"
+                student_id=student_id or "default_student",
+                stored_resume_id=stored_resume_id,
+                stored_resume_label=stored_resume_label
             )
         except TypeError:
             save_analysis_func(

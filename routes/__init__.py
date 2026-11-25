@@ -146,6 +146,14 @@ def create_app(config_override=None) -> Flask:
 
     initialize_database(config.DATABASE_PATH)
 
+    # Initialize performance monitoring & latency breakdown service (#task-performance-monitoring)
+    try:
+        from utils.performance_monitor import init_performance_table, init_performance_monitoring
+        init_performance_table()
+        init_performance_monitoring(app)
+    except Exception as e:
+        logger.error(f"Error initializing performance monitoring: {e}")
+
     # Initialize CSRF protection extension (#300)
     csrf.init_app(app)
 
@@ -242,6 +250,11 @@ def create_app(config_override=None) -> Flask:
             "api_session_resume_compare_reset",
             "api_get_role_templates",
             "api_get_role_template_by_id",
+            "api_get_retry_records",
+            "api_create_retry_record",
+            "api_get_retry_record_item",
+            "api_replay_retry_record",
+            "api_cancel_retry_record",
         }
 
         user_id = flask_session.get("user_id")
@@ -451,6 +464,21 @@ def create_app(config_override=None) -> Flask:
         set_current_request_id(req_id)
 
 
+    @app.before_request
+    def check_request_size_limits():
+        """
+        Enforces size limits on JSON request bodies, text parameters, and uploaded files (#784).
+        Returns field-specific error details, max allowed size, and logs with request ID.
+        """
+        # Validate size on API endpoints or endpoints receiving JSON/payload
+        if request.path.startswith("/api/") or request.is_json:
+            from utils.request_size_diagnostics import validate_request_size, build_size_error_response
+            error_info = validate_request_size(request)
+            if error_info:
+                resp, code = build_size_error_response(error_info, request, status_code=413)
+                return resp, code
+
+
     @app.after_request
     def inject_correlation_headers(response):
         """Echo the X-Request-ID correlation header in every response for client observability."""
@@ -488,11 +516,35 @@ def create_app(config_override=None) -> Flask:
 
 
     @app.errorhandler(413)
+    @app.errorhandler(RequestEntityTooLarge)
     def request_entity_too_large(error):
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-        if request.path.startswith("/api/") or request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest":
-            return jsonify({"success": False, "error": msg}), 413
+        """
+        Handles HTTP 413 Payload Too Large / RequestEntityTooLarge errors (#153, #784).
+        Extracts field-specific details (file field, JSON body, etc.), includes the
+        maximum allowed size, and logs the failure with the correlation Request ID.
+        """
+        from utils.request_size_diagnostics import (
+            diagnose_413_exception,
+            build_size_error_response,
+            log_size_failure,
+        )
+
+        error_info = diagnose_413_exception(error, request)
+        req_id = log_size_failure(error_info, request)
+
+        is_api = (
+            request.path.startswith("/api/")
+            or request.is_json
+            or request.args.get("async") == "true"
+            or request.headers.get("Accept") == "application/json"
+            or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+        )
+
+        if is_api:
+            resp, code = build_size_error_response(error_info, request, status_code=413)
+            return resp, code
+
+        msg = error_info["message"]
         flash(msg, "error")
         return redirect(url_for("index"))
 
@@ -745,19 +797,60 @@ def create_app(config_override=None) -> Flask:
         return response
 
 
+    import click
+
     @app.cli.command("send-deadline-reminders")
     def send_deadline_reminders_cli():
         """
         CLI scheduled command to find items due in the next 2 days and dispatch reminder emails (#298).
         Designed for crontab, systemd timers, or APScheduler invocations.
         """
-        import click
         logger.info("Executing scheduled CLI job: send-deadline-reminders...")
         result = send_upcoming_deadline_reminders()
         click.echo(
             f"Deadline reminders complete: sent={result['sent_count']}, "
             f"skipped={result['skipped_count']}, failed={result['failed_count']}"
         )
+
+    @app.cli.command("validate-company-data")
+    @click.argument("paths", nargs=-1, type=click.Path())
+    @click.option("--live", "--check-live-links", "check_live_links", is_flag=True, default=False, help="Verify external URLs via live HTTP requests.")
+    @click.option("--strict", is_flag=True, default=False, help="Treat warnings as errors.")
+    @click.option("--json", "json_output", is_flag=True, default=False, help="Output validation findings as JSON.")
+    @click.option("--quiet", is_flag=True, default=False, help="Suppress output on successful validation.")
+    def validate_company_data_cli(paths, check_live_links, strict, json_output, quiet):
+        """
+        Validate contributor company JSON files for schema, required fields, duplicates, and broken links (#785).
+        """
+        from utils.company_data_validator import validate_paths, format_terminal_report
+        import json as json_module
+
+        results = validate_paths(
+            paths=list(paths) if paths else None,
+            check_live_links=check_live_links,
+            strict=strict,
+        )
+
+        if json_output:
+            payload = {
+                "all_valid": all(r.is_valid for r in results),
+                "total_files": len(results),
+                "total_companies": sum(r.company_count for r in results),
+                "total_errors": sum(len(r.errors) for r in results),
+                "total_warnings": sum(len(r.warnings) for r in results),
+                "files": [r.to_dict() for r in results],
+            }
+            click.echo(json_module.dumps(payload, indent=2))
+        else:
+            report_text = format_terminal_report(results, quiet=quiet)
+            click.echo(report_text)
+
+        is_success = all(r.is_valid for r in results)
+        if strict and any(len(r.warnings) > 0 for r in results):
+            is_success = False
+
+        if not is_success:
+            raise SystemExit(1)
 
     # Register all feature Blueprints
     app.register_blueprint(auth_bp)

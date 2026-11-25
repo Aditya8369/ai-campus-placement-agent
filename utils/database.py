@@ -18,8 +18,16 @@ def get_db_connection() -> sqlite3.Connection:
     Establishes and returns a connection to the SQLite database.
     Sets row_factory to sqlite3.Row for dictionary-like access.
     Configures WAL mode and busy timeout to avoid database lock errors.
+    Instruments query execution timing safely (#task-performance-monitoring).
     """
-    return create_connection()
+    db_path = getattr(config, "DATABASE_PATH", None) or getattr(Config, "DATABASE_PATH", "placement_agent.db")
+    try:
+        from utils.performance_monitor import MonitoredConnection
+        conn = sqlite3.connect(db_path, timeout=10.0, factory=MonitoredConnection)
+    except Exception:
+        conn = sqlite3.connect(db_path, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 def get_analysis_by_id(analysis_id: str) -> Optional[Dict[str, Any]]:
     conn = get_db_connection()
@@ -544,6 +552,10 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE analyses ADD COLUMN version_number INTEGER DEFAULT 1")
         if "target_role" not in existing_cols:
             cursor.execute("ALTER TABLE analyses ADD COLUMN target_role TEXT DEFAULT 'Software Engineer'")
+        if "stored_resume_id" not in existing_cols:
+            cursor.execute("ALTER TABLE analyses ADD COLUMN stored_resume_id TEXT")
+        if "stored_resume_label" not in existing_cols:
+            cursor.execute("ALTER TABLE analyses ADD COLUMN stored_resume_label TEXT")
 
         # Schema migration for job_applications table (#193, #298)
         cursor.execute("PRAGMA table_info(job_applications)")
@@ -811,6 +823,32 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_pcb_created_at ON placement_cell_batches (created_at DESC)")
 
+        # Table 36: Store placement coordinator intervention queue records (#786)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS faculty_interventions (
+                id TEXT PRIMARY KEY,
+                student_id TEXT NOT NULL,
+                student_name TEXT,
+                student_email TEXT,
+                department TEXT NOT NULL DEFAULT 'Computer Science',
+                graduation_year INTEGER NOT NULL DEFAULT 2026,
+                category TEXT NOT NULL,
+                urgency_level TEXT NOT NULL DEFAULT 'medium',
+                explanation TEXT NOT NULL,
+                explanation_detail TEXT,
+                suggested_action TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                snoozed_until TEXT,
+                action_notes TEXT,
+                resolved_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_status ON faculty_interventions(status, urgency_level)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_student ON faculty_interventions(student_id, category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_fac_int_category ON faculty_interventions(category)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -880,10 +918,33 @@ def save_analysis(
                 results_dict["resume_text"] = kwargs["resume_text"]
             if "ats_breakdown" in kwargs and not results_dict.get("ats_breakdown"):
                 results_dict["ats_breakdown"] = kwargs["ats_breakdown"]
+            if "stored_resume_id" in kwargs:
+                results_dict["stored_resume_id"] = kwargs["stored_resume_id"]
+            if "stored_resume_label" in kwargs:
+                results_dict["stored_resume_label"] = kwargs["stored_resume_label"]
+
+        stored_resume_id = kwargs.get("stored_resume_id")
+        stored_resume_label = kwargs.get("stored_resume_label")
 
         cursor.execute("PRAGMA table_info(analyses)")
         col_names = [c[1] for c in cursor.fetchall()]
-        if "target_role" in col_names:
+        if "stored_resume_id" in col_names and "stored_resume_label" in col_names and "target_role" in col_names:
+            cursor.execute("""
+                INSERT INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number, target_role, stored_resume_id, stored_resume_label)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                analysis_id,
+                resume_filename,
+                company_name,
+                job_description,
+                json.dumps(results_dict),
+                effective_student_id,
+                version_number,
+                target_role,
+                stored_resume_id,
+                stored_resume_label
+            ))
+        elif "target_role" in col_names:
             cursor.execute("""
                 INSERT INTO analyses (id, resume_filename, company_name, job_description, results_json, student_id, version_number, target_role)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -1412,9 +1473,14 @@ def get_analyses_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        query = """
+        cursor.execute("PRAGMA table_info(analyses)")
+        col_names = {c[1] for c in cursor.fetchall()}
+        has_stored_cols = "stored_resume_label" in col_names and "stored_resume_id" in col_names
+
+        extra_cols = ", stored_resume_id, stored_resume_label" if has_stored_cols else ""
+        query = f"""
             SELECT id, resume_filename, company_name, job_description, results_json,
-                   student_id, version_number, created_at
+                   student_id, version_number, created_at{extra_cols}
             FROM analyses
             WHERE student_id != 'demo_visitor' AND id NOT IN ('demo-sample-analysis', 'demo_sample_analysis', 'demo')
             ORDER BY created_at DESC, rowid DESC
@@ -1458,6 +1524,12 @@ def get_analyses_history(limit: Optional[int] = None) -> List[Dict[str, Any]]:
                     target_role = "Software Engineer"
 
                 record["target_role"] = target_role
+
+                # Resolve stored resume attribution (#842)
+                if not record.get("stored_resume_label"):
+                    record["stored_resume_label"] = parsed.get("stored_resume_label")
+                if not record.get("stored_resume_id"):
+                    record["stored_resume_id"] = parsed.get("stored_resume_id")
             except Exception as parse_err:
                 logger.warning(f"Error parsing analysis {record.get('id')} results: {parse_err}")
                 record["ats_score"] = 0
@@ -6732,10 +6804,10 @@ from db.interviews import (
 )
 
 from utils.interview_helpful_service import (
-    check_voting_rate_limit,
-    get_contributor_helped_students_count,
-    get_user_helpful_votes,
     toggle_helpful_vote,
+    get_user_helpful_votes,
+    get_contributor_helped_students_count,
+    check_voting_rate_limit,
 )
 
 from db.connection import (
