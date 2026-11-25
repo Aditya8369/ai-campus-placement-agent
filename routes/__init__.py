@@ -767,6 +767,43 @@ def create_app(config_override=None) -> Flask:
             f"skipped={result['skipped_count']}, failed={result['failed_count']}"
         )
 
+    # Local development synthetic seed CLI commands (#task-seed-command)
+    @app.cli.group("seed")
+    def seed_cli_group():
+        """Manage reproducible local development synthetic seed data."""
+        pass
+
+    @seed_cli_group.command("run")
+    @click.option("--reset", is_flag=True, help="Safely reset existing seed data before seeding.")
+    @click.option("--dev", is_flag=True, default=False, help="Target isolated development database.")
+    @click.option("--app-db", is_flag=True, default=False, help="Target primary application database.")
+    @click.option("--db-path", default=None, help="Explicit target database path.")
+    def seed_run_cli(reset, dev, app_db, db_path):
+        """Populates safe synthetic development data for local testing."""
+        from utils.seed_data import resolve_target_database, seed_development_data, print_seed_summary
+        target = resolve_target_database(db_path=db_path, use_dev=dev and not app_db, use_app_db=app_db)
+        result = seed_development_data(target, reset_first=reset)
+        print_seed_summary(result)
+
+    @seed_cli_group.command("reset")
+    @click.option("--all", "reset_all", is_flag=True, help="Reset all tables in target database.")
+    @click.option("--db-path", default=None, help="Target database path.")
+    def seed_reset_cli(reset_all, db_path):
+        """Safely resets synthetic seed data without touching user records."""
+        from utils.seed_data import resolve_target_database, reset_seed_data
+        target = resolve_target_database(db_path=db_path)
+        result = reset_seed_data(target, reset_all=reset_all)
+        click.echo(result["message"])
+
+    @seed_cli_group.command("status")
+    @click.option("--db-path", default=None, help="Target database path.")
+    def seed_status_cli(db_path):
+        """Displays count of seed records vs real user records in database."""
+        from utils.seed_data import resolve_target_database, get_seed_status, print_status_report
+        target = resolve_target_database(db_path=db_path)
+        status = get_seed_status(target)
+        print_status_report(status)
+
     # Register all feature Blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(analysis_bp)
