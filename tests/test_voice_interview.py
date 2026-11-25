@@ -5,7 +5,7 @@ Unit tests for Voice Recording in Mock Interviews (#510).
 import json
 import pytest
 from app import create_app
-from utils.voice_interview_service import VoiceInterviewService
+from utils.voice_interview_service import VoiceInterviewService, _get_db_connection
 
 
 @pytest.fixture
@@ -20,6 +20,12 @@ def client():
 def test_voice_interview_service_metrics():
     user = "voice_student_510"
     sess = "sess_voice_101"
+
+    # Ensure clean state for test run
+    conn = _get_db_connection()
+    with conn:
+        conn.execute("DELETE FROM voice_interview_submissions WHERE user_id = ? AND session_id = ?", (user, sess))
+    conn.close()
 
     # Submission with fillers and pace
     result = VoiceInterviewService.process_voice_submission(
@@ -60,11 +66,17 @@ def test_voice_interview_empty_transcript_error():
 
 def test_voice_interview_api_routes(client):
     test_user = "api_voice_student_510"
+    test_sess = "test_sess_voice_510"
+    conn = _get_db_connection()
+    with conn:
+        conn.execute("DELETE FROM voice_interview_submissions WHERE session_id = ?", (test_sess,))
+    conn.close()
+
     with client.session_transaction() as s:
         s["user_id"] = test_user
 
     payload = {
-        "session_id": "test_sess_voice_510",
+        "session_id": test_sess,
         "question_id": "q1",
         "question_text": "Explain OOP concepts.",
         "duration_seconds": 45.0,
