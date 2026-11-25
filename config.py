@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -29,7 +28,8 @@ else:
 
 UPLOAD_FOLDER = STORAGE_DIR / "uploads"
 REPORT_FOLDER = STORAGE_DIR / "reports"
-DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(STORAGE_DIR / "placement_agent.db")))
+DEV_DATABASE_PATH = STORAGE_DIR / "placement_agent_dev.db"
 BACKUP_DIR = STORAGE_DIR / "backups"
 
 # Ensure folders exist safely with graceful fallback
@@ -42,7 +42,8 @@ except (PermissionError, OSError):
     STORAGE_DIR = Path(tempfile.gettempdir()) / "placement_agent_fallback"
     UPLOAD_FOLDER = STORAGE_DIR / "uploads"
     REPORT_FOLDER = STORAGE_DIR / "reports"
-    DATABASE_PATH = STORAGE_DIR / "placement_agent.db"
+    DATABASE_PATH = Path(os.getenv("DATABASE_PATH", str(STORAGE_DIR / "placement_agent.db")))
+    DEV_DATABASE_PATH = STORAGE_DIR / "placement_agent_dev.db"
     BACKUP_DIR = STORAGE_DIR / "backups"
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     REPORT_FOLDER.mkdir(parents=True, exist_ok=True)
@@ -51,10 +52,19 @@ except (PermissionError, OSError):
 # API & Security Keys
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 FLASK_SECRET_KEY = os.getenv("FLASK_SECRET_KEY") or os.getenv("SECRET_KEY")
-if not FLASK_SECRET_KEY:
-    if os.getenv("FLASK_ENV") == "production" and not IS_VERCEL:
-        raise RuntimeError("FLASK_SECRET_KEY is missing. Add it to your .env file.")
-    # On Vercel or non-production fallback, avoid crashing serverless function invocation
+if IS_VERCEL or os.getenv("FLASK_ENV", "").strip().lower() == "production":
+    # A serverless deployment must never sign sessions with the shared local default.
+    secret_value = (FLASK_SECRET_KEY or "").strip()
+    if (
+        len(secret_value.encode("utf-8")) < 32
+        or len(set(secret_value)) < 2
+        or secret_value.lower().startswith(("replace_", "change-", "changeme", "your_", "your-"))
+    ):
+        raise RuntimeError(
+            "Production requires FLASK_SECRET_KEY (or SECRET_KEY) with at least "
+            "32 bytes of random secret material, not a default or placeholder."
+        )
+elif not FLASK_SECRET_KEY:
     FLASK_SECRET_KEY = os.getenv("DEFAULT_SECRET_KEY", "dev-secret-key-12345")
 
 ADMIN_SECRET_KEY = os.getenv("ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
@@ -66,7 +76,19 @@ GEMINI_MODEL = "gemini-2.5-flash"
 MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", os.getenv("MAX_RESUME_SIZE_MB", "5")))
 MAX_RESUME_FILE_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 MAX_FILE_SIZE_BYTES = MAX_RESUME_FILE_SIZE_BYTES
-MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(MAX_RESUME_FILE_SIZE_BYTES)))
+
+# API Request Size Limits & Diagnostics (#784)
+MAX_JSON_PAYLOAD_MB = int(os.getenv("MAX_JSON_PAYLOAD_MB", "2"))
+MAX_JSON_PAYLOAD_BYTES = int(os.getenv("MAX_JSON_PAYLOAD_BYTES", str(MAX_JSON_PAYLOAD_MB * 1024 * 1024)))
+MAX_CSV_FILE_SIZE_MB = int(os.getenv("MAX_CSV_FILE_SIZE_MB", "5"))
+MAX_CSV_FILE_SIZE_BYTES = MAX_CSV_FILE_SIZE_MB * 1024 * 1024
+
+# Total HTTP request content length (includes multipart form boundaries and metadata)
+DEFAULT_MAX_CONTENT_LENGTH = max(
+    MAX_RESUME_FILE_SIZE_BYTES + 2 * 1024 * 1024,
+    10 * 1024 * 1024
+)
+MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(DEFAULT_MAX_CONTENT_LENGTH)))
 MAX_FEEDBACK_COMMENT_LENGTH = int(os.getenv("MAX_FEEDBACK_COMMENT_LENGTH", "500"))
 
 # Placement Cell Batch Resume Processing Limits (#763)
@@ -137,6 +159,12 @@ CAPTCHA_VERIFY_TIMEOUT = float(os.getenv("CAPTCHA_VERIFY_TIMEOUT", "5.0"))
 CAPTCHA_ALWAYS_ENFORCE = os.getenv("CAPTCHA_ALWAYS_ENFORCE", "true").lower() in ("true", "1", "yes")
 CAPTCHA_REQUIRE_AFTER_FAILURES = int(os.getenv("CAPTCHA_REQUIRE_AFTER_FAILURES", "0"))
 
+# Performance Monitoring & Latency Tracking Configurations (#task-performance-monitoring)
+PERFORMANCE_MONITORING_ENABLED = os.getenv("PERFORMANCE_MONITORING_ENABLED", "true").lower() in ("true", "1", "yes")
+SLOW_REQUEST_THRESHOLD_MS = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "500.0"))
+PERFORMANCE_RETENTION_DAYS = int(os.getenv("PERFORMANCE_RETENTION_DAYS", "30"))
+EXCLUDE_STATIC_PERFORMANCE = os.getenv("EXCLUDE_STATIC_PERFORMANCE", "true").lower() in ("true", "1", "yes")
+
 # SMTP & Transactional Email Configurations (#186, #298)
 SMTP_SERVER = os.getenv("SMTP_SERVER", "localhost")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
@@ -167,6 +195,17 @@ SENTRY_TRACES_SAMPLE_RATE = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.0"))
 DISPLAY_TIMEZONE = os.getenv("DISPLAY_TIMEZONE", os.getenv("TIMEZONE", "Asia/Kolkata")).strip() or "Asia/Kolkata"
 TIMEZONE = DISPLAY_TIMEZONE
 
+# IP Address Anonymization for User Privacy (#852)
+# Truncates IPv4 to /24 and IPv6 to /48 in logs and security activity history
+ANONYMIZE_IPS = os.getenv("ANONYMIZE_IPS", "true").lower() in ("true", "1", "yes")
+
+
+# HTTP Response Compression and Static Asset Caching (#857)
+RESPONSE_COMPRESSION_ENABLED = os.getenv("RESPONSE_COMPRESSION_ENABLED", "true").lower() in ("true", "1", "yes")
+RESPONSE_COMPRESSION_MIN_SIZE = int(os.getenv("RESPONSE_COMPRESSION_MIN_SIZE", "500"))
+STATIC_CACHE_MAX_AGE_VERSIONED = int(os.getenv("STATIC_CACHE_MAX_AGE_VERSIONED", "31536000"))
+STATIC_CACHE_MAX_AGE_DEFAULT = int(os.getenv("STATIC_CACHE_MAX_AGE_DEFAULT", "86400"))
+
 
 # Compatibility alias for modules or tests importing `Config` class / namespace
 class Config:
@@ -179,6 +218,9 @@ class Config:
     RATE_LIMIT_ENABLED = RATE_LIMIT_ENABLED
     RATE_LIMIT_DEFAULT = RATE_LIMIT_DEFAULT
     MAX_PLACEMENT_BATCH_SIZE = MAX_PLACEMENT_BATCH_SIZE
+    MAX_JSON_PAYLOAD_BYTES = MAX_JSON_PAYLOAD_BYTES
+    MAX_CSV_FILE_SIZE_BYTES = MAX_CSV_FILE_SIZE_BYTES
+    MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH
 
 
 

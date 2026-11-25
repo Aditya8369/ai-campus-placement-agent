@@ -18,11 +18,13 @@ Security & Privacy Guarantees:
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 import uuid
 from typing import Any, Dict, List, Optional
 
+import config
 from utils.database import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -63,26 +65,47 @@ def init_security_activity_table():
         conn.close()
 
 
-def mask_ip_address(ip_str: Optional[str]) -> str:
+def anonymize_ip(ip_str: Optional[str]) -> str:
     """
-    Masks IP address for user privacy (e.g. 192.168.1.42 -> 192.168.1.***).
+    Anonymizes an IP address for user privacy (#852):
+    - Truncates IPv4 addresses to the /24 network prefix (e.g. 192.168.1.100 -> 192.168.1.0/24).
+    - Truncates IPv6 addresses to the /48 network prefix (e.g. 2001:db8:85a3:... -> 2001:db8:85a3::/48).
+    - Controlled by config.ANONYMIZE_IPS (default True). If False, returns the cleaned original IP.
+    - Handles malformed, missing, or non-IP values safely by returning 'Unknown'.
     """
     if not ip_str or not isinstance(ip_str, str):
         return "Unknown"
 
     ip_clean = ip_str.strip()
-    if ":" in ip_clean:
-        # IPv6
-        parts = ip_clean.split(":")
-        if len(parts) > 2:
-            return ":".join(parts[:2]) + ":****:****"
-        return ip_clean[:8] + ":****"
+    if not ip_clean:
+        return "Unknown"
 
-    # IPv4
-    parts = ip_clean.split(".")
-    if len(parts) == 4:
-        return f"{parts[0]}.{parts[1]}.{parts[2]}.***"
-    return "Masked"
+    if not getattr(config, "ANONYMIZE_IPS", True):
+        return ip_clean
+
+    try:
+        addr = ipaddress.ip_address(ip_clean)
+        if addr.version == 4:
+            return str(ipaddress.IPv4Network(f"{addr}/24", strict=False))
+        else:
+            return str(ipaddress.IPv6Network(f"{addr}/48", strict=False))
+    except ValueError:
+        try:
+            net = ipaddress.ip_network(ip_clean, strict=False)
+            if net.version == 4:
+                return str(ipaddress.IPv4Network(f"{net.network_address}/24", strict=False))
+            else:
+                return str(ipaddress.IPv6Network(f"{net.network_address}/48", strict=False))
+        except ValueError:
+            return "Unknown"
+
+
+def mask_ip_address(ip_str: Optional[str]) -> str:
+    """
+    Masks/anonymizes IP address for user privacy (IPv4 to /24, IPv6 to /48).
+    Maintains compatibility with existing callers of mask_ip_address.
+    """
+    return anonymize_ip(ip_str)
 
 
 def extract_safe_device(user_agent: Optional[str]) -> str:

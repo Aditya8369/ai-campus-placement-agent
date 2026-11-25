@@ -234,6 +234,120 @@ def api_admin_ai_metrics():
     })
 
 
+@admin_bp.route("/admin/performance", methods=["GET"])
+def admin_performance_view():
+    """
+    Admin dashboard displaying request performance telemetry and latency breakdowns (#task-performance-monitoring).
+    Identifies slow endpoints and breakdowns across database, AI service, file processing, and rendering.
+    Requires administrator session, X-Admin-Key header, or admin_key query param.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+    limit = min(500, max(10, int(request.args.get("limit", 100))))
+    offset = max(0, int(request.args.get("offset", 0)))
+
+    from utils.performance_monitor import get_performance_summary
+    summary = get_performance_summary(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+        limit=limit,
+        offset=offset,
+    )
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({"success": True, "data": summary})
+
+    return render_template("admin_performance.html", summary=summary)
+
+
+@admin_bp.route("/admin/performance/export.csv", methods=["GET"])
+def admin_performance_export_csv():
+    """
+    Admin-only CSV export of request performance telemetry (#task-performance-monitoring).
+    Guarantees no user content, passwords, or tokens are exported.
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+
+    from utils.performance_monitor import export_performance_metrics_csv
+    csv_data = export_performance_metrics_csv(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+    )
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=request_performance_metrics.csv"}
+    )
+
+
+@admin_bp.route("/api/admin/performance-metrics", methods=["GET"])
+def api_admin_performance_metrics():
+    """
+    Admin-only JSON API exposing request latency breakdowns and bottleneck diagnostics (#task-performance-monitoring).
+    """
+    admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
+    admin_header = request.headers.get("X-Admin-Key")
+    admin_param = request.args.get("admin_key")
+    configured_key = getattr(config, "ADMIN_SECRET_KEY", "admin-default-secret-key-2026")
+
+    is_admin = bool(admin_session or (admin_header and admin_header == configured_key) or (admin_param and admin_param == configured_key))
+    if not is_admin:
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    endpoint = request.args.get("endpoint")
+    is_slow_param = request.args.get("is_slow")
+    is_slow = True if is_slow_param in ("1", "true") else (False if is_slow_param in ("0", "false") else None)
+    bottleneck = request.args.get("bottleneck")
+    time_range = request.args.get("time_range")
+    limit = min(500, max(10, int(request.args.get("limit", 100))))
+    offset = max(0, int(request.args.get("offset", 0)))
+
+    from utils.performance_monitor import get_performance_summary
+    summary = get_performance_summary(
+        endpoint=endpoint,
+        is_slow=is_slow,
+        bottleneck=bottleneck,
+        time_range=time_range,
+        limit=limit,
+        offset=offset,
+    )
+
+    return jsonify({
+        "status": "success",
+        "data": summary
+    })
+
+
 @admin_bp.route("/api/admin/database/integrity", methods=["GET"])
 def api_database_integrity():
     """
@@ -332,7 +446,8 @@ def api_admin_restore_database():
     admin_user = flask_session.get("user", {}).get("email") or "admin"
     admin_session = flask_session.get("is_admin") or (flask_session.get("user", {}).get("role") == "admin")
     if not admin_session and admin_header != getattr(config, "ADMIN_SECRET_KEY", "admin-secret"):
-        logger.warning(f"Unauthorized restoration attempt from IP {request.remote_addr}")
+        from utils.security_activity_service import anonymize_ip
+        logger.warning(f"Unauthorized restoration attempt from IP {anonymize_ip(request.remote_addr)}")
         return jsonify({"success": False, "error": "Unauthorized: Administrator privileges required to restore database."}), 403
 
     payload = request.get_json(silent=True) or request.form
@@ -828,6 +943,150 @@ def api_admin_invitations_audit_log():
     limit = min(request.args.get("limit", 50, type=int), 200)
     logs = get_invitation_audit_logs(limit=limit)
     return jsonify({"success": True, "logs": logs}), 200
+
+
+# =====================================================================
+# FACULTY INTERVENTION QUEUE ROUTES (#786)
+# =====================================================================
+
+@admin_bp.route("/admin/intervention-queue", methods=["GET"])
+@admin_bp.route("/admin/interventions", methods=["GET"])
+def admin_faculty_intervention_queue_view():
+    """
+    Renders the faculty and placement coordinator intervention queue (#786).
+    Identifies disengaged students, missed deadlines, stalled preparation,
+    and repeated low interview evaluations with privacy-preserving explanations.
+    """
+    if not _check_admin_access():
+        if request.is_json or request.headers.get("Accept") == "application/json":
+            return jsonify({"success": False, "error": "Unauthorized: Coordinator access required."}), 403
+        flash("Unauthorized: Placement coordinator or administrator access required.", "error")
+        return redirect(url_for("auth.login"))
+
+    from utils.faculty_intervention_service import FacultyInterventionService
+
+    # Check if a scan should be run (or automatically scan if queue is empty or explicitly requested)
+    should_scan = request.args.get("scan", "0") in ("1", "true", "True")
+    if should_scan:
+        FacultyInterventionService.scan_students_for_interventions()
+
+    category_filter = request.args.get("category", "all")
+    status_filter = request.args.get("status", "pending")
+    urgency_filter = request.args.get("urgency", "all")
+    search_query = request.args.get("search", "").strip()
+    department_filter = request.args.get("department", "all")
+
+    interventions = FacultyInterventionService.get_intervention_queue(
+        category=None if category_filter == "all" else category_filter,
+        status=None if status_filter == "all" else status_filter,
+        urgency=None if urgency_filter == "all" else urgency_filter,
+        search=search_query,
+        department=None if department_filter == "all" else department_filter,
+    )
+    summary = FacultyInterventionService.get_intervention_summary_metrics()
+
+    if request.is_json or request.headers.get("Accept") == "application/json":
+        return jsonify({
+            "success": True,
+            "interventions": interventions,
+            "summary": summary,
+            "filters": {
+                "category": category_filter,
+                "status": status_filter,
+                "urgency": urgency_filter,
+                "search": search_query,
+                "department": department_filter,
+            }
+        }), 200
+
+    return render_template(
+        "faculty_intervention_queue.html",
+        interventions=interventions,
+        summary=summary,
+        selected_category=category_filter,
+        selected_status=status_filter,
+        selected_urgency=urgency_filter,
+        search_query=search_query,
+        selected_department=department_filter,
+    )
+
+
+@admin_bp.route("/api/admin/interventions", methods=["GET"])
+def api_admin_get_interventions():
+    """Returns intervention queue items and summary metrics in JSON format (#786)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Coordinator access required."}), 403
+
+    from utils.faculty_intervention_service import FacultyInterventionService
+
+    category_filter = request.args.get("category")
+    status_filter = request.args.get("status", "pending")
+    urgency_filter = request.args.get("urgency")
+    search_query = request.args.get("search")
+    department_filter = request.args.get("department")
+
+    interventions = FacultyInterventionService.get_intervention_queue(
+        category=category_filter,
+        status=status_filter,
+        urgency=urgency_filter,
+        search=search_query,
+        department=department_filter,
+    )
+    summary = FacultyInterventionService.get_intervention_summary_metrics()
+
+    return jsonify({
+        "success": True,
+        "interventions": interventions,
+        "summary": summary,
+    }), 200
+
+
+@admin_bp.route("/api/admin/interventions/<intervention_id>/action", methods=["POST"])
+def api_admin_intervention_action(intervention_id: str):
+    """
+    Updates intervention status ('in_progress', 'resolved', 'dismissed', 'snoozed')
+    and records faculty coordinator follow-up notes (#786).
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Coordinator access required."}), 403
+
+    from utils.faculty_intervention_service import FacultyInterventionService
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    new_status = payload.get("status", "").strip()
+    notes = payload.get("notes", "").strip()
+    snooze_days = int(payload.get("snooze_days", 7))
+    actor = flask_session.get("user_name") or flask_session.get("user_id") or "Placement Coordinator"
+
+    result = FacultyInterventionService.record_faculty_action(
+        intervention_id=intervention_id,
+        new_status=new_status,
+        notes=notes,
+        resolved_by=actor,
+        snooze_days=snooze_days,
+    )
+
+    status_code = 200 if result.get("success") else 400
+    return jsonify(result), status_code
+
+
+@admin_bp.route("/api/admin/interventions/scan", methods=["POST"])
+def api_admin_intervention_scan():
+    """Triggers an on-demand scan across all student records (#786)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Coordinator access required."}), 403
+
+    from utils.faculty_intervention_service import FacultyInterventionService
+
+    stats = FacultyInterventionService.scan_students_for_interventions()
+    summary = FacultyInterventionService.get_intervention_summary_metrics()
+
+    return jsonify({
+        "success": True,
+        "stats": stats,
+        "summary": summary,
+        "message": f"Scan completed: {stats['scanned_students']} students evaluated.",
+    }), 200
 
 
 

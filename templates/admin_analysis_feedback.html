@@ -230,7 +230,7 @@
                   </td>
                   <td class="text-break">
                     {% if item.comment %}
-                      <span class="feedback-comment-text">{{ item.comment|e }}</span>
+                      <span class="feedback-comment-text user-comment-content safe-text-break">{{ item.comment|safe_notes }}</span>
                     {% else %}
                       <span class="text-muted fst-italic small">No comment provided</span>
                     {% endif %}

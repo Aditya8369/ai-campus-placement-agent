@@ -1,7 +1,7 @@
 import os
 import html
 import logging
-from typing import Any
+from typing import Any, Optional, Dict, List
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -21,6 +21,7 @@ from utils.output_localization import (
     output_text,
     resolve_output_locale,
 )
+from utils.analysis_export_service import normalize_report_customization
 
 logger = logging.getLogger(__name__)
 
@@ -225,13 +226,16 @@ def generate_pdf_report(
     analysis_data: dict,
     output_path: str,
     language: str = DEFAULT_OUTPUT_LOCALE,
+    customization: Optional[dict] = None,
 ) -> str:
     analysis_data = sanitize_report_data(analysis_data)
     """
     Generates a beautifully structured PDF placement readiness report.
     Converts metrics, skill gap, conflict advisories, and roadmap into a professional printable PDF.
+    Supports candidate name, target role, and selectable sections customization (#761).
     """
     try:
+        custom_cfg = normalize_report_customization(customization)
         locale, used_fallback = resolve_output_locale(language)
         t = lambda key: output_text(key, locale)
         logger.info("Generating PDF report at: %s", output_path)
@@ -345,207 +349,263 @@ def generate_pdf_report(
         story.append(Spacer(1, 10))
         target_company = escape_xml(analysis_data.get('company_name', 'Target Company'))
         story.append(Paragraph(f"{t('report_subtitle')} {target_company}", subtitle_style))
+        if custom_cfg.get("student_name"):
+            story.append(Paragraph(f"<b>Candidate:</b> {escape_xml(custom_cfg['student_name'])}", subtitle_style))
+        if custom_cfg.get("target_role"):
+            story.append(Paragraph(f"<b>Target Role:</b> {escape_xml(custom_cfg['target_role'])}", subtitle_style))
         story.append(Paragraph(
             t("language_fallback") if used_fallback else t("language_notice"),
             subtitle_style,
         ))
         story.append(Spacer(1, 20))
 
-        # Summary metrics
+        # Modular Section Block Builders
         resume_analysis = analysis_data.get("results", {}).get("resume_analysis", {})
         job_match = analysis_data.get("results", {}).get("job_match", {})
-        
-        ats_score = escape_xml(resume_analysis.get('ats_score', 'N/A'))
-        match_pct = escape_xml(job_match.get('match_percentage', 'N/A'))
-        
-        metrics_grid_data = [
-            [
-                Paragraph(f"<b>{t('ats_score')}:</b>", body_style),
-                Paragraph(f"<b>{ats_score}/100</b>", body_style),
-                Paragraph(f"<b>{t('job_match_score')}:</b>", body_style),
-                Paragraph(f"<b>{match_pct}%</b>", body_style)
-            ]
-        ]
 
-        metrics_table = Table(metrics_grid_data, colWidths=[100, 100, 120, 100])
-        metrics_table.setStyle(
-            TableStyle(
+        def build_scores_block():
+            b_story = []
+            ats_score = escape_xml(resume_analysis.get('ats_score', 'N/A'))
+            match_pct = escape_xml(job_match.get('match_percentage', 'N/A'))
+            metrics_grid_data = [
                 [
-                    ("BACKGROUND", (0, 0), (-1, -1), accent_light_blue),
-                    ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("PADDING", (0, 0), (-1, -1), 10),
-                    ("BOX", (0, 0), (-1, -1), 1.5, primary_blue),
-                    ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#b0d4ff")),
-                ]
-            )
-        )
-        story.append(metrics_table)
-        story.append(Spacer(1, 25))
-
-        # Summary block
-        story.append(Paragraph(t("executive_summary"), h1_style))
-        summary_text = escape_xml(resume_analysis.get("summary", t("no_summary")))
-        story.append(Paragraph(summary_text, body_style))
-        story.append(Spacer(1, 15))
-        
-        # Overall Recommendation (fallback from root results or resume_analysis)
-        story.append(Paragraph(t("overall_recommendation"), h1_style))
-        rec_text = escape_xml(
-            analysis_data.get("results", {}).get("overall_recommendation_summary")
-            or resume_analysis.get("overall_recommendation")
-            or "Overall campus placement analysis successfully compiled."
-        )
-        story.append(Paragraph(rec_text, body_style))
-        story.append(Spacer(1, 15))
-        
-        # Cross-section conflict advisory if contradictions detected
-        conflicts = analysis_data.get("results", {}).get("conflicts", [])
-        if conflicts:
-            story.append(Paragraph("Placement Advisory: Contradictions Detected", h1_style))
-            story.append(Paragraph(
-                "Our automated verification flagged conflicting recommendations between the job match analysis and the skill gap roadmap. Review the following items before finalizing your preparation plan:",
-                body_style
-            ))
-            story.append(Spacer(1, 6))
-            for c in conflicts:
-                skill_name = escape_xml(c.get("skill", "Unknown"))
-                rule_desc = escape_xml(c.get("rule_description", "Potential contradiction in skill classification."))
-                conflict_type = escape_xml(c.get("conflict_type", "Advisory"))
-                story.append(Paragraph(f"&bull; <b>[{conflict_type}]</b> Skill: <i>{skill_name}</i> &mdash; {rule_desc}", bullet_style))
-            story.append(Spacer(1, 15))
-        
-        story.append(PageBreak())
-
-        # Resume feedback
-        story.append(Paragraph(t("resume_details"), h1_style))
-        story.append(Paragraph(t("strengths"), h2_style))
-        strengths = resume_analysis.get("strengths", [])
-        if strengths:
-            for strength in strengths:
-                story.append(Paragraph(f"&bull; {escape_xml(strength)}", bullet_style))
-        else:
-            story.append(Paragraph(t("no_strengths"), body_style))
-        story.append(Spacer(1, 10))
-
-        story.append(Paragraph(t("weaknesses"), h2_style))
-        weaknesses = resume_analysis.get("weaknesses", [])
-        if weaknesses:
-            for weakness in weaknesses:
-                story.append(Paragraph(f"&bull; {escape_xml(weakness)}", bullet_style))
-        else:
-            story.append(Paragraph(t("no_weaknesses"), body_style))
-        story.append(Spacer(1, 10))
-        
-        story.append(Paragraph(t("grammar_formatting"), h2_style))
-        all_suggs = resume_analysis.get("grammar_suggestions", []) + resume_analysis.get("formatting_suggestions", [])
-        if all_suggs:
-            for suggestion in all_suggs:
-                story.append(Paragraph(f"&bull; {escape_xml(suggestion)}", bullet_style))
-        else:
-            story.append(Paragraph(t("no_suggestions"), body_style))
-        story.append(Spacer(1, 15))
-
-        # Job-match adjustments
-        story.append(Paragraph(t("job_adjustments"), h1_style))
-        changes = job_match.get("top_5_resume_changes", [])
-        if changes:
-            for idx, change in enumerate(changes, 1):
-                story.append(Paragraph(f"<b>{idx}.</b> {escape_xml(change)}", bullet_style))
-        else:
-            story.append(Paragraph(t("no_adjustments"), body_style))
-            
-        story.append(PageBreak())
-
-        # Skill-gaps table
-        story.append(Paragraph(t("skill_gap"), h1_style))
-        story.append(
-            Paragraph(
-                t("skill_gap_intro"),
-                body_style,
-            )
-        )
-        story.append(Spacer(1, 10))
-
-        results = analysis_data.get("results", {})
-        skill_gaps = results.get("skill_gap", [])
-        if skill_gaps:
-            gap_table_data = [
-                [
-                    Paragraph(t("skill"), table_hdr_style),
-                    Paragraph(t("importance"), table_hdr_style),
-                    Paragraph(t("estimated_time"), table_hdr_style),
-                    Paragraph(t("learning_resource"), table_hdr_style),
-                    Paragraph(t("priority"), table_hdr_style),
+                    Paragraph(f"<b>{t('ats_score')}:</b>", body_style),
+                    Paragraph(f"<b>{ats_score}/100</b>", body_style),
+                    Paragraph(f"<b>{t('job_match_score')}:</b>", body_style),
+                    Paragraph(f"<b>{match_pct}%</b>", body_style)
                 ]
             ]
-
-            for gap in skill_gaps:
-                res_esc = escape_xml(gap.get('learning_resource', 'N/A'))
-                proj_esc = escape_xml(gap.get('project_suggestion', 'N/A'))
-                description_str = f"<b>Resource:</b> {res_esc}<br/><b>Project:</b> {proj_esc}"
-                gap_table_data.append([
-                    Paragraph(escape_xml(gap.get("skill", "N/A")), table_body_style),
-                    Paragraph(escape_xml(gap.get("importance", "N/A")), table_body_style),
-                    Paragraph(escape_xml(gap.get("learning_time", "N/A")), table_body_style),
-                    Paragraph(description_str, table_body_style),
-                    Paragraph(escape_xml(gap.get("priority", "N/A")), table_body_style)
-                ])
-                
-            gap_table = Table(gap_table_data, colWidths=[90, 65, 65, 220, 64])
-            gap_table.setStyle(
+            metrics_table = Table(metrics_grid_data, colWidths=[100, 100, 120, 100])
+            metrics_table.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), primary_blue),
-                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                        ("PADDING", (0, 0), (-1, -1), 8),
-                        ("GRID", (0, 0), (-1, -1), 0.5, border_grey),
-                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, light_grey_bg]),
+                        ("BACKGROUND", (0, 0), (-1, -1), accent_light_blue),
+                        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                        ("PADDING", (0, 0), (-1, -1), 10),
+                        ("BOX", (0, 0), (-1, -1), 1.5, primary_blue),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#b0d4ff")),
                     ]
                 )
             )
-            story.append(gap_table)
+            b_story.append(metrics_table)
+            b_story.append(Spacer(1, 25))
+            return b_story
+
+        def build_summary_block():
+            b_story = []
+            b_story.append(Paragraph(t("executive_summary"), h1_style))
+            summary_text = escape_xml(resume_analysis.get("summary", t("no_summary")))
+            b_story.append(Paragraph(summary_text, body_style))
+            b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_recommendation_block():
+            b_story = []
+            b_story.append(Paragraph(t("overall_recommendation"), h1_style))
+            rec_text = escape_xml(
+                analysis_data.get("results", {}).get("overall_recommendation_summary")
+                or resume_analysis.get("overall_recommendation")
+                or "Overall campus placement analysis successfully compiled."
+            )
+            b_story.append(Paragraph(rec_text, body_style))
+            b_story.append(Spacer(1, 15))
+
+            conflicts = analysis_data.get("results", {}).get("conflicts", [])
+            if conflicts:
+                b_story.append(Paragraph("Placement Advisory: Contradictions Detected", h1_style))
+                b_story.append(Paragraph(
+                    "Our automated verification flagged conflicting recommendations between the job match analysis and the skill gap roadmap. Review the following items before finalizing your preparation plan:",
+                    body_style
+                ))
+                b_story.append(Spacer(1, 6))
+                for c in conflicts:
+                    skill_name = escape_xml(c.get("skill", "Unknown"))
+                    rule_desc = escape_xml(c.get("rule_description", "Potential contradiction in skill classification."))
+                    conflict_type = escape_xml(c.get("conflict_type", "Advisory"))
+                    b_story.append(Paragraph(f"&bull; <b>[{conflict_type}]</b> Skill: <i>{skill_name}</i> &mdash; {rule_desc}", bullet_style))
+                b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_resume_analysis_block():
+            b_story = []
+            b_story.append(Paragraph(t("resume_details"), h1_style))
+            b_story.append(Paragraph(t("strengths"), h2_style))
+            strengths = resume_analysis.get("strengths", [])
+            if strengths:
+                for strength in strengths:
+                    b_story.append(Paragraph(f"&bull; {escape_xml(strength)}", bullet_style))
+            else:
+                b_story.append(Paragraph(t("no_strengths"), body_style))
+            b_story.append(Spacer(1, 10))
+
+            b_story.append(Paragraph(t("weaknesses"), h2_style))
+            weaknesses = resume_analysis.get("weaknesses", [])
+            if weaknesses:
+                for weakness in weaknesses:
+                    b_story.append(Paragraph(f"&bull; {escape_xml(weakness)}", bullet_style))
+            else:
+                b_story.append(Paragraph(t("no_weaknesses"), body_style))
+            b_story.append(Spacer(1, 10))
+            
+            b_story.append(Paragraph(t("grammar_formatting"), h2_style))
+            all_suggs = resume_analysis.get("grammar_suggestions", []) + resume_analysis.get("formatting_suggestions", [])
+            if all_suggs:
+                for suggestion in all_suggs:
+                    b_story.append(Paragraph(f"&bull; {escape_xml(suggestion)}", bullet_style))
+            else:
+                b_story.append(Paragraph(t("no_suggestions"), body_style))
+            b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_adjustments_block():
+            b_story = []
+            b_story.append(Paragraph(t("job_adjustments"), h1_style))
+            changes = job_match.get("top_5_resume_changes", [])
+            if changes:
+                for idx, change in enumerate(changes, 1):
+                    b_story.append(Paragraph(f"<b>{idx}.</b> {escape_xml(change)}", bullet_style))
+            else:
+                b_story.append(Paragraph(t("no_adjustments"), body_style))
+            b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_skill_gaps_block():
+            b_story = []
+            b_story.append(Paragraph(t("skill_gap"), h1_style))
+            b_story.append(Paragraph(t("skill_gap_intro"), body_style))
+            b_story.append(Spacer(1, 10))
+
+            results = analysis_data.get("results", {})
+            skill_gaps = results.get("skill_gap", [])
+            if skill_gaps:
+                gap_table_data = [
+                    [
+                        Paragraph(t("skill"), table_hdr_style),
+                        Paragraph(t("importance"), table_hdr_style),
+                        Paragraph(t("estimated_time"), table_hdr_style),
+                        Paragraph(t("learning_resource"), table_hdr_style),
+                        Paragraph(t("priority"), table_hdr_style),
+                    ]
+                ]
+
+                for gap in skill_gaps:
+                    res_esc = escape_xml(gap.get('learning_resource', 'N/A'))
+                    proj_esc = escape_xml(gap.get('project_suggestion', 'N/A'))
+                    description_str = f"<b>Resource:</b> {res_esc}<br/><b>Project:</b> {proj_esc}"
+                    gap_table_data.append([
+                        Paragraph(escape_xml(gap.get("skill", "N/A")), table_body_style),
+                        Paragraph(escape_xml(gap.get("importance", "N/A")), table_body_style),
+                        Paragraph(escape_xml(gap.get("learning_time", "N/A")), table_body_style),
+                        Paragraph(description_str, table_body_style),
+                        Paragraph(escape_xml(gap.get("priority", "N/A")), table_body_style)
+                    ])
+                    
+                gap_table = Table(gap_table_data, colWidths=[90, 65, 65, 220, 64])
+                gap_table.setStyle(
+                    TableStyle(
+                        [
+                            ("BACKGROUND", (0, 0), (-1, 0), primary_blue),
+                            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                            ("PADDING", (0, 0), (-1, -1), 8),
+                            ("GRID", (0, 0), (-1, -1), 0.5, border_grey),
+                            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, light_grey_bg]),
+                        ]
+                    )
+                )
+                b_story.append(gap_table)
+            else:
+                b_story.append(Paragraph(t("no_skill_gaps"), body_style))
+            b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_interview_tips_block():
+            b_story = []
+            b_story.append(Paragraph("Interview Tips & Preparation Guidance", h1_style))
+            results = analysis_data.get("results", {})
+            interview_q = results.get("interview_questions") or []
+            if isinstance(interview_q, dict):
+                all_q = []
+                for cat, q_l in interview_q.items():
+                    if isinstance(q_l, list):
+                        all_q.extend([f"[{cat.capitalize()}] {q}" for q in q_l if q])
+                interview_q = all_q
+            b_story.append(Paragraph("<b>Preparation Guidance:</b>", h2_style))
+            b_story.append(Paragraph("&bull; Structure behavioral responses using the STAR method (Situation, Task, Action, Result).", bullet_style))
+            b_story.append(Paragraph("&bull; State time and space complexity upfront before writing algorithmic solutions.", bullet_style))
+            b_story.append(Paragraph("&bull; Ask clarifying questions regarding edge cases and constraints.", bullet_style))
+            if interview_q:
+                b_story.append(Spacer(1, 8))
+                b_story.append(Paragraph("<b>Tailored Interview Questions:</b>", h2_style))
+                for q in interview_q[:6]:
+                    b_story.append(Paragraph(f"&bull; {escape_xml(q)}", bullet_style))
+            b_story.append(Spacer(1, 15))
+            return b_story
+
+        def build_roadmap_block():
+            b_story = []
+            b_story.append(Paragraph(t("learning_roadmap"), h1_style))
+            b_story.append(Paragraph(t("learning_roadmap_intro"), body_style))
+            b_story.append(Spacer(1, 10))
+            
+            roadmap_list = analysis_data.get("results", {}).get("learning_roadmap", [])
+            for w in roadmap_list:
+                week_title = escape_xml(w.get('week', 'Week X'))
+                hours = escape_xml(w.get('estimated_hours', 10))
+                topics = ", ".join(escape_xml(topic) for topic in w.get('topics', [])) or t("none")
+                coding = ", ".join(escape_xml(c) for c in w.get('coding_practice', [])) or t("none")
+                projects = ", ".join(escape_xml(p) for p in w.get('mini_projects', [])) or t("none")
+                revision = ", ".join(escape_xml(r) for r in w.get('revision_tasks', [])) or t("none")
+                
+                w_story = [
+                    Paragraph(f"<b>{week_title}</b> ({hours} Hours)", h2_style),
+                    Paragraph(f"<b>{t('topics')}:</b> {topics}", body_style),
+                    Paragraph(f"<b>{t('coding_practice')}:</b> {coding}", body_style),
+                    Paragraph(f"<b>{t('mini_project')}:</b> {projects}", body_style),
+                    Paragraph(f"<b>{t('interview_questions')}:</b>", body_style)
+                ]
+                for iq in w.get("interview_questions", []):
+                    w_story.append(Paragraph(f"  &bull; {escape_xml(iq)}", bullet_style))
+                w_story.append(Paragraph(f"<b>{t('revision_tasks')}:</b> {revision}", body_style))
+                w_story.append(Spacer(1, 12))
+                
+                b_story.append(KeepTogether(w_story))
+            return b_story
+
+        # Assemble the Story
+        if not custom_cfg["is_customized"]:
+            story.extend(build_scores_block())
+            story.extend(build_summary_block())
+            story.extend(build_recommendation_block())
+            story.append(PageBreak())
+            story.extend(build_resume_analysis_block())
+            story.extend(build_adjustments_block())
+            story.append(PageBreak())
+            story.extend(build_skill_gaps_block())
+            story.append(PageBreak())
+            story.extend(build_roadmap_block())
         else:
-            story.append(
-                Paragraph(t("no_skill_gaps"), body_style)
-            )
+            builder_map = {
+                "scores": build_scores_block,
+                "summary": build_summary_block,
+                "overall_recommendation": build_recommendation_block,
+                "resume_analysis": build_resume_analysis_block,
+                "job_adjustments": build_adjustments_block,
+                "skill_gaps": build_skill_gaps_block,
+                "interview_tips": build_interview_tips_block,
+                "learning_roadmap": build_roadmap_block,
+            }
+            included_set = set(custom_cfg["included_sections"])
+            added = 0
+            for sec in custom_cfg["section_order"]:
+                if sec in included_set and sec in builder_map:
+                    sec_story = builder_map[sec]()
+                    if sec_story:
+                        if added > 0:
+                            story.append(PageBreak())
+                        story.extend(sec_story)
+                        added += 1
 
-        story.append(Spacer(1, 15))
-        story.append(PageBreak())
-
-        # Six-week learning roadmap
-        story.append(Paragraph(t("learning_roadmap"), h1_style))
-        story.append(
-            Paragraph(
-                t("learning_roadmap_intro"),
-                body_style,
-            )
-        )
-        story.append(Spacer(1, 10))
-        
-        roadmap_list = analysis_data.get("results", {}).get("learning_roadmap", [])
-        for w in roadmap_list:
-            week_title = escape_xml(w.get('week', 'Week X'))
-            hours = escape_xml(w.get('estimated_hours', 10))
-            topics = ", ".join(escape_xml(topic) for topic in w.get('topics', [])) or t("none")
-            coding = ", ".join(escape_xml(c) for c in w.get('coding_practice', [])) or t("none")
-            projects = ", ".join(escape_xml(p) for p in w.get('mini_projects', [])) or t("none")
-            revision = ", ".join(escape_xml(r) for r in w.get('revision_tasks', [])) or t("none")
-            
-            w_story = [
-                Paragraph(f"<b>{week_title}</b> ({hours} Hours)", h2_style),
-                Paragraph(f"<b>{t('topics')}:</b> {topics}", body_style),
-                Paragraph(f"<b>{t('coding_practice')}:</b> {coding}", body_style),
-                Paragraph(f"<b>{t('mini_project')}:</b> {projects}", body_style),
-                Paragraph(f"<b>{t('interview_questions')}:</b>", body_style)
-            ]
-            for iq in w.get("interview_questions", []):
-                w_story.append(Paragraph(f"  &bull; {escape_xml(iq)}", bullet_style))
-            w_story.append(Paragraph(f"<b>{t('revision_tasks')}:</b> {revision}", body_style))
-            w_story.append(Spacer(1, 12))
-            
-            story.append(KeepTogether(w_story))
-            
         doc.build(story)
         logger.info("PDF report compiled successfully.")
         return output_path

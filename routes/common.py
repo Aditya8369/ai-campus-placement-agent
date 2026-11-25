@@ -392,9 +392,10 @@ def _has_privacy_consent(req) -> bool:
 
 def _extract_and_validate_resume(req):
     """
-    Validates uploaded resume file or pasted text from Flask request.
+    Validates uploaded resume file, stored library resume, or pasted text from Flask request.
     Returns a tuple of (extracted_text, filename, file_uuid, error_message).
     """
+    stored_resume_id = req.form.get("stored_resume_id", "").strip()
     pasted_text = req.form.get("resume_text", "").strip()
     uploaded_file = req.files.get("resume")
     file_uuid = str(uuid.uuid4())
@@ -402,6 +403,41 @@ def _extract_and_validate_resume(req):
     jd_text = req.form.get("job_description", "").strip()
     if jd_text:
         register_sensitive_text(jd_text)
+
+    # 1. Stored Library Resume Selection (#842)
+    if stored_resume_id:
+        student_id = flask_session.get("user_id") or flask_session.get("student_id")
+        if not student_id:
+            return None, None, None, "You must be signed in to select a stored resume."
+        try:
+            from utils.resume_library_service import resume_library_service
+            stored_resume = resume_library_service.get_resume(stored_resume_id, student_id)
+            if not stored_resume:
+                return None, None, None, "Selected stored resume was not found in your library."
+
+            extracted_text = stored_resume["extracted_text"]
+            resume_filename = stored_resume["resume_filename"] or f"{stored_resume['label']}.pdf"
+            register_sensitive_text(extracted_text)
+
+            # Persist copy in upload folder so subsequent file operations can read it
+            try:
+                os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+                text_path = os.path.join(config.UPLOAD_FOLDER, f"{file_uuid}_resume.txt")
+                with open(text_path, "w", encoding="utf-8") as f:
+                    f.write(extracted_text)
+            except Exception as e:
+                logger.warning(f"Could not persist stored resume text copy: {e}")
+
+            # Store attribution in request context or session for analysis persistence
+            flask_session["active_stored_resume_id"] = stored_resume["id"]
+            flask_session["active_stored_resume_label"] = stored_resume["label"]
+
+            return extracted_text, resume_filename, file_uuid, None
+        except PermissionError as pe:
+            return None, None, None, str(pe)
+        except Exception as e:
+            logger.error(f"Error retrieving stored resume {stored_resume_id}: {e}")
+            return None, None, None, "Failed to load selected stored resume."
 
     if pasted_text:
         pasted_text = normalize_resume_text(pasted_text, store_raw=True, text_id=file_uuid)
@@ -444,11 +480,23 @@ def _extract_and_validate_resume(req):
             return None, None, None, "The uploaded file is empty. Please upload a valid resume."
 
         if file_size > max_bytes:
+            from utils.request_size_diagnostics import log_size_failure, format_size_bytes
+            err_info = {
+                "field": "resume",
+                "field_type": "file",
+                "filename": uploaded_file.filename,
+                "max_allowed_size_bytes": max_bytes,
+                "max_allowed_size": f"{max_mb} MB",
+                "received_size_bytes": file_size,
+                "received_size": format_size_bytes(file_size),
+                "message": f"The uploaded file for 'resume' ('{uploaded_file.filename}', {format_size_bytes(file_size)}) exceeds the maximum allowed size of {max_mb} MB.",
+            }
+            log_size_failure(err_info, req)
             return (
                 None,
                 None,
                 None,
-                f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file.",
+                f"The uploaded file for 'resume' exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file.",
             )
 
         # Verify real content type (magic bytes) before saving and parsing (Issue #153)
@@ -619,8 +667,21 @@ def _read_application_import_csv(uploaded_file):
     if not uploaded_file.filename.lower().endswith(".csv"):
         raise ValueError("Only CSV files are supported.")
     uploaded_file.seek(0, os.SEEK_END)
-    if uploaded_file.tell() > APPLICATION_IMPORT_MAX_BYTES:
-        raise ValueError("CSV files must be 5 MB or smaller.")
+    file_size = uploaded_file.tell()
+    if file_size > APPLICATION_IMPORT_MAX_BYTES:
+        from utils.request_size_diagnostics import log_size_failure, format_size_bytes
+        err_info = {
+            "field": "csv_file",
+            "field_type": "file",
+            "filename": uploaded_file.filename,
+            "max_allowed_size_bytes": APPLICATION_IMPORT_MAX_BYTES,
+            "max_allowed_size": format_size_bytes(APPLICATION_IMPORT_MAX_BYTES),
+            "received_size_bytes": file_size,
+            "received_size": format_size_bytes(file_size),
+            "message": f"The uploaded CSV file for 'csv_file' ('{uploaded_file.filename}', {format_size_bytes(file_size)}) exceeds the maximum allowed size of {format_size_bytes(APPLICATION_IMPORT_MAX_BYTES)}.",
+        }
+        log_size_failure(err_info)
+        raise ValueError(f"CSV files must be {format_size_bytes(APPLICATION_IMPORT_MAX_BYTES)} or smaller.")
     uploaded_file.seek(0)
     try:
         content = uploaded_file.read().decode("utf-8-sig")

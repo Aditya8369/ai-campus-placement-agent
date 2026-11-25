@@ -96,7 +96,7 @@
                 <i class="bi bi-arrow-right mx-1 text-primary"></i>
                 <span class="badge bg-primary-subtle text-primary">{{ evt.to_stage|replace('_', ' ')|capitalize }}</span>
               </td>
-              <td class="small text-muted">{{ evt.notes or 'No notes provided' }}</td>
+              <td class="small text-muted user-notes-content safe-text-break">{{ (evt.notes|safe_notes) if evt.notes else 'No notes provided' }}</td>
               <td class="small">{{ evt.transitioned_at[:10] }}</td>
             </tr>
             {% endfor %}

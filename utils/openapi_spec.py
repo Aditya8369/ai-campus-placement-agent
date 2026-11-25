@@ -215,6 +215,16 @@ OPENAPI_SPEC: Dict[str, Any] = {
                             }
                         }
                     },
+                    "413": {
+                        "description": "Payload Too Large: uploaded file or JSON body exceeds maximum allowed size (#784).",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/PayloadTooLargeResponse"
+                                }
+                            }
+                        }
+                    },
                     "429": {
                         "description": "Rate limit exceeded.",
                         "content": {
@@ -1460,6 +1470,38 @@ OPENAPI_SPEC: Dict[str, Any] = {
                     "success": {"type": "boolean", "example": False},
                     "error": {"type": "string", "example": "Invalid request parameter or missing field."},
                     "code": {"type": "string", "example": "VALIDATION_ERROR"}
+                }
+            },
+            "PayloadTooLargeResponse": {
+                "type": "object",
+                "properties": {
+                    "success": {"type": "boolean", "example": False},
+                    "error": {
+                        "type": "string",
+                        "example": "The uploaded file for 'resume' ('resume.pdf', 6.2 MB) exceeds the maximum allowed size of 5 MB."
+                    },
+                    "code": {"type": "string", "example": "REQUEST_ENTITY_TOO_LARGE"},
+                    "error_code": {"type": "string", "example": "PAYLOAD_TOO_LARGE"},
+                    "request_id": {"type": "string", "example": "9b8a7c6d-5e4f-3a2b-1c0d-e1f2a3b4c5d6"},
+                    "field": {"type": "string", "example": "resume"},
+                    "field_type": {"type": "string", "enum": ["file", "json", "text", "payload"], "example": "file"},
+                    "max_allowed_size": {"type": "string", "example": "5 MB"},
+                    "max_allowed_size_bytes": {"type": "integer", "example": 5242880},
+                    "received_size": {"type": "string", "example": "6.2 MB"},
+                    "received_size_bytes": {"type": "integer", "example": 6501171},
+                    "details": {
+                        "type": "object",
+                        "properties": {
+                            "field": {"type": "string"},
+                            "field_type": {"type": "string"},
+                            "filename": {"type": "string", "nullable": True},
+                            "max_allowed_size": {"type": "string"},
+                            "max_allowed_size_bytes": {"type": "integer"},
+                            "received_size": {"type": "string"},
+                            "received_size_bytes": {"type": "integer"},
+                            "message": {"type": "string"}
+                        }
+                    }
                 }
             },
             "AnalysisStartRequest": {

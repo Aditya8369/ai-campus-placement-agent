@@ -96,6 +96,7 @@
           </p>
           <ul class="text-secondary small mb-0 ps-3">
             <li class="mb-2"><strong>Local Database:</strong> Analysis summaries, ATS scores, skill gap breakdowns, 6-week study roadmaps, and mock interview transcripts are stored in a local SQLite database (<code>data/campus_agent.db</code>).</li>
+            <li class="mb-2"><strong>IP Address Anonymization:</strong> Client IP addresses recorded in security audit logs and account activity history are automatically truncated to /24 (IPv4) and /48 (IPv6) subnets by default (governed by <code>ANONYMIZE_IPS</code>). Full IP addresses are never permanently retained, protecting students from network-based tracking while preserving security auditability.</li>
             <li class="mb-2"><strong>Temporary Uploads:</strong> Uploaded resume files are temporarily saved to a local <code>uploads/</code> directory with a randomized UUID prefix for text extraction and validation.</li>
             <li class="mb-0"><strong>No External Data Sharing:</strong> Stored data is never sold, shared with recruiters, or used for commercial marketing.</li>
           </ul>

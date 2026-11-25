@@ -17,6 +17,7 @@ from utils.prompt_security import (
     sanitize_untrusted_text,
     encapsulate_untrusted_input,
     detect_prompt_injection,
+    strip_prompt_injection,
     build_secure_system_instruction,
     validate_ai_response_safety,
 )
@@ -91,12 +92,19 @@ class CoordinatorAgent:
             redacted_resume = resume_text
             redacted_jd = job_description
 
-        # 0. Treat uploaded resume and pasted job descriptions as untrusted inputs
+        # 0. Check for prompt injection, instruction overrides, and hidden text on original inputs
+        resume_threat = detect_prompt_injection(resume_text or redacted_resume)
+        jd_threat = detect_prompt_injection(job_description or redacted_jd)
+
+        # Treat uploaded resume and pasted job descriptions as untrusted inputs
         sanitized_resume = sanitize_untrusted_text(redacted_resume, max_length=25000)
         sanitized_jd = sanitize_untrusted_text(redacted_jd, max_length=15000)
 
-        resume_threat = detect_prompt_injection(sanitized_resume)
-        jd_threat = detect_prompt_injection(sanitized_jd)
+        # If sanitized text revealed further threats (e.g. decoded entities)
+        if not resume_threat["is_suspicious"]:
+            resume_threat = detect_prompt_injection(sanitized_resume)
+        if not jd_threat["is_suspicious"]:
+            jd_threat = detect_prompt_injection(sanitized_jd)
 
         if resume_threat["is_suspicious"]:
             logger.warning(
@@ -252,20 +260,43 @@ class CoordinatorAgent:
                 "skills": []
             }
 
-        # 9. Compute deterministic ATS score & section breakdown (#494)
+        # 9. Compute deterministic ATS score & section breakdown (#494, #762)
+        # Ensure scores come strictly from deterministic checks that model output cannot override.
+        # Defang/strip injection attempts so prompt injections cannot alter the score.
+        scoring_resume_text = strip_prompt_injection(resume_text or sanitized_resume)
         try:
             from utils.ats_score_service import evaluate_resume_ats_score
-            ats_breakdown = evaluate_resume_ats_score(resume_text or sanitized_resume)
+            ats_breakdown = evaluate_resume_ats_score(scoring_resume_text or resume_text or sanitized_resume)
             processed_resume["ats_score"] = ats_breakdown["total_score"]
             processed_resume["ats_breakdown"] = ats_breakdown
         except Exception as ats_err:
             logger.warning(f"CoordinatorAgent: Error computing deterministic ATS score: {ats_err}")
             ats_breakdown = None
 
-        # 10. Combine validated data into a final coordinated results payload
+        # 10. Run resume timeline consistency and gap analysis (#840)
+        try:
+            from utils.resume_timeline_service import analyze_resume_timeline
+            timeline_analysis = analyze_resume_timeline(resume_text or sanitized_resume)
+        except Exception as timeline_err:
+            logger.warning(f"CoordinatorAgent: Error analyzing resume timeline: {timeline_err}")
+            timeline_analysis = {
+                "status": "error",
+                "has_flags": False,
+                "has_active_flags": False,
+                "total_flags": 0,
+                "active_flags_count": 0,
+                "dismissed_flags_count": 0,
+                "gap_threshold_months": 6,
+                "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+                "flags": [],
+                "timeline_items": []
+            }
+
+        # 11. Combine validated data into a final coordinated results payload
         combined_payload = {
             "resume_analysis": processed_resume,
             "ats_breakdown": ats_breakdown,
+            "timeline_analysis": timeline_analysis,
             "job_match": processed_job_match,
             "skill_gap": processed_skill_gap,
             "learning_roadmap": processed_roadmap,
@@ -275,8 +306,14 @@ class CoordinatorAgent:
             "section_status": section_status,
             "skill_evidence_mapping": evidence_mapping,
             "extracted_resume_text": resume_text,
+            "security_warning": security_warning,
+            "warning": security_warning,
             "security_audit": {
-                "prompt_injection_detected": bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"]),
+                "prompt_injection_detected": injection_detected,
+                "has_hidden_text": bool(resume_threat.get("has_hidden_text") or jd_threat.get("has_hidden_text")),
+                "has_instruction_phrases": bool(resume_threat.get("has_instruction_phrases") or jd_threat.get("has_instruction_phrases")),
+                "warning": security_warning,
+                "warning_message": security_warning,
                 "resume_threat": resume_threat,
                 "job_description_threat": jd_threat,
                 "safety_flags": security_flags
@@ -489,9 +526,29 @@ class CoordinatorAgent:
 
         ats_breakdown = final_resume.get("ats_breakdown")
 
+        # Run resume timeline consistency and gap analysis (#840)
+        try:
+            from utils.resume_timeline_service import analyze_resume_timeline
+            timeline_analysis = analyze_resume_timeline(resume_text or sanitized_resume)
+        except Exception as timeline_err:
+            logger.warning(f"CoordinatorAgent (stream): Error analyzing resume timeline: {timeline_err}")
+            timeline_analysis = {
+                "status": "error",
+                "has_flags": False,
+                "has_active_flags": False,
+                "total_flags": 0,
+                "active_flags_count": 0,
+                "dismissed_flags_count": 0,
+                "gap_threshold_months": 6,
+                "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+                "flags": [],
+                "timeline_items": []
+            }
+
         result_payload = {
             "resume_analysis": final_resume,
             "ats_breakdown": ats_breakdown,
+            "timeline_analysis": timeline_analysis,
             "job_match": final_job_match,
             "skill_gap": final_skill_gap,
             "learning_roadmap": final_roadmap,

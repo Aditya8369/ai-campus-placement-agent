@@ -136,6 +136,13 @@ from utils.job_url_extractor import (
     JobURLExtractionError,
     SSRFSecurityError,
 )
+from utils.pdf_metadata_service import (
+    read_pdf_metadata,
+    analyze_pdf_metadata_hygiene,
+    strip_pdf_metadata,
+    get_or_compute_pdf_metadata_hygiene,
+    generate_suggested_filename,
+)
 from .common import *
 
 logger = logging.getLogger(__name__)
@@ -151,11 +158,21 @@ def index() -> str:
     companies_list = get_available_companies()
     student_id = flask_session.get("user_id")
     role_templates = load_role_templates()
+
+    stored_resumes = []
+    if student_id:
+        try:
+            from utils.resume_library_service import resume_library_service
+            stored_resumes = resume_library_service.list_resumes(student_id)
+        except Exception as e:
+            logger.warning(f"Could not load stored resumes for index view: {e}")
+
     return render_template(
         "index.html",
         companies=companies_list,
         role_templates=role_templates,
         saved_job_descriptions=get_saved_job_descriptions(student_id) if student_id else [],
+        stored_resumes=stored_resumes,
         walkthrough_steps=WALKTHROUGH_STEPS_CATALOG,
         walkthrough_dismissed=bool(flask_session.get("walkthrough_dismissed", False))
     )
@@ -233,6 +250,7 @@ def analyze():
 
         # ATS Layout Format Compatibility Check (#474)
         format_compatibility = None
+        pdf_metadata_hygiene = None
         try:
             target_upload_path = None
             if file_uuid and resume_filename:
@@ -241,10 +259,23 @@ def analyze():
                     target_upload_path = cand_path
             if target_upload_path:
                 format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    raw_meta = read_pdf_metadata(target_upload_path)
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        raw_meta,
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
             else:
                 format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        {},
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
         except Exception as fc_err:
-            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            logger.warning(f"Non-blocking format compatibility or metadata hygiene check error in analyze: {fc_err}")
             format_compatibility = None
 
         # PII Detection and Redaction Option (#249)
@@ -335,6 +366,8 @@ def analyze():
                 company_name=selected_company,
                 resume_filename=resume_filename
             )
+            stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+            stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
             start_async_analysis(
                 task=task,
                 coordinator_agent=coordinator_agent,
@@ -345,7 +378,8 @@ def analyze():
                 resume_filename=resume_filename,
                 analysis_id=file_uuid,
                 student_id=student_id,
-                format_compatibility=format_compatibility
+                format_compatibility=format_compatibility,
+                pdf_metadata_hygiene=pdf_metadata_hygiene
             )
             return jsonify({
                 "success": True,
@@ -363,10 +397,15 @@ def analyze():
             job_description=job_description,
             company_name=selected_company
         )
+        stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+        stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
+
         if isinstance(analysis_payload, dict):
             analysis_payload["extracted_resume_text"] = extracted_resume_text
             if format_compatibility:
                 analysis_payload["format_compatibility"] = format_compatibility
+            if pdf_metadata_hygiene:
+                analysis_payload["pdf_metadata_hygiene"] = pdf_metadata_hygiene
 
         save_analysis(
             analysis_id=file_uuid,
@@ -374,7 +413,9 @@ def analyze():
             company_name=selected_company,
             job_description=job_description,
             results_dict=analysis_payload,
-            student_id=student_id
+            student_id=student_id,
+            stored_resume_id=stored_resume_id,
+            stored_resume_label=stored_resume_label
         )
 
         set_cached_analysis(
@@ -383,20 +424,24 @@ def analyze():
             student_id=student_id
         )
 
+        if isinstance(analysis_payload, dict) and analysis_payload.get("security_warning"):
+            flash(analysis_payload["security_warning"], "warning")
+
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
     except (RequestEntityTooLarge, ValueError) as ve:
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        err_msg = (
-            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            if isinstance(ve, RequestEntityTooLarge)
-            else str(ve)
-        )
-        logger.warning(f"Validation error in analysis workflow: {err_msg}")
+        if isinstance(ve, RequestEntityTooLarge):
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(ve, request)
+            if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+                resp, code = build_size_error_response(err_info, request, status_code=413)
+                return resp, code
+            flash(err_info["message"], "error")
+            return redirect(url_for("index"))
+        logger.warning(f"Validation error in analysis workflow: {str(ve)}")
         if request.args.get("async") == "true" or request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
-            status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
-            return jsonify({"success": False, "error": err_msg}), status_code
-        flash(err_msg, "error")
+            return jsonify({"success": False, "error": str(ve)}), 400
+        flash(str(ve), "error")
         return redirect(url_for("index"))
     except AIAnalysisError as aie:
         logger.warning(f"AIAnalysisError in analysis workflow: {scrub_api_key(str(aie))}")
@@ -482,6 +527,7 @@ def start_analysis_async():
 
         # ATS Layout Format Compatibility Check (#474)
         format_compatibility = None
+        pdf_metadata_hygiene = None
         try:
             target_upload_path = None
             if file_uuid and resume_filename:
@@ -490,10 +536,23 @@ def start_analysis_async():
                     target_upload_path = cand_path
             if target_upload_path:
                 format_compatibility = check_resume_format_compatibility(target_upload_path, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    raw_meta = read_pdf_metadata(target_upload_path)
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        raw_meta,
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
             else:
                 format_compatibility = check_resume_format_compatibility(extracted_resume_text, extracted_resume_text)
+                if resume_filename.lower().endswith(".pdf"):
+                    pdf_metadata_hygiene = analyze_pdf_metadata_hygiene(
+                        {},
+                        filename=resume_filename,
+                        target_role=selected_company
+                    )
         except Exception as fc_err:
-            logger.warning(f"Non-blocking format compatibility check error in analyze: {fc_err}")
+            logger.warning(f"Non-blocking format compatibility or metadata hygiene check error in analyze: {fc_err}")
             format_compatibility = None
 
         # PII Detection and Redaction Option (#249)
@@ -553,6 +612,9 @@ def start_analysis_async():
             resume_filename=resume_filename
         )
 
+        stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
+        stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
+
         start_async_analysis(
             task=task,
             coordinator_agent=coordinator_agent,
@@ -563,7 +625,8 @@ def start_analysis_async():
             resume_filename=resume_filename,
             analysis_id=file_uuid,
             student_id=student_id,
-            format_compatibility=format_compatibility
+            format_compatibility=format_compatibility,
+            pdf_metadata_hygiene=pdf_metadata_hygiene
         )
 
         return jsonify({
@@ -578,19 +641,18 @@ def start_analysis_async():
         }), 202
 
     except (RequestEntityTooLarge, ValueError) as ve:
-        max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-        err_msg = (
-            f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            if isinstance(ve, RequestEntityTooLarge)
-            else str(ve)
-        )
-        status_code = 413 if isinstance(ve, RequestEntityTooLarge) else 400
-        return jsonify({"success": False, "error": err_msg}), status_code
+        if isinstance(ve, RequestEntityTooLarge):
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(ve, request)
+            resp, code = build_size_error_response(err_info, request, status_code=413)
+            return resp, code
+        return jsonify({"success": False, "error": str(ve)}), 400
     except Exception as e:
         if isinstance(e, HTTPException) and e.code == 413:
-            max_mb = getattr(config, "MAX_UPLOAD_SIZE_MB", 5)
-            msg = f"The uploaded file exceeds the maximum allowed size of {max_mb} MB. Please upload a smaller file."
-            return jsonify({"success": False, "error": msg}), 413
+            from utils.request_size_diagnostics import diagnose_413_exception, build_size_error_response
+            err_info = diagnose_413_exception(e, request)
+            resp, code = build_size_error_response(err_info, request, status_code=413)
+            return resp, code
         logger.error(f"Failed to start async analysis: {str(e)}")
         friendly_message = format_ai_error_for_user(e)
         return jsonify({"success": False, "error": friendly_message}), 500
@@ -1634,6 +1696,30 @@ def dashboard(analysis_id: str) -> str:
             "summary": "Evidence cards could not be loaded."
         }
 
+    # Prepare Resume Timeline & Date Consistency Review (#840)
+    try:
+        from utils.resume_timeline_service import analyze_resume_timeline
+        dismissed_timeline_ids = flask_session.get(f"dismissed_timeline_flags_{analysis_id}", [])
+        resume_timeline = analyze_resume_timeline(
+            raw_resume,
+            gap_threshold_months=6,
+            dismissed_flag_ids=dismissed_timeline_ids
+        )
+    except Exception as tl_err:
+        logger.warning(f"Error computing resume timeline review for dashboard: {tl_err}")
+        resume_timeline = {
+            "status": "error",
+            "has_flags": False,
+            "has_active_flags": False,
+            "total_flags": 0,
+            "active_flags_count": 0,
+            "dismissed_flags_count": 0,
+            "gap_threshold_months": 6,
+            "summary": {"gaps_count": 0, "overlaps_count": 0, "inverted_count": 0, "future_count": 0},
+            "flags": [],
+            "timeline_items": []
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1680,8 +1766,12 @@ def dashboard(analysis_id: str) -> str:
         ats_confidence_json=json.dumps(ats_confidence),
         resume_evidence=resume_evidence,
         resume_evidence_json=json.dumps(resume_evidence),
+        resume_timeline=resume_timeline,
+        resume_timeline_json=json.dumps(resume_timeline),
         initial_recommended_jobs=initial_recommended_jobs,
-        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs)
+        initial_recommended_jobs_json=json.dumps(initial_recommended_jobs),
+        pdf_metadata_hygiene=pdf_metadata_hygiene,
+        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene)
     )
 
 
@@ -2227,6 +2317,135 @@ def api_evaluate_resume_ats_score():
         }), 200
     except Exception as exc:
         logger.error(f"Error in api_evaluate_resume_ats_score: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/timeline", methods=["GET"])
+def api_get_analysis_timeline(analysis_id: str):
+    """
+    Returns the date consistency, timeline gaps, and overlaps review for a candidate resume (#840).
+    Guarantees neutral phrasing without assumed reasons, constructive suggestions, and
+    reflects any flags dismissed by the candidate.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    from utils.resume_timeline_service import analyze_resume_timeline
+    dismissed_ids = flask_session.get(f"dismissed_timeline_flags_{analysis_id}", [])
+    gap_threshold = request.args.get("gap_threshold", default=6, type=int)
+
+    timeline_data = analyze_resume_timeline(
+        raw_resume,
+        gap_threshold_months=gap_threshold,
+        dismissed_flag_ids=dismissed_ids
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "timeline": timeline_data
+    }), 200
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/dismiss-timeline-flag", methods=["POST"])
+def api_dismiss_timeline_flag(analysis_id: str):
+    """
+    Allows a student to dismiss or restore a timeline gap/overlap flag (#840).
+    Saves state in session and updates persistent record if present.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    payload = request.get_json(silent=True) or request.form or {}
+    flag_id = payload.get("flag_id")
+    dismissed = payload.get("dismissed", True)
+    if isinstance(dismissed, str):
+        dismissed = dismissed.lower() in ("true", "1", "yes")
+
+    if not flag_id:
+        return jsonify({"status": "error", "success": False, "error": "flag_id is required."}), 400
+
+    session_key = f"dismissed_timeline_flags_{analysis_id}"
+    dismissed_set = set(flask_session.get(session_key, []))
+
+    if dismissed:
+        dismissed_set.add(flag_id)
+    else:
+        dismissed_set.discard(flag_id)
+
+    flask_session[session_key] = list(dismissed_set)
+    flask_session.modified = True
+
+    # Re-evaluate timeline to return updated counts
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+    from utils.resume_timeline_service import analyze_resume_timeline
+    updated_timeline = analyze_resume_timeline(
+        raw_resume,
+        dismissed_flag_ids=list(dismissed_set)
+    )
+
+    # If results dictionary is in analysis_record, update timeline_analysis
+    if isinstance(analysis_record.get("results"), dict):
+        analysis_record["results"]["timeline_analysis"] = updated_timeline
+        try:
+            update_analysis_section(
+                analysis_id=analysis_id,
+                section_db_key="timeline_analysis",
+                section_payload=updated_timeline,
+                section_key="timeline_analysis",
+            )
+        except Exception as save_err:
+            logger.debug(f"Could not persist updated timeline to db: {save_err}")
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "flag_id": flag_id,
+        "is_dismissed": bool(dismissed),
+        "active_flags_count": updated_timeline["active_flags_count"],
+        "dismissed_flags_count": updated_timeline["dismissed_flags_count"],
+        "has_active_flags": updated_timeline["has_active_flags"],
+    }), 200
+
+
+@analysis_bp.route("/api/resume/timeline-check", methods=["POST"])
+def api_check_resume_timeline():
+    """
+    Direct stateless endpoint to parse and evaluate resume timeline consistency (#840).
+    Accepts JSON body:
+      - resume_text: raw text of resume
+      - gap_threshold_months: (optional, default 6)
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        resume_text = data.get("resume_text", "")
+        gap_threshold = int(data.get("gap_threshold_months", 6))
+
+        from utils.resume_timeline_service import analyze_resume_timeline
+        timeline_result = analyze_resume_timeline(resume_text, gap_threshold_months=gap_threshold)
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "timeline": timeline_result
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error in api_check_resume_timeline: {exc}")
         return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
@@ -3766,6 +3985,77 @@ def resume_template_download(file_uuid: Optional[str] = None):
     )
 
 
+@analysis_bp.route("/api/analysis/<analysis_id>/download-clean-resume", methods=["GET"])
+def api_download_clean_resume(analysis_id: str):
+    """
+    Generates and downloads a clean, metadata-stripped copy of the uploaded PDF resume (#841).
+    Ensures author, title, creator, producer, and identifying metadata are stripped.
+    Strictly restricted to the uploading student.
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    # Locate uploaded PDF or generate clean PDF from extracted content
+    fname = analysis_record.get("resume_filename") or "resume.pdf"
+    file_id = analysis_record.get("id") or analysis_id
+    results = analysis_record.get("results") or {}
+    cand_info = results.get("candidate_info") or results.get("resume_analysis", {})
+    candidate_name = None
+    if isinstance(cand_info, dict):
+        candidate_name = cand_info.get("name") or cand_info.get("candidate_name")
+    target_role = analysis_record.get("target_role") or analysis_record.get("company_name")
+
+    suggested_filename = generate_suggested_filename(candidate_name, target_role)
+
+    # Check for stored PDF file in UPLOAD_FOLDER
+    target_pdf_path = None
+    if os.path.exists(config.UPLOAD_FOLDER):
+        for candidate in (
+            f"{file_id}_{fname}",
+            f"{file_id}.pdf",
+            f"{file_id}_resume.pdf",
+            fname
+        ):
+            cand_path = os.path.join(config.UPLOAD_FOLDER, secure_filename(candidate))
+            if os.path.exists(cand_path) and cand_path.lower().endswith(".pdf"):
+                target_pdf_path = cand_path
+                break
+
+        if not target_pdf_path:
+            for item in os.listdir(config.UPLOAD_FOLDER):
+                if item.startswith(f"{file_id}") and item.lower().endswith(".pdf"):
+                    target_pdf_path = os.path.join(config.UPLOAD_FOLDER, item)
+                    break
+
+    try:
+        if target_pdf_path and os.path.exists(target_pdf_path):
+            clean_stream = strip_pdf_metadata(target_pdf_path)
+        else:
+            # Fallback: synthesize a clean single-column PDF from resume data
+            raw_resume = (
+                analysis_record.get("resume_text")
+                or results.get("extracted_resume_text")
+                or results.get("resume_text")
+                or "Resume"
+            )
+            synthesized_data = dict(DEFAULT_SAMPLE_RESUME)
+            if candidate_name:
+                synthesized_data["candidate_name"] = candidate_name
+            pdf_bytes = generate_resume_pdf(synthesized_data, template="classic")
+            clean_stream = strip_pdf_metadata(pdf_bytes)
+
+        return send_file(
+            clean_stream,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=suggested_filename
+        )
+    except Exception as e:
+        logger.error(f"Failed to generate clean resume PDF for analysis {analysis_id}: {e}")
+        return jsonify({"success": False, "error": f"Failed to generate clean resume: {str(e)}"}), 500
+
+
 @analysis_bp.route("/history", methods=["GET"])
 def history_view():
     """
@@ -4886,6 +5176,247 @@ def api_check_analysis_freshness():
 
     freshness = check_report_freshness(report_meta, current_profile)
     return jsonify({"status": "success", "freshness": freshness}), 200
+
+
+# ==============================================================================
+# RESUME LIBRARY: MY RESUMES (Issue #842)
+# ==============================================================================
+
+@analysis_bp.route("/resumes", methods=["GET"])
+def my_resumes_view():
+    """
+    Renders the 'My Resumes' library page where a student can store up to 5 named resumes
+    (label, role focus, uploaded date) with their extracted text (#842).
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        flash("Please log in to manage your resume library.", "info")
+        return redirect(url_for("index"))
+
+    from utils.resume_library_service import resume_library_service, MAX_STORED_RESUMES_PER_USER
+    resumes = resume_library_service.list_resumes(student_id)
+    return render_template(
+        "my_resumes.html",
+        resumes=resumes,
+        max_resumes=MAX_STORED_RESUMES_PER_USER,
+        current_count=len(resumes)
+    )
+
+
+@analysis_bp.route("/api/resumes", methods=["GET"])
+def api_list_resumes():
+    """Returns the authenticated student's stored resumes list (#842)."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import resume_library_service, MAX_STORED_RESUMES_PER_USER
+    resumes = resume_library_service.list_resumes(student_id)
+    return jsonify({
+        "success": True,
+        "resumes": resumes,
+        "count": len(resumes),
+        "max_resumes": MAX_STORED_RESUMES_PER_USER
+    }), 200
+
+
+@analysis_bp.route("/api/resumes", methods=["POST"])
+def api_create_resume():
+    """
+    Uploads/stores a new named resume into the student's library (#842).
+    Enforces maximum limit of 5.
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeLimitExceededError
+    )
+
+    label = request.form.get("label", "").strip()
+    role_focus = request.form.get("role_focus", "General").strip()
+    pasted_text = request.form.get("resume_text", "").strip()
+    uploaded_file = req = request.files.get("resume_file") or request.files.get("resume")
+
+    extracted_text = ""
+    resume_filename = f"{label}.pdf" if label else "resume.pdf"
+
+    if uploaded_file and uploaded_file.filename:
+        filename_lower = uploaded_file.filename.lower()
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        if ext not in (".pdf", ".docx"):
+            return jsonify({"success": False, "error": "Only PDF (.pdf) and Word (.docx) files are supported."}), 400
+
+        resume_filename = secure_filename(uploaded_file.filename)
+        temp_uuid = str(uuid.uuid4())
+        safe_path = os.path.join(config.UPLOAD_FOLDER, f"{temp_uuid}_{resume_filename}")
+        os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+        uploaded_file.save(safe_path)
+
+        try:
+            from utils.pdf_reader import extract_text_from_file
+            extracted_text = extract_text_from_file(safe_path)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Failed to extract text from resume: {str(e)}"}), 400
+        finally:
+            if os.path.exists(safe_path):
+                try:
+                    os.remove(safe_path)
+                except Exception:
+                    pass
+    elif pasted_text:
+        extracted_text = pasted_text
+        resume_filename = f"{label or 'Pasted'}_Resume.txt"
+    else:
+        return jsonify({"success": False, "error": "Please provide a resume file or paste text."}), 400
+
+    try:
+        new_resume = resume_library_service.create_resume(
+            student_id=student_id,
+            label=label,
+            role_focus=role_focus,
+            extracted_text=extracted_text,
+            resume_filename=resume_filename
+        )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "resume": new_resume, "message": f"Resume '{label}' saved successfully."}), 201
+
+        flash(f"Resume '{label}' stored successfully in your library.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeLimitExceededError as rle:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": str(rle)}), 400
+        flash(str(rle), "warning")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ValueError as ve:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": False, "error": str(ve)}), 400
+        flash(str(ve), "error")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except Exception as e:
+        logger.error(f"Error creating stored resume: {e}")
+        return jsonify({"success": False, "error": "Failed to store resume."}), 500
+
+
+@analysis_bp.route("/api/resumes/<resume_id>", methods=["GET"])
+def api_get_resume(resume_id: str):
+    """Retrieves a single stored resume (#842)."""
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import resume_library_service, ResumeAccessDeniedError
+    try:
+        resume = resume_library_service.get_resume(resume_id, student_id)
+        if not resume:
+            return jsonify({"success": False, "error": "Resume not found"}), 404
+        return jsonify({"success": True, "resume": resume}), 200
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+
+
+@analysis_bp.route("/api/resumes/<resume_id>", methods=["PUT", "POST"])
+def api_update_resume(resume_id: str):
+    """
+    Renames or replaces an existing stored resume (#842).
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeNotFoundError,
+        ResumeAccessDeniedError
+    )
+
+    data = request.get_json(silent=True) or request.form
+    label = data.get("label")
+    role_focus = data.get("role_focus")
+    extracted_text = data.get("resume_text")
+    resume_filename = None
+
+    uploaded_file = request.files.get("resume_file") or request.files.get("resume")
+    if uploaded_file and uploaded_file.filename:
+        ext = os.path.splitext(uploaded_file.filename)[1].lower()
+        if ext not in (".pdf", ".docx"):
+            return jsonify({"success": False, "error": "Only PDF and Word documents are supported."}), 400
+        resume_filename = secure_filename(uploaded_file.filename)
+        temp_uuid = str(uuid.uuid4())
+        safe_path = os.path.join(config.UPLOAD_FOLDER, f"{temp_uuid}_{resume_filename}")
+        os.makedirs(config.UPLOAD_FOLDER, exist_ok=True)
+        uploaded_file.save(safe_path)
+        try:
+            from utils.pdf_reader import extract_text_from_file
+            extracted_text = extract_text_from_file(safe_path)
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Failed to extract text: {e}"}), 400
+        finally:
+            if os.path.exists(safe_path):
+                try:
+                    os.remove(safe_path)
+                except Exception:
+                    pass
+
+    try:
+        updated = resume_library_service.update_resume(
+            resume_id=resume_id,
+            student_id=student_id,
+            label=label,
+            role_focus=role_focus,
+            extracted_text=extracted_text,
+            resume_filename=resume_filename
+        )
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "resume": updated, "message": "Resume updated successfully."}), 200
+
+        flash("Resume updated successfully.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except ResumeNotFoundError:
+        return jsonify({"success": False, "error": "Resume not found"}), 404
+    except ValueError as ve:
+        return jsonify({"success": False, "error": str(ve)}), 400
+    except Exception as e:
+        logger.error(f"Error updating resume {resume_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to update resume."}), 500
+
+
+@analysis_bp.route("/api/resumes/<resume_id>/delete", methods=["POST", "DELETE"])
+@analysis_bp.route("/resumes/delete/<resume_id>", methods=["POST"])
+def api_delete_resume(resume_id: str):
+    """
+    Deletes a stored resume from the library (#842).
+    Past analyses remain readable as they maintain independent snapshots.
+    """
+    student_id = flask_session.get("user_id") or flask_session.get("student_id")
+    if not student_id:
+        return jsonify({"success": False, "error": "Authentication required"}), 401
+
+    from utils.resume_library_service import (
+        resume_library_service,
+        ResumeNotFoundError,
+        ResumeAccessDeniedError
+    )
+
+    try:
+        resume_library_service.delete_resume(resume_id, student_id)
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest" or request.is_json:
+            return jsonify({"success": True, "message": "Resume deleted successfully."}), 200
+
+        flash("Resume deleted from your library.", "success")
+        return redirect(url_for("analysis.my_resumes_view"))
+    except ResumeAccessDeniedError as pe:
+        return jsonify({"success": False, "error": str(pe)}), 403
+    except ResumeNotFoundError:
+        return jsonify({"success": False, "error": "Resume not found"}), 404
+    except Exception as e:
+        logger.error(f"Error deleting resume {resume_id}: {e}")
+        return jsonify({"success": False, "error": "Failed to delete resume."}), 500
+
 
 
 

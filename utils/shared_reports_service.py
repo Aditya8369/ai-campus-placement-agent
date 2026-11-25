@@ -51,7 +51,8 @@ def _deep_redact_pii(data: Any) -> Any:
         sensitive_keys = {
             "student_id", "user_id", "email", "phone", "contact",
             "personal_info", "account", "password", "auth_session_id",
-            "candidate_email", "candidate_phone", "candidate_address"
+            "candidate_email", "candidate_phone", "candidate_address",
+            "pdf_metadata_hygiene", "metadata_hygiene"
         }
         sanitized = {}
         for k, v in data.items():
