@@ -10,6 +10,7 @@ import io
 import logging
 import os
 import re
+import time
 from typing import List, Optional, Tuple, Union, Dict, Any
 from PyPDF2 import PdfReader
 from PyPDF2.errors import PdfReadError

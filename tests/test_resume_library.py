@@ -38,7 +38,8 @@ class TestResumeLibraryService:
 
     def test_limit_of_5_is_enforced_with_clear_message(self, service):
         """The limit of 5 stored resumes is enforced with a clear message."""
-        student_id = "test_student_limit_unique_5"
+        import uuid
+        student_id = f"test_student_limit_{uuid.uuid4()}"
         # Store 5 resumes
         for i in range(1, 6):
             service.create_resume(

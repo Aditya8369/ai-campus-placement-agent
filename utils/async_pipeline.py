@@ -617,6 +617,28 @@ def _run_analysis_pipeline(
                 )
             except Exception as save_err:
                 logger.warning(f"Failed to persist partial analysis on stream error: {save_err}")
+        else:
+            # Produce rule-based basic analysis fallback on AI failure (#849)
+            try:
+                from utils.basic_analysis_fallback import generate_basic_fallback_analysis
+                basic_payload = generate_basic_fallback_analysis(
+                    resume_text=resume_text,
+                    job_description=job_description,
+                    company_name=company_name,
+                    error_reason=friendly_error
+                )
+                basic_payload["extracted_resume_text"] = resume_text
+                save_analysis_func(
+                    analysis_id=analysis_id,
+                    resume_filename=resume_filename,
+                    company_name=company_name,
+                    job_description=job_description,
+                    results_dict=basic_payload,
+                    student_id=student_id or "default_student",
+                )
+                redirect_url = f"/dashboard/{analysis_id}"
+            except Exception as basic_err:
+                logger.warning(f"Failed to generate basic fallback analysis on async worker failure: {basic_err}")
 
         task.emit(
             step=task.current_step,

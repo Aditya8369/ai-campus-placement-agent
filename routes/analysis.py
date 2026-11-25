@@ -392,11 +392,26 @@ def analyze():
             }), 202
 
         # Synchronous execution fallback (preserves 100% test compatibility)
-        analysis_payload = coordinator_agent.analyze(
-            resume_text=extracted_resume_text,
-            job_description=job_description,
-            company_name=selected_company
-        )
+        is_basic_analysis = False
+        try:
+            analysis_payload = coordinator_agent.analyze(
+                resume_text=extracted_resume_text,
+                job_description=job_description,
+                company_name=selected_company
+            )
+        except (AIAnalysisError, Exception) as aie:
+            from utils.gemini import format_ai_error_for_user
+            friendly_err = format_ai_error_for_user(aie)
+            logger.warning(f"AI failure in analysis workflow: {scrub_api_key(str(aie))}. Activating rule-based basic fallback.")
+            from utils.basic_analysis_fallback import generate_basic_fallback_analysis
+            analysis_payload = generate_basic_fallback_analysis(
+                resume_text=extracted_resume_text,
+                job_description=job_description,
+                company_name=selected_company,
+                error_reason=scrub_api_key(friendly_err)
+            )
+            is_basic_analysis = True
+
         stored_resume_id = flask_session.pop("active_stored_resume_id", None) or request.form.get("stored_resume_id")
         stored_resume_label = flask_session.pop("active_stored_resume_label", None) or request.form.get("stored_resume_label")
 
@@ -418,14 +433,28 @@ def analyze():
             stored_resume_label=stored_resume_label
         )
 
-        set_cached_analysis(
-            input_hash=input_hash,
-            analysis_id=file_uuid,
-            student_id=student_id
-        )
+        # Do not cache basic fallback analyses (#849)
+        if not is_basic_analysis:
+            set_cached_analysis(
+                input_hash=input_hash,
+                analysis_id=file_uuid,
+                student_id=student_id
+            )
+
+        if is_basic_analysis:
+            flash("AI services are temporarily unavailable. Displaying basic rule-based analysis.", "info")
 
         if isinstance(analysis_payload, dict) and analysis_payload.get("security_warning"):
             flash(analysis_payload["security_warning"], "warning")
+
+        if request.is_json:
+            return jsonify({
+                "success": True,
+                "is_basic_analysis": is_basic_analysis,
+                "analysis_id": file_uuid,
+                "analysis_label": analysis_payload.get("analysis_label", "basic analysis (AI unavailable)") if is_basic_analysis else "full",
+                "redirect_url": url_for("dashboard", analysis_id=file_uuid)
+            }), 200
 
         return redirect(url_for("dashboard", analysis_id=file_uuid))
 
@@ -825,11 +854,25 @@ def rerun_analysis(analysis_id: str):
                     logger.warning(f"Could not copy file {fname} for re-run: {e}")
 
     try:
-        analysis_payload = coordinator_agent.analyze(
-            resume_text=resume_text,
-            job_description=job_description,
-            company_name=company_name
-        )
+        is_basic = False
+        try:
+            analysis_payload = coordinator_agent.analyze(
+                resume_text=resume_text,
+                job_description=job_description,
+                company_name=company_name
+            )
+        except (AIAnalysisError, Exception) as aie:
+            from utils.gemini import format_ai_error_for_user
+            friendly_err = format_ai_error_for_user(aie)
+            logger.warning(f"AI failure on re-run for {analysis_id}: {scrub_api_key(str(aie))}. Using basic fallback.")
+            from utils.basic_analysis_fallback import generate_basic_fallback_analysis
+            analysis_payload = generate_basic_fallback_analysis(
+                resume_text=resume_text,
+                job_description=job_description,
+                company_name=company_name,
+                error_reason=scrub_api_key(friendly_err)
+            )
+            is_basic = True
 
         save_analysis(
             analysis_id=new_analysis_id,
@@ -840,17 +883,24 @@ def rerun_analysis(analysis_id: str):
             student_id=student_id
         )
 
-        input_hash = compute_analysis_hash(resume_text, job_description, company_name)
-        set_cached_analysis(
-            input_hash=input_hash,
-            analysis_id=new_analysis_id,
-            student_id=student_id
-        )
+        # Do not cache basic fallback analyses (#849)
+        if not is_basic:
+            input_hash = compute_analysis_hash(resume_text, job_description, company_name)
+            set_cached_analysis(
+                input_hash=input_hash,
+                analysis_id=new_analysis_id,
+                student_id=student_id
+            )
 
-        flash("Analysis re-run complete! Fresh evaluation generated.", "success")
+        if is_basic:
+            flash("AI services are still unavailable. Displaying basic rule-based analysis.", "info")
+        else:
+            flash("Analysis re-run complete! Fresh evaluation generated.", "success")
+
         if request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({
                 "success": True,
+                "is_basic_analysis": is_basic,
                 "analysis_id": new_analysis_id,
                 "redirect_url": url_for("dashboard", analysis_id=new_analysis_id)
             }), 200
@@ -1722,6 +1772,27 @@ def dashboard(analysis_id: str) -> str:
             "suggested_filename": "FirstName_LastName_Resume.pdf",
             "has_any_metadata": False,
             "is_clean": True,
+        }
+
+    # Prepare Resume Links Health Check Card (#845)
+    try:
+        from utils.resume_link_service import analyze_resume_links
+        resume_links = analyze_resume_links(
+            resume_text=raw_resume,
+            check_reachability=True,
+            user_id=student_id
+        )
+    except Exception as link_err:
+        logger.warning(f"Error checking resume links for dashboard: {link_err}")
+        resume_links = {
+            "total_links": 0,
+            "working_count": 0,
+            "broken_count": 0,
+            "malformed_count": 0,
+            "unverified_count": 0,
+            "has_issues": False,
+            "links": [],
+            "summary": "Could not analyze resume links."
         }
 
     return render_template(

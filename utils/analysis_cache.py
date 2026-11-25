@@ -140,6 +140,13 @@ def get_cached_analysis(
         invalidate_cache_entry(input_hash=input_hash)
         return None
 
+    # Never serve basic fallback analysis as a cached full result (#849)
+    results = record.get("results")
+    if isinstance(results, dict) and (results.get("is_basic_analysis") or results.get("ai_unavailable")):
+        logger.info(f"Analysis {analysis_id} is a basic fallback; excluding from cache hits.")
+        invalidate_cache_entry(input_hash=input_hash, analysis_id=analysis_id)
+        return None
+
     record["from_cache"] = True
     record["is_cached"] = True
     return record
@@ -161,6 +168,17 @@ def set_cached_analysis(
 
     if not input_hash or not analysis_id:
         return
+
+    # Never cache a basic fallback analysis as a full result (#849)
+    try:
+        record = get_analysis(analysis_id)
+        if record:
+            results = record.get("results")
+            if isinstance(results, dict) and (results.get("is_basic_analysis") or results.get("ai_unavailable")):
+                logger.info(f"Skipping caching for basic fallback analysis {analysis_id}")
+                return
+    except Exception as check_err:
+        logger.debug(f"Could not check basic analysis flag on {analysis_id}: {check_err}")
 
     now = created_at if created_at is not None else time.time()
     ttl = ttl_seconds if ttl_seconds is not None else getattr(config, "ANALYSIS_CACHE_EXPIRY_SECONDS", 86400)
