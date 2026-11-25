@@ -128,3 +128,23 @@ pytest tests/test_deployment.py -v --no-cov
 ### CI/CD Integration
 The check is automatically run as part of the GitHub Actions CI workflow (`.github/workflows/ci.yml`) under the `environment-diagnostics` job before tests or builds proceed.
 
+
+### Production session secret
+
+Vercel deployments (including previews) and other hosts with `FLASK_ENV=production`
+fail startup if the session secret is missing, shorter than 32 UTF-8 bytes, a
+repeated single character, or a recognizable example placeholder. These checks
+reject obvious mistakes; they do not measure a key's entropy. Generate a random
+key with `python -c "import secrets; print(secrets.token_hex(32))"`, then configure
+`FLASK_SECRET_KEY` in the host's secret settings and redeploy. Never commit or log
+the value.
+
+The legacy `SECRET_KEY` environment name remains supported when
+`FLASK_SECRET_KEY` is unset; an explicitly configured canonical key takes
+precedence and must itself pass validation. `DEFAULT_SECRET_KEY` is a local
+development fallback only and cannot satisfy production configuration. Set
+`FLASK_ENV=production` explicitly on non-Vercel production hosts. Local
+development retains its existing fallback.
+
+Keep the configured key stable across instances and restarts. Changing it
+invalidates existing signed sessions, so plan a key change as a session reset.
