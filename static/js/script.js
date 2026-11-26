@@ -2317,6 +2317,15 @@ function initMockInterview() {
   const transcriptWordCount = document.getElementById("transcriptWordCount");
   const toggleAutoTTS = document.getElementById("toggleAutoTTS");
 
+  // Voice Mock Interview Elements (#758)
+  const unsupportedBrowserNotice = document.getElementById("unsupportedBrowserNotice");
+  const micDeniedNotice = document.getElementById("micDeniedNotice");
+  const btnDismissMicNotice = document.getElementById("btnDismissMicNotice");
+  const voiceLiveWpm = document.getElementById("voiceLiveWpm");
+  const voiceLiveFillers = document.getElementById("voiceLiveFillers");
+  const voiceLivePauses = document.getElementById("voiceLivePauses");
+  const voiceSimpleTipsText = document.getElementById("voiceSimpleTipsText");
+
   // Pause and Resume Elements (#265)
   const btnPauseResumeSession = document.getElementById("btnPauseResumeSession");
   const btnPauseResumeLabel = document.getElementById("btnPauseResumeLabel");
@@ -3121,9 +3130,15 @@ function initMockInterview() {
   }
 
   // -------------------------------------------------------------
-  // 2. Web Speech API (Speech-to-Text) & Audio Visualizer
+  // 2. Web Speech API (Speech-to-Text) & Audio Visualizer (#758)
   // -------------------------------------------------------------
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  if (btnDismissMicNotice && micDeniedNotice) {
+    btnDismissMicNotice.addEventListener("click", () => {
+      micDeniedNotice.classList.add("d-none");
+    });
+  }
 
   if (SpeechRecognition) {
     recognition = new SpeechRecognition();
@@ -3132,6 +3147,82 @@ function initMockInterview() {
     recognition.lang = "en-US";
 
     let finalTranscript = "";
+    let lastSpeechTimestamp = 0;
+    let longPauseCount = 0;
+    const COMMON_FILLERS = ["um", "uh", "er", "ah", "like", "you know", "basically", "actually", "literally", "sort of", "kind of"];
+
+    function calculateVoiceMetricsAndTips(text, durationSecs) {
+      const words = text.trim() ? text.trim().split(/\s+/).filter(Boolean) : [];
+      const wordCount = words.length;
+
+      // 1. Calculate WPM
+      let wpm = 0;
+      if (durationSecs > 0 && wordCount > 0) {
+        wpm = Math.round(wordCount / (durationSecs / 60.0));
+      }
+
+      // 2. Count Fillers
+      const lower = ` ${text.toLowerCase()} `;
+      let fillerCount = 0;
+      COMMON_FILLERS.forEach(f => {
+        const regex = new RegExp(`\\b${f}\\b`, "g");
+        const matches = lower.match(regex);
+        if (matches) fillerCount += matches.length;
+      });
+
+      // 3. Count Pauses (text markers + speech silence intervals)
+      const textPauseMatches = text.match(/(\.{3,}|\[pause\]|\(pause\)|\(silence\)|\s-\s|--)/gi) || [];
+      const totalLongPauses = longPauseCount + textPauseMatches.length;
+
+      // Update Live UI Badges & Dials
+      if (voiceLiveWpm) {
+        voiceLiveWpm.innerText = wpm > 0 ? `${wpm} WPM` : "-- WPM";
+      }
+      if (voiceLiveFillers) {
+        voiceLiveFillers.innerText = String(fillerCount);
+      }
+      if (voiceLivePauses) {
+        voiceLivePauses.innerText = String(totalLongPauses);
+      }
+      if (telemetryCadenceWpm) {
+        telemetryCadenceWpm.innerText = wpm > 0 ? `${wpm} WPM` : "-- WPM";
+      }
+      if (telemetryFillerCount) {
+        telemetryFillerCount.innerText = String(fillerCount);
+      }
+
+      // 4. Generate Simple Coaching Tips (#758)
+      const tips = [];
+      if (wordCount < 4) {
+        tips.push("Speak naturally to receive real-time feedback on your pacing, filler words, and pauses.");
+      } else {
+        if (wpm > 165) {
+          tips.push(`Pace: Speaking slightly fast (${wpm} WPM). Try slowing down and pausing between thoughts.`);
+        } else if (wpm < 110 && durationSecs >= 4) {
+          tips.push(`Pace: Delivery pace is on the slower side (${wpm} WPM). Speak a bit more decisively.`);
+        } else if (wpm >= 110 && wpm <= 165) {
+          tips.push(`Pace: Excellent pacing (${wpm} WPM). Your delivery is balanced and easy to follow!`);
+        }
+
+        if (fillerCount >= 3) {
+          tips.push(`Fillers: Noticeable filler words (${fillerCount}x). Pause silently instead of using "um" or "like".`);
+        } else if (fillerCount > 0) {
+          tips.push(`Fillers: Low filler count (${fillerCount}x). Good verbal control.`);
+        } else {
+          tips.push("Fillers: Clean articulation with zero filler words!");
+        }
+
+        if (totalLongPauses >= 2) {
+          tips.push(`Pauses: Detected ${totalLongPauses} long pauses. Use transitional phrases like "Let me break this down" to maintain flow.`);
+        } else {
+          tips.push("Pauses: Smooth speech continuity with no awkward silences.");
+        }
+      }
+
+      if (voiceSimpleTipsText) {
+        voiceSimpleTipsText.innerHTML = tips.map(t => `<div class="mb-1">${escapeHtml(t)}</div>`).join("");
+      }
+    }
 
     function updateSpeechTimer() {
       speechSeconds++;
@@ -3140,6 +3231,13 @@ function initMockInterview() {
       if (speechTimerBadge) {
         speechTimerBadge.innerHTML = `<i class="fa-regular fa-clock me-1"></i>${mins}:${secs}`;
       }
+      const now = Date.now();
+      if (lastSpeechTimestamp > 0 && (now - lastSpeechTimestamp) >= 2500) {
+        longPauseCount++;
+        lastSpeechTimestamp = now;
+      }
+      const currentText = liveInterimText ? liveInterimText.innerText.trim() : "";
+      calculateVoiceMetricsAndTips(currentText, speechSeconds);
     }
 
     function updateTranscriptWordCount(text) {
@@ -3151,6 +3249,7 @@ function initMockInterview() {
     function startVoiceRecording() {
       try {
         finalTranscript = liveInterimText ? liveInterimText.innerText.trim() : "";
+        lastSpeechTimestamp = Date.now();
         recognition.start();
         isRecording = true;
         speechSeconds = 0;
@@ -3185,7 +3284,7 @@ function initMockInterview() {
       clearInterval(speechTimerInterval);
       if (voiceWaveform) voiceWaveform.classList.remove("active");
       if (recordingStatusText) {
-        recordingStatusText.innerText = "Recording paused. Review or insert your answer below.";
+        recordingStatusText.innerText = "Recording paused. Review or edit your answer below.";
         recordingStatusText.className = "small fw-bold text-success";
       }
       if (btnMic) {
@@ -3212,6 +3311,7 @@ function initMockInterview() {
     }
 
     recognition.onresult = (event) => {
+      lastSpeechTimestamp = Date.now();
       let interimTranscript = "";
       for (let i = event.resultIndex; i < event.results.length; ++i) {
         if (event.results[i].isFinal) {
@@ -3226,20 +3326,36 @@ function initMockInterview() {
         liveInterimText.innerText = fullCapturedText;
         updateTranscriptWordCount(fullCapturedText);
       }
+      calculateVoiceMetricsAndTips(fullCapturedText, speechSeconds);
     };
 
     recognition.onerror = (event) => {
       console.warn("Speech recognition error:", event.error);
-      if (recordingStatusText) {
-        recordingStatusText.innerText = `Microphone notice: ${event.error}. Click Voice Answer to retry.`;
-        recordingStatusText.className = "small fw-semibold text-warning";
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        if (micDeniedNotice) micDeniedNotice.classList.remove("d-none");
+        if (recordingStatusText) {
+          recordingStatusText.innerText = "Microphone access denied. You can continue typing your answer below.";
+          recordingStatusText.className = "small fw-semibold text-danger";
+        }
+      } else if (event.error === "no-speech") {
+        if (recordingStatusText) {
+          recordingStatusText.innerText = "No speech detected. Speak clearly into your microphone.";
+          recordingStatusText.className = "small fw-semibold text-warning";
+        }
+      } else {
+        if (recordingStatusText) {
+          recordingStatusText.innerText = `Microphone notice: ${event.error}. Please type your answer or retry.`;
+          recordingStatusText.className = "small fw-semibold text-warning";
+        }
       }
       stopVoiceRecording();
+      if (answerInput) {
+        answerInput.focus();
+      }
     };
 
     recognition.onend = () => {
       if (isRecording) {
-        // Auto-restart if continuous dictation stopped unexpectedly
         try {
           recognition.start();
         } catch (e) {
@@ -3255,7 +3371,9 @@ function initMockInterview() {
       btnClearTranscript.addEventListener("click", () => {
         liveInterimText.innerText = "";
         finalTranscript = "";
+        longPauseCount = 0;
         updateTranscriptWordCount("");
+        calculateVoiceMetricsAndTips("", 0);
       });
     }
 
@@ -3269,7 +3387,9 @@ function initMockInterview() {
           if (typeof saveCurrentDraft === "function") saveCurrentDraft();
           liveInterimText.innerText = "";
           finalTranscript = "";
+          longPauseCount = 0;
           updateTranscriptWordCount("");
+          calculateVoiceMetricsAndTips("", 0);
           stopVoiceRecording();
           answerInput.focus();
         }
@@ -3280,16 +3400,25 @@ function initMockInterview() {
       liveInterimText.addEventListener("input", () => {
         finalTranscript = liveInterimText.innerText.trim();
         updateTranscriptWordCount(finalTranscript);
+        calculateVoiceMetricsAndTips(finalTranscript, speechSeconds);
       });
     }
 
   } else {
-    // Web Speech API not supported in browser
+    // Web Speech API not supported in browser (#758)
+    if (unsupportedBrowserNotice) {
+      unsupportedBrowserNotice.classList.remove("d-none");
+    }
     if (btnMic) {
-      btnMic.title = "Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.";
-      btnMic.style.opacity = "0.7";
-      btnMic.addEventListener("click", () => {
-        alert("Speech Recognition is not supported by your browser. Please use Google Chrome, Microsoft Edge, or Safari for voice answering.");
+      btnMic.title = "Speech recognition is not supported in this browser. Please type your answer below or use Chrome, Edge, or Safari.";
+      btnMic.classList.add("disabled");
+      btnMic.setAttribute("aria-disabled", "true");
+      btnMic.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (unsupportedBrowserNotice) unsupportedBrowserNotice.classList.remove("d-none");
+        if (answerInput) {
+          answerInput.focus();
+        }
       });
     }
   }

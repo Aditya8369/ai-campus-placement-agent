@@ -1,0 +1,644 @@
+{
+  "$schema_description": "Curated certifications and courses mapped to student skill gaps with verified providers, levels, pricing, duration, and verification dates (#757).",
+  "version": "1.0",
+  "skills": {
+    "Python": [
+      {
+        "title": "Google IT Automation with Python Professional Certificate",
+        "provider": "Coursera / Google",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "6 months (10 hrs/week)",
+        "url": "https://www.coursera.org/professional-certificates/google-it-automation",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "Python for Everybody Specialization",
+        "provider": "Coursera / University of Michigan",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "4 months (10 hrs/week)",
+        "url": "https://www.coursera.org/specializations/python",
+        "last_verified": "2026-11-18"
+      },
+      {
+        "title": "Scientific Computing with Python Certification",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/scientific-computing-with-python/",
+        "last_verified": "2026-11-22"
+      }
+    ],
+    "Docker": [
+      {
+        "title": "Docker Certified Associate (DCA) Prep Course",
+        "provider": "Docker / KodeKloud",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "15 hours",
+        "url": "https://kodekloud.com/courses/docker-certified-associate-exam-course/",
+        "last_verified": "2026-11-15"
+      },
+      {
+        "title": "Docker for Developers",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "5 hours",
+        "url": "https://www.freecodecamp.org/news/docker-simplified-for-beginners/",
+        "last_verified": "2026-11-19"
+      },
+      {
+        "title": "Docker & Kubernetes: The Practical Guide",
+        "provider": "Udemy / Academind",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "23 hours",
+        "url": "https://www.udemy.com/course/docker-kubernetes-the-practical-guide/",
+        "last_verified": "2026-11-10"
+      }
+    ],
+    "Kubernetes": [
+      {
+        "title": "Certified Kubernetes Application Developer (CKAD)",
+        "provider": "Linux Foundation / CNCF",
+        "level": "Advanced",
+        "type": "Paid",
+        "duration": "30 hours prep",
+        "url": "https://training.linuxfoundation.org/certification/certified-kubernetes-application-developer-ckad/",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "Introduction to Kubernetes (LFS158x)",
+        "provider": "edX / Linux Foundation",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "14 weeks (2-3 hrs/week)",
+        "url": "https://www.edx.org/learn/kubernetes/the-linux-foundation-introduction-to-kubernetes",
+        "last_verified": "2026-11-16"
+      },
+      {
+        "title": "Kubernetes Course for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "4 hours",
+        "url": "https://www.youtube.com/watch?v=X48VuDVv0do",
+        "last_verified": "2026-11-21"
+      }
+    ],
+    "AWS": [
+      {
+        "title": "AWS Certified Solutions Architect - Associate",
+        "provider": "Amazon Web Services",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "40 hours prep",
+        "url": "https://aws.amazon.com/certification/certified-solutions-architect-associate/",
+        "last_verified": "2026-11-17"
+      },
+      {
+        "title": "AWS Cloud Technical Essentials",
+        "provider": "Coursera / AWS",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "14 hours",
+        "url": "https://www.coursera.org/learn/aws-cloud-technical-essentials",
+        "last_verified": "2026-11-22"
+      },
+      {
+        "title": "AWS Certified Cloud Practitioner Training",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "14 hours",
+        "url": "https://www.youtube.com/watch?v=SOTamWNgDKc",
+        "last_verified": "2026-11-19"
+      }
+    ],
+    "React": [
+      {
+        "title": "Meta Front-End Developer Professional Certificate",
+        "provider": "Coursera / Meta",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "7 months (6 hrs/week)",
+        "url": "https://www.coursera.org/professional-certificates/meta-front-end-developer",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "Front End Development Libraries Certification (React & Redux)",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/front-end-development-libraries/",
+        "last_verified": "2026-11-24"
+      },
+      {
+        "title": "The Complete React Developer Course",
+        "provider": "Udemy / Andrew Mead",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "39 hours",
+        "url": "https://www.udemy.com/course/react-2nd-edition/",
+        "last_verified": "2026-11-14"
+      }
+    ],
+    "JavaScript": [
+      {
+        "title": "JavaScript Algorithms and Data Structures Certification",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/",
+        "last_verified": "2026-11-23"
+      },
+      {
+        "title": "Interactivity with JavaScript",
+        "provider": "Coursera / University of Michigan",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "10 hours",
+        "url": "https://www.coursera.org/learn/javascript",
+        "last_verified": "2026-11-12"
+      },
+      {
+        "title": "Modern JavaScript From The Beginning",
+        "provider": "Udemy / Brad Traversy",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "21 hours",
+        "url": "https://www.udemy.com/course/modern-javascript-from-the-beginning/",
+        "last_verified": "2026-11-15"
+      }
+    ],
+    "TypeScript": [
+      {
+        "title": "Understanding TypeScript - 2026 Edition",
+        "provider": "Udemy / Maximilian Schwarzmüller",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "15 hours",
+        "url": "https://www.udemy.com/course/understanding-typescript/",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "TypeScript Course for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "5 hours",
+        "url": "https://www.youtube.com/watch?v=30LWjhZzg50",
+        "last_verified": "2026-11-18"
+      },
+      {
+        "title": "Total TypeScript Fundamentals",
+        "provider": "Matt Pocock / Total TypeScript",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "6 hours",
+        "url": "https://www.totaltypescript.com/tutorials",
+        "last_verified": "2026-11-22"
+      }
+    ],
+    "Node.js": [
+      {
+        "title": "OpenJS Node.js Application Developer (JSNAD)",
+        "provider": "Linux Foundation / OpenJS",
+        "level": "Advanced",
+        "type": "Paid",
+        "duration": "30 hours prep",
+        "url": "https://training.linuxfoundation.org/certification/jsnad/",
+        "last_verified": "2026-11-16"
+      },
+      {
+        "title": "Back End Development and APIs Certification",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/back-end-development-and-apis/",
+        "last_verified": "2026-11-24"
+      },
+      {
+        "title": "Server-side Development with NodeJS, Express and MongoDB",
+        "provider": "Coursera / HKUST",
+        "level": "Intermediate",
+        "type": "Free to Audit",
+        "duration": "48 hours",
+        "url": "https://www.coursera.org/learn/server-side-nodejs",
+        "last_verified": "2026-11-11"
+      }
+    ],
+    "SQL": [
+      {
+        "title": "SQL for Data Science",
+        "provider": "Coursera / UC Davis",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "14 hours",
+        "url": "https://www.coursera.org/learn/sql-for-data-science",
+        "last_verified": "2026-11-19"
+      },
+      {
+        "title": "Relational Database Certification",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/relational-database/",
+        "last_verified": "2026-11-22"
+      },
+      {
+        "title": "The Complete SQL Bootcamp",
+        "provider": "Udemy / Jose Portilla",
+        "level": "Beginner",
+        "type": "Paid",
+        "duration": "9 hours",
+        "url": "https://www.udemy.com/course/the-complete-sql-bootcamp/",
+        "last_verified": "2026-11-13"
+      }
+    ],
+    "PostgreSQL": [
+      {
+        "title": "PostgreSQL for Everybody Specialization",
+        "provider": "Coursera / University of Michigan",
+        "level": "Intermediate",
+        "type": "Free to Audit",
+        "duration": "2 months (10 hrs/week)",
+        "url": "https://www.coursera.org/specializations/postgresql-for-everybody",
+        "last_verified": "2026-11-17"
+      },
+      {
+        "title": "PostgreSQL Tutorial for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "4 hours",
+        "url": "https://www.youtube.com/watch?v=qw--VYLpxG4",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "High Performance SQL Queries with PostgreSQL",
+        "provider": "Udemy",
+        "level": "Advanced",
+        "type": "Paid",
+        "duration": "12 hours",
+        "url": "https://www.udemy.com/course/sql-and-postgresql-the-complete-developers-guide/",
+        "last_verified": "2026-11-15"
+      }
+    ],
+    "MongoDB": [
+      {
+        "title": "MongoDB Certified Developer Associate",
+        "provider": "MongoDB University",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "25 hours prep",
+        "url": "https://learn.mongodb.com/pages/certified-developer-associate-exam",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "Introduction to MongoDB",
+        "provider": "Coursera / MongoDB",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "17 hours",
+        "url": "https://www.coursera.org/learn/introduction-to-mongodb",
+        "last_verified": "2026-11-14"
+      },
+      {
+        "title": "MongoDB Crash Course",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "2 hours",
+        "url": "https://www.youtube.com/watch?v=ofme2o29ngU",
+        "last_verified": "2026-11-22"
+      }
+    ],
+    "Git": [
+      {
+        "title": "Version Control with Git",
+        "provider": "Coursera / Atlassian",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "13 hours",
+        "url": "https://www.coursera.org/learn/version-control-with-git",
+        "last_verified": "2026-11-18"
+      },
+      {
+        "title": "Git and GitHub for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "5 hours",
+        "url": "https://www.youtube.com/watch?v=RGOj5yH7evk",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "Git Complete: The definitive, step-by-step guide",
+        "provider": "Udemy",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "6 hours",
+        "url": "https://www.udemy.com/course/git-complete/",
+        "last_verified": "2026-11-10"
+      }
+    ],
+    "Machine Learning": [
+      {
+        "title": "Machine Learning Specialization",
+        "provider": "Coursera / DeepLearning.AI & Stanford",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "3 months (10 hrs/week)",
+        "url": "https://www.coursera.org/specializations/machine-learning-introduction",
+        "last_verified": "2026-11-23"
+      },
+      {
+        "title": "Machine Learning with Python Certification",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/machine-learning-with-python/",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "AWS Certified Machine Learning - Specialty",
+        "provider": "Amazon Web Services",
+        "level": "Advanced",
+        "type": "Paid",
+        "duration": "50 hours prep",
+        "url": "https://aws.amazon.com/certification/certified-machine-learning-specialty/",
+        "last_verified": "2026-11-16"
+      }
+    ],
+    "System Design": [
+      {
+        "title": "Grokking Modern System Design for Software Engineers",
+        "provider": "Educative.io",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "24 hours",
+        "url": "https://www.educative.io/courses/grokking-modern-system-design-interview-for-engineers-managers",
+        "last_verified": "2026-11-19"
+      },
+      {
+        "title": "System Design Primer",
+        "provider": "Donne Martin / GitHub",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "Self-paced (40 hours)",
+        "url": "https://github.com/donnemartin/system-design-primer",
+        "last_verified": "2026-11-22"
+      },
+      {
+        "title": "Software Architecture & Design",
+        "provider": "Udacity / Georgia Tech",
+        "level": "Advanced",
+        "type": "Free",
+        "duration": "8 weeks (6 hrs/week)",
+        "url": "https://www.udacity.com/course/software-architecture-design--ud805",
+        "last_verified": "2026-11-15"
+      }
+    ],
+    "Java": [
+      {
+        "title": "Oracle Certified Professional: Java SE 17 Developer",
+        "provider": "Oracle University",
+        "level": "Advanced",
+        "type": "Paid",
+        "duration": "40 hours prep",
+        "url": "https://education.oracle.com/java-se-17-developer/pexam_1Z0-829",
+        "last_verified": "2026-11-18"
+      },
+      {
+        "title": "Java Programming: Solving Problems with Software",
+        "provider": "Coursera / Duke University",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "18 hours",
+        "url": "https://www.coursera.org/learn/java-programming",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "Java Programming Course for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "9.5 hours",
+        "url": "https://www.youtube.com/watch?v=grEKMHGYyns",
+        "last_verified": "2026-11-17"
+      }
+    ],
+    "Data Structures & Algorithms": [
+      {
+        "title": "Algorithms Specialization",
+        "provider": "Coursera / Stanford University",
+        "level": "Intermediate",
+        "type": "Free to Audit",
+        "duration": "4 months (8 hrs/week)",
+        "url": "https://www.coursera.org/specializations/algorithms",
+        "last_verified": "2026-11-23"
+      },
+      {
+        "title": "Data Structures and Algorithms in Python",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "13 hours",
+        "url": "https://www.youtube.com/watch?v=pkYVOmU3MgA",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "Master the Coding Interview: Data Structures + Algorithms",
+        "provider": "Udemy / Andrei Neagoie",
+        "level": "Beginner",
+        "type": "Paid",
+        "duration": "19 hours",
+        "url": "https://www.udemy.com/course/master-the-coding-interview-data-structures-algorithms/",
+        "last_verified": "2026-11-15"
+      }
+    ],
+    "DevOps": [
+      {
+        "title": "IBM DevOps and Software Engineering Professional Certificate",
+        "provider": "Coursera / IBM",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "12 months (5 hrs/week)",
+        "url": "https://www.coursera.org/professional-certificates/devops-and-software-engineering",
+        "last_verified": "2026-11-19"
+      },
+      {
+        "title": "DevOps Foundations",
+        "provider": "LinkedIn Learning",
+        "level": "Beginner",
+        "type": "Paid",
+        "duration": "3 hours",
+        "url": "https://www.linkedin.com/learning/devops-foundations",
+        "last_verified": "2026-11-14"
+      },
+      {
+        "title": "DevOps Engineering Course for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "2 hours",
+        "url": "https://www.youtube.com/watch?v=j5Zsa_eOXeY",
+        "last_verified": "2026-11-21"
+      }
+    ],
+    "Linux": [
+      {
+        "title": "Linux Foundation Certified System Administrator (LFCS)",
+        "provider": "Linux Foundation",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "30 hours prep",
+        "url": "https://training.linuxfoundation.org/certification/linux-foundation-certified-sysadmin-lfcs/",
+        "last_verified": "2026-11-17"
+      },
+      {
+        "title": "Introduction to Linux (LFS101x)",
+        "provider": "edX / Linux Foundation",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "14 weeks (2-3 hrs/week)",
+        "url": "https://www.edx.org/learn/linux/the-linux-foundation-introduction-to-linux",
+        "last_verified": "2026-11-22"
+      },
+      {
+        "title": "Linux Command Line Tutorial for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "6 hours",
+        "url": "https://www.youtube.com/watch?v=ZtqBQ68cfJc",
+        "last_verified": "2026-11-18"
+      }
+    ],
+    "Cybersecurity": [
+      {
+        "title": "Google Cybersecurity Professional Certificate",
+        "provider": "Coursera / Google",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "6 months (7 hrs/week)",
+        "url": "https://www.coursera.org/professional-certificates/google-cybersecurity",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "CompTIA Security+ Certification Prep",
+        "provider": "CompTIA",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "40 hours prep",
+        "url": "https://www.comptia.org/certifications/security",
+        "last_verified": "2026-11-15"
+      },
+      {
+        "title": "Information Security Certification",
+        "provider": "freeCodeCamp",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "300 hours",
+        "url": "https://www.freecodecamp.org/learn/information-security/",
+        "last_verified": "2026-11-22"
+      }
+    ],
+    "GraphQL": [
+      {
+        "title": "GraphQL Professional Associate",
+        "provider": "Apollo GraphQL",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "10 hours",
+        "url": "https://www.apollographql.com/tutorials/certifications",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "Building Scalable APIs with GraphQL",
+        "provider": "Coursera",
+        "level": "Intermediate",
+        "type": "Free to Audit",
+        "duration": "12 hours",
+        "url": "https://www.coursera.org/learn/graphql-apis",
+        "last_verified": "2026-11-12"
+      },
+      {
+        "title": "GraphQL Full Course - Novice to Expert",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "4 hours",
+        "url": "https://www.youtube.com/watch?v=ed8SzALpx1Q",
+        "last_verified": "2026-11-19"
+      }
+    ],
+    "Redis": [
+      {
+        "title": "Redis Certified Developer",
+        "provider": "Redis University",
+        "level": "Intermediate",
+        "type": "Free",
+        "duration": "20 hours prep",
+        "url": "https://university.redis.com/certification/",
+        "last_verified": "2026-11-23"
+      },
+      {
+        "title": "RU101: Introduction to Redis Data Structures",
+        "provider": "Redis University",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "6 hours",
+        "url": "https://university.redis.com/courses/ru101/",
+        "last_verified": "2026-11-20"
+      },
+      {
+        "title": "Redis Crash Course",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "1.5 hours",
+        "url": "https://www.youtube.com/watch?v=jgpVdJB2sKQ",
+        "last_verified": "2026-11-16"
+      }
+    ],
+    "Terraform": [
+      {
+        "title": "HashiCorp Certified: Terraform Associate (003)",
+        "provider": "HashiCorp",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "25 hours prep",
+        "url": "https://www.hashicorp.com/certification/terraform-associate",
+        "last_verified": "2026-11-19"
+      },
+      {
+        "title": "Terraform Course for Beginners",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "2 hours",
+        "url": "https://www.youtube.com/watch?v=SLB_c_yyR2A",
+        "last_verified": "2026-11-21"
+      },
+      {
+        "title": "Learn Terraform by Doing",
+        "provider": "Udemy",
+        "level": "Intermediate",
+        "type": "Paid",
+        "duration": "12 hours",
+        "url": "https://www.udemy.com/course/terraform-beginner-to-advanced/",
+        "last_verified": "2026-11-15"
+      }
+    ]
+  }
+}

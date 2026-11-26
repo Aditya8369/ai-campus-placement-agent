@@ -20,6 +20,22 @@ from db.connection import get_connection, transaction
 
 logger = logging.getLogger(__name__)
 
+MAX_BULK_BATCH_SIZE = 100
+
+
+def escape_csv_cell(value: Any) -> str:
+    """
+    Escapes CSV cells starting with =, +, -, or @ to prevent formula injection attacks (#848).
+    Prepends a single quote "'" so spreadsheet applications treat the content as literal text.
+    """
+    if value is None:
+        return ""
+    val_str = str(value)
+    if val_str and val_str.lstrip() and val_str.lstrip()[0] in ("=", "+", "-", "@"):
+        return "'" + val_str
+    return val_str
+
+
 
 def save_job_application(
     app_id: str,
@@ -354,15 +370,15 @@ def export_job_applications_csv(
 
     for app_item in applications:
         writer.writerow([
-            app_item.get("id", ""),
-            app_item.get("company_name", ""),
-            app_item.get("role_title", ""),
-            app_item.get("status", ""),
-            app_item.get("application_date", ""),
-            app_item.get("job_url", ""),
-            app_item.get("job_description", ""),
-            app_item.get("notes", ""),
-            app_item.get("created_at", ""),
+            escape_csv_cell(app_item.get("id", "")),
+            escape_csv_cell(app_item.get("company_name", "")),
+            escape_csv_cell(app_item.get("role_title", "")),
+            escape_csv_cell(app_item.get("status", "")),
+            escape_csv_cell(app_item.get("application_date", "")),
+            escape_csv_cell(app_item.get("job_url", "")),
+            escape_csv_cell(app_item.get("job_description", "")),
+            escape_csv_cell(app_item.get("notes", "")),
+            escape_csv_cell(app_item.get("created_at", "")),
         ])
 
     return output.getvalue()
@@ -1053,6 +1069,265 @@ def delete_job_contact(
     except Exception as e:
         logger.error(f"Error deleting job contact {contact_id}: {e}")
         return False
+
+
+# ==============================================================================
+# Bulk Application Operations (#848)
+# ==============================================================================
+
+def bulk_update_application_status(
+    app_ids: List[str],
+    student_id: str,
+    new_status: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Updates the status for multiple job applications owned by student_id in one request (#848).
+    Enforces ownership and batch size limit.
+    """
+    if not app_ids:
+        return {"success": False, "error": "No application IDs provided.", "affected_count": 0}
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return {
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.",
+            "affected_count": 0,
+        }
+
+    clean_status = (new_status or "Applied").strip()
+    if clean_status == "Offered":
+        clean_status = "Selected"
+
+    clean_ids = [str(aid).strip() for aid in app_ids if str(aid).strip()]
+    if not clean_ids:
+        return {"success": False, "error": "No valid application IDs provided.", "affected_count": 0}
+
+    s_id = (student_id or "default_student").strip()
+
+    with transaction(db_path) as cursor:
+        placeholders = ",".join("?" for _ in clean_ids)
+        cursor.execute(
+            f"SELECT id FROM job_applications WHERE student_id = ? AND id IN ({placeholders})",
+            [s_id] + clean_ids,
+        )
+        owned_ids = [row[0] for row in cursor.fetchall()]
+
+        if not owned_ids:
+            return {
+                "success": True,
+                "affected_count": 0,
+                "updated_ids": [],
+                "message": "No matching applications owned by this user were found.",
+            }
+
+        auth_placeholders = ",".join("?" for _ in owned_ids)
+        cursor.execute(
+            f"UPDATE job_applications SET status = ? WHERE student_id = ? AND id IN ({auth_placeholders})",
+            [clean_status, s_id] + owned_ids,
+        )
+        affected = cursor.rowcount
+
+    return {
+        "success": True,
+        "action": "status",
+        "status": clean_status,
+        "affected_count": affected,
+        "updated_ids": owned_ids,
+        "message": f"Updated status to '{clean_status}' for {affected} application{'s' if affected != 1 else ''}.",
+    }
+
+
+def bulk_add_application_tag(
+    app_ids: List[str],
+    student_id: str,
+    tag: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Adds a tag to multiple job applications owned by student_id in one request (#848).
+    Enforces ownership and batch size limit.
+    """
+    if not app_ids:
+        return {"success": False, "error": "No application IDs provided.", "affected_count": 0}
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return {
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.",
+            "affected_count": 0,
+        }
+
+    clean_tag = (tag or "").strip()
+    if not clean_tag:
+        return {"success": False, "error": "Tag cannot be empty.", "affected_count": 0}
+
+    clean_ids = [str(aid).strip() for aid in app_ids if str(aid).strip()]
+    if not clean_ids:
+        return {"success": False, "error": "No valid application IDs provided.", "affected_count": 0}
+
+    s_id = (student_id or "default_student").strip()
+
+    with transaction(db_path) as cursor:
+        placeholders = ",".join("?" for _ in clean_ids)
+        cursor.execute(
+            f"SELECT id, tags FROM job_applications WHERE student_id = ? AND id IN ({placeholders})",
+            [s_id] + clean_ids,
+        )
+        rows = cursor.fetchall()
+
+        if not rows:
+            return {
+                "success": True,
+                "affected_count": 0,
+                "updated_ids": [],
+                "message": "No matching applications owned by this user were found.",
+            }
+
+        updated_ids = []
+        for row in rows:
+            aid = row[0]
+            existing_tags_raw = row[1] or ""
+            existing_tags = [t.strip() for t in existing_tags_raw.split(",") if t.strip()]
+            if clean_tag not in existing_tags:
+                existing_tags.append(clean_tag)
+            new_tags_str = ", ".join(existing_tags)
+
+            cursor.execute(
+                "UPDATE job_applications SET tags = ? WHERE id = ? AND student_id = ?",
+                (new_tags_str, aid, s_id),
+            )
+            updated_ids.append(aid)
+
+        affected = len(updated_ids)
+
+    return {
+        "success": True,
+        "action": "tag",
+        "tag": clean_tag,
+        "affected_count": affected,
+        "updated_ids": updated_ids,
+        "message": f"Added tag '{clean_tag}' to {affected} application{'s' if affected != 1 else ''}.",
+    }
+
+
+def bulk_delete_applications(
+    app_ids: List[str],
+    student_id: str,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Deletes multiple job applications owned by student_id in one request (#848).
+    Enforces ownership and batch size limit.
+    """
+    if not app_ids:
+        return {"success": False, "error": "No application IDs provided.", "affected_count": 0}
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return {
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.",
+            "affected_count": 0,
+        }
+
+    clean_ids = [str(aid).strip() for aid in app_ids if str(aid).strip()]
+    if not clean_ids:
+        return {"success": False, "error": "No valid application IDs provided.", "affected_count": 0}
+
+    s_id = (student_id or "default_student").strip()
+
+    with transaction(db_path) as cursor:
+        placeholders = ",".join("?" for _ in clean_ids)
+        cursor.execute(
+            f"SELECT id FROM job_applications WHERE student_id = ? AND id IN ({placeholders})",
+            [s_id] + clean_ids,
+        )
+        owned_ids = [row[0] for row in cursor.fetchall()]
+
+        if not owned_ids:
+            return {
+                "success": True,
+                "affected_count": 0,
+                "deleted_ids": [],
+                "message": "No matching applications owned by this user were found.",
+            }
+
+        auth_placeholders = ",".join("?" for _ in owned_ids)
+        cursor.execute(
+            f"DELETE FROM job_applications WHERE student_id = ? AND id IN ({auth_placeholders})",
+            [s_id] + owned_ids,
+        )
+        affected = cursor.rowcount
+
+    return {
+        "success": True,
+        "action": "delete",
+        "affected_count": affected,
+        "deleted_ids": owned_ids,
+        "message": f"Deleted {affected} application{'s' if affected != 1 else ''}.",
+    }
+
+
+def bulk_export_applications_csv(
+    app_ids: List[str],
+    student_id: str,
+    db_path: Optional[str] = None,
+) -> str:
+    """
+    Exports selected applications owned by student_id as RFC-4180 CSV (#848).
+    Enforces formula injection escaping for cells starting with =, +, -, or @.
+    """
+    if not app_ids:
+        return ""
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        raise ValueError(f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.")
+
+    clean_ids = [str(aid).strip() for aid in app_ids if str(aid).strip()]
+    s_id = (student_id or "default_student").strip()
+
+    with get_connection(db_path) as conn:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" for _ in clean_ids)
+        cursor.execute(
+            f"SELECT id, company_name, role_title, status, application_date, deadline_date, "
+            f"location, job_type, experience_level, job_url, tags, notes "
+            f"FROM job_applications WHERE student_id = ? AND id IN ({placeholders})",
+            [s_id] + clean_ids,
+        )
+        rows = cursor.fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "Application ID",
+        "Company Name",
+        "Role Title",
+        "Status",
+        "Application Date",
+        "Deadline",
+        "Location",
+        "Job Type",
+        "Experience Level",
+        "Job URL",
+        "Tags",
+        "Notes",
+    ])
+
+    for row in rows:
+        row_dict = dict(row)
+        writer.writerow([
+            escape_csv_cell(row_dict.get("id")),
+            escape_csv_cell(row_dict.get("company_name")),
+            escape_csv_cell(row_dict.get("role_title")),
+            escape_csv_cell(row_dict.get("status")),
+            escape_csv_cell(row_dict.get("application_date")),
+            escape_csv_cell(row_dict.get("deadline_date")),
+            escape_csv_cell(row_dict.get("location")),
+            escape_csv_cell(row_dict.get("job_type")),
+            escape_csv_cell(row_dict.get("experience_level")),
+            escape_csv_cell(row_dict.get("job_url")),
+            escape_csv_cell(row_dict.get("tags")),
+            escape_csv_cell(row_dict.get("notes")),
+        ])
+
+    return output.getvalue()
 
 
 # Re-exports for Drive Day Practical Readiness Checklist (#651)

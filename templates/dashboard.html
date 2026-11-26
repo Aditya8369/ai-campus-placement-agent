@@ -161,6 +161,36 @@
     data-company="{{ analysis.company_name }}" data-date="{{ analysis.created_at }}">
     {% set result = (analysis.results if (analysis is defined and analysis.results is mapping) else (analysis if (analysis is defined and analysis is mapping) else {})) %}
 
+    <!-- Basic Analysis (AI Unavailable) Banner (#849) -->
+    {% if result.is_basic_analysis or analysis.is_basic_analysis or result.ai_unavailable or analysis.ai_unavailable %}
+    <div
+      class="alert alert-info border-0 rounded-4 shadow-sm mb-4 d-flex flex-wrap align-items-center justify-content-between gap-3 p-3"
+      role="alert" id="basicAnalysisFallbackBanner"
+      style="background: linear-gradient(135deg, rgba(239, 246, 255, 0.95) 0%, rgba(219, 234, 254, 0.98) 100%); border-left: 5px solid #2563eb !important;">
+      <div class="d-flex align-items-center gap-3">
+        <div class="rounded-circle d-flex align-items-center justify-content-center bg-primary text-white p-2"
+          style="width: 44px; height: 44px;">
+          <i class="fa-solid fa-calculator fs-5"></i>
+        </div>
+        <div>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary text-white rounded-pill px-2 py-1 small fw-bold" id="basicAnalysisBadge">basic analysis (AI unavailable)</span>
+            <strong class="text-dark">Rule-Based Placement Evaluation</strong>
+          </div>
+          <p class="text-muted small mb-0 mt-1" id="basicAnalysisFallbackText">
+            Our AI service is temporarily unavailable or rate limited. We've computed your preliminary feedback using rule-based ATS format checks, keyword &amp; skill overlap, and section completeness. You can re-run with full AI when the service is back online.
+          </p>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <a href="{{ url_for('analysis.rerun_analysis', analysis_id=analysis_id) }}?force=true"
+          class="btn btn-primary btn-sm rounded-pill px-3 py-2 fw-semibold shadow-sm" id="btnRerunWithAi">
+          <i class="fa-solid fa-arrows-rotate me-1"></i> Re-run with AI
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Demo Data Banner (#435) -->
     {% if is_demo or analysis.is_demo or analysis_id in ['demo-sample-analysis', 'demo_sample_analysis', 'demo'] or
     session.get('is_demo_mode') %}
@@ -4878,6 +4908,43 @@
                   </span>
                 </div>
                 {% endfor %}
+
+                <!-- Recommended Certifications & Courses (#757) -->
+                <div class="mt-2 pt-2 border-top skill-certifications-block">
+                  <div class="small fw-semibold text-dark mb-1 d-flex align-items-center gap-1">
+                    <i class="fa-solid fa-award text-warning"></i>
+                    <span>Recommended Certifications &amp; Courses:</span>
+                  </div>
+                  {% if gap.recommended_certifications and gap.recommended_certifications|length > 0 %}
+                  <div class="d-flex flex-column gap-2 mt-1">
+                    {% for cert in gap.recommended_certifications[:3] %}
+                    <div class="p-2 rounded border bg-light-subtle small certification-entry-card shadow-xs">
+                      <div class="d-flex justify-content-between align-items-start gap-1 flex-wrap mb-1">
+                        <a href="{{ cert.url }}" target="_blank" rel="noopener noreferrer" class="fw-bold text-decoration-none text-primary d-inline-flex align-items-center gap-1 cert-title-link">
+                          <span>{{ cert.title }}</span>
+                          <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.75rem;"></i>
+                        </a>
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                          <span class="badge bg-secondary-subtle text-secondary border cert-level-badge" style="font-size: 0.7rem;">{{ cert.level }}</span>
+                          <span class="badge {% if 'free' in cert.type|lower %}bg-success-subtle text-success border border-success-subtle{% else %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% endif %} cert-type-badge" style="font-size: 0.7rem;">{{ cert.type }}</span>
+                        </div>
+                      </div>
+                      <div class="d-flex justify-content-between align-items-center text-muted flex-wrap gap-1" style="font-size: 0.75rem;">
+                        <span class="cert-provider-duration"><i class="fa-solid fa-building-columns me-1"></i>{{ cert.provider }} &bull; <i class="fa-regular fa-clock me-1"></i>{{ cert.duration }}</span>
+                        <span class="badge bg-white text-secondary border rounded-pill cert-last-verified-badge" title="Verified link and content active">
+                          <i class="fa-regular fa-calendar-check text-success me-1"></i>Verified: {{ cert.last_verified }}
+                        </span>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <div class="small text-muted fst-italic p-2 rounded bg-light border border-dashed skill-cert-generic-msg">
+                    <i class="fa-solid fa-circle-info text-secondary me-1"></i>
+                    {{ gap.certifications_generic_message|default('No curated certifications or courses are currently verified for this skill. Explore general online learning resources or search trusted providers like Coursera, edX, freeCodeCamp, or official documentation.') }}
+                  </div>
+                  {% endif %}
+                </div>
               </td>
               <td>
                 <div class="d-flex align-items-center justify-content-between gap-1">

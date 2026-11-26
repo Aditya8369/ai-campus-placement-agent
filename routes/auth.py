@@ -318,6 +318,11 @@ def login():
         lockout_service.reset_failed_attempts(email, client_ip)
         reset_failed_attempts(request.remote_addr, email)
 
+        # Deactivated account enforcement (#853)
+        if user.get("is_active") is not None and not bool(user.get("is_active", 1)):
+            flash("Your account has been deactivated. Please contact an administrator for assistance.", "error")
+            return render_template("login.html")
+
         # Email verification enforcement (#206)
         # Note: If email verification is enabled, users must verify before full session login,
         # unless running with legacy or test bypass when unverified accounts are flagged.
@@ -378,6 +383,11 @@ def verify_two_factor():
     if not user or not bool(user.get("two_factor_enabled", 0)):
         flask_session.clear()
         flash("Two-factor authentication is not active on this account.", "error")
+        return redirect(url_for("login"))
+
+    if user.get("is_active") is not None and not bool(user.get("is_active", 1)):
+        flask_session.clear()
+        flash("Your account has been deactivated. Please contact an administrator for assistance.", "error")
         return redirect(url_for("login"))
 
     email = user.get("email", "")
