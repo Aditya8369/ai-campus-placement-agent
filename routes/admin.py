@@ -1089,5 +1089,156 @@ def api_admin_intervention_scan():
     }), 200
 
 
+# =====================================================================
+# ADMIN USER MANAGEMENT & DIRECTORY (#853)
+# =====================================================================
+
+@admin_bp.route("/admin/users", methods=["GET"])
+def admin_users_view():
+    """
+    Renders the administrative user management directory (#853).
+    Supports search (name, email), status filtering, and pagination.
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.admin_user_service import list_users_for_admin, count_active_admins
+
+    search_query = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "all").strip().lower()
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 15))
+
+    data = list_users_for_admin(
+        search_query=search_query,
+        status_filter=status_filter,
+        page=page,
+        per_page=per_page,
+    )
+    active_admins = count_active_admins()
+
+    return render_template(
+        "admin_users.html",
+        users=data["users"],
+        total_count=data["total_count"],
+        page=data["page"],
+        per_page=data["per_page"],
+        total_pages=data["total_pages"],
+        has_next=data["has_next"],
+        has_prev=data["has_prev"],
+        search_query=search_query,
+        status_filter=status_filter,
+        active_count=data["active_count"],
+        deactivated_count=data["deactivated_count"],
+        active_admins=active_admins,
+    )
+
+
+@admin_bp.route("/api/admin/users", methods=["GET"])
+def api_admin_list_users():
+    """Returns paginated, sanitized list of users (#853)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.admin_user_service import list_users_for_admin, count_active_admins
+
+    search_query = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "all").strip().lower()
+    page = int(request.args.get("page", 1))
+    per_page = int(request.args.get("per_page", 15))
+
+    data = list_users_for_admin(
+        search_query=search_query,
+        status_filter=status_filter,
+        page=page,
+        per_page=per_page,
+    )
+    data["active_admins"] = count_active_admins()
+    data["success"] = True
+    return jsonify(data), 200
+
+
+@admin_bp.route("/api/admin/users/<target_user_id>/status", methods=["POST"])
+def api_admin_set_user_status(target_user_id: str):
+    """
+    Toggles user active status (Deactivate / Reactivate) (#853).
+    Guards against deactivating the last active administrator.
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.admin_user_service import set_user_active_status
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    is_active = payload.get("is_active")
+    if is_active is None:
+        return jsonify({"success": False, "error": "Missing 'is_active' boolean field."}), 400
+
+    if isinstance(is_active, str):
+        is_active = is_active.lower() in ("true", "1", "yes")
+    else:
+        is_active = bool(is_active)
+
+    admin_id = flask_session.get("user_id") or flask_session.get("user_name") or "admin"
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "").strip()
+        or request.remote_addr
+        or "127.0.0.1"
+    )
+
+    success, message = set_user_active_status(
+        target_user_id=target_user_id,
+        is_active=is_active,
+        admin_id=admin_id,
+        ip_address=client_ip,
+    )
+
+    status_code = 200 if success else 400
+    return jsonify({"success": success, "message": message}), status_code
+
+
+@admin_bp.route("/api/admin/users/<target_user_id>/sign-out-everywhere", methods=["POST"])
+def api_admin_sign_out_everywhere(target_user_id: str):
+    """
+    Forcefully terminates all active authenticated sessions for a user (#853).
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.admin_user_service import sign_out_user_everywhere
+
+    admin_id = flask_session.get("user_id") or flask_session.get("user_name") or "admin"
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "").strip()
+        or request.remote_addr
+        or "127.0.0.1"
+    )
+
+    success, message, count = sign_out_user_everywhere(
+        target_user_id=target_user_id,
+        admin_id=admin_id,
+        ip_address=client_ip,
+    )
+
+    status_code = 200 if success else 400
+    return jsonify({"success": success, "message": message, "revoked_sessions_count": count}), status_code
+
+
+@admin_bp.route("/api/admin/users/<target_user_id>/audit-logs", methods=["GET"])
+def api_admin_user_audit_logs(target_user_id: str):
+    """Retrieves recent audit logs for a specific user (#853)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.admin_user_service import get_admin_user_audit_logs
+
+    limit = int(request.args.get("limit", 20))
+    logs = get_admin_user_audit_logs(target_user_id=target_user_id, limit=limit)
+    return jsonify({"success": True, "logs": logs}), 200
+
+
+
 
 

@@ -203,13 +203,17 @@
               </div>
 
               <div class="row g-3 mb-3">
-                <div class="col-md-6">
+                <div class="col-md-4">
                   <label for="profileGradYear" class="form-label small fw-semibold">Graduation Year</label>
                   <input type="number" id="profileGradYear" name="grad_year" class="form-control" value="{{ profile.grad_year or '' }}" placeholder="2026">
                 </div>
-                <div class="col-md-6">
-                  <label for="profileCgpa" class="form-label small fw-semibold">Cumulative CGPA</label>
-                  <input type="number" step="0.01" id="profileCgpa" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                <div class="col-md-4">
+                  <label for="profileCgpa" class="form-label small fw-semibold">Cumulative CGPA (0.0 - 10.0)</label>
+                  <input type="number" step="0.01" min="0" max="10" id="profileCgpa" name="cgpa" class="form-control" value="{{ profile.cgpa or '' }}" placeholder="8.75">
+                </div>
+                <div class="col-md-4">
+                  <label for="profileBacklogs" class="form-label small fw-semibold">Active Backlogs</label>
+                  <input type="number" min="0" step="1" id="profileBacklogs" name="backlogs" class="form-control" value="{{ profile.backlogs if profile.backlogs is not none else 0 }}" placeholder="0">
                 </div>
               </div>
 

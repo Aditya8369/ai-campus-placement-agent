@@ -1,15 +1,17 @@
 """
-Company Eligibility Calculator Service (#603)
-=============================================
+Company Eligibility Calculator Service (#603, #844)
+===================================================
 Calculates candidate eligibility against verified company hiring profiles
-(from data/companies.json) using optional profile fields (CGPA, active backlogs,
-passing year, degree/branch, and work experience).
+(from data/companies.json) using candidate profile fields (CGPA, active backlogs,
+branch/department).
 
-Guarantees:
-- Unknown or missing requirements are marked clearly as uncertain/unspecified, never assumed.
-- Company data and eligibility calculation logic remain strictly decoupled.
-- Profile evaluations remain private to the signed-in student session/account.
-- Users can edit profile values and recalculate dynamically.
+Acceptance Criteria (#844):
+- Eligibility results are correct for sample profiles including boundary values.
+- Missing criteria show 'unknown', never 'eligible'.
+- Profile values are private and validated.
+- Tests cover boundaries and missing data.
+- 'only companies I am eligible for' filter supported.
+- Clear indication that criteria vary by drive.
 """
 
 from typing import Dict, Any, List, Optional
@@ -20,6 +22,11 @@ import config
 
 
 DEFAULT_COMPANIES_FILE = Path(getattr(config, "BASE_DIR", ".")) / "data" / "companies.json"
+
+CIRCUITAL_BRANCH_TOKENS = [
+    "cs", "it", "computer science", "information technology", "cse",
+    "ece", "ee", "electronics", "electrical", "telecommunication", "comp sci"
+]
 
 
 def load_company_data(company_name: str) -> Optional[Dict[str, Any]]:
@@ -41,185 +48,297 @@ def calculate_company_eligibility(
 ) -> Dict[str, Any]:
     """
     Evaluates student profile against company requirements.
+
     `student_profile` can contain:
     - cgpa: float or None
     - backlogs: int or None
+    - branch: str or None (or department)
     - passing_year: int or None
-    - branch: str or None
-    - experience_months: int or None
+
+    Returns a dict with:
+    - overall_status: "eligible", "not eligible", or "unknown"
+    - eligible: bool (True only if overall_status == "eligible")
+    - reason: explanation if not eligible or unknown
+    - evaluations: detailed list of per-criteria evaluations
+    - criteria_summary: text description
+    - drive_disclaimer: clear statement that criteria vary by drive
     """
     if not company_data:
         company_data = load_company_data(company_name) or {}
 
-    eligibility_text = company_data.get("eligibility", "")
-    text_lower = eligibility_text.lower()
+    # Extract criteria directly from explicit fields if present, else fallback to heuristic text parsing
+    min_cgpa: Optional[float] = None
+    if "min_cgpa" in company_data:
+        raw_min = company_data["min_cgpa"]
+        if raw_min is not None:
+            try:
+                min_cgpa = float(raw_min)
+            except (ValueError, TypeError):
+                min_cgpa = None
+    else:
+        # Heuristic parse
+        text_lower = (company_data.get("eligibility") or "").lower()
+        cgpa_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:cgpa|\+?\s*cgpa)", text_lower)
+        if cgpa_match:
+            try:
+                min_cgpa = float(cgpa_match.group(1))
+            except ValueError:
+                pass
 
-    # Rule 1: CGPA / Percentage
-    # Parse cutoff from text e.g. "6.5 CGPA" or "7.0 CGPA" or "60%"
-    min_cgpa = None
-    min_pct = None
-    cgpa_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:cgpa|\+?\s*cgpa)", text_lower)
-    if cgpa_match:
-        try:
-            min_cgpa = float(cgpa_match.group(1))
-        except ValueError:
-            pass
+    max_backlogs: Optional[int] = None
+    if "max_backlogs" in company_data:
+        raw_b = company_data["max_backlogs"]
+        if raw_b is not None:
+            try:
+                max_backlogs = int(raw_b)
+            except (ValueError, TypeError):
+                max_backlogs = None
+    else:
+        text_lower = (company_data.get("eligibility") or "").lower()
+        if "1 backlog" in text_lower or "1 active backlog" in text_lower:
+            max_backlogs = 1
+        elif "no active backlogs" in text_lower or "no current backlogs" in text_lower or "no standing backlogs" in text_lower:
+            max_backlogs = 0
 
-    pct_match = re.search(r"(\d+(?:\.\d+)?)\s*%", text_lower)
-    if pct_match:
-        try:
-            min_pct = float(pct_match.group(1))
-        except ValueError:
-            pass
-
-    # Rule 2: Backlogs
-    allows_one_backlog = "1 backlog" in text_lower or "1 active backlog" in text_lower
-    no_backlogs_required = "no active backlogs" in text_lower or "no current backlogs" in text_lower or "no standing backlogs" in text_lower
-    max_backlogs = 1 if allows_one_backlog else (0 if no_backlogs_required else None)
-
-    # Rule 3: Branch
-    open_to_all_branches = "all branches" in text_lower or "open to all" in text_lower or "any engineering" in text_lower
-    circuital_branches = ["cs", "it", "computer science", "information technology", "ece", "ee", "electronics", "electrical"]
+    allowed_branches: Optional[List[str]] = None
+    if "branches" in company_data and isinstance(company_data["branches"], list):
+        allowed_branches = company_data["branches"]
+    else:
+        text_lower = (company_data.get("eligibility") or "").lower()
+        if "all branches" in text_lower or "open to all" in text_lower or "any engineering" in text_lower:
+            allowed_branches = ["All"]
+        elif text_lower:
+            allowed_branches = ["CS", "IT", "ECE"]
 
     evaluations: List[Dict[str, Any]] = []
-    overall_status = "Eligible"  # "Eligible", "Not Eligible", "Conditionally Eligible", "Unknown"
-    unmet_count = 0
-    uncertain_count = 0
+    unmet_reasons: List[str] = []
+    unknown_reasons: List[str] = []
 
-    # 1. Evaluate CGPA
+    has_any_rule = (min_cgpa is not None) or (max_backlogs is not None) or (allowed_branches is not None)
+
+    # 1. CGPA Evaluation
     student_cgpa = student_profile.get("cgpa")
     if min_cgpa is not None:
         if student_cgpa is not None:
             try:
                 cgpa_val = float(student_cgpa)
-                passed = cgpa_val >= min_cgpa
-                evaluations.append({
-                    "criteria": "Minimum CGPA / Percentage",
-                    "required": f"Minimum {min_cgpa} CGPA (or {min_pct or int(min_cgpa * 10)}%)",
-                    "provided": f"{cgpa_val} CGPA",
-                    "status": "Met" if passed else "Unmet",
-                    "explanation": f"Your CGPA ({cgpa_val}) {'meets or exceeds' if passed else 'is below'} the required cutoff of {min_cgpa}."
-                })
-                if not passed:
-                    unmet_count += 1
+                if cgpa_val >= min_cgpa:
+                    evaluations.append({
+                        "criteria": "Minimum CGPA",
+                        "required": f"{min_cgpa} CGPA",
+                        "provided": f"{cgpa_val} CGPA",
+                        "status": "Met",
+                        "explanation": f"Your CGPA ({cgpa_val}) meets the minimum requirement of {min_cgpa}."
+                    })
+                else:
+                    unmet_reasons.append(f"CGPA {cgpa_val} is below required minimum {min_cgpa}")
+                    evaluations.append({
+                        "criteria": "Minimum CGPA",
+                        "required": f"{min_cgpa} CGPA",
+                        "provided": f"{cgpa_val} CGPA",
+                        "status": "Unmet",
+                        "explanation": f"Your CGPA ({cgpa_val}) is below the required minimum of {min_cgpa}."
+                    })
             except (ValueError, TypeError):
+                unknown_reasons.append("CGPA could not be parsed")
                 evaluations.append({
-                    "criteria": "Minimum CGPA / Percentage",
-                    "required": f"Minimum {min_cgpa} CGPA",
+                    "criteria": "Minimum CGPA",
+                    "required": f"{min_cgpa} CGPA",
                     "provided": str(student_cgpa),
                     "status": "Uncertain",
-                    "explanation": "Could not parse student CGPA value."
+                    "explanation": "Could not parse student CGPA."
                 })
-                uncertain_count += 1
         else:
+            unknown_reasons.append("CGPA not provided in profile")
             evaluations.append({
-                "criteria": "Minimum CGPA / Percentage",
-                "required": f"Minimum {min_cgpa} CGPA",
+                "criteria": "Minimum CGPA",
+                "required": f"{min_cgpa} CGPA",
                 "provided": "Not Provided",
                 "status": "Uncertain",
-                "explanation": "CGPA was not provided in profile; verify whether you meet the cutoff."
+                "explanation": "CGPA not specified in profile."
             })
-            uncertain_count += 1
     else:
+        # Recruiter has no strict CGPA rule specified
         evaluations.append({
-            "criteria": "Minimum CGPA / Percentage",
-            "required": "No rigid cutoff mandated",
-            "provided": f"{student_cgpa} CGPA" if student_cgpa is not None else "Not Provided",
+            "criteria": "Minimum CGPA",
+            "required": "No rigid cutoff specified",
+            "provided": f"{student_cgpa} CGPA" if student_cgpa is not None else "Not Specified",
             "status": "Met",
-            "explanation": "Company does not mandate a strict percentage cutoff."
+            "explanation": "No rigid minimum CGPA specified for this company."
         })
 
-    # 2. Evaluate Backlogs
+    # 2. Backlogs Evaluation
     student_backlogs = student_profile.get("backlogs")
     if max_backlogs is not None:
         if student_backlogs is not None:
             try:
                 b_val = int(student_backlogs)
-                passed = b_val <= max_backlogs
-                evaluations.append({
-                    "criteria": "Active Backlogs",
-                    "required": f"Maximum {max_backlogs} active backlog(s)",
-                    "provided": f"{b_val} active backlog(s)",
-                    "status": "Met" if passed else "Unmet",
-                    "explanation": f"You have {b_val} active backlogs. Allowed: {max_backlogs}."
-                })
-                if not passed:
-                    unmet_count += 1
+                if b_val <= max_backlogs:
+                    evaluations.append({
+                        "criteria": "Active Backlogs",
+                        "required": f"Maximum {max_backlogs} active backlog(s)",
+                        "provided": f"{b_val} active backlog(s)",
+                        "status": "Met",
+                        "explanation": f"You have {b_val} active backlogs (allowed: {max_backlogs})."
+                    })
+                else:
+                    unmet_reasons.append(f"{b_val} active backlogs exceeds allowed limit of {max_backlogs}")
+                    evaluations.append({
+                        "criteria": "Active Backlogs",
+                        "required": f"Maximum {max_backlogs} active backlog(s)",
+                        "provided": f"{b_val} active backlog(s)",
+                        "status": "Unmet",
+                        "explanation": f"You have {b_val} active backlogs, exceeding allowed maximum of {max_backlogs}."
+                    })
             except (ValueError, TypeError):
+                unknown_reasons.append("Backlog count could not be parsed")
                 evaluations.append({
                     "criteria": "Active Backlogs",
                     "required": f"Maximum {max_backlogs} active backlog(s)",
                     "provided": str(student_backlogs),
                     "status": "Uncertain",
-                    "explanation": "Invalid backlog count format."
+                    "explanation": "Could not parse backlog count."
                 })
-                uncertain_count += 1
         else:
+            unknown_reasons.append("Backlog count not provided in profile")
             evaluations.append({
                 "criteria": "Active Backlogs",
                 "required": f"Maximum {max_backlogs} active backlog(s)",
                 "provided": "Not Provided",
                 "status": "Uncertain",
-                "explanation": "Backlog count not provided; please verify standing backlogs."
+                "explanation": "Backlog count not specified in profile."
             })
-            uncertain_count += 1
     else:
+        # Criteria missing or not specified
+        unknown_reasons.append("Company backlog criteria not specified")
         evaluations.append({
             "criteria": "Active Backlogs",
             "required": "Not strictly specified",
-            "provided": f"{student_backlogs} backlog(s)" if student_backlogs is not None else "Not Provided",
+            "provided": f"{student_backlogs} backlog(s)" if student_backlogs is not None else "Not Specified",
             "status": "Uncertain",
-            "explanation": "Backlog limit is not explicitly documented by recruiter."
+            "explanation": "Backlog criteria not explicitly specified."
         })
-        uncertain_count += 1
 
-    # 3. Evaluate Branch / Stream
-    student_branch = student_profile.get("branch")
-    if student_branch and student_branch.strip():
-        b_clean = student_branch.strip().lower()
-        if open_to_all_branches:
+    # 3. Branch / Department Evaluation
+    student_branch = student_profile.get("branch") or student_profile.get("department")
+    if allowed_branches:
+        is_open_to_all = any(b.lower() in ("all", "open to all", "any engineering") for b in allowed_branches)
+        if is_open_to_all:
             evaluations.append({
-                "criteria": "Eligible Branches",
-                "required": "Open to all engineering / technical disciplines",
-                "provided": student_branch,
+                "criteria": "Allowed Branches",
+                "required": "Open to all branches",
+                "provided": student_branch or "Any",
                 "status": "Met",
-                "explanation": f"Your branch ({student_branch}) is eligible under open recruitment guidelines."
+                "explanation": "Company is open to candidates from all engineering and technical branches."
             })
         else:
-            is_circuital = any(c in b_clean for c in circuital_branches)
-            evaluations.append({
-                "criteria": "Eligible Branches",
-                "required": "CS / IT / ECE and circuital STEM streams",
-                "provided": student_branch,
-                "status": "Met" if is_circuital else "Conditionally Eligible",
-                "explanation": f"Recruiter typically prioritizes circuital branches. Verify specific campus drive circular."
-            })
-    else:
-        evaluations.append({
-            "criteria": "Eligible Branches",
-            "required": "Engineering / STEM discipline",
-            "provided": "Not Provided",
-            "status": "Uncertain",
-            "explanation": "Academic branch not specified in profile."
-        })
-        uncertain_count += 1
+            if student_branch and str(student_branch).strip():
+                sb_clean = str(student_branch).strip().lower()
+                # Split student branch into words and canonical tokens
+                sb_words = set(re.findall(r"\b[a-zA-Z]+\b", sb_clean))
 
-    # Overall Status determination
-    if unmet_count > 0:
+                matched_branch = False
+                for allowed in allowed_branches:
+                    al_clean = allowed.strip().lower()
+                    if al_clean == "all":
+                        matched_branch = True
+                        break
+                    if al_clean == "stem" and any(tok in sb_clean for tok in CIRCUITAL_BRANCH_TOKENS):
+                        matched_branch = True
+                        break
+                    # Exact branch acronym or word match (e.g. 'CS', 'IT', 'ECE', 'EE', 'ME', 'CE')
+                    if al_clean in sb_words:
+                        matched_branch = True
+                        break
+                    # Exact phrase match (e.g. 'computer science' in 'computer science & engineering')
+                    if len(al_clean) > 2 and al_clean in sb_clean:
+                        matched_branch = True
+                        break
+                    # Specific common branch expansions
+                    if al_clean in ("cs", "cse") and any(tok in sb_clean for tok in ("computer science", "comp sci", "computing")):
+                        matched_branch = True
+                        break
+                    if al_clean == "it" and "information technology" in sb_clean:
+                        matched_branch = True
+                        break
+                    if al_clean in ("ece", "electronics") and ("electronics" in sb_clean or "communication" in sb_clean):
+                        matched_branch = True
+                        break
+                    if al_clean in ("ee", "electrical") and "electrical" in sb_clean:
+                        matched_branch = True
+                        break
+
+                if matched_branch:
+                    evaluations.append({
+                        "criteria": "Allowed Branches",
+                        "required": ", ".join(allowed_branches),
+                        "provided": student_branch,
+                        "status": "Met",
+                        "explanation": f"Your branch ({student_branch}) is eligible."
+                    })
+                else:
+                    unmet_reasons.append(f"Branch '{student_branch}' is not in allowed branches ({', '.join(allowed_branches)})")
+                    evaluations.append({
+                        "criteria": "Allowed Branches",
+                        "required": ", ".join(allowed_branches),
+                        "provided": student_branch,
+                        "status": "Unmet",
+                        "explanation": f"Branch '{student_branch}' is not listed in allowed disciplines ({', '.join(allowed_branches)})."
+                    })
+            else:
+                unknown_reasons.append("Branch not provided in profile")
+                evaluations.append({
+                    "criteria": "Allowed Branches",
+                    "required": ", ".join(allowed_branches),
+                    "provided": "Not Provided",
+                    "status": "Uncertain",
+                    "explanation": "Branch not specified in profile."
+                })
+    else:
+        unknown_reasons.append("Company branch criteria not specified")
+        evaluations.append({
+            "criteria": "Allowed Branches",
+            "required": "Not strictly specified",
+            "provided": student_branch or "Not Provided",
+            "status": "Uncertain",
+            "explanation": "Branch criteria not documented for this company."
+        })
+
+    # Overall Status Decision (#844 Acceptance Criteria):
+    # - If any requirement is unmet -> "not eligible" / "Not Eligible"
+    # - If any criteria or profile value is missing/uncertain -> "unknown" / "Needs Profile Information" (NEVER eligible when criteria missing!)
+    # - Only if all active criteria are fully met -> "eligible" / "Eligible"
+    if unmet_reasons:
         overall_status = "Not Eligible"
-    elif uncertain_count >= 2:
-        overall_status = "Needs Profile Information"
-    elif any(e["status"] == "Conditionally Eligible" for e in evaluations):
-        overall_status = "Conditionally Eligible"
+        status_key = "not_eligible"
+        reason = "; ".join(unmet_reasons)
+        is_eligible = False
+    elif unknown_reasons or not has_any_rule:
+        overall_status = "Unknown"
+        status_key = "unknown"
+        reason = "; ".join(unknown_reasons) if unknown_reasons else "Eligibility criteria not fully documented"
+        is_eligible = False
     else:
         overall_status = "Eligible"
+        status_key = "eligible"
+        reason = "Meets all published minimum CGPA, backlog, and branch criteria"
+        is_eligible = True
 
     return {
         "company_name": company_name,
         "overall_status": overall_status,
+        "status": overall_status.lower(),
+        "status_key": status_key,
+        "status_display": overall_status,
+        "eligible": is_eligible,
+        "reason": reason,
         "evaluations": evaluations,
-        "criteria_summary": eligibility_text or "General campus hiring guidelines apply.",
+        "criteria_summary": company_data.get("eligibility") or "General campus hiring guidelines apply.",
+        "min_cgpa": min_cgpa,
+        "max_backlogs": max_backlogs,
+        "branches": allowed_branches,
+        "source": company_data.get("eligibility_source") or company_data.get("source_name", "Campus Placement Cell"),
         "verified_source": company_data.get("source_name", "Campus Placement Cell"),
         "last_updated": company_data.get("last_updated", "2026"),
-        "disclaimer": "Eligibility calculations are heuristic estimations based on published campus criteria. Final eligibility is determined by your college placement cell and recruiter circular."
+        "drive_disclaimer": "Criteria vary by drive. Placement cells or recruiting teams may adjust CGPA cutoffs, backlog rules, or eligible branches for specific hiring rounds."
     }

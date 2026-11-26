@@ -326,7 +326,9 @@ def start_async_analysis(
     analysis_id: str,
     student_id: Optional[str] = None,
     format_compatibility: Optional[Dict[str, Any]] = None,
-    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None,
+    stored_resume_id: Optional[str] = None,
+    stored_resume_label: Optional[str] = None
 ) -> None:
     """
     Dispatches the multi-agent analysis to the background ThreadPoolExecutor.
@@ -348,7 +350,9 @@ def start_async_analysis(
         analysis_id,
         student_id,
         format_compatibility,
-        pdf_metadata_hygiene
+        pdf_metadata_hygiene,
+        stored_resume_id,
+        stored_resume_label
     )
 
 
@@ -363,7 +367,9 @@ def _run_analysis_pipeline(
     analysis_id: str,
     student_id: Optional[str] = None,
     format_compatibility: Optional[Dict[str, Any]] = None,
-    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None
+    pdf_metadata_hygiene: Optional[Dict[str, Any]] = None,
+    stored_resume_id: Optional[str] = None,
+    stored_resume_label: Optional[str] = None
 ) -> None:
     """
     Worker thread routine running the sequential multi-agent analysis pipeline.

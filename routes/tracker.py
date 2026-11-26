@@ -705,6 +705,150 @@ def api_applications_export_summary():
     }), 200
 
 
+@tracker_bp.route("/api/applications/bulk", methods=["POST"])
+def api_bulk_application_operations():
+    """
+    Performs atomic batch operations on job applications owned by the signed-in user (#848).
+    Supported actions: 'status', 'tag', 'delete', 'export'.
+    Enforces batch limits and candidate data segregation.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    action = (json_data.get("action") or request.form.get("action") or "").strip().lower()
+    app_ids = json_data.get("application_ids") or request.form.getlist("application_ids")
+    if not app_ids:
+        raw_ids = (
+            json_data.get("app_ids")
+            or request.form.get("application_ids")
+            or request.form.get("app_ids")
+            or request.form.get("ids")
+        )
+        if isinstance(raw_ids, str):
+            app_ids = [aid.strip() for aid in raw_ids.split(",") if aid.strip()]
+        elif isinstance(raw_ids, list):
+            app_ids = raw_ids
+
+    if not isinstance(app_ids, list) or not app_ids:
+        return jsonify({"success": False, "error": "No application IDs provided.", "affected_count": 0}), 400
+
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return jsonify({
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.",
+            "affected_count": 0
+        }), 400
+
+    if action == "status":
+        new_status = json_data.get("status") or request.form.get("status")
+        if not new_status:
+            return jsonify({"success": False, "error": "New status must be provided.", "affected_count": 0}), 400
+        result = bulk_update_application_status(app_ids, student_id, new_status)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "tag":
+        tag = json_data.get("tag") or request.form.get("tag")
+        if not tag:
+            return jsonify({"success": False, "error": "Tag must be provided.", "affected_count": 0}), 400
+        result = bulk_add_application_tag(app_ids, student_id, tag)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "delete":
+        result = bulk_delete_applications(app_ids, student_id)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "export":
+        try:
+            csv_data = bulk_export_applications_csv(app_ids, student_id)
+            safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+            return Response(
+                csv_data,
+                mimetype="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=applications_selected_{safe_student}.csv",
+                    "Content-Type": "text/csv; charset=utf-8",
+                },
+            )
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e), "affected_count": 0}), 400
+
+    else:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid bulk action '{action}'. Supported actions: 'status', 'tag', 'delete', 'export'.",
+            "affected_count": 0
+        }), 400
+
+
+@tracker_bp.route("/api/applications/bulk/export", methods=["GET", "POST"])
+def api_bulk_export_applications():
+    """
+    Exports selected job applications to a formula-injection-safe CSV file (#848).
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_ids = (
+        json_data.get("application_ids")
+        or request.form.getlist("application_ids")
+        or request.args.getlist("application_ids")
+    )
+    if not app_ids:
+        raw_ids = (
+            request.args.get("ids")
+            or request.args.get("application_ids")
+            or json_data.get("app_ids")
+            or request.form.get("application_ids")
+            or request.form.get("ids")
+        )
+        if isinstance(raw_ids, str):
+            app_ids = [aid.strip() for aid in raw_ids.split(",") if aid.strip()]
+        elif isinstance(raw_ids, list):
+            app_ids = raw_ids
+
+    if not isinstance(app_ids, list) or not app_ids:
+        return jsonify({"success": False, "error": "No application IDs provided."}), 400
+
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return jsonify({
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications."
+        }), 400
+
+    try:
+        csv_data = bulk_export_applications_csv(app_ids, student_id)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=applications_selected_{safe_student}.csv",
+                "Content-Type": "text/csv; charset=utf-8",
+            },
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+
+
 @tracker_bp.route("/my-reports")
 def user_placement_history_view():
     """

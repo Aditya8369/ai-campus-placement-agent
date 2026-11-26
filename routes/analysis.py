@@ -78,6 +78,7 @@ except ImportError:
     )
 from utils.async_pipeline import *
 from utils.job_feed_service import JobFeedService
+from agents.roadmap_agent import generate_learning_roadmap
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
@@ -1469,21 +1470,9 @@ def dashboard(analysis_id: str) -> str:
     elif not isinstance(raw_missing, list):
         raw_missing = []
 
-    clean_matched = []
-    seen_matched = set()
-    for s in raw_matched:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_matched:
-            clean_matched.append(s_clean)
-            seen_matched.add(s_clean.lower())
-
-    clean_missing = []
-    seen_missing = set()
-    for s in raw_missing:
-        s_clean = str(s).strip()
-        if s_clean and s_clean.lower() not in seen_missing and s_clean.lower() not in seen_matched:
-            clean_missing.append(s_clean)
-            seen_missing.add(s_clean.lower())
+    # Normalize skill synonyms and aliases before matching (#843)
+    from utils.skill_alias_service import reconcile_matched_and_missing_skills
+    clean_matched, clean_missing = reconcile_matched_and_missing_skills(raw_matched, raw_missing)
 
     matched_count = len(clean_matched)
     missing_count = len(clean_missing)
@@ -1720,6 +1709,46 @@ def dashboard(analysis_id: str) -> str:
             "timeline_items": []
         }
 
+    # Prepare PDF Metadata & Filename Hygiene (#841)
+    try:
+        pdf_metadata_hygiene = get_or_compute_pdf_metadata_hygiene(analysis_record)
+    except Exception as meta_err:
+        logger.warning(f"Error evaluating PDF metadata hygiene for dashboard: {meta_err}")
+        pdf_metadata_hygiene = {
+            "has_warnings": False,
+            "warnings": [],
+            "metadata": {},
+            "filename": analysis_record.get("resume_filename") or "resume.pdf",
+            "clean_filename_pattern": "FirstName_LastName_Role.pdf",
+            "suggested_filename": "FirstName_LastName_Resume.pdf",
+            "has_any_metadata": False,
+            "is_clean": True,
+        }
+
+    # Prepare Resume Links (#845)
+    try:
+        from utils.resume_link_service import analyze_resume_links
+        raw_resume = (
+            (analysis_record.get("results") or {}).get("extracted_resume_text")
+            or analysis_record.get("resume_text")
+            or ""
+        )
+        resume_links = analyze_resume_links(
+            resume_text=raw_resume,
+            check_reachability=False,
+            student_id=student_id or analysis_record.get("student_id")
+        )
+    except Exception as links_err:
+        logger.warning(f"Error extracting resume links for dashboard: {links_err}")
+        resume_links = {
+            "has_links": False,
+            "total_links": 0,
+            "links": [],
+            "warnings_count": 0,
+            "broken_count": 0,
+            "reachable_count": 0,
+        }
+
     return render_template(
         "dashboard.html",
         drive_reminder=drive_reminder,
@@ -1771,8 +1800,74 @@ def dashboard(analysis_id: str) -> str:
         initial_recommended_jobs=initial_recommended_jobs,
         initial_recommended_jobs_json=json.dumps(initial_recommended_jobs),
         pdf_metadata_hygiene=pdf_metadata_hygiene,
-        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene)
+        pdf_metadata_hygiene_json=json.dumps(pdf_metadata_hygiene),
+        resume_links=resume_links,
+        resume_links_json=json.dumps(resume_links)
     )
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/resume-links", methods=["GET"])
+def api_get_resume_links(analysis_id: str):
+    """
+    Returns profile and external links extracted from resume with format
+    and reachability health check statuses (#845).
+    """
+    analysis_record = get_analysis(analysis_id)
+    if not analysis_record or not _is_student_authorized(analysis_record):
+        return jsonify({"status": "error", "success": False, "error": "Analysis not found or unauthorized."}), 404
+
+    results = analysis_record.get("results") or {}
+    raw_resume = (
+        analysis_record.get("resume_text")
+        or results.get("extracted_resume_text")
+        or results.get("resume_text")
+        or ""
+    )
+
+    from utils.resume_link_service import analyze_resume_links
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or analysis_record.get("student_id")
+    check_reachability = request.args.get("check_reachability", "true").lower() in ("true", "1", "yes")
+
+    links_data = analyze_resume_links(
+        resume_text=raw_resume,
+        check_reachability=check_reachability,
+        user_id=student_id
+    )
+
+    return jsonify({
+        "status": "success",
+        "success": True,
+        "analysis_id": analysis_id,
+        "resume_links": links_data
+    }), 200
+
+
+@analysis_bp.route("/api/resume/check-links", methods=["POST"])
+def api_check_resume_links_stateless():
+    """
+    Stateless endpoint to extract and evaluate links from resume text (#845).
+    Body: {"resume_text": "...", "check_reachability": true}
+    """
+    data = request.get_json(silent=True) or request.form or {}
+    resume_text = data.get("resume_text", "")
+    check_reachability = str(data.get("check_reachability", "true")).lower() in ("true", "1", "yes")
+    student_id = flask_session.get("user_id") or flask_session.get("student_id") or "anonymous"
+
+    from utils.resume_link_service import analyze_resume_links
+    try:
+        links_data = analyze_resume_links(
+            resume_text=resume_text,
+            check_reachability=check_reachability,
+            user_id=student_id
+        )
+        return jsonify({
+            "status": "success",
+            "success": True,
+            "resume_links": links_data
+        }), 200
+    except Exception as exc:
+        logger.error(f"Error checking resume links: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
 
 
 @analysis_bp.route("/api/analysis/<analysis_id>/linkedin-suggestions", methods=["GET", "POST"])

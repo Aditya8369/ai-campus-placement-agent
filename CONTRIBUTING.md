@@ -237,6 +237,46 @@ def test_prop_sanitize_filename_invariants(raw_name: str | None, max_length: int
     assert sanitize_filename(clean, max_length=max_length) == clean
 ```
 
+### End-to-End Browser UI Testing with Playwright (#858)
+
+To guard against integration breakages across HTML templates, frontend JavaScript modules, CSS stylesheets, and backend route workflows, we maintain automated end-to-end (E2E) browser UI smoke tests powered by **[Playwright](https://playwright.dev/python/)**.
+
+The browser test walks through the entire candidate journey without requiring live external network access or real API keys:
+1. Student registration with credential validation (`/register`).
+2. Authentication and session management (`/login`).
+3. Uploading a resume PDF and consenting to AI processing (`/`).
+4. Multi-agent evaluation and real-time candidate dashboard rendering (`/dashboard/<analysis_id>`).
+5. Launching an interactive mock interview session (`/interview/<analysis_id>`).
+6. Session termination and secure logout (`/logout`).
+
+#### Running Playwright Tests Locally:
+
+1. **Install Playwright and Pytest Extension**:
+   ```bash
+   pip install pytest-playwright playwright
+   ```
+
+2. **Install Browser Binaries (Chromium)**:
+   ```bash
+   playwright install chromium
+   ```
+
+3. **Execute the E2E Test Suite**:
+   ```bash
+   pytest tests/test_playwright_student_journey.py -v
+   ```
+
+4. **Capture Traces and Screenshots on Failure**:
+   ```bash
+   pytest tests/test_playwright_student_journey.py -v --tracing=retain-on-failure --screenshot=only-on-failure --output=test-results
+   ```
+
+5. **Inspect Test Traces with Playwright Trace Viewer**:
+   If a test fails, launch the interactive trace viewer to inspect the visual DOM, console logs, and network events at every step:
+   ```bash
+   playwright show-trace test-results/.../trace.zip
+   ```
+
 ### Route Organization & Where to Add New Routes (#553)
 
 The application has been refactored from a monolithic `app.py` into modular Flask Blueprints grouped by feature area inside the `routes/` package. **`app.py` is a thin entry point** exporting `app = create_app()` and should not have new routes added to it directly.

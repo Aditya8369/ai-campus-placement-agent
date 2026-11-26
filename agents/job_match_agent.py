@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, Any, List
+from utils.skill_alias_service import reconcile_matched_and_missing_skills
 
 logger = logging.getLogger(__name__)
 
@@ -130,10 +131,17 @@ class JobMatchAgent:
             ats_score=ats_score
         )
 
+        # Reconcile matched and missing skills with canonical alias normalization (#843)
+        raw_matched = self._sanitize_string_list(data.get("matched_skills"))
+        raw_missing = self._sanitize_string_list(data.get("missing_skills"))
+        reconciled_matched, reconciled_missing = reconcile_matched_and_missing_skills(
+            raw_matched, raw_missing
+        )
+
         processed_data = {
             "match_percentage": match_percentage,
-            "matched_skills": self._sanitize_string_list(data.get("matched_skills")),
-            "missing_skills": self._sanitize_string_list(data.get("missing_skills")),
+            "matched_skills": reconciled_matched,
+            "missing_skills": reconciled_missing,
             "required_certifications": self._sanitize_string_list(data.get("required_certifications")),
             "recommended_improvements": self._sanitize_string_list(data.get("recommended_improvements")),
             "top_5_resume_changes": self._sanitize_string_list(data.get("top_5_resume_changes")),

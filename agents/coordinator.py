@@ -273,6 +273,18 @@ class CoordinatorAgent:
             logger.warning(f"CoordinatorAgent: Error computing deterministic ATS score: {ats_err}")
             ats_breakdown = None
 
+        # Guard job match against prompt injection override
+        if resume_threat["is_suspicious"] or jd_threat["is_suspicious"]:
+            matched = processed_job_match.get("matched_skills") or []
+            missing = processed_job_match.get("missing_skills") or []
+            total_skills = len(matched) + len(missing)
+            if total_skills > 0:
+                skill_ratio_pct = int(round((len(matched) / total_skills) * 100))
+                if processed_job_match.get("match_percentage", 0) > skill_ratio_pct:
+                    processed_job_match["match_percentage"] = skill_ratio_pct
+            elif len(matched) == 0:
+                processed_job_match["match_percentage"] = min(processed_job_match.get("match_percentage", 0), 20)
+
         # 10. Run resume timeline consistency and gap analysis (#840)
         try:
             from utils.resume_timeline_service import analyze_resume_timeline
@@ -293,6 +305,8 @@ class CoordinatorAgent:
             }
 
         # 11. Combine validated data into a final coordinated results payload
+        security_warning = resume_threat.get("warning") or jd_threat.get("warning") or ""
+        injection_detected = bool(resume_threat["is_suspicious"] or jd_threat["is_suspicious"])
         combined_payload = {
             "resume_analysis": processed_resume,
             "ats_breakdown": ats_breakdown,
@@ -607,10 +621,13 @@ class CoordinatorAgent:
         if not isinstance(raw_missing, list):
             raw_missing = []
 
+        from utils.skill_alias_service import get_canonical_skill
+
         def normalize(val: Any) -> str:
             if not isinstance(val, str):
                 return ""
-            return val.strip().lower()
+            can = get_canonical_skill(val)
+            return can.strip().lower() if can else val.strip().lower()
 
         def is_valid(norm_val: str) -> bool:
             return bool(norm_val) and norm_val not in GENERIC_FALLBACK_SKILLS

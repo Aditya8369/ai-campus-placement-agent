@@ -75,6 +75,7 @@ def _migration_001_core_schema(cursor: sqlite3.Cursor) -> None:
             resume_filename TEXT,
             resume_version INTEGER,
             job_description_snapshot TEXT,
+            tags TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -252,6 +253,7 @@ def _migration_003_tracker_and_events(cursor: sqlite3.Cursor) -> None:
         ("resume_filename", "TEXT"),
         ("resume_version", "INTEGER"),
         ("job_description_snapshot", "TEXT"),
+        ("tags", "TEXT DEFAULT ''"),
     ]:
         if col_name not in app_cols:
             cursor.execute(f"ALTER TABLE job_applications ADD COLUMN {col_name} {col_def}")
@@ -290,6 +292,7 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             department TEXT,
             grad_year INTEGER,
             cgpa REAL,
+            backlogs INTEGER DEFAULT 0,
             target_role TEXT,
             target_company TEXT,
             skills_json TEXT,
@@ -753,6 +756,32 @@ def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> Non
 
 
 # Documented, sequential migration registry
+def _migration_013_admin_user_management(cursor: sqlite3.Cursor) -> None:
+    """Ensure is_active and role columns exist on users, and create admin_user_audit_logs table (#853)."""
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = [c[1] for c in cursor.fetchall()]
+    if "is_active" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "role" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_user_audit_logs (
+            id TEXT PRIMARY KEY,
+            admin_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target_user_id TEXT NOT NULL,
+            target_email TEXT,
+            details TEXT,
+            ip_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_target ON admin_user_audit_logs(target_user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_action ON admin_user_audit_logs(action)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_created ON admin_user_audit_logs(created_at)")
+
+
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
     Migration("002_user_auth_and_sessions", "Create auth_sessions, notification preferences, feedback, assessments", _migration_002_user_auth_and_sessions),
