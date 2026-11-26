@@ -78,6 +78,7 @@ except ImportError:
     )
 from utils.async_pipeline import *
 from utils.job_feed_service import JobFeedService
+from agents.roadmap_agent import generate_learning_roadmap
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
@@ -1722,6 +1723,30 @@ def dashboard(analysis_id: str) -> str:
             "suggested_filename": "FirstName_LastName_Resume.pdf",
             "has_any_metadata": False,
             "is_clean": True,
+        }
+
+    # Prepare Resume Links (#845)
+    try:
+        from utils.resume_link_service import analyze_resume_links
+        raw_resume = (
+            (analysis_record.get("results") or {}).get("extracted_resume_text")
+            or analysis_record.get("resume_text")
+            or ""
+        )
+        resume_links = analyze_resume_links(
+            resume_text=raw_resume,
+            check_reachability=False,
+            student_id=student_id or analysis_record.get("student_id")
+        )
+    except Exception as links_err:
+        logger.warning(f"Error extracting resume links for dashboard: {links_err}")
+        resume_links = {
+            "has_links": False,
+            "total_links": 0,
+            "links": [],
+            "warnings_count": 0,
+            "broken_count": 0,
+            "reachable_count": 0,
         }
 
     return render_template(
