@@ -1,0 +1,35 @@
+{
+  "$schema_description": "Contribution template for adding or updating verified courses and certifications in data/skill_certifications.json (#757)",
+  "instructions": [
+    "1. Ensure the course or certification link is active, accessible, and reputable (e.g. Coursera, edX, freeCodeCamp, official vendor certifications).",
+    "2. Include accurate provider, difficulty level (Beginner | Intermediate | Advanced), pricing type (Free | Paid | Free to Audit), and approximate duration.",
+    "3. Set last_verified to the current date (YYYY-MM-DD) confirming the resource was checked and active.",
+    "4. To submit, add the skill key and array of up to 3 verified options into data/skill_certifications.json under the 'skills' object (or at root level). No code changes are required."
+  ],
+  "example_submission": {
+    "Rust": [
+      {
+        "title": "Learn Rust by Building Real-World Applications",
+        "provider": "freeCodeCamp",
+        "level": "Beginner",
+        "type": "Free",
+        "duration": "14 hours",
+        "url": "https://www.freecodecamp.org/news/rust-crash-course-for-beginners/",
+        "last_verified": "2026-11-25",
+        "contributor_verified": true,
+        "notes": "Verified course link is live and covers Rust ownership, borrowing, and concurrency."
+      },
+      {
+        "title": "Rust Fundamentals",
+        "provider": "Coursera / Duke University",
+        "level": "Beginner",
+        "type": "Free to Audit",
+        "duration": "16 hours",
+        "url": "https://www.coursera.org/learn/rust-fundamentals",
+        "last_verified": "2026-11-25",
+        "contributor_verified": true,
+        "notes": "Official university specialization covering safe memory and performance."
+      }
+    ]
+  }
+}

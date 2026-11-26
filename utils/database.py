@@ -375,11 +375,13 @@ def init_db() -> None:
                 last_practiced_at TIMESTAMP,
                 practice_answer TEXT DEFAULT '',
                 practice_evaluation_json TEXT DEFAULT '{}',
+                last_score REAL,
+                good_score_count INTEGER NOT NULL DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(student_id, question_id)
             )
         """)
-        # Ensure #359 practice mode columns exist if table was previously created (#359)
+        # Ensure #359 practice mode columns and #846 score tracking exist if table was previously created (#359, #846)
         cursor.execute("PRAGMA table_info(bookmarked_interview_questions)")
         existing_cols = {row[1] for row in cursor.fetchall()}
         if "is_practiced" not in existing_cols:
@@ -390,6 +392,10 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN practice_answer TEXT DEFAULT ''")
         if "practice_evaluation_json" not in existing_cols:
             cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN practice_evaluation_json TEXT DEFAULT '{}'")
+        if "last_score" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN last_score REAL")
+        if "good_score_count" not in existing_cols:
+            cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN good_score_count INTEGER NOT NULL DEFAULT 0")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_bookmarks_student ON bookmarked_interview_questions (student_id, category, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_interview_bookmarks_practiced ON bookmarked_interview_questions (student_id, is_practiced, created_at DESC)")
@@ -592,6 +598,32 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT")
         if "two_factor_backup_codes" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN two_factor_backup_codes TEXT")
+        if "is_active" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        if "role" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+
+        # Ensure admin user audit logs table exists (#853)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_user_audit_logs (
+                id TEXT PRIMARY KEY,
+                admin_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_user_id TEXT NOT NULL,
+                target_email TEXT,
+                details TEXT,
+                ip_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_user_audit_target ON admin_user_audit_logs(target_user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_user_audit_action ON admin_user_audit_logs(action)"
+        )
 
         # Schema migration for generated-output language preferences
         cursor.execute("PRAGMA table_info(email_notification_preferences)")
@@ -902,6 +934,29 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_item ON deprecated_api_metrics (item_type, item_name)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_ts ON deprecated_api_metrics (timestamp DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
+
+        # Table: Track failed login attempts per account and IP (#851)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS failed_login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identifier TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                attempted_at REAL NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ident_time ON failed_login_attempts (identifier, attempted_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ip_time ON failed_login_attempts (ip_address, attempted_at)")
+
+        # Table: Account temporary lockouts (#851)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS account_lockouts (
+                identifier TEXT PRIMARY KEY,
+                locked_until REAL NOT NULL,
+                created_at REAL NOT NULL,
+                notified_at REAL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts (locked_until)")
 
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
@@ -2075,17 +2130,19 @@ def export_job_applications_csv(
         "Created At"
     ])
 
+    from db.tracker import escape_csv_cell
+
     for app_item in applications:
         writer.writerow([
-            app_item.get("id", ""),
-            app_item.get("company_name", ""),
-            app_item.get("role_title", ""),
-            app_item.get("status", ""),
-            app_item.get("application_date", ""),
-            app_item.get("job_url", ""),
-            app_item.get("job_description", ""),
-            app_item.get("notes", ""),
-            app_item.get("created_at", "")
+            escape_csv_cell(app_item.get("id", "")),
+            escape_csv_cell(app_item.get("company_name", "")),
+            escape_csv_cell(app_item.get("role_title", "")),
+            escape_csv_cell(app_item.get("status", "")),
+            escape_csv_cell(app_item.get("application_date", "")),
+            escape_csv_cell(app_item.get("job_url", "")),
+            escape_csv_cell(app_item.get("job_description", "")),
+            escape_csv_cell(app_item.get("notes", "")),
+            escape_csv_cell(app_item.get("created_at", ""))
         ])
 
     return output.getvalue()
@@ -4338,6 +4395,11 @@ def is_coding_bookmarked(
         conn.close()
 
 
+MAX_BOOKMARKS_PER_STUDENT = 50
+GOOD_SCORE_THRESHOLD = 75.0
+MASTERY_GOOD_SCORE_COUNT = 2
+
+
 def save_interview_bookmark(
     student_id: str,
     question_id: str,
@@ -4345,11 +4407,13 @@ def save_interview_bookmark(
     category: str = "Technical",
     company_name: str = "General",
     notes: str = "",
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    last_score: Optional[float] = None
 ) -> bool:
     """
-    Saves an interview practice question to the candidate's bookmarked collection (#358).
+    Saves an interview practice question to the candidate's bookmarked collection (#358, #846).
     Supports categories: Technical, Behavioral, HR, Company-Specific.
+    Enforces maximum limit of 50 bookmarked questions per student.
     """
     conn = get_db_connection()
     try:
@@ -4368,18 +4432,38 @@ def save_interview_bookmark(
         meta_json = json.dumps(metadata or {})
         b_id = str(uuid.uuid4())
 
+        # Check existing bookmark
+        cursor.execute(
+            "SELECT id FROM bookmarked_interview_questions WHERE student_id = ? AND question_id = ?",
+            (effective_student_id, q_id)
+        )
+        exists = cursor.fetchone() is not None
+
+        if not exists:
+            cursor.execute(
+                "SELECT COUNT(*) FROM bookmarked_interview_questions WHERE student_id = ?",
+                (effective_student_id,)
+            )
+            cnt = cursor.fetchone()[0]
+            if cnt >= MAX_BOOKMARKS_PER_STUDENT:
+                logger.warning(
+                    f"Student {effective_student_id} reached bookmark limit of {MAX_BOOKMARKS_PER_STUDENT} questions"
+                )
+                return False
+
         cursor.execute("""
             INSERT INTO bookmarked_interview_questions (
-                id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                id, student_id, question_id, question_text, category, company_name, notes, metadata_json, last_score, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(student_id, question_id) DO UPDATE SET
                 question_text = excluded.question_text,
                 category = excluded.category,
                 company_name = excluded.company_name,
                 notes = excluded.notes,
                 metadata_json = excluded.metadata_json,
+                last_score = COALESCE(excluded.last_score, bookmarked_interview_questions.last_score),
                 created_at = CURRENT_TIMESTAMP
-        """, (b_id, effective_student_id, q_id, q_text, cat, comp, user_notes, meta_json))
+        """, (b_id, effective_student_id, q_id, q_text, cat, comp, user_notes, meta_json, last_score))
         conn.commit()
         logger.info(f"Saved interview bookmark for student {effective_student_id}, question {q_id}")
         return True
@@ -4446,7 +4530,8 @@ def get_interview_bookmarks(
 
         query = f"""
             SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
-                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json,
+                   last_score, good_score_count, created_at
             FROM bookmarked_interview_questions
             WHERE {" AND ".join(conditions)}
             ORDER BY created_at DESC
@@ -4466,6 +4551,8 @@ def get_interview_bookmarks(
             except Exception:
                 rec["practice_evaluation"] = {}
             rec["is_practiced"] = bool(rec.get("is_practiced", 0))
+            rec["last_score"] = rec.get("last_score")
+            rec["good_score_count"] = int(rec.get("good_score_count") or 0)
             bookmarks.append(rec)
         return bookmarks
     except Exception as e:
@@ -4490,7 +4577,8 @@ def get_interview_bookmark_by_id(
 
         cursor.execute("""
             SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
-                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+                   is_practiced, last_practiced_at, practice_answer, practice_evaluation_json,
+                   last_score, good_score_count, created_at
             FROM bookmarked_interview_questions
             WHERE student_id = ? AND question_id = ?
             LIMIT 1
@@ -4509,12 +4597,29 @@ def get_interview_bookmark_by_id(
         except Exception:
             rec["practice_evaluation"] = {}
         rec["is_practiced"] = bool(rec.get("is_practiced", 0))
+        rec["last_score"] = rec.get("last_score")
+        rec["good_score_count"] = int(rec.get("good_score_count") or 0)
         return rec
     except Exception as e:
         logger.error(f"Error fetching bookmark {question_id} for student {student_id}: {e}")
         return None
     finally:
         conn.close()
+
+
+def record_bookmark_score(
+    student_id: str,
+    question_id: str,
+    score: float
+) -> Dict[str, Any]:
+    """
+    Records student's latest score for a bookmarked interview question (#846).
+    If score >= 75.0, increments good_score_count.
+    Once good_score_count >= 2, automatically removes the question from the saved list.
+    """
+    from db.interviews import record_bookmark_score as _db_record_bookmark_score
+    db_path = getattr(config, "DATABASE_PATH", None) or getattr(Config, "DATABASE_PATH", None)
+    return _db_record_bookmark_score(student_id=student_id, question_id=question_id, score=score, db_path=db_path)
 
 
 def update_interview_bookmark_practice(
@@ -6936,6 +7041,12 @@ from db.users import (
 )
 
 from db.tracker import (
+    MAX_BULK_BATCH_SIZE,
+    escape_csv_cell,
+    bulk_update_application_status,
+    bulk_add_application_tag,
+    bulk_delete_applications,
+    bulk_export_applications_csv,
     clear_recently_viewed_jobs,
     create_saved_job_description,
     delete_calendar_event,
@@ -7033,6 +7144,10 @@ __all__ = [
     "remove_interview_bookmark",
     "get_interview_bookmarks",
     "get_interview_bookmark_by_id",
+    "record_bookmark_score",
+    "MAX_BOOKMARKS_PER_STUDENT",
+    "GOOD_SCORE_THRESHOLD",
+    "MASTERY_GOOD_SCORE_COUNT",
     "update_interview_bookmark_practice",
     "reset_interview_bookmarks_practice",
     "get_interview_bookmark_practice_stats",
@@ -7087,6 +7202,13 @@ __all__ = [
     "save_job_contact",
     "get_job_contacts",
     "delete_job_contact",
+    # Bulk Application Operations (#848)
+    "MAX_BULK_BATCH_SIZE",
+    "escape_csv_cell",
+    "bulk_update_application_status",
+    "bulk_add_application_tag",
+    "bulk_delete_applications",
+    "bulk_export_applications_csv",
     # Coding Practice
     "save_coding_submission",
     "get_coding_submissions",

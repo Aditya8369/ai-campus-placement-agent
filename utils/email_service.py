@@ -264,6 +264,53 @@ class EmailNotificationService:
             plain_text=plain_text
         )
 
+    def send_account_lockout_notification(
+        self,
+        recipient_email: str,
+        student_name: str = "",
+        lockout_minutes: int = 15,
+        locale: str = DEFAULT_OUTPUT_LOCALE,
+    ) -> bool:
+        """
+        Dispatches a security notification email when an account is temporarily locked (#851).
+        """
+        import html
+
+        safe_name = html.escape(student_name or "there")
+        title = "Security Alert: Account Temporarily Locked"
+        headline = "Account Security Alert"
+        body_content = f"""
+            <p>Hello {safe_name},</p>
+            <p>We detected multiple consecutive failed login attempts on your AI Campus Placement Agent account.</p>
+            <p>As a security precaution to protect your account against unauthorized access, your account has been temporarily locked for <strong>{lockout_minutes} minutes</strong>.</p>
+            <p>If you were attempting to log in, you can try again after the lockout period expires, or reset your password using the link below.</p>
+            <p>If this was not you, someone may be attempting to guess your password. We strongly recommend resetting your password immediately to secure your account.</p>
+        """
+
+        html_content = self._format_html_layout(
+            title=title,
+            headline=headline,
+            body_content=body_content,
+            cta_url="http://localhost:5000/forgot-password",
+            cta_text="Reset Your Password",
+            locale=locale,
+        )
+
+        plain_text = (
+            f"Hello {student_name or 'there'},\n\n"
+            f"We detected multiple consecutive failed login attempts on your account.\n"
+            f"Your account has been temporarily locked for {lockout_minutes} minutes for security.\n\n"
+            f"If you were trying to log in, please wait {lockout_minutes} minutes before trying again or reset your password at: http://localhost:5000/forgot-password\n\n"
+            f"If this was not you, please reset your password immediately."
+        )
+
+        return self.send_email(
+            recipient_email=recipient_email,
+            subject="Security Alert: Your Account Has Been Temporarily Locked",
+            html_content=html_content,
+            plain_text=plain_text,
+        )
+
     def send_application_created_email(
         self,
         recipient_email: str,

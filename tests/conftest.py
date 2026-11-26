@@ -116,6 +116,19 @@ class MockGeminiModels:
                 return res
         return MockGeminiResponse(self.response_text)
 
+    def generate_content_stream(self, model=None, contents=None, config=None):
+        self.call_count += 1
+        self.last_prompt = contents
+        self.last_config = config
+        if self.side_effect:
+            if isinstance(self.side_effect, Exception) or (isinstance(self.side_effect, type) and issubclass(self.side_effect, Exception)):
+                raise self.side_effect
+            elif callable(self.side_effect):
+                res = self.side_effect(model=model, contents=contents, config=config)
+                if isinstance(res, Exception):
+                    raise res
+        yield MockGeminiResponse(self.response_text)
+
 
 class MockGeminiClient:
     """Mock of google.genai.Client."""

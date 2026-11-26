@@ -91,6 +91,9 @@
         </p>
       </div>
       <div class="col-md-5 text-md-end mt-3 mt-md-0 d-flex gap-2 justify-content-md-end flex-wrap">
+        <a href="/interview/saved-session" class="btn btn-primary rounded-pill px-3 shadow-sm btn-sm" title="Start mock interview practice session using saved questions">
+          <i class="fa-solid fa-play me-1"></i> Start Practice Session
+        </a>
         <a href="/interview/bookmarks/practice" class="btn btn-success rounded-pill px-3 shadow-sm btn-sm" title="Practice saved questions in focused mode">
           <i class="fa-solid fa-bullseye me-1"></i> Practice Mode
         </a>
@@ -100,9 +103,6 @@
         <button type="button" class="btn btn-outline-primary rounded-pill px-3 shadow-sm btn-sm" id="btnCopyAllQuestions" title="Copy all visible questions to clipboard">
           <i class="fa-regular fa-copy me-1"></i> Copy All
         </button>
-        <a href="/" class="btn btn-primary rounded-pill px-3 shadow-sm btn-sm" title="Start a new interview">
-          <i class="fa-solid fa-play me-1"></i> Practice Mock
-        </a>
       </div>
     </div>
 
@@ -281,7 +281,7 @@
           </div>
 
           <!-- Action Footer -->
-          <div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2">
+          <div class="d-flex justify-content-between align-items-center pt-3 border-top mt-2 flex-wrap gap-2">
             <div class="d-flex align-items-center gap-2">
               <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill px-3 btn-copy-question" 
                       data-question="{{ b.question_text|escape }}"
@@ -294,16 +294,29 @@
                 <i class="fa-solid fa-play me-1"></i> Practice
               </a>
             </div>
-            <div class="d-flex align-items-center gap-2">
-              {% if b.is_practiced %}
-                <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small">
-                  <i class="fa-solid fa-check me-1"></i> Practiced
-                </span>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              {% if b.last_score is not none %}
+                {% if b.last_score >= 75 %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle rounded-pill px-2 py-1 small" title="Last practice score">
+                    <i class="fa-solid fa-star me-1"></i> Score: {{ b.last_score|round(0)|int }}/100
+                  </span>
+                {% elif b.last_score >= 50 %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle rounded-pill px-2 py-1 small" title="Last practice score">
+                    <i class="fa-solid fa-star-half-stroke me-1"></i> Score: {{ b.last_score|round(0)|int }}/100
+                  </span>
+                {% else %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle rounded-pill px-2 py-1 small" title="Last practice score">
+                    <i class="fa-regular fa-star me-1"></i> Score: {{ b.last_score|round(0)|int }}/100
+                  </span>
+                {% endif %}
               {% else %}
                 <span class="badge bg-light text-muted border rounded-pill px-2 py-1 small">
-                  <i class="fa-regular fa-clock me-1"></i> Unpracticed
+                  <i class="fa-regular fa-clock me-1"></i> Not attempted yet
                 </span>
               {% endif %}
+              <span class="badge bg-info-subtle text-info border border-info-subtle rounded-pill px-2 py-1 small" title="Answer well twice (>= 75) to master and remove">
+                Mastery: {{ b.good_score_count|default(0) }}/2
+              </span>
               <button type="button" class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-remove-bookmark" 
                       data-question-id="{{ b.question_id }}"
                       title="Remove bookmark">

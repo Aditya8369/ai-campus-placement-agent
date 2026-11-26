@@ -5,16 +5,21 @@ from transcript text without requiring raw audio uploads.
 """
 
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 COMMON_FILLER_WORDS = [
     "um", "uh", "er", "ah", "like", "you know", "basically",
     "actually", "literally", "sort of", "kind of", "i mean", "right"
 ]
 
-def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+def analyze_speech_metrics(
+    transcript: str,
+    pauses: List[Dict[str, Any]] = None,
+    duration_seconds: Optional[float] = None
+) -> Dict[str, Any]:
     """
-    Analyzes filler words, pauses/hesitations, and repeated phrases from transcript text.
+    Analyzes filler words, pauses/hesitations, speaking pace (WPM), and repeated phrases
+    from transcript text without requiring raw audio uploads (#758).
     Works entirely client/transcript-side without storing or uploading raw audio.
     """
     if not transcript or not isinstance(transcript, str):
@@ -31,6 +36,8 @@ def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None)
         return {
             "success": True,
             "total_words": 0,
+            "duration_seconds": duration_seconds or 0.0,
+            "words_per_minute": 0.0,
             "filler_words": {},
             "filler_count": 0,
             "filler_percentage": 0.0,
@@ -41,7 +48,9 @@ def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None)
             },
             "repetitions": [],
             "delivery_score": 100,
-            "feedback": "No speech detected to evaluate."
+            "feedback": "No speech detected to evaluate.",
+            "simple_tips": ["Speak clearly into your microphone to receive delivery feedback."],
+            "privacy_notice": "Speech metrics are calculated without storing or uploading raw audio files."
         }
 
     # 1. Detect filler words
@@ -86,7 +95,13 @@ def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None)
             if rep_phrase not in repetitions:
                 repetitions.append(rep_phrase)
 
-    # 4. Delivery score calculation (0 - 100)
+    # 4. Pace calculation (WPM)
+    wpm = None
+    if duration_seconds is not None and duration_seconds > 0.5:
+        minutes = max(duration_seconds / 60.0, 0.05)
+        wpm = round(total_words / minutes, 1)
+
+    # 5. Delivery score calculation (0 - 100)
     # Deductions:
     # - Filler % above 3%: 5 pts per 1%
     # - Unusually long pauses: 4 pts each
@@ -115,9 +130,35 @@ def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None)
         rep_str = ", ".join([f"'{r}'" for r in repetitions[:3]])
         feedback_points.append(f"Noticeable immediate word repetitions: {rep_str}.")
 
+    # 6. Simple coaching tips (#758)
+    simple_tips = []
+    if wpm is not None:
+        if wpm > 165:
+            simple_tips.append(f"Pace Tip: Speaking a bit fast ({wpm} WPM). Try slowing down slightly and taking calm breaths between ideas.")
+        elif wpm < 110 and total_words >= 5:
+            simple_tips.append(f"Pace Tip: Speaking a bit slowly ({wpm} WPM). Try picking up the tempo to keep the interviewer engaged.")
+        else:
+            simple_tips.append(f"Pace Tip: Great speaking pace ({wpm} WPM). Your delivery tempo is balanced and easy to follow.")
+    
+    if total_fillers >= 3:
+        simple_tips.append(f"Filler Tip: Frequent filler words detected ({total_fillers}x). Pause silently instead of using fillers while formulating thoughts.")
+    elif total_fillers > 0:
+        simple_tips.append(f"Filler Tip: Low filler word count ({total_fillers}x). Great verbal control.")
+    else:
+        simple_tips.append("Filler Tip: Clean articulation with zero filler words.")
+
+    if unusually_long_pauses >= 2:
+        simple_tips.append(f"Pause Tip: Detected {unusually_long_pauses} noticeably long pauses. Use transitional phrases like 'Let me break this down' to structure ideas without awkward silence.")
+    elif unusually_long_pauses == 1:
+        simple_tips.append("Pause Tip: Brief hesitation detected. Remember brief pauses to gather thoughts are completely normal.")
+    else:
+        simple_tips.append("Pause Tip: Smooth speech continuity.")
+
     return {
         "success": True,
         "total_words": total_words,
+        "duration_seconds": duration_seconds,
+        "words_per_minute": wpm if wpm is not None else 0.0,
         "filler_words": filler_counts,
         "filler_count": total_fillers,
         "filler_percentage": filler_percentage,
@@ -129,5 +170,6 @@ def analyze_speech_metrics(transcript: str, pauses: List[Dict[str, Any]] = None)
         "repetitions": repetitions,
         "delivery_score": delivery_score,
         "feedback": " ".join(feedback_points),
+        "simple_tips": simple_tips,
         "privacy_notice": "Speech metrics are calculated without storing or uploading raw audio files."
     }

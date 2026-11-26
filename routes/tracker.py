@@ -88,6 +88,7 @@ from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
+from agents.follow_up_note_agent import FollowUpNoteAgent, NOTE_TYPES
 from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
 from agents.project_deep_dive_agent import ProjectDeepDiveAgent
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
@@ -703,6 +704,150 @@ def api_applications_export_summary():
         "status": "success",
         "export_metadata": summary
     }), 200
+
+
+@tracker_bp.route("/api/applications/bulk", methods=["POST"])
+def api_bulk_application_operations():
+    """
+    Performs atomic batch operations on job applications owned by the signed-in user (#848).
+    Supported actions: 'status', 'tag', 'delete', 'export'.
+    Enforces batch limits and candidate data segregation.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    action = (json_data.get("action") or request.form.get("action") or "").strip().lower()
+    app_ids = json_data.get("application_ids") or request.form.getlist("application_ids")
+    if not app_ids:
+        raw_ids = (
+            json_data.get("app_ids")
+            or request.form.get("application_ids")
+            or request.form.get("app_ids")
+            or request.form.get("ids")
+        )
+        if isinstance(raw_ids, str):
+            app_ids = [aid.strip() for aid in raw_ids.split(",") if aid.strip()]
+        elif isinstance(raw_ids, list):
+            app_ids = raw_ids
+
+    if not isinstance(app_ids, list) or not app_ids:
+        return jsonify({"success": False, "error": "No application IDs provided.", "affected_count": 0}), 400
+
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return jsonify({
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications.",
+            "affected_count": 0
+        }), 400
+
+    if action == "status":
+        new_status = json_data.get("status") or request.form.get("status")
+        if not new_status:
+            return jsonify({"success": False, "error": "New status must be provided.", "affected_count": 0}), 400
+        result = bulk_update_application_status(app_ids, student_id, new_status)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "tag":
+        tag = json_data.get("tag") or request.form.get("tag")
+        if not tag:
+            return jsonify({"success": False, "error": "Tag must be provided.", "affected_count": 0}), 400
+        result = bulk_add_application_tag(app_ids, student_id, tag)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "delete":
+        result = bulk_delete_applications(app_ids, student_id)
+        return jsonify(result), (200 if result.get("success") else 400)
+
+    elif action == "export":
+        try:
+            csv_data = bulk_export_applications_csv(app_ids, student_id)
+            safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+            return Response(
+                csv_data,
+                mimetype="text/csv",
+                headers={
+                    "Content-Disposition": f"attachment; filename=applications_selected_{safe_student}.csv",
+                    "Content-Type": "text/csv; charset=utf-8",
+                },
+            )
+        except Exception as e:
+            return jsonify({"success": False, "error": str(e), "affected_count": 0}), 400
+
+    else:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid bulk action '{action}'. Supported actions: 'status', 'tag', 'delete', 'export'.",
+            "affected_count": 0
+        }), 400
+
+
+@tracker_bp.route("/api/applications/bulk/export", methods=["GET", "POST"])
+def api_bulk_export_applications():
+    """
+    Exports selected job applications to a formula-injection-safe CSV file (#848).
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_ids = (
+        json_data.get("application_ids")
+        or request.form.getlist("application_ids")
+        or request.args.getlist("application_ids")
+    )
+    if not app_ids:
+        raw_ids = (
+            request.args.get("ids")
+            or request.args.get("application_ids")
+            or json_data.get("app_ids")
+            or request.form.get("application_ids")
+            or request.form.get("ids")
+        )
+        if isinstance(raw_ids, str):
+            app_ids = [aid.strip() for aid in raw_ids.split(",") if aid.strip()]
+        elif isinstance(raw_ids, list):
+            app_ids = raw_ids
+
+    if not isinstance(app_ids, list) or not app_ids:
+        return jsonify({"success": False, "error": "No application IDs provided."}), 400
+
+    if len(app_ids) > MAX_BULK_BATCH_SIZE:
+        return jsonify({
+            "success": False,
+            "error": f"Batch size exceeds maximum limit of {MAX_BULK_BATCH_SIZE} applications."
+        }), 400
+
+    try:
+        csv_data = bulk_export_applications_csv(app_ids, student_id)
+        safe_student = "".join(c for c in student_id if c.isalnum() or c in ("-", "_"))
+        return Response(
+            csv_data,
+            mimetype="text/csv",
+            headers={
+                "Content-Disposition": f"attachment; filename=applications_selected_{safe_student}.csv",
+                "Content-Type": "text/csv; charset=utf-8",
+            },
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @tracker_bp.route("/my-reports")
@@ -1508,6 +1653,115 @@ def api_application_detail_operations(app_id: str):
     if request.method == "DELETE":
         deleted = delete_job_application(app_id=app_id, student_id=student_id)
         return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@tracker_bp.route("/api/applications/<app_id>/follow-up-note", methods=["GET", "POST"])
+def api_application_follow_up_note(app_id: str):
+    """
+    Generates a tailored post-interview thank-you, follow-up, or offer acknowledgement note (#847).
+    Uses the company name from the tracked application and the single detail provided by the student.
+    Drafts are strictly under 150 words and are never sent automatically.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_record = get_job_application_by_id(app_id, student_id)
+    if not app_record:
+        return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+
+    note_type = (
+        request.args.get("type")
+        or request.args.get("note_type")
+        or json_data.get("type")
+        or json_data.get("note_type")
+        or request.form.get("type")
+        or request.form.get("note_type")
+        or "thank_you"
+    )
+
+    detail = (
+        request.args.get("detail")
+        or request.args.get("interview_detail")
+        or json_data.get("detail")
+        or json_data.get("interview_detail")
+        or request.form.get("detail")
+        or request.form.get("interview_detail")
+        or ""
+    )
+
+    company_name = app_record.get("company_name") or "Target Company"
+    role_title = app_record.get("role_title") or ""
+
+    agent = FollowUpNoteAgent()
+    note_payload = agent.generate_note(
+        company_name=company_name,
+        note_type=note_type,
+        interview_detail=detail,
+        role_title=role_title,
+    )
+    note_payload["application_id"] = app_id
+    note_payload["auto_send"] = False  # Strictly no auto-send
+
+    return jsonify(note_payload), 200
+
+
+@tracker_bp.route("/api/applications/follow-up-note", methods=["POST"])
+def api_generic_follow_up_note():
+    """
+    Direct follow-up note generator by application_id or company_name (#847).
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_id = (json_data.get("application_id") or json_data.get("app_id") or request.form.get("application_id") or "").strip()
+    company_name = (json_data.get("company_name") or request.form.get("company_name") or "").strip()
+    role_title = (json_data.get("role_title") or request.form.get("role_title") or "").strip()
+
+    if app_id:
+        app_record = get_job_application_by_id(app_id, student_id)
+        if app_record:
+            company_name = app_record.get("company_name") or company_name
+            role_title = app_record.get("role_title") or role_title
+        elif not company_name:
+            return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+
+    if not company_name:
+        return jsonify({"success": False, "error": "Company name or valid application ID is required."}), 400
+
+    note_type = json_data.get("type") or json_data.get("note_type") or request.form.get("type") or "thank_you"
+    detail = json_data.get("detail") or json_data.get("interview_detail") or request.form.get("detail") or ""
+
+    agent = FollowUpNoteAgent()
+    note_payload = agent.generate_note(
+        company_name=company_name,
+        note_type=note_type,
+        interview_detail=detail,
+        role_title=role_title,
+    )
+    if app_id:
+        note_payload["application_id"] = app_id
+    note_payload["auto_send"] = False
+
+    return jsonify(note_payload), 200
 
 
 @tracker_bp.route("/api/export/csv/<data_type>", methods=["GET"])

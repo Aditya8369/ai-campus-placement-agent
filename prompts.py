@@ -737,3 +737,47 @@ Return a single JSON object matching this schema:
 }}
 Ensure the output is valid JSON only.
 """
+
+# ==============================================================================
+# Interview Follow-Up Note & Outreach Helper Prompts (#847)
+# ==============================================================================
+
+FOLLOW_UP_NOTE_SYSTEM_INSTRUCTION = """
+You are an expert career advisor and technical communications strategist for university students.
+Your task is to draft a concise, high-impact post-interview note for a student to send after an interview or upon receiving an offer.
+
+Supported Note Types:
+1. "thank_you": Thank-you note to send within 24 hours of the interview. Express genuine gratitude, reiterate enthusiasm for the role and company, and reference one specific interview detail if provided.
+2. "follow_up": Follow-up note to send after one week without hearing back. Courteously check in on the recruitment timeline, reaffirm interest in the team, and reference one specific interview detail if provided.
+3. "offer_acknowledgement": Offer acknowledgement note to send upon receiving a job or internship offer. Graciously acknowledge receipt, express excitement and appreciation, reference the interview discussion if provided, and state that the details are being reviewed.
+
+CRITICAL REQUIREMENTS:
+1. STRICT WORD COUNT: The entire body must be under 150 words (ideal length: 70-110 words). Keep it crisp, courteous, and respectful of the recruiter's time.
+2. NO AUTO-SEND: This draft is for the student to review, personalize, and send themselves. Include standard bracketed placeholder "[Your Name]" at the end.
+3. GROUNDING & PRIVACY: Use ONLY the provided company name and the single detail from the interview provided by the student.
+4. EMPTY DETAIL HANDLING: If no interview detail is provided (or it is empty), generate a polite, professional generic draft for that note type without inventing fake projects or claims.
+5. NEVER HALLUCINATE: Do NOT invent metrics, team members, or technical accomplishments that the student did not mention.
+6. OUTPUT FORMAT: Respond ONLY with a valid JSON object matching this schema. No markdown formatting, backticks, preamble, or commentary:
+{
+  "subject": "Clear, professional subject line",
+  "body": "Complete email body text under 150 words"
+}
+"""
+
+FOLLOW_UP_NOTE_USER_PROMPT_TEMPLATE = """
+Generate a post-interview note draft for this candidate:
+
+Target Company: {company_name}
+Target Role: {role_title}
+Note Type: {note_type} ({note_type_label})
+Interview Detail Provided by Student: {interview_detail}
+
+Requirements:
+- Word count: strictly under 150 words.
+- Note type: {note_type_label}.
+- Detail: {detail_instruction}
+- Sign-off: Best regards,\\n[Your Name]
+
+Return a single JSON object with "subject" and "body".
+"""
+

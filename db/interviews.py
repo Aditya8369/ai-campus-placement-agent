@@ -324,6 +324,11 @@ def get_student_interview_performance_analytics(
     }
 
 
+MAX_BOOKMARKS_PER_STUDENT = 50
+GOOD_SCORE_THRESHOLD = 75.0
+MASTERY_GOOD_SCORE_COUNT = 2
+
+
 def save_interview_bookmark(
     student_id: str,
     question_id: str,
@@ -332,9 +337,10 @@ def save_interview_bookmark(
     company_name: str = "General",
     notes: str = "",
     metadata: Optional[Dict[str, Any]] = None,
+    last_score: Optional[float] = None,
     db_path: Optional[str] = None,
 ) -> bool:
-    """Saves an interview practice question to the candidate's bookmarked collection."""
+    """Saves an interview practice question to the candidate's bookmarked collection (#358, #846)."""
     try:
         effective_student_id = (student_id or "default_student").strip()
         q_id = str(question_id).strip()
@@ -351,20 +357,41 @@ def save_interview_bookmark(
         b_id = str(uuid.uuid4())
 
         with transaction(db_path) as cursor:
+            # Check if this bookmark already exists for this student
+            cursor.execute(
+                "SELECT id FROM bookmarked_interview_questions WHERE student_id = ? AND question_id = ?",
+                (effective_student_id, q_id),
+            )
+            exists = cursor.fetchone() is not None
+
+            # If not an existing bookmark, enforce per-user bookmark limit (#846)
+            if not exists:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM bookmarked_interview_questions WHERE student_id = ?",
+                    (effective_student_id,),
+                )
+                cnt = cursor.fetchone()[0]
+                if cnt >= MAX_BOOKMARKS_PER_STUDENT:
+                    logger.warning(
+                        f"Student {effective_student_id} reached bookmark limit of {MAX_BOOKMARKS_PER_STUDENT} questions"
+                    )
+                    return False
+
             cursor.execute(
                 """
                 INSERT INTO bookmarked_interview_questions (
-                    id, student_id, question_id, question_text, category, company_name, notes, metadata_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    id, student_id, question_id, question_text, category, company_name, notes, metadata_json, last_score, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                 ON CONFLICT(student_id, question_id) DO UPDATE SET
                     question_text = excluded.question_text,
                     category = excluded.category,
                     company_name = excluded.company_name,
                     notes = excluded.notes,
                     metadata_json = excluded.metadata_json,
+                    last_score = COALESCE(excluded.last_score, bookmarked_interview_questions.last_score),
                     created_at = CURRENT_TIMESTAMP
                 """,
-                (b_id, effective_student_id, q_id, q_text, cat, comp, user_notes, meta_json),
+                (b_id, effective_student_id, q_id, q_text, cat, comp, user_notes, meta_json, last_score),
             )
             logger.info(f"Saved interview bookmark for student {effective_student_id}, question {q_id}")
             return True
@@ -427,7 +454,8 @@ def get_interview_bookmarks(
 
             query = f"""
                 SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
-                       is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+                       is_practiced, last_practiced_at, practice_answer, practice_evaluation_json,
+                       last_score, good_score_count, created_at
                 FROM bookmarked_interview_questions
                 WHERE {" AND ".join(conditions)}
                 ORDER BY created_at DESC
@@ -447,6 +475,8 @@ def get_interview_bookmarks(
                 except Exception:
                     rec["practice_evaluation"] = {}
                 rec["is_practiced"] = bool(rec.get("is_practiced", 0))
+                rec["last_score"] = rec.get("last_score")
+                rec["good_score_count"] = int(rec.get("good_score_count") or 0)
                 bookmarks.append(rec)
             return bookmarks
     except Exception as e:
@@ -469,7 +499,8 @@ def get_interview_bookmark_by_id(
             cursor.execute(
                 """
                 SELECT id, student_id, question_id, question_text, category, company_name, notes, metadata_json,
-                       is_practiced, last_practiced_at, practice_answer, practice_evaluation_json, created_at
+                       is_practiced, last_practiced_at, practice_answer, practice_evaluation_json,
+                       last_score, good_score_count, created_at
                 FROM bookmarked_interview_questions
                 WHERE student_id = ? AND question_id = ?
                 LIMIT 1
@@ -490,10 +521,116 @@ def get_interview_bookmark_by_id(
             except Exception:
                 rec["practice_evaluation"] = {}
             rec["is_practiced"] = bool(rec.get("is_practiced", 0))
+            rec["last_score"] = rec.get("last_score")
+            rec["good_score_count"] = int(rec.get("good_score_count") or 0)
             return rec
     except Exception as e:
         logger.error(f"Error fetching bookmark {question_id} for student {student_id}: {e}")
         return None
+
+
+def record_bookmark_score(
+    student_id: str,
+    question_id: str,
+    score: float,
+    db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Records student's latest score for a bookmarked interview question (#846).
+    If score >= 75.0, increments good_score_count.
+    Once good_score_count >= 2, automatically removes the question from the saved list.
+    """
+    try:
+        effective_student_id = (student_id or "default_student").strip()
+        q_id = str(question_id).strip()
+        clean_score = max(0.0, min(100.0, float(score)))
+
+        with transaction(db_path) as cursor:
+            # Try to locate by question_id first, then fallback to question_text
+            cursor.execute(
+                """
+                SELECT question_id, question_text, good_score_count
+                FROM bookmarked_interview_questions
+                WHERE student_id = ? AND (question_id = ? OR LOWER(question_text) = LOWER(?))
+                LIMIT 1
+                """,
+                (effective_student_id, q_id, q_id),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return {
+                    "found": False,
+                    "removed": False,
+                    "mastered": False,
+                    "mastery": False,
+                    "good_score_count": 0,
+                    "last_score": clean_score,
+                    "message": "Question not currently bookmarked.",
+                }
+
+            matched_q_id = row["question_id"]
+            current_good = int(row["good_score_count"] or 0)
+            is_good = clean_score >= GOOD_SCORE_THRESHOLD
+            new_good = current_good + (1 if is_good else 0)
+            mastered = new_good >= MASTERY_GOOD_SCORE_COUNT
+
+            if mastered:
+                cursor.execute(
+                    "DELETE FROM bookmarked_interview_questions WHERE student_id = ? AND question_id = ?",
+                    (effective_student_id, matched_q_id),
+                )
+                logger.info(
+                    f"Auto-removed bookmarked question {matched_q_id} for student {effective_student_id} after {new_good} good scores"
+                )
+                return {
+                    "found": True,
+                    "question_id": matched_q_id,
+                    "last_score": clean_score,
+                    "good_score_count": new_good,
+                    "mastered": True,
+                    "mastery": True,
+                    "removed": True,
+                    "message": f"Mastered! You scored {clean_score:.0f}/100. This question was removed from your saved list after 2 strong scores.",
+                }
+            else:
+                cursor.execute(
+                    """
+                    UPDATE bookmarked_interview_questions
+                    SET last_score = ?,
+                        good_score_count = ?,
+                        is_practiced = 1,
+                        last_practiced_at = CURRENT_TIMESTAMP
+                    WHERE student_id = ? AND question_id = ?
+                    """,
+                    (clean_score, new_good, effective_student_id, matched_q_id),
+                )
+                rem = MASTERY_GOOD_SCORE_COUNT - new_good
+                return {
+                    "found": True,
+                    "question_id": matched_q_id,
+                    "last_score": clean_score,
+                    "good_score_count": new_good,
+                    "mastered": False,
+                    "mastery": False,
+                    "removed": False,
+                    "message": (
+                        f"Score {clean_score:.0f}/100 recorded. "
+                        f"({new_good}/{MASTERY_GOOD_SCORE_COUNT} strong scores; {rem} more to master and remove)"
+                        if is_good
+                        else f"Score {clean_score:.0f}/100 recorded. (Score >= 75 to build towards mastery)"
+                    ),
+                }
+    except Exception as e:
+        logger.error(f"Error recording score for bookmark {question_id}: {e}")
+        return {
+            "found": False,
+            "removed": False,
+            "mastered": False,
+            "mastery": False,
+            "good_score_count": 0,
+            "last_score": float(score or 0),
+            "error": str(e),
+        }
 
 
 def update_interview_bookmark_practice(

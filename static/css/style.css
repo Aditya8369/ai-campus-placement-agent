@@ -236,6 +236,12 @@ body {
   align-items: center;
 }
 
+.progress-overlay.d-none {
+  display: none !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
 .progress-panel {
   width: 100%;
   max-width: 480px;

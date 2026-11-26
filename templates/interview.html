@@ -685,6 +685,31 @@
             </div>
           </div>
 
+          <!-- Browser Speech Recognition Unsupported Notice (#758) -->
+          <div id="unsupportedBrowserNotice" class="alert alert-info d-none mb-3 py-2 px-3 small border-0 shadow-sm rounded-3" role="alert">
+            <div class="d-flex align-items-center gap-2">
+              <i class="fa-solid fa-circle-info text-primary fs-5"></i>
+              <div>
+                <strong>Speech recognition not supported:</strong> Voice answering is unavailable in this browser. Please type your answer directly in the text box below, or use Google Chrome, Microsoft Edge, or Safari for voice practice.
+              </div>
+            </div>
+          </div>
+
+          <!-- Microphone Permission Denied / Unavailable Notice (#758) -->
+          <div id="micDeniedNotice" class="alert alert-warning d-none mb-3 py-2 px-3 small border-0 shadow-sm rounded-3" role="alert">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+              <div class="d-flex align-items-center gap-2">
+                <i class="fa-solid fa-microphone-slash text-warning fs-5"></i>
+                <div>
+                  <strong>Microphone unavailable or permission denied:</strong> Voice answering could not access your microphone. You can continue typing your answer in text mode below with full AI evaluation.
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-outline-dark rounded-pill px-3" id="btnDismissMicNotice">
+                Dismiss
+              </button>
+            </div>
+          </div>
+
           <!-- Voice Recording & Visualizer Panel (Hidden by default, activated on Voice Answer click) -->
           <div id="voiceRecordingPanel" class="voice-recording-card d-none mb-3 p-3 rounded-4 border bg-light">
             <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
@@ -721,8 +746,38 @@
               <div id="liveInterimText" class="live-transcript-box p-3 rounded-3 border bg-white small" contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" placeholder="Speech will appear here in real-time as you speak... You can edit this text directly before inserting."></div>
             </div>
 
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-1">
-              <small class="text-muted"><i class="fa-solid fa-circle-info me-1"></i>Review or fix words above, then click <b>Insert to Answer</b> to formulate your response.</small>
+            <!-- Real-Time Pace, Fillers & Long Pauses Feedback (#758) -->
+            <div id="voicePaceFeedbackCard" class="mt-2 p-2 rounded-3 border bg-white shadow-xs">
+              <div class="row g-2 text-center small mb-2">
+                <div class="col-4">
+                  <div class="p-1 rounded bg-light border">
+                    <span class="text-muted d-block" style="font-size: 0.75rem;">Speaking Pace</span>
+                    <span class="fw-bold text-primary" id="voiceLiveWpm">-- WPM</span>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="p-1 rounded bg-light border">
+                    <span class="text-muted d-block" style="font-size: 0.75rem;">Filler Words</span>
+                    <span class="fw-bold text-warning" id="voiceLiveFillers">0</span>
+                  </div>
+                </div>
+                <div class="col-4">
+                  <div class="p-1 rounded bg-light border">
+                    <span class="text-muted d-block" style="font-size: 0.75rem;">Long Pauses</span>
+                    <span class="fw-bold text-info" id="voiceLivePauses">0</span>
+                  </div>
+                </div>
+              </div>
+              <div id="voiceSimpleTipsBox" class="p-2 rounded bg-light-subtle border border-light-subtle text-secondary small d-flex align-items-start gap-2">
+                <i class="fa-solid fa-lightbulb text-warning mt-1"></i>
+                <div id="voiceSimpleTipsText" class="flex-grow-1">
+                  Start speaking to receive real-time coaching tips on your pace, filler words, and pauses.
+                </div>
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2">
+              <small class="text-muted"><i class="fa-solid fa-shield-halved text-success me-1"></i><strong>Privacy-Friendly:</strong> Audio is processed locally in your browser. No voice audio is uploaded or stored.</small>
               <div class="btn-group btn-group-sm">
                 <button type="button" class="btn btn-outline-secondary" id="btnClearTranscript">
                   <i class="fa-solid fa-trash me-1"></i> Clear
