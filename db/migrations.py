@@ -745,7 +745,17 @@ def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
 
 
-def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> None:
+def _migration_012_student_profile_backlogs(cursor: sqlite3.Cursor) -> None:
+    """Add the backlogs field to existing student profiles (#844)."""
+    cursor.execute("PRAGMA table_info(student_profiles)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    if "backlogs" not in existing_cols:
+        cursor.execute(
+            "ALTER TABLE student_profiles ADD COLUMN backlogs INTEGER DEFAULT 0"
+        )
+
+
+def _migration_014_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> None:
     """Adds last_score and good_score_count columns to bookmarked_interview_questions (#846)."""
     cursor.execute("PRAGMA table_info(bookmarked_interview_questions)")
     existing_cols = {row[1] for row in cursor.fetchall()}
@@ -755,7 +765,7 @@ def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> Non
         cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN good_score_count INTEGER NOT NULL DEFAULT 0")
 
 
-def _migration_013_account_lockouts(cursor: sqlite3.Cursor) -> None:
+def _migration_015_account_lockouts(cursor: sqlite3.Cursor) -> None:
     """Create failed_login_attempts and account_lockouts tables (#851)."""
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS failed_login_attempts (
@@ -823,6 +833,9 @@ MIGRATIONS: List[Migration] = [
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
     Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
     Migration("013_feature_flags", "Create feature_flags and audit logs for gradual rollout", _migration_013_feature_flags),
+    Migration("014_saved_questions_score_tracking", "Add score tracking to bookmarked interview questions", _migration_014_saved_questions_score_tracking),
+    Migration("015_account_lockouts", "Create account lockout tracking tables", _migration_015_account_lockouts),
+    Migration("016_faculty_interventions", "Create faculty intervention tables", _migration_010_faculty_interventions),
 ]
 
 

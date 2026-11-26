@@ -58,6 +58,7 @@ def test_fresh_database_initializes_schema_for_homepage(monkeypatch, tmp_path):
     """Verify app startup creates the schema needed by the landing page."""
     import config
     from routes import create_app
+    from db.migrations import MIGRATIONS, run_migrations
 
     monkeypatch.setattr(config, "DATABASE_PATH", tmp_path / "fresh.db")
     app = create_app({"TESTING": True})
@@ -65,6 +66,34 @@ def test_fresh_database_initializes_schema_for_homepage(monkeypatch, tmp_path):
     response = app.test_client().get("/")
 
     assert response.status_code == 200
+    migration_versions = [migration.version for migration in MIGRATIONS]
+    assert len(migration_versions) == len(set(migration_versions))
+    assert run_migrations(str(config.DATABASE_PATH)) == 0
+
+    import sqlite3
+
+    with sqlite3.connect(config.DATABASE_PATH) as connection:
+        profile_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(student_profiles)")
+        }
+        saved_question_columns = {
+            row[1]
+            for row in connection.execute(
+                "PRAGMA table_info(bookmarked_interview_questions)"
+            )
+        }
+        assert "backlogs" in profile_columns
+        assert {"last_score", "good_score_count"} <= saved_question_columns
+        for table in (
+            "account_lockouts",
+            "failed_login_attempts",
+            "faculty_interventions",
+            "feature_flags",
+        ):
+            assert connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+                (table,),
+            ).fetchone()
 
 
 def test_public_routes_respond_with_200():

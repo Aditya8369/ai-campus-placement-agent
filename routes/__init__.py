@@ -40,6 +40,7 @@ from utils.logger_config import (
 from utils.migrations import run_database_migrations, get_migration_status
 from utils.database import (
     get_active_auth_session,
+    get_user_by_id,
     touch_auth_session,
     create_auth_session,
 )
