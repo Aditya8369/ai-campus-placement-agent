@@ -530,6 +530,34 @@
         </div>
       </div>
 
+      <section class="review-section-card p-4 mb-4" aria-labelledby="resumeSummaryHeading">
+        <h2 class="h5 fw-bold text-dark border-bottom pb-2 mb-3" id="resumeSummaryHeading">Résumé summary</h2>
+        <p class="text-secondary small">Generate three drafts from the details you've reviewed. Check the wording before using one.</p>
+        <div class="d-flex flex-wrap align-items-end gap-3">
+          <div>
+            <label for="resumeSummaryRole" class="form-label small fw-semibold">Target role (optional)</label>
+            <input class="form-control rounded-3" id="resumeSummaryRole" type="text" maxlength="120"
+                   placeholder="e.g. Backend Engineer">
+          </div>
+          <button type="button" class="btn btn-outline-primary rounded-pill" id="generateResumeSummaries">
+            Generate summaries
+          </button>
+        </div>
+        <p class="text-secondary small mt-3 mb-0" id="resumeSummaryStatus" role="status"></p>
+        <ol class="list-unstyled row gy-3 mt-1 mb-0" id="resumeSummaryOptions" hidden></ol>
+        <template id="resumeSummaryOption">
+          <li class="col-12 col-lg-4">
+            <div class="h-100 border rounded-3 p-3 d-flex flex-column">
+              <p class="mb-3 text-break" data-summary-text></p>
+              <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap mt-auto">
+                <span class="text-secondary small" data-summary-count></span>
+                <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-summary-copy>Copy</button>
+              </div>
+            </div>
+          </li>
+        </template>
+      </section>
+
       <!-- Action Buttons -->
       <div class="d-flex flex-column flex-sm-row justify-content-between align-items-center gap-3 pt-3 mb-5">
         <div class="d-flex align-items-center gap-2">
@@ -617,7 +645,9 @@
   <script type="module" src="{{ url_for('static', filename='js/modules/common.js') }}"></script>
 
   <!-- Review & Correction Page Script -->
-  <script>
+  <script type="module">
+    import { buildResumeSummaries, summaryWordCount } from "{{ url_for('static', filename='js/modules/resume_summary.js') }}";
+
     document.addEventListener("DOMContentLoaded", function () {
       const skillsContainer = document.getElementById("skillsBadgeContainer");
       const skillInput = document.getElementById("skillInputField");
@@ -877,6 +907,35 @@
           job_description
         };
       }
+
+      const summaryRole = document.getElementById("resumeSummaryRole");
+      const summaryStatus = document.getElementById("resumeSummaryStatus");
+      const summaryOptions = document.getElementById("resumeSummaryOptions");
+      const summaryTemplate = document.getElementById("resumeSummaryOption");
+      document.getElementById("generateResumeSummaries").addEventListener("click", () => {
+        const summaries = buildResumeSummaries(serializeReviewPayload(), summaryRole.value);
+        summaryOptions.replaceChildren();
+        summaryOptions.hidden = summaries.length === 0;
+        summaryStatus.textContent = summaries.length
+          ? `${summaries.length} summary drafts available.`
+          : "Add a skill, project name, or education detail above to generate summaries.";
+        summaries.forEach((text, index) => {
+          const option = summaryTemplate.content.cloneNode(true);
+          option.querySelector("[data-summary-text]").textContent = text;
+          option.querySelector("[data-summary-count]").textContent = `${summaryWordCount(text)} / 50 words`;
+          const copy = option.querySelector("[data-summary-copy]");
+          copy.setAttribute("aria-label", `Copy summary ${index + 1}`);
+          copy.addEventListener("click", async () => {
+            try {
+              await navigator.clipboard.writeText(text);
+              summaryStatus.textContent = `Summary ${index + 1} copied.`;
+            } catch {
+              summaryStatus.textContent = "Clipboard unavailable. Select the summary text and copy it manually.";
+            }
+          });
+          summaryOptions.appendChild(option);
+        });
+      });
 
       // 7. VALIDATION
       function validatePayload(payload) {
