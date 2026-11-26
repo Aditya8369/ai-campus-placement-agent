@@ -868,6 +868,29 @@ def init_db() -> None:
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_ts ON deprecated_api_metrics (timestamp DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
 
+        # Table: Track failed login attempts per account and IP (#851)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS failed_login_attempts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                identifier TEXT NOT NULL,
+                ip_address TEXT NOT NULL,
+                attempted_at REAL NOT NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ident_time ON failed_login_attempts (identifier, attempted_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ip_time ON failed_login_attempts (ip_address, attempted_at)")
+
+        # Table: Account temporary lockouts (#851)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS account_lockouts (
+                identifier TEXT PRIMARY KEY,
+                locked_until REAL NOT NULL,
+                created_at REAL NOT NULL,
+                notified_at REAL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts (locked_until)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
