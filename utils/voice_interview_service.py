@@ -22,15 +22,25 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "instance", "
 
 
 def _get_db_connection() -> sqlite3.Connection:
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    db_path = DB_PATH
+    try:
+        from flask import current_app, has_app_context
+        if has_app_context() and current_app.config.get("DATABASE"):
+            db_path = current_app.config["DATABASE"]
+    except Exception:
+        pass
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def init_voice_interviews_table():
+def init_voice_interviews_table(conn: Optional[sqlite3.Connection] = None):
     """Initializes the database schema for voice-recorded interview submissions."""
-    conn = _get_db_connection()
+    should_close = False
+    if conn is None:
+        conn = _get_db_connection()
+        should_close = True
     try:
         with conn:
             conn.execute("""
@@ -54,7 +64,8 @@ def init_voice_interviews_table():
             """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_vis_user_sess ON voice_interview_submissions(user_id, session_id)")
     finally:
-        conn.close()
+        if should_close:
+            conn.close()
 
 
 init_voice_interviews_table()
@@ -112,6 +123,7 @@ class VoiceInterviewService:
 
         conn = _get_db_connection()
         try:
+            init_voice_interviews_table(conn)
             with conn:
                 cursor = conn.execute("""
                     INSERT INTO voice_interview_submissions (
@@ -126,7 +138,20 @@ class VoiceInterviewService:
                     final_text, wpm, json.dumps(detected_fillers)
                 ))
                 record_id = cursor.lastrowid
-            
+
+            # Calculate speech metrics and actionable coaching tips (#758)
+            try:
+                from utils.speech_analysis_service import analyze_speech_metrics
+                speech_analysis = analyze_speech_metrics(final_text, duration_seconds=duration_seconds)
+                simple_tips = speech_analysis.get("simple_tips", [])
+                pauses_data = speech_analysis.get("pauses", {})
+            except Exception:
+                simple_tips = [
+                    f"Pace Tip: Speaking pace is {wpm} WPM ({delivery_quality}).",
+                    f"Filler Tip: {len(detected_fillers)} filler word pattern(s) detected."
+                ]
+                pauses_data = {}
+
             return {
                 "id": record_id,
                 "session_id": session_id,
@@ -136,7 +161,9 @@ class VoiceInterviewService:
                 "words_per_minute": wpm,
                 "delivery_quality": delivery_quality,
                 "filler_words": detected_fillers,
-                "final_transcript": final_text
+                "final_transcript": final_text,
+                "pauses": pauses_data,
+                "simple_tips": simple_tips
             }
         finally:
             conn.close()

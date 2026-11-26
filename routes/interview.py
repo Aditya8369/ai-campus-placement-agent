@@ -3594,5 +3594,139 @@ def api_export_question_bank_favorites():
     }), 200
 
 
+# -------------------------------------------------------------
+# Voice-Based Mock Interview & Speech Analysis Routes (#758, #510)
+# -------------------------------------------------------------
+
+@interview_bp.route("/api/interview/speech-metrics", methods=["POST"])
+def api_speech_metrics():
+    """
+    Evaluates speech delivery metrics (WPM, filler words, pauses, simple tips)
+    from transcript text without uploading or storing audio (#758).
+    """
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript")
+    if transcript is None:
+        return jsonify({
+            "success": False,
+            "error": "Transcript text is required for speech analysis."
+        }), 400
+
+    pauses = data.get("pauses")
+    duration_seconds = data.get("duration_seconds")
+    if duration_seconds is not None:
+        try:
+            duration_seconds = float(duration_seconds)
+        except (ValueError, TypeError):
+            duration_seconds = None
+
+    from utils.speech_analysis_service import analyze_speech_metrics
+    result = analyze_speech_metrics(transcript, pauses=pauses, duration_seconds=duration_seconds)
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result), 200
+
+
+@interview_bp.route("/api/interview/voice/submit", methods=["POST"])
+def api_voice_submit():
+    """
+    Submits a transcribed and student-reviewed voice answer for an interview question (#758, #510).
+    Processes pacing (WPM), filler words, and long pauses. Strictly avoids uploading or storing audio files.
+    """
+    # Privacy check: Reject any attempt to upload raw audio files
+    if request.files:
+        return jsonify({
+            "status": "error",
+            "message": "Audio file uploads are not permitted. Transcripts are processed client-side to ensure privacy."
+        }), 400
+
+    data = request.get_json(silent=True) or {}
+    session_id = str(data.get("session_id", "")).strip()
+    question_id = str(data.get("question_id", "")).strip()
+    question_text = str(data.get("question_text", "")).strip()
+    raw_transcript = str(data.get("raw_transcript", "") or "")
+    edited_transcript = data.get("edited_transcript")
+    audio_format = str(data.get("audio_format", "webm"))
+    duration_seconds = data.get("duration_seconds", 0.0)
+
+    try:
+        duration_seconds = float(duration_seconds)
+    except (ValueError, TypeError):
+        duration_seconds = 0.0
+
+    user_id = flask_session.get("user_id") or data.get("user_id") or "anonymous_student"
+
+    if not session_id or not question_id:
+        return jsonify({
+            "status": "error",
+            "message": "session_id and question_id are required."
+        }), 400
+
+    from utils.voice_interview_service import VoiceInterviewService
+    try:
+        result = VoiceInterviewService.process_voice_submission(
+            user_id=user_id,
+            session_id=session_id,
+            question_id=question_id,
+            question_text=question_text,
+            duration_seconds=duration_seconds,
+            raw_transcript=raw_transcript,
+            edited_transcript=edited_transcript,
+            audio_format=audio_format
+        )
+        return jsonify({
+            "status": "success",
+            "voice_analysis": result
+        }), 201
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        logger.exception("Error processing voice answer submission: %s", e)
+        return jsonify({
+            "status": "error",
+            "message": "Internal error processing voice answer."
+        }), 500
+
+
+@interview_bp.route("/api/interview/voice/<session_id>/summary", methods=["GET"])
+def api_voice_delivery_summary(session_id):
+    """
+    Returns aggregated delivery metrics (average WPM, total filler words, speaking time)
+    for a given interview session (#758, #510).
+    """
+    user_id = flask_session.get("user_id") or request.args.get("user_id") or "anonymous_student"
+    from utils.voice_interview_service import VoiceInterviewService
+    summary = VoiceInterviewService.get_delivery_summary(user_id, session_id)
+    return jsonify({
+        "status": "success",
+        "summary": summary
+    }), 200
+
+
+@interview_bp.route("/api/interview/voice/feedback", methods=["POST"])
+def api_voice_live_feedback():
+    """
+    Provides real-time feedback on speaking pace, filler words, and pauses
+    from a speech snippet without storing any data (#758).
+    """
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript", "")
+    duration_seconds = data.get("duration_seconds")
+    pauses = data.get("pauses")
+
+    if duration_seconds is not None:
+        try:
+            duration_seconds = float(duration_seconds)
+        except (ValueError, TypeError):
+            duration_seconds = None
+
+    from utils.speech_analysis_service import analyze_speech_metrics
+    result = analyze_speech_metrics(transcript, pauses=pauses, duration_seconds=duration_seconds)
+    return jsonify(result), 200
+
+
 
 
