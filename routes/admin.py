@@ -1089,5 +1089,113 @@ def api_admin_intervention_scan():
     }), 200
 
 
+# =====================================================================
+# FEATURE FLAG MANAGEMENT & AUDIT ROUTES (#854)
+# =====================================================================
+
+@admin_bp.route("/admin/feature-flags", methods=["GET"])
+@admin_bp.route("/admin/flags", methods=["GET"])
+def admin_feature_flags_view():
+    """
+    Renders the administrative feature flags dashboard (#854).
+    Enables viewing registered and active flags, updating rollout percentage,
+    toggling enabled state, and viewing audit logs.
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.feature_flags import feature_flags
+
+    flags = feature_flags.list_flags()
+    recent_logs = feature_flags.get_audit_logs(limit=30)
+
+    enabled_count = sum(1 for f in flags if f["is_enabled"])
+    disabled_count = len(flags) - enabled_count
+
+    return render_template(
+        "admin_feature_flags.html",
+        flags=flags,
+        recent_logs=recent_logs,
+        enabled_count=enabled_count,
+        disabled_count=disabled_count,
+        total_count=len(flags),
+    )
+
+
+@admin_bp.route("/api/admin/feature-flags", methods=["GET"])
+def api_admin_list_feature_flags():
+    """Retrieves all feature flags with runtime state and rollout percentages (#854)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.feature_flags import feature_flags
+
+    flags = feature_flags.list_flags()
+    return jsonify({"success": True, "flags": flags, "total": len(flags)}), 200
+
+
+@admin_bp.route("/api/admin/feature-flags/<flag_key>", methods=["POST"])
+def api_admin_update_feature_flag(flag_key: str):
+    """
+    Updates or creates a feature flag's state, description, and rollout percentage (#854).
+    Restricted strictly to administrators and logs audit records.
+    """
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.feature_flags import feature_flags
+
+    payload = request.get_json(silent=True) or request.form.to_dict()
+    is_enabled = payload.get("is_enabled")
+    if is_enabled is None:
+        return jsonify({"success": False, "error": "Missing 'is_enabled' field."}), 400
+
+    if isinstance(is_enabled, str):
+        is_enabled = is_enabled.lower() in ("true", "1", "yes", "on")
+    else:
+        is_enabled = bool(is_enabled)
+
+    rollout_pct = payload.get("rollout_percentage", 100)
+    try:
+        rollout_pct = max(0, min(100, int(rollout_pct)))
+    except (ValueError, TypeError):
+        rollout_pct = 100
+
+    description = payload.get("description")
+    admin_id = flask_session.get("user_id") or flask_session.get("user_name") or "admin"
+    client_ip = (
+        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or request.headers.get("X-Real-IP", "").strip()
+        or request.remote_addr
+        or "127.0.0.1"
+    )
+
+    success, message = feature_flags.set_flag(
+        flag_key=flag_key,
+        is_enabled=is_enabled,
+        rollout_percentage=rollout_pct,
+        description=description,
+        admin_id=admin_id,
+        ip_address=client_ip,
+    )
+
+    status_code = 200 if success else 400
+    return jsonify({"success": success, "message": message}), status_code
+
+
+@admin_bp.route("/api/admin/feature-flags/<flag_key>/audit-logs", methods=["GET"])
+def api_admin_feature_flag_audit_logs(flag_key: str):
+    """Retrieves change history for a given feature flag (#854)."""
+    if not _check_admin_access():
+        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
+
+    from utils.feature_flags import feature_flags
+
+    limit = int(request.args.get("limit", 25))
+    logs = feature_flags.get_audit_logs(flag_key=flag_key, limit=limit)
+    return jsonify({"success": True, "logs": logs}), 200
+
+
+
 
 

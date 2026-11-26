@@ -750,6 +750,35 @@ def _migration_012_student_profile_backlogs(cursor: sqlite3.Cursor) -> None:
 
 
 # Documented, sequential migration registry
+def _migration_013_feature_flags(cursor: sqlite3.Cursor) -> None:
+    """Create feature_flags and feature_flag_audit_logs tables for gradual rollouts (#854)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feature_flags (
+            key TEXT PRIMARY KEY,
+            description TEXT,
+            is_enabled INTEGER NOT NULL DEFAULT 0,
+            rollout_percentage INTEGER NOT NULL DEFAULT 100,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feature_flag_audit_logs (
+            id TEXT PRIMARY KEY,
+            flag_key TEXT NOT NULL,
+            admin_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            previous_state TEXT,
+            new_state TEXT,
+            details TEXT,
+            ip_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ff_audit_flag ON feature_flag_audit_logs(flag_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ff_audit_created ON feature_flag_audit_logs(created_at DESC)")
+
+
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
     Migration("002_user_auth_and_sessions", "Create auth_sessions, notification preferences, feedback, assessments", _migration_002_user_auth_and_sessions),
@@ -763,6 +792,7 @@ MIGRATIONS: List[Migration] = [
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
     Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
+    Migration("013_feature_flags", "Create feature_flags and audit logs for gradual rollout", _migration_013_feature_flags),
 ]
 
 

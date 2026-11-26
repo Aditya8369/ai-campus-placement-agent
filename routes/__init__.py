@@ -456,6 +456,24 @@ def create_app(config_override=None) -> Flask:
             ),
         }
 
+    @app.context_processor
+    def inject_feature_flags():
+        """
+        Injects feature flag evaluation helpers into all Jinja templates (#854).
+        Enables `is_enabled(flag_key, user)` in templates.
+        """
+        from utils.feature_flags import is_feature_enabled
+        def _check_flag(flag: str, user=None, default=None):
+            # If user is not provided, automatically fallback to current session user
+            if user is None:
+                user = flask_session.get("user_id")
+            return is_feature_enabled(flag, user=user, default=default)
+
+        return {
+            "is_enabled": _check_flag,
+            "is_feature_enabled": _check_flag,
+        }
+
     @app.url_defaults
     def add_static_version(endpoint, values):
         """Append deterministic content hash query string (?v=...) to static asset URLs (#857)."""

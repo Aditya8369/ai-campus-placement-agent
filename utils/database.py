@@ -607,6 +607,41 @@ def init_db() -> None:
         if "college" not in student_prof_cols:
             cursor.execute("ALTER TABLE student_profiles ADD COLUMN college TEXT")
 
+        # Feature flags tables schema (#854)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feature_flags (
+                key TEXT PRIMARY KEY,
+                description TEXT,
+                is_enabled INTEGER NOT NULL DEFAULT 0,
+                rollout_percentage INTEGER NOT NULL DEFAULT 100,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feature_flag_audit_logs (
+                id TEXT PRIMARY KEY,
+                flag_key TEXT NOT NULL,
+                admin_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                previous_state TEXT,
+                new_state TEXT,
+                details TEXT,
+                ip_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ff_audit_flag ON feature_flag_audit_logs(flag_key)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ff_audit_created ON feature_flag_audit_logs(created_at DESC)"
+        )
+
         # Indexes for query, sorting, and version lookup performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses (created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_analyses_student_version ON analyses (student_id, version_number ASC)")
