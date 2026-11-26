@@ -309,20 +309,26 @@ Company data is stored as JSON in the `data/` directory:
 
 ### Schema Requirements
 
-When contributing or updating a company entry, make sure all required fields are present and properly typed:
+When contributing or updating a company entry, make sure all required fields are present and properly typed according to the formal JSON Schema in [`data/schemas/company.schema.json`](data/schemas/company.schema.json) (#855):
 
 #### 1. Hiring Guide Profiles (`data/companies.json`)
-- `overview` (`string`): Summary of the company, engineering culture, and work domains.
-- `hiring_process` (`string`): Step-by-step description of recruitment stages (e.g. Online Assessment -> Technical -> Managerial -> HR).
-- `technical_rounds` (`string`): Breakdown of coding, system design, or domain-specific questions asked.
-- `hr_rounds` (`string`): Behavioral and cultural round expectations.
-- `frequent_topics` (`list` of non-empty `string`s): Core topics commonly tested (e.g. `["DSA", "System Design", "SQL"]`).
-- `required_skills` (`list` of non-empty `string`s): Essential technical and soft skills.
-- `prep_tips` (`string`): Actionable advice for students preparing for this company's hiring drive.
-- `eligibility` (`string`): CGPA cutoffs, allowed backlogs, and eligible academic branches.
-- `last_updated` (`string`): Revision date in strict ISO 8601 calendar format (`YYYY-MM-DD`, e.g. `2026-11-20`).
-- `source_name` (`string`): Name of the reference source or careers portal (e.g. `Google Careers`).
-- `source_url` (`string`): Canonical URL starting with `http://` or `https://` with a valid domain.
+- `overview` (`string`, required): Summary of the company, engineering culture, and work domains (minimum 10 characters).
+- `hiring_process` (`string`, required): Step-by-step description of recruitment stages (e.g. Online Assessment -> Technical -> Managerial -> HR).
+- `technical_rounds` (`string`, required): Breakdown of coding, system design, or domain-specific questions asked.
+- `hr_rounds` (`string`, required): Behavioral and cultural round expectations.
+- `frequent_topics` (`list` of non-empty `string`s, required): Core topics commonly tested (e.g. `["DSA", "System Design", "SQL"]`). Must not be empty.
+- `required_skills` (`list` of non-empty `string`s, required): Essential technical and soft skills. Must not be empty.
+- `prep_tips` (`string`, required): Actionable advice for students preparing for this company's hiring drive.
+- `eligibility` (`string`, required): CGPA cutoffs, allowed backlogs, and eligible academic branches.
+- `last_updated` (`string`, required): Revision date in strict ISO 8601 calendar format (`YYYY-MM-DD`, e.g. `2026-11-20`).
+- `source_name` (`string`, required): Name of the reference source or careers portal (e.g. `Google Careers`).
+- `source_url` (`string`, required): Canonical URL starting with `http://` or `https://` with a valid domain.
+- `min_cgpa` (`number`, optional): Minimum CGPA threshold (e.g. `6.5` or `7.0`).
+- `max_backlogs` (`integer`, optional): Maximum allowed active backlogs (e.g. `0`).
+- `branches` (`list` of `string`s, optional): Allowed branches (e.g. `["All"]` or `["CS", "IT", "ECE"]`).
+- `eligibility_source` (`string`, optional): Source note for the eligibility criteria.
+
+> **Note on Unique Names**: Company names must be unique (case-insensitively). Duplicate keys in the JSON or case-insensitive duplicate names will fail the automated CI schema check.
 
 #### 2. Interview Prep Profiles (`data/company_interview_prep.json`)
 - `company_name` (`string`): Display name of the company.
@@ -331,11 +337,14 @@ When contributing or updating a company entry, make sure all required fields are
 - `preparation_tips` (`list` of non-empty `string`s): Specific tips for candidates.
 - `last_updated` (`string`): Revision date in strict ISO 8601 calendar format (`YYYY-MM-DD`).
 
-### Running the Contributor Company Data Validator
+### Running the Schema & Company Data Validator
 
-Before opening a pull request that modifies or adds company data, run the validation tool to ensure there are no syntax errors, missing fields, duplicate company names, or broken URLs:
+Before opening a pull request that modifies or adds company data, run the automated CI validation test to ensure there are no syntax errors, missing fields, duplicate company names, or broken URLs:
 
 ```bash
+# Run the companies.json schema validation test
+pytest tests/test_companies_schema.py
+
 # Validate standard company data files in data/
 python utils/company_data_validator.py
 

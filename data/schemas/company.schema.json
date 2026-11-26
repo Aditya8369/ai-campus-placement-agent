@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://ai-campus-placement-agent.local/schemas/company.schema.json",
+  "title": "CompaniesDatabase",
+  "description": "JSON schema for validating data/companies.json company hiring profiles (#855)",
+  "type": "object",
+  "minProperties": 1,
+  "additionalProperties": {
+    "$ref": "#/definitions/CompanyProfile"
+  },
+  "definitions": {
+    "CompanyProfile": {
+      "type": "object",
+      "required": [
+        "overview",
+        "hiring_process",
+        "technical_rounds",
+        "hr_rounds",
+        "frequent_topics",
+        "required_skills",
+        "prep_tips",
+        "eligibility",
+        "last_updated",
+        "source_name",
+        "source_url"
+      ],
+      "properties": {
+        "overview": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Comprehensive summary of the company, domains, and engineering scope"
+        },
+        "hiring_process": {
+          "type": "string",
+          "minLength": 10,
+          "description": "Stages of the recruitment pipeline"
+        },
+        "technical_rounds": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Details of technical interview rounds and topics evaluated"
+        },
+        "hr_rounds": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Details of HR, managerial, and behavioral interview rounds"
+        },
+        "frequent_topics": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Frequently tested technical and interview topics (non-empty list of non-empty strings)"
+        },
+        "required_skills": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Key required skills (non-empty list of non-empty strings)"
+        },
+        "prep_tips": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Actionable candidate preparation tips and recommendations"
+        },
+        "eligibility": {
+          "type": "string",
+          "minLength": 3,
+          "description": "Academic criteria, CGPA cutoff, and backlog policies"
+        },
+        "last_updated": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Last revision date in ISO 8601 YYYY-MM-DD format"
+        },
+        "source_name": {
+          "type": "string",
+          "minLength": 2,
+          "description": "Name of official source or careers announcement"
+        },
+        "source_url": {
+          "type": "string",
+          "pattern": "^https?://[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}(/.*)?$",
+          "description": "Canonical URL starting with http:// or https://"
+        },
+        "min_cgpa": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 10,
+          "description": "Minimum CGPA requirement (0-10)"
+        },
+        "max_backlogs": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Maximum allowed active backlogs"
+        },
+        "branches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Allowed engineering or degree branches"
+        },
+        "eligibility_source": {
+          "type": ["string", "null"],
+          "description": "Attribution or source for eligibility criteria"
+        },
+        "is_verified": {
+          "type": "boolean",
+          "description": "Whether the company profile has been verified"
+        },
+        "verification_status": {
+          "type": "string",
+          "enum": ["verified", "pending", "unverified"],
+          "description": "Status of profile verification"
+        },
+        "verified_by": {
+          "type": ["string", "null"],
+          "description": "Team or individual who verified the profile"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
