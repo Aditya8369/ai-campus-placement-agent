@@ -592,6 +592,32 @@ def init_db() -> None:
             cursor.execute("ALTER TABLE users ADD COLUMN two_factor_secret TEXT")
         if "two_factor_backup_codes" not in user_cols:
             cursor.execute("ALTER TABLE users ADD COLUMN two_factor_backup_codes TEXT")
+        if "is_active" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        if "role" not in user_cols:
+            cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+
+        # Ensure admin user audit logs table exists (#853)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS admin_user_audit_logs (
+                id TEXT PRIMARY KEY,
+                admin_id TEXT NOT NULL,
+                action TEXT NOT NULL,
+                target_user_id TEXT NOT NULL,
+                target_email TEXT,
+                details TEXT,
+                ip_address TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_user_audit_target ON admin_user_audit_logs(target_user_id)"
+        )
+        cursor.execute(
+            "CREATE INDEX IF NOT EXISTS idx_admin_user_audit_action ON admin_user_audit_logs(action)"
+        )
 
         # Schema migration for generated-output language preferences
         cursor.execute("PRAGMA table_info(email_notification_preferences)")
