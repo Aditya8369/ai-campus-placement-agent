@@ -274,6 +274,31 @@ def create_app(config_override=None) -> Flask:
 
         # Validate the server-side registry before allowing a signed cookie to access the account.
         if user_id and endpoint_name not in ("logout", "api_session_logout"):
+            # Check if user account is deactivated (#853)
+            user_record = get_user_by_id(user_id)
+            if user_record and user_record.get("is_active") is not None and not bool(user_record.get("is_active", 1)):
+                logger.info("Rejected request for deactivated user_id=%s", user_id)
+                flask_session.clear()
+                is_json_request = (
+                    request.path.startswith("/api/")
+                    or request.is_json
+                    or "application/json" in request.headers.get("Accept", "")
+                    or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+                )
+                if is_json_request:
+                    resp = jsonify({
+                        "status": "error",
+                        "error": "account_deactivated",
+                        "message": "Your account has been deactivated. Please contact an administrator."
+                    })
+                    resp.status_code = 403
+                    resp.delete_cookie(current_app.config.get("SESSION_COOKIE_NAME", "session"))
+                    return resp
+                flash("Your account has been deactivated. Please contact an administrator for assistance.", "error")
+                resp = make_response(redirect(url_for("login")))
+                resp.delete_cookie(current_app.config.get("SESSION_COOKIE_NAME", "session"))
+                return resp
+
             auth_session_id = flask_session.get("auth_session_id")
             auth_session_token = flask_session.get("auth_session_token")
             if auth_session_id and auth_session_token:
