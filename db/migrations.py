@@ -75,6 +75,7 @@ def _migration_001_core_schema(cursor: sqlite3.Cursor) -> None:
             resume_filename TEXT,
             resume_version INTEGER,
             job_description_snapshot TEXT,
+            tags TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -252,6 +253,7 @@ def _migration_003_tracker_and_events(cursor: sqlite3.Cursor) -> None:
         ("resume_filename", "TEXT"),
         ("resume_version", "INTEGER"),
         ("job_description_snapshot", "TEXT"),
+        ("tags", "TEXT DEFAULT ''"),
     ]:
         if col_name not in app_cols:
             cursor.execute(f"ALTER TABLE job_applications ADD COLUMN {col_name} {col_def}")
@@ -749,6 +751,14 @@ def _migration_012_student_profile_backlogs(cursor: sqlite3.Cursor) -> None:
         cursor.execute("ALTER TABLE student_profiles ADD COLUMN backlogs INTEGER DEFAULT 0")
 
 
+def _migration_013_job_applications_tags(cursor: sqlite3.Cursor) -> None:
+    """Add tags column to job_applications table for categorization and bulk tagging (#848)."""
+    cursor.execute("PRAGMA table_info(job_applications)")
+    cols = [col[1] for col in cursor.fetchall()]
+    if "tags" not in cols:
+        cursor.execute("ALTER TABLE job_applications ADD COLUMN tags TEXT DEFAULT ''")
+
+
 # Documented, sequential migration registry
 def _migration_013_admin_user_management(cursor: sqlite3.Cursor) -> None:
     """Ensure is_active and role columns exist on users, and create admin_user_audit_logs table (#853)."""
@@ -789,7 +799,7 @@ MIGRATIONS: List[Migration] = [
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
     Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
-    Migration("013_admin_user_management", "Ensure is_active, role on users and create admin_user_audit_logs table", _migration_013_admin_user_management),
+    Migration("013_job_applications_tags", "Add tags column to job_applications for bulk tagging and categories", _migration_013_job_applications_tags),
 ]
 
 
