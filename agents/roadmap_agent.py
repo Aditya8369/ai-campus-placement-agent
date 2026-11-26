@@ -601,6 +601,17 @@ class RoadmapAgent:
             # Pull curriculum template or synthesize
             curriculum = self._get_skill_curriculum(primary_skill, norm_key, week_num, weeks)
 
+            # Match curated learning resources (#885)
+            week_resources = []
+            try:
+                from utils.learning_resource_service import get_resources_for_skill
+                for sk in week_skill_names:
+                    for r in get_resources_for_skill(sk):
+                        if not any(existing.get("id") == r.get("id") for existing in week_resources):
+                            week_resources.append(dict(r))
+            except Exception:
+                pass
+
             plan.append({
                 "week": week_title,
                 "week_number": week_num,
@@ -608,6 +619,8 @@ class RoadmapAgent:
                 "topics": curriculum["topics"],
                 "practice_task": curriculum["practice_task"],
                 "resource_types": curriculum["resource_types"],
+                "curated_resources": week_resources,
+                "has_curated_resources": len(week_resources) > 0,
                 "estimated_hours": hours_per_week
             })
 

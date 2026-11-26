@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "LearningResourcesCatalog",
+  "description": "Schema definition for curated free learning resources mapped to skills (#885)",
+  "type": "object",
+  "required": ["version", "resources"],
+  "properties": {
+    "version": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/definitions/LearningResource"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "LearningResource": {
+      "type": "object",
+      "required": ["id", "title", "link", "type", "estimated_hours", "review_note"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_-]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 3
+        },
+        "link": {
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["course", "interactive", "documentation", "video", "book", "tutorial"]
+        },
+        "estimated_hours": {
+          "type": "number",
+          "minimum": 0.5
+        },
+        "review_note": {
+          "type": "string",
+          "minLength": 10
+        }
+      }
+    }
+  }
+}

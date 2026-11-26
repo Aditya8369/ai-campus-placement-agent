@@ -4966,6 +4966,57 @@
                   </div>
                   {% endif %}
                 </div>
+
+                <!-- Curated Free Learning Resources (#885) -->
+                {% if gap.has_curated_resources and gap.curated_learning_resources %}
+                <div class="mt-2 pt-2 border-top curated-learning-resources-block">
+                  <div class="small fw-semibold text-dark mb-1 d-flex align-items-center justify-content-between flex-wrap gap-1">
+                    <span class="d-inline-flex align-items-center gap-1">
+                      <i class="fa-solid fa-graduation-cap text-success"></i>
+                      <span>Curated Free Resources:</span>
+                    </span>
+                    <a href="/contributing#suggest-resource" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-muted" style="font-size: 0.7rem;" title="Suggest a resource in contribution guide">
+                      <i class="fa-regular fa-lightbulb text-warning me-1"></i>Suggest a resource
+                    </a>
+                  </div>
+                  <div class="d-flex flex-column gap-2 mt-1">
+                    {% for res in gap.curated_learning_resources %}
+                    <div class="p-2 rounded border bg-light-subtle small resource-entry-card shadow-xs" data-resource-id="{{ res.id }}">
+                      <div class="d-flex justify-content-between align-items-start gap-1 flex-wrap mb-1">
+                        <a href="{{ res.link }}" target="_blank" rel="noopener noreferrer" class="fw-bold text-decoration-none text-primary d-inline-flex align-items-center gap-1 resource-link">
+                          <span>{{ res.title }}</span>
+                          <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.75rem;"></i>
+                        </a>
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                          <span class="badge bg-secondary-subtle text-secondary border text-capitalize" style="font-size: 0.7rem;">{{ res.type }}</span>
+                          <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle" style="font-size: 0.7rem;">~{{ res.estimated_hours }}h</span>
+                          <!-- Progress Status Control -->
+                          <div class="dropdown d-inline-block">
+                            <button class="btn btn-xs py-0 px-2 rounded-pill dropdown-toggle resource-progress-btn {% if res.status == 'done' %}btn-success{% elif res.status == 'started' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+                              type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 0.7rem;"
+                              data-resource-id="{{ res.id }}" data-skill-name="{{ gap.skill }}">
+                              <span class="status-text">
+                                {% if res.status == 'done' %}✓ Done{% elif res.status == 'started' %}⏳ Started{% else %}○ To Do{% endif %}
+                              </span>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size: 0.8rem;">
+                              <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="not_started" data-skill="{{ gap.skill }}">○ Mark as To Do</a></li>
+                              <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="started" data-skill="{{ gap.skill }}">⏳ Mark as Started</a></li>
+                              <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="done" data-skill="{{ gap.skill }}">✓ Mark as Done</a></li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                      {% if res.review_note %}
+                      <div class="text-secondary mt-1" style="font-size: 0.75rem;">
+                        <i class="fa-solid fa-circle-check text-success me-1"></i>{{ res.review_note }}
+                      </div>
+                      {% endif %}
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+                {% endif %}
               </td>
               <td>
                 <div class="d-flex align-items-center justify-content-between gap-1">
@@ -5395,6 +5446,48 @@
                         aria-label="Mark task completed: {{ question|escape }}"><span>{{ question }}</span></label></li>
                   {% endfor %}
                 </ul>
+                {% endif %}
+
+                <!-- Curated Learning Resources with Progress Ticks (#885) -->
+                {% if w.curated_resources and w.curated_resources|length > 0 %}
+                <div class="p-3 bg-white rounded-3 border small shadow-xs mt-3 roadmap-curated-resources-card">
+                  <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-1">
+                    <span class="fw-bold text-dark">
+                      <i class="fa-solid fa-book-bookmark text-primary me-1"></i> Curated Study Resources:
+                    </span>
+                    <a href="/contributing#suggest-resource" target="_blank" rel="noopener noreferrer" class="text-decoration-none text-muted" style="font-size: 0.7rem;" title="Suggest a resource">
+                      <i class="fa-regular fa-lightbulb text-warning me-1"></i>Suggest resource
+                    </a>
+                  </div>
+                  <div class="d-flex flex-column gap-2">
+                    {% for res in w.curated_resources %}
+                    <div class="p-2 rounded border bg-light-subtle d-flex justify-content-between align-items-center flex-wrap gap-2 roadmap-resource-item" data-resource-id="{{ res.id }}">
+                      <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <a href="{{ res.link }}" target="_blank" rel="noopener noreferrer" class="fw-semibold text-decoration-none text-primary d-inline-flex align-items-center gap-1">
+                          <span>{{ res.title }}</span>
+                          <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.7rem;"></i>
+                        </a>
+                        <span class="badge bg-secondary-subtle text-secondary border text-capitalize" style="font-size: 0.65rem;">{{ res.type }}</span>
+                        <span class="badge bg-light text-muted border" style="font-size: 0.65rem;">~{{ res.estimated_hours }}h</span>
+                      </div>
+                      <div class="dropdown">
+                        <button class="btn btn-xs py-0 px-2 rounded-pill dropdown-toggle resource-progress-btn {% if res.status == 'done' %}btn-success{% elif res.status == 'started' %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+                          type="button" data-bs-toggle="dropdown" aria-expanded="false" style="font-size: 0.7rem;"
+                          data-resource-id="{{ res.id }}" data-skill-name="{{ w.skills[0] if w.skills else '' }}">
+                          <span class="status-text">
+                            {% if res.status == 'done' %}✓ Done{% elif res.status == 'started' %}⏳ Started{% else %}○ To Do{% endif %}
+                          </span>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="font-size: 0.8rem;">
+                          <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="not_started" data-skill="{{ w.skills[0] if w.skills else '' }}">○ Mark as To Do</a></li>
+                          <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="started" data-skill="{{ w.skills[0] if w.skills else '' }}">⏳ Mark as Started</a></li>
+                          <li><a class="dropdown-item resource-progress-action" href="#" data-resource-id="{{ res.id }}" data-status="done" data-skill="{{ w.skills[0] if w.skills else '' }}">✓ Mark as Done</a></li>
+                        </ul>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
                 {% endif %}
               </div>
             </div>

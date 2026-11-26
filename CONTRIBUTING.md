@@ -402,49 +402,27 @@ The validator pinpoints the exact file, company, and field name for each issue s
      Remedy : Provide a valid canonical URL starting with http:// or https:// with a valid domain name.
 ```
 
-## Lighthouse CI & Quality Budgets
+## Contributing Learning Resources (#885)<a id="suggest-resource"></a>
 
-To ensure high performance, accessibility, and best practices across student-facing views, the project enforces automated Lighthouse CI budgets (#859).
+To help students learn effectively without losing time searching or paying for resources, the project provides a curated free learning resources catalog in `data/learning_resources.json`.
 
-### Monitored Pages and Standard Budgets
+### How It Works
+- Resources are mapped by technical skill (e.g. `Python`, `Docker`, `SQL`, `React`, `System Design`).
+- Under each skill gap in the analysis dashboard and inside roadmap weeks, students receive matching curated free resources.
+- Students can track progress by marking each resource as **To Do**, **Started**, or **Done**.
 
-Audits run across key candidate journeys:
-- **Landing Page (`/`)**: Public entry point.
-- **Login Page (`/login`)**: Authentication portal.
-- **Dashboard Page (`/dashboard`)**: Authenticated candidate analytics and placement dashboard.
-
-Budgets are stored in `lighthouserc.json`:
-- **Performance**: Minimum score `0.70` (70/100).
-- **Accessibility**: Minimum score `0.90` (90/100).
-- **Best Practices**: Minimum score `0.85` (85/100).
-
-### Running Lighthouse Audits Locally
-
-You can run the Lighthouse CI suite locally using:
-
-```bash
-# Run Lighthouse audits against the default configuration
-python utils/lighthouse_ci.py
-
-# Specify custom summary output file
-python utils/lighthouse_ci.py --summary-file lighthouse-summary.md
-
-# Run unit tests verifying budget assertions and summary generation
-pytest tests/test_lighthouse_ci.py -v
-```
-
-In GitHub Actions CI, the job prints a structured table to `$GITHUB_STEP_SUMMARY`. If any page falls below its budget threshold, the job fails with exit code `1`.
-
-### Updating Budgets and Documenting Rationale
-
-Budgets are defined in `lighthouserc.json`. To prevent gradual performance decay or accessibility regressions:
-
-1. **Strict Justification Required**: Budget thresholds cannot be lowered without maintainer approval and an explicit documented reason in the pull request description and commit message.
-2. **Acceptable Reasons for Budget Adjustments**:
-   - Temporary transition during a major frontend framework migration.
-   - Known third-party script integrations required by campus administrative policy (e.g. mandatory SSO redirects).
-   - Upgrading budget thresholds (raising targets to higher standards, e.g. from 0.70 to 0.80) is always welcomed and encouraged.
-3. **How to Update**: Edit the `assertions` under `ci.assert.assertions` or individual page targets in `budgets.targets` in `lighthouserc.json`, commit the change, and provide the explanation in the PR checklist.
+### Guidelines for Suggesting a Resource
+1. **Free Only**: All suggested resources must be 100% free (no paywalls, required credit cards, or trial-only locks).
+2. **HTTPS Only**: Links must use strict `https://` schemes.
+3. **High Quality**: Documentation, interactive tutorials, reputable video playlists, or open-source guides.
+4. **Required Fields**:
+   - `id`: Lowercase identifier with hyphens (e.g., `py-official-tutorial`).
+   - `title`: Clear title of the resource.
+   - `link`: Direct canonical HTTPS link.
+   - `type`: One of `documentation`, `tutorial`, `interactive`, `video`, `book`, or `course`.
+   - `estimated_hours`: Positive number indicating estimated study time.
+   - `review_note`: Concise peer review note explaining why this resource is valuable.
+5. **Schema Validation**: All resources are validated against `data/schemas/learning_resources.schema.json` in automated CI tests (`tests/test_learning_resources_schema.py`).
 
 
 ## Pull Request Process

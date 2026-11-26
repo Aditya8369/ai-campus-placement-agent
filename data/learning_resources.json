@@ -1,0 +1,227 @@
+{
+  "$schema": "data/schemas/learning_resources.schema.json",
+  "version": "1.0",
+  "description": "Curated high-quality free learning resources mapped to technical skills (#885).",
+  "resources": {
+    "Python": [
+      {
+        "id": "py-official-tutorial",
+        "title": "The Python Tutorial (Official Docs)",
+        "link": "https://docs.python.org/3/tutorial/",
+        "type": "documentation",
+        "estimated_hours": 12.0,
+        "review_note": "Comprehensive official reference covering standard types, flow control, modules, and data structures."
+      },
+      {
+        "id": "py-fcc-scientific",
+        "title": "Scientific Computing with Python",
+        "link": "https://www.freecodecamp.org/learn/scientific-computing-with-python/",
+        "type": "interactive",
+        "estimated_hours": 30.0,
+        "review_note": "Hands-on browser-based exercises building practical algorithms, budget trackers, and arithmetic formatters."
+      },
+      {
+        "id": "py-corey-schafer",
+        "title": "Python OOP & Core Concepts Playlist",
+        "link": "https://www.youtube.com/playlist?list=PL-osiE80TeTsqhIuOqKhwlXsIBIdSeYtc",
+        "type": "video",
+        "estimated_hours": 8.0,
+        "review_note": "Crystal-clear explanations of object-oriented Python, decorators, generators, and dunder methods."
+      }
+    ],
+    "JavaScript": [
+      {
+        "id": "js-javascript-info",
+        "title": "The Modern JavaScript Tutorial",
+        "link": "https://javascript.info/",
+        "type": "book",
+        "estimated_hours": 25.0,
+        "review_note": "The gold standard for modern ES6+ concepts, event loop mechanics, closures, and DOM manipulation."
+      },
+      {
+        "id": "js-mdn-core",
+        "title": "MDN JavaScript Learning Pathway",
+        "link": "https://developer.mozilla.org/en-US/docs/Learn/JavaScript",
+        "type": "documentation",
+        "estimated_hours": 18.0,
+        "review_note": "Authoritative MDN guides with interactive code editors explaining variables, async code, and APIs."
+      }
+    ],
+    "TypeScript": [
+      {
+        "id": "ts-handbook",
+        "title": "The TypeScript Handbook",
+        "link": "https://www.typescriptlang.org/docs/handbook/intro.html",
+        "type": "documentation",
+        "estimated_hours": 10.0,
+        "review_note": "Official guide explaining type narrowing, generics, utility types, and strict mode best practices."
+      },
+      {
+        "id": "ts-total-typescript",
+        "title": "Total TypeScript Beginner's Tutorial",
+        "link": "https://www.totaltypescript.com/tutorials/beginners-typescript",
+        "type": "interactive",
+        "estimated_hours": 6.0,
+        "review_note": "Interactive code challenges resolving real-world compiler errors and type inference puzzles."
+      }
+    ],
+    "React": [
+      {
+        "id": "react-official-docs",
+        "title": "React Official Documentation & Quick Start",
+        "link": "https://react.dev/learn",
+        "type": "documentation",
+        "estimated_hours": 15.0,
+        "review_note": "Modern documentation focusing on functional components, custom hooks, state preservation, and effects."
+      },
+      {
+        "id": "react-full-course-fcc",
+        "title": "React 18 Full Course for Beginners",
+        "link": "https://www.freecodecamp.org/news/learn-react-18-by-building-apps/",
+        "type": "course",
+        "estimated_hours": 12.0,
+        "review_note": "Project-based curriculum building interactive single-page applications from scratch."
+      }
+    ],
+    "Docker": [
+      {
+        "id": "docker-getting-started",
+        "title": "Docker Getting Started Guide",
+        "link": "https://docs.docker.com/get-started/",
+        "type": "tutorial",
+        "estimated_hours": 6.0,
+        "review_note": "Official hands-on walkthrough covering containerization, Dockerfiles, volume mounts, and Compose."
+      },
+      {
+        "id": "docker-fcc-handbook",
+        "title": "The Docker Handbook",
+        "link": "https://www.freecodecamp.org/news/the-docker-handbook/",
+        "type": "book",
+        "estimated_hours": 8.0,
+        "review_note": "Practical visual guide to building, inspecting, running, and publishing containerized applications."
+      }
+    ],
+    "Kubernetes": [
+      {
+        "id": "k8s-basics-tutorial",
+        "title": "Kubernetes Official Interactive Basics",
+        "link": "https://kubernetes.io/docs/tutorials/kubernetes-basics/",
+        "type": "interactive",
+        "estimated_hours": 8.0,
+        "review_note": "Browser-based Katacoda pods exploring cluster creation, deployments, scaling, and rolling updates."
+      },
+      {
+        "id": "k8s-freecodecamp-full",
+        "title": "Kubernetes Course for Beginners",
+        "link": "https://www.youtube.com/watch?v=X48VuDVv0do",
+        "type": "video",
+        "estimated_hours": 4.0,
+        "review_note": "Comprehensive visual breakdown of Pods, Services, Ingress, ConfigMaps, and PersistentVolumes."
+      }
+    ],
+    "SQL": [
+      {
+        "id": "sql-sqlbolt",
+        "title": "SQLBolt - Interactive SQL Lessons",
+        "link": "https://sqlbolt.com/",
+        "type": "interactive",
+        "estimated_hours": 5.0,
+        "review_note": "Interactive browser exercises teaching SELECT, JOINs, aggregations, constraints, and schema changes."
+      },
+      {
+        "id": "sql-mode-analytics",
+        "title": "Mode Analytics SQL Tutorial",
+        "link": "https://mode.com/sql-tutorial/",
+        "type": "tutorial",
+        "estimated_hours": 10.0,
+        "review_note": "Industry-focused SQL lessons covering window functions, subqueries, and analytical data queries."
+      }
+    ],
+    "PostgreSQL": [
+      {
+        "id": "postgres-tutorial-site",
+        "title": "PostgreSQL Tutorial for Beginners",
+        "link": "https://www.postgresqltutorial.com/",
+        "type": "tutorial",
+        "estimated_hours": 12.0,
+        "review_note": "Step-by-step guides covering indexing, query optimization, JSONB fields, transactions, and triggers."
+      }
+    ],
+    "Git": [
+      {
+        "id": "git-flight-rules",
+        "title": "Flight Rules for Git",
+        "link": "https://github.com/k88hudson/git-flight-rules",
+        "type": "documentation",
+        "estimated_hours": 4.0,
+        "review_note": "Essential practical guide to recovering from mistakes, rebase workflows, and branch management."
+      },
+      {
+        "id": "git-learngitbranching",
+        "title": "Learn Git Branching",
+        "link": "https://learngitbranching.js.org/",
+        "type": "interactive",
+        "estimated_hours": 5.0,
+        "review_note": "Visual tree-based sandbox to master rebase, cherry-pick, merge, and commit navigation."
+      }
+    ],
+    "Data Structures & Algorithms": [
+      {
+        "id": "dsa-neetcode-roadmap",
+        "title": "NeetCode DSA Roadmap & Explanations",
+        "link": "https://neetcode.io/roadmap",
+        "type": "interactive",
+        "estimated_hours": 40.0,
+        "review_note": "Curated pattern-oriented learning tree covering sliding windows, two pointers, trees, and graphs."
+      },
+      {
+        "id": "dsa-visualgo",
+        "title": "VisuAlgo - Algorithm Visualizer",
+        "link": "https://visualgo.net/en",
+        "type": "interactive",
+        "estimated_hours": 10.0,
+        "review_note": "Interactive step-through animations for sorting, graph traversals, segment trees, and hash tables."
+      }
+    ],
+    "System Design": [
+      {
+        "id": "sd-primer",
+        "title": "The System Design Primer",
+        "link": "https://github.com/donnemartin/system-design-primer",
+        "type": "book",
+        "estimated_hours": 30.0,
+        "review_note": "The definitive open-source guide to scalability, load balancing, caching, databases, and microservices."
+      }
+    ],
+    "Linux": [
+      {
+        "id": "linux-journey",
+        "title": "Linux Journey",
+        "link": "https://linuxjourney.com/",
+        "type": "interactive",
+        "estimated_hours": 10.0,
+        "review_note": "Bite-sized modules explaining shell commands, filesystem hierarchy, permissions, processes, and packages."
+      }
+    ],
+    "AWS": [
+      {
+        "id": "aws-skill-builder",
+        "title": "AWS Cloud Essentials Learning Plan",
+        "link": "https://aws.amazon.com/training/digital/aws-cloud-quest/",
+        "type": "course",
+        "estimated_hours": 15.0,
+        "review_note": "Free foundational digital curriculum and game-based exercises directly from Amazon Web Services."
+      }
+    ],
+    "Redis": [
+      {
+        "id": "redis-university-101",
+        "title": "RU101: Introduction to Redis Data Structures",
+        "link": "https://university.redis.com/courses/ru101/",
+        "type": "course",
+        "estimated_hours": 6.0,
+        "review_note": "Official course on Redis key-value storage, sets, hashes, TTL expiration, and caching patterns."
+      }
+    ]
+  }
+}

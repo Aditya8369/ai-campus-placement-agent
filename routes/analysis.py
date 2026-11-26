@@ -1562,6 +1562,9 @@ def dashboard(analysis_id: str) -> str:
     )
     from utils.skill_certification_service import skill_certification_service
     skill_gap_resources = skill_certification_service.enrich_skill_gap_items(skill_gap_resources)
+    from utils.learning_resource_service import enrich_items_with_resources
+    current_uid = flask_session.get("user_id") or getattr(g, "user_id", None)
+    skill_gap_resources = enrich_items_with_resources(skill_gap_resources, user_id=current_uid)
     if not skill_evidence or not skill_evidence.get("skills"):
         try:
             from utils.skill_evidence_mapper import map_skill_evidence
@@ -1696,6 +1699,17 @@ def dashboard(analysis_id: str) -> str:
             "plan": [],
             "deferred_skills": []
         }
+
+    # Attach learning resource progress to initial timeline roadmap (#885)
+    if current_uid and initial_timeline_roadmap.get("plan"):
+        try:
+            from utils.learning_resource_service import get_user_resource_progress
+            u_prog = get_user_resource_progress(current_uid)
+            for wk in initial_timeline_roadmap["plan"]:
+                for cr in wk.get("curated_resources", []):
+                    cr["status"] = u_prog.get(cr["id"], "not_started")
+        except Exception as prog_err:
+            logger.warning(f"Error attaching resource progress: {prog_err}")
 
         # Drive Day Checklist Reminder (#651)
     drive_reminder = None
@@ -2160,34 +2174,72 @@ def api_generate_custom_analysis_roadmap(analysis_id: str):
         hours_per_week=hours_per_week,
         target_role=target_role
     )
+
+    # Attach user progress if logged in (#885)
+    current_uid = flask_session.get("user_id") or getattr(g, "user_id", None)
+    if current_uid and roadmap_data.get("plan"):
+        from utils.learning_resource_service import get_user_resource_progress
+        u_prog = get_user_resource_progress(current_uid)
+        for wk in roadmap_data["plan"]:
+            for cr in wk.get("curated_resources", []):
+                cr["status"] = u_prog.get(cr["id"], "not_started")
+
     return jsonify(roadmap_data), 200
 
 
-@analysis_bp.route("/api/roadmap/generate", methods=["POST"])
-def api_generate_roadmap_standalone():
+# ---------------------------------------------------------------------------
+# Learning Resources Progress API Endpoints (#885)
+# ---------------------------------------------------------------------------
+
+@analysis_bp.route("/api/learning-resources/progress", methods=["GET"])
+def api_get_learning_resources_progress():
     """
-    Direct endpoint to generate a personalized learning roadmap for missing skills (#536).
-    Takes missing_skills list, weeks, and hours_per_week.
+    Returns progress mapping (resource_id -> status) for the logged-in student.
     """
+    user_id = flask_session.get("user_id") or getattr(g, "user_id", None)
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required."}), 401
+
+    from utils.learning_resource_service import get_user_resource_progress
+    progress = get_user_resource_progress(user_id)
+    return jsonify({"success": True, "progress": progress}), 200
+
+
+@analysis_bp.route("/api/learning-resources/progress", methods=["POST"])
+def api_update_learning_resource_progress():
+    """
+    Updates the student's progress for a learning resource ('not_started', 'started', 'done').
+    """
+    user_id = flask_session.get("user_id") or getattr(g, "user_id", None)
+    if not user_id:
+        return jsonify({"success": False, "error": "Authentication required."}), 401
+
     payload = request.get_json(silent=True) or request.form or {}
-    missing_skills = payload.get("missing_skills", [])
-    try:
-        weeks = int(payload.get("weeks", 6))
-    except (ValueError, TypeError):
-        weeks = 6
-    try:
-        hours_per_week = int(payload.get("hours_per_week", 10))
-    except (ValueError, TypeError):
-        hours_per_week = 10
-    target_role = payload.get("target_role", "Target Role")
+    resource_id = payload.get("resource_id")
+    status = payload.get("status")
+    skill_name = payload.get("skill_name", "")
 
-    roadmap_data = generate_learning_roadmap(
-        missing_skills=missing_skills,
-        weeks=weeks,
-        hours_per_week=hours_per_week,
-        target_role=target_role
-    )
-    return jsonify(roadmap_data), 200
+    if not resource_id or not status:
+        return jsonify({"success": False, "error": "resource_id and status are required."}), 400
+
+    from utils.learning_resource_service import set_user_resource_progress, VALID_STATUSES
+    if status.lower().strip() not in VALID_STATUSES:
+        return jsonify({
+            "success": False,
+            "error": f"Invalid status '{status}'. Must be one of {sorted(VALID_STATUSES)}."
+        }), 400
+
+    try:
+        result = set_user_resource_progress(
+            user_id=user_id,
+            resource_id=resource_id,
+            status=status,
+            skill_name=skill_name
+        )
+        return jsonify(result), 200
+    except Exception as e:
+        logger.exception(f"Failed to update resource progress: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @analysis_bp.route("/api/analysis/<analysis_id>/roadmap/calendar.ics", methods=["GET", "POST"])
