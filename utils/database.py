@@ -958,6 +958,27 @@ def init_db() -> None:
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts (locked_until)")
 
+        # Table: Shared preparation plans for mentor & faculty review (#prep-share)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shared_preparation_plans (
+                id TEXT PRIMARY KEY,
+                token TEXT UNIQUE NOT NULL,
+                student_id TEXT NOT NULL,
+                plan_title TEXT NOT NULL DEFAULT 'Placement Preparation Plan',
+                mentor_name TEXT,
+                mentor_email TEXT,
+                selected_goal_ids_json TEXT NOT NULL DEFAULT '[]',
+                is_active INTEGER DEFAULT 1,
+                view_count INTEGER DEFAULT 0,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                revoked_at TIMESTAMP,
+                last_viewed_at TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_prep_token ON shared_preparation_plans (token)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_prep_student ON shared_preparation_plans (student_id, is_active, created_at DESC)")
+
         cursor.execute("PRAGMA table_info(users)")
         user_cols = [c[1] for c in cursor.fetchall()]
         if "is_verified" not in user_cols:
@@ -5680,6 +5701,12 @@ def delete_user_account_and_personal_data(student_id: str) -> Dict[str, Any]:
         # 15b. Delete server-side authentication sessions
         cursor.execute("DELETE FROM auth_sessions WHERE user_id = ?", (student_id,))
         deleted_counts["auth_sessions"] = cursor.rowcount
+
+        # 15c. Delete shared preparation plan links
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='shared_preparation_plans'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM shared_preparation_plans WHERE student_id = ?", (student_id,))
+            deleted_counts["shared_preparation_plans"] = cursor.rowcount
 
         # 16. Finally, delete the student account from users table
         cursor.execute("DELETE FROM users WHERE id = ?", (student_id,))

@@ -836,6 +836,29 @@ def _migration_017_learning_resource_progress(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_slrp_resource_id ON student_learning_resource_progress(resource_id)")
 
 
+def _migration_018_shared_preparation_plans(cursor: sqlite3.Cursor) -> None:
+    """Create shared_preparation_plans table for mentor and faculty read-only goal sharing."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS shared_preparation_plans (
+            id TEXT PRIMARY KEY,
+            token TEXT UNIQUE NOT NULL,
+            student_id TEXT NOT NULL,
+            plan_title TEXT NOT NULL DEFAULT 'Placement Preparation Plan',
+            mentor_name TEXT,
+            mentor_email TEXT,
+            selected_goal_ids_json TEXT NOT NULL DEFAULT '[]',
+            is_active INTEGER DEFAULT 1,
+            view_count INTEGER DEFAULT 0,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            revoked_at TIMESTAMP,
+            last_viewed_at TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_prep_token ON shared_preparation_plans (token)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_shared_prep_student ON shared_preparation_plans (student_id, is_active, created_at DESC)")
+
+
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
     Migration("002_user_auth_and_sessions", "Create auth_sessions, notification preferences, feedback, assessments", _migration_002_user_auth_and_sessions),
@@ -854,6 +877,7 @@ MIGRATIONS: List[Migration] = [
     Migration("015_account_lockouts", "Create account lockout tracking tables", _migration_015_account_lockouts),
     Migration("016_faculty_interventions", "Create faculty intervention tables", _migration_010_faculty_interventions),
     Migration("017_learning_resource_progress", "Create learning resource progress table", _migration_017_learning_resource_progress),
+    Migration("018_shared_preparation_plans", "Create shared_preparation_plans table for mentor preparation plan sharing", _migration_018_shared_preparation_plans),
 ]
 
 
