@@ -177,7 +177,7 @@ def test_create_safe_fallback_analysis_payload_structure():
 
 
 def test_analyze_route_flashes_friendly_error_on_ai_failure(monkeypatch):
-    """Verify that /analyze route catches AI exceptions and redirects with user-friendly error message."""
+    """Verify that /analyze route catches AI exceptions and produces labelled basic analysis (#849)."""
     from agents.coordinator import CoordinatorAgent
     def mock_analyze_fail(*args, **kwargs):
         raise AIRateLimitError("Resource has been exhausted.")
@@ -196,4 +196,4 @@ def test_analyze_route_flashes_friendly_error_on_ai_failure(monkeypatch):
             follow_redirects=True
         )
         assert res.status_code == 200
-        assert b"quota limit has been reached" in res.data
+        assert b"basic analysis (ai unavailable)" in res.data.lower()
