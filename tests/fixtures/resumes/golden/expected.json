@@ -1,0 +1,208 @@
+{
+  "single_column.pdf": {
+    "sections": {
+      "education": [
+        "Fictional Cedar College",
+        "Bachelor of Computing"
+      ],
+      "skills": [
+        "Python, Flask, PostgreSQL"
+      ],
+      "projects": [
+        "Seedling Catalogue",
+        "Catalogued a fictional collection of seedlings."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Flask",
+      "PostgreSQL"
+    ]
+  },
+  "single_column.docx": {
+    "sections": {
+      "education": [
+        "Fictional Cedar College",
+        "Bachelor of Computing"
+      ],
+      "skills": [
+        "Python, Flask, PostgreSQL"
+      ],
+      "projects": [
+        "Seedling Catalogue",
+        "Catalogued a fictional collection of seedlings."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Flask",
+      "PostgreSQL"
+    ]
+  },
+  "two_columns.pdf": {
+    "sections": {
+      "education": [
+        "Fictional Dune Academy",
+        "Diploma in Computing"
+      ],
+      "skills": [
+        "Java, Maven, Git"
+      ],
+      "projects": [
+        "Dune Atlas",
+        "Indexed a fictional set of dune survey records."
+      ]
+    },
+    "skills": [
+      "Java",
+      "Maven",
+      "Git"
+    ]
+  },
+  "two_columns.docx": {
+    "sections": {
+      "education": [
+        "Fictional Dune Academy",
+        "Diploma in Computing"
+      ],
+      "skills": [
+        "Java, Maven, Git"
+      ],
+      "projects": [
+        "Dune Atlas",
+        "Indexed a fictional set of dune survey records."
+      ]
+    },
+    "skills": [
+      "Java",
+      "Maven",
+      "Git"
+    ]
+  },
+  "table.pdf": {
+    "sections": {
+      "education": [
+        "Fictional Fern College",
+        "Bachelor of Computer Science"
+      ],
+      "skills": [
+        "TypeScript, React, SQL"
+      ],
+      "projects": [
+        "Fern Inventory",
+        "Organized a fictional stock of fern species."
+      ]
+    },
+    "skills": [
+      "TypeScript",
+      "React",
+      "SQL"
+    ]
+  },
+  "table.docx": {
+    "sections": {
+      "education": [
+        "Fictional Fern College",
+        "Bachelor of Computer Science"
+      ],
+      "skills": [
+        "TypeScript, React, SQL"
+      ],
+      "projects": [
+        "Fern Inventory",
+        "Organized a fictional stock of fern species."
+      ]
+    },
+    "skills": [
+      "TypeScript",
+      "React",
+      "SQL"
+    ]
+  },
+  "unusual_headings.pdf": {
+    "sections": {
+      "education": [
+        "Fictional Kite Institute",
+        "Diploma in Information Systems"
+      ],
+      "skills": [
+        "Python, Django, Redis"
+      ],
+      "projects": [
+        "Wind Journal",
+        "Displayed fictional wind readings."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Django",
+      "Redis"
+    ]
+  },
+  "unusual_headings.docx": {
+    "sections": {
+      "education": [
+        "Fictional Kite Institute",
+        "Diploma in Information Systems"
+      ],
+      "skills": [
+        "Python, Django, Redis"
+      ],
+      "projects": [
+        "Wind Journal",
+        "Displayed fictional wind readings."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Django",
+      "Redis"
+    ]
+  },
+  "two_pages.pdf": {
+    "sections": {
+      "education": [
+        "Fictional Quartz Academy",
+        "Bachelor of Data Science"
+      ],
+      "skills": [
+        "Python, Pandas, NumPy"
+      ],
+      "projects": [
+        "Quartz Notebook",
+        "Summarized a fictional set of mineral samples."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Pandas",
+      "NumPy"
+    ]
+  },
+  "two_pages.docx": {
+    "sections": {
+      "education": [
+        "Fictional Quartz Academy",
+        "Bachelor of Data Science"
+      ],
+      "skills": [
+        "Python, Pandas, NumPy"
+      ],
+      "projects": [
+        "Quartz Notebook",
+        "Summarized a fictional set of mineral samples."
+      ]
+    },
+    "skills": [
+      "Python",
+      "Pandas",
+      "NumPy"
+    ]
+  },
+  "scanned_image.pdf": {
+    "image_only": true
+  },
+  "scanned_image.docx": {
+    "image_only": true
+  }
+}

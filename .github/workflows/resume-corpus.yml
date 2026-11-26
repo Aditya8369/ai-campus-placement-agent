@@ -1,0 +1,45 @@
+name: Résumé corpus
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/resume-corpus.yml'
+      - 'config.py'
+      - 'pyproject.toml'
+      - 'utils/pdf_reader.py'
+      - 'utils/format_checker.py'
+      - 'utils/text_cleaner.py'
+      - 'utils/resume_info_extractor.py'
+      - 'tests/test_resume_golden_corpus.py'
+      - 'tests/fixtures/resumes/golden/**'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/resume-corpus.yml'
+      - 'config.py'
+      - 'pyproject.toml'
+      - 'utils/pdf_reader.py'
+      - 'utils/format_checker.py'
+      - 'utils/text_cleaner.py'
+      - 'utils/resume_info_extractor.py'
+      - 'tests/test_resume_golden_corpus.py'
+      - 'tests/fixtures/resumes/golden/**'
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install declared parser and test dependencies
+        run: python -m pip install '.[dev]'
+      - name: Score fictional résumé fixtures
+        run: python -m pytest --noconftest -q -s tests/test_resume_golden_corpus.py
