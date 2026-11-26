@@ -4181,6 +4181,39 @@ body {
   }
 }
 
+@media (min-width: 1400px) and (max-width: 1799.98px) {
+  .home-navbar.navbar-expand-xxl .navbar-toggler {
+    display: block;
+  }
+
+  .home-navbar.navbar-expand-xxl > .app-navbar-container {
+    flex-wrap: wrap;
+  }
+
+  .home-navbar.navbar-expand-xxl .navbar-collapse {
+    display: none !important;
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .home-navbar.navbar-expand-xxl .navbar-collapse.show,
+  .home-navbar.navbar-expand-xxl .navbar-collapse.collapsing {
+    display: block !important;
+  }
+
+  .home-navbar.navbar-expand-xxl .navbar-nav {
+    flex-direction: column;
+  }
+
+  .home-navbar.navbar-expand-xxl .navbar-nav .dropdown-menu {
+    position: static;
+  }
+
+  .home-navbar.navbar-expand-xxl .app-nav-links {
+    align-items: stretch;
+  }
+}
+
 @media (max-width: 575.98px) {
   .app-brand {
     gap: 8px;
