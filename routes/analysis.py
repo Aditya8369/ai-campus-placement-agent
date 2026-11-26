@@ -2861,6 +2861,86 @@ def get_bullet_rewrites_api(analysis_id: str):
         return jsonify({"error": str(e), "has_bullets": False, "bullets": []}), 500
 
 
+@analysis_bp.route("/api/timetable/generate", methods=["POST"])
+def api_generate_timetable():
+    """
+    Generates personalized weekly preparation timetable based on daily hours (#605).
+    """
+    payload = request.get_json(silent=True) or request.form.to_dict() or {}
+    availability = payload.get("availability")
+    if availability is None:
+        availability = (
+            payload.get("daily_hours")
+            or payload.get("daily_study_time")
+            or payload.get("hours")
+            or payload.get("available_hours")
+            or {}
+        )
+    preferred_slot = payload.get("preferred_slot", "Evening (18:00 - 21:00)")
+    custom_tasks = payload.get("custom_tasks")
+
+    from utils.prep_timetable_service import generate_weekly_timetable
+    try:
+        result = generate_weekly_timetable(
+            availability=availability,
+            preferred_slot=preferred_slot,
+            custom_tasks=custom_tasks
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+    except Exception as exc:
+        logger.error(f"Error generating timetable: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
+@analysis_bp.route("/api/study-time/allocate", methods=["POST"])
+@analysis_bp.route("/api/study-schedule/daily", methods=["GET", "POST"])
+def api_allocate_study_time():
+    """
+    Generates structured daily preparation schedule based on user's available study time.
+    Accepts daily study hours (e.g. 2.0) or daily availability map.
+    """
+    if request.method == "GET":
+        raw_hours = (
+            request.args.get("hours")
+            or request.args.get("daily_hours")
+            or request.args.get("daily_study_time")
+            or 2.0
+        )
+        preferred_slot = request.args.get("preferred_slot") or "Evening (18:00 - 21:00)"
+        payload = {"daily_hours": raw_hours, "preferred_slot": preferred_slot}
+    else:
+        payload = request.get_json(silent=True) or request.form.to_dict() or {}
+
+    available_time = payload.get("available_time")
+    if available_time is None:
+        available_time = (
+            payload.get("daily_hours")
+            or payload.get("daily_study_time")
+            or payload.get("hours")
+            or payload.get("study_time")
+            or payload.get("availability")
+            or 2.0
+        )
+    preferred_slot = payload.get("preferred_slot", "Evening (18:00 - 21:00)")
+    custom_tasks = payload.get("custom_tasks")
+
+    from utils.prep_timetable_service import allocate_daily_study_time
+    try:
+        result = allocate_daily_study_time(
+            available_time=available_time,
+            preferred_slot=preferred_slot,
+            custom_tasks=custom_tasks
+        )
+        return jsonify(result), 200
+    except ValueError as ve:
+        return jsonify({"status": "error", "success": False, "error": str(ve)}), 400
+    except Exception as exc:
+        logger.error(f"Error allocating daily study time: {exc}")
+        return jsonify({"status": "error", "success": False, "error": str(exc)}), 500
+
+
 @analysis_bp.route("/api/snapshots", methods=["GET", "POST"])
 def api_snapshots_collection():
     """

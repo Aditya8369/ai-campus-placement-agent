@@ -103,6 +103,84 @@ DATE_LINE_REGEX = re.compile(
     re.IGNORECASE
 )
 
+# Known technologies and tools for extraction and zero-hallucination verification
+KNOWN_TECHNOLOGIES: List[str] = [
+    # Languages
+    "Python", "Java", "JavaScript", "TypeScript", "C++", "C#", "Go", "Golang", "Rust", "Ruby",
+    "PHP", "Kotlin", "Swift", "Dart", "R", "Scala", "Shell", "Bash", "SQL", "HTML", "CSS", "Sass",
+    # Frameworks & Libraries
+    "React", "Vue", "Angular", "Next.js", "Node.js", "Express", "FastAPI", "Django", "Flask",
+    "Spring Boot", "Spring", "Rails", "Ruby on Rails", "ASP.NET", ".NET", "TensorFlow", "PyTorch",
+    "Keras", "Scikit-learn", "Pandas", "NumPy", "Bootstrap", "Tailwind", "TailwindCSS", "jQuery",
+    "Redux", "GraphQL", "REST", "RESTful", "gRPC", "Flutter",
+    # Databases & Storage
+    "PostgreSQL", "Postgres", "MySQL", "MongoDB", "Redis", "SQLite", "DynamoDB", "Cassandra",
+    "Elasticsearch", "Oracle", "Firebase", "Supabase", "Neo4j", "Snowflake", "BigQuery",
+    # Cloud & DevOps & Infrastructure
+    "AWS", "Azure", "GCP", "Google Cloud", "Docker", "Kubernetes", "Linux", "Git", "GitHub",
+    "GitLab", "Jenkins", "CI/CD", "Kafka", "RabbitMQ", "Terraform", "Ansible", "Nginx", "Apache",
+    # Testing & Quality
+    "Pytest", "JUnit", "Selenium", "Cypress", "Postman", "Jira", "Figma"
+]
+
+
+def extract_technology_from_bullet(bullet: str) -> str:
+    """
+    Scans a bullet point text and extracts explicitly mentioned technologies or tools.
+    If no technologies are detected in the bullet, returns '[add tool]' placeholder
+    to strictly adhere to the requirement of never inventing tools.
+    """
+    if not bullet:
+        return "[add tool]"
+
+    found: List[str] = []
+    seen_lower = set()
+
+    for tech in KNOWN_TECHNOLOGIES:
+        escaped_tech = re.escape(tech)
+        if tech in ["C++", "C#", ".NET"]:
+            pattern = rf"(?:^|[^\w#+]){escaped_tech}(?:$|[^\w#+])"
+        else:
+            pattern = rf"\b{escaped_tech}\b"
+
+        if re.search(pattern, bullet, re.IGNORECASE):
+            clean_tech = tech
+            if clean_tech.lower() in ("postgres", "postgresql"):
+                clean_tech = "PostgreSQL"
+            elif clean_tech.lower() in ("golang", "go"):
+                clean_tech = "Go"
+            elif clean_tech.lower() in ("next.js", "nextjs"):
+                clean_tech = "Next.js"
+            elif clean_tech.lower() in ("node.js", "nodejs"):
+                clean_tech = "Node.js"
+
+            if clean_tech.lower() not in seen_lower:
+                seen_lower.add(clean_tech.lower())
+                found.append(clean_tech)
+
+    if found:
+        return ", ".join(found[:3])
+    return "[add tool]"
+
+
+def is_tech_in_original(tech: str, original: str) -> bool:
+    """
+    Checks if a technology or tool string was explicitly mentioned in the original bullet.
+    """
+    if not tech or tech.strip() == "[add tool]":
+        return True
+    if not original:
+        return False
+    techs = [t.strip() for t in tech.split(",") if t.strip()]
+    for t in techs:
+        if t == "[add tool]":
+            continue
+        escaped = re.escape(t)
+        pattern = rf"(?:^|[^\w#+]){escaped}(?:$|[^\w#+])" if t in ["C++", "C#", ".NET"] else rf"\b{escaped}\b"
+        if not re.search(pattern, original, re.IGNORECASE):
+            return False
+    return True
+
 
 def extract_bullet_candidates(resume_text: str) -> List[Dict[str, Any]]:
     """
@@ -383,9 +461,51 @@ def sanitize_metrics_with_placeholders(
     return res.strip()
 
 
+def sanitize_tools_with_placeholders(
+    suggested_rewrite: str,
+    original_bullet: str
+) -> str:
+    """
+    Enforces strict acceptance criterion:
+    'Never invent numbers or tools; use placeholders such as [add metric] for the student to fill in'
+
+    Scans the suggested rewrite. If any known tool or technology from KNOWN_TECHNOLOGIES
+    was introduced in the rewrite that was NOT present in the candidate's original bullet
+    (and not already in brackets [ ]), replaces it with [add tool].
+    """
+    if not suggested_rewrite:
+        return ""
+
+    original_text = original_bullet or ""
+    res = suggested_rewrite
+
+    for tech in KNOWN_TECHNOLOGIES:
+        escaped_tech = re.escape(tech)
+        pattern = rf"(?:^|[^\w#+])({escaped_tech})(?:$|[^\w#+])" if tech in ["C++", "C#", ".NET"] else rf"\b({escaped_tech})\b"
+
+        if not re.search(pattern, res, re.IGNORECASE):
+            continue
+
+        if re.search(pattern, original_text, re.IGNORECASE):
+            continue
+
+        def replace_tool(m):
+            start = m.start(1)
+            end = m.end(1)
+            if start > 0 and res[start - 1] == "[" and end < len(res) and res[end] == "]":
+                return m.group(0)
+            return m.group(0).replace(m.group(1), "[add tool]")
+
+        res = re.sub(pattern, replace_tool, res, flags=re.IGNORECASE)
+
+    res = re.sub(r"(?:\[add tool\]\s*)+", "[add tool] ", res)
+    res = re.sub(r"\busing \[add tool\] using \[add tool\]\b", "using [add tool]", res, flags=re.IGNORECASE)
+    return res.strip()
+
+
 def format_placeholders_for_display(text: str) -> str:
     """
-    Escapes HTML for safe rendering and wraps bracketed placeholders (e.g., [X%], [number]+)
+    Escapes HTML for safe rendering and wraps bracketed placeholders (e.g., [add metric], [add tool], [X%], [number]+)
     in visual badge tags for clear student guidance in the UI.
     """
     if not text:
@@ -413,11 +533,16 @@ def _generate_rule_based_rewrite(
     High-fidelity deterministic algorithmic fallback for rewriting bullet points
     when Gemini API is offline or unconfigured.
 
-    Strictly complies with the requirement:
-    Never invent facts or metrics; strictly use placeholders [X%], [number]+, [X ms], etc.
+    Strictly complies with the requirements:
+    1. Never invent metrics, numbers, or percentages; use placeholders such as [add metric].
+    2. Never invent tools or technologies; use placeholders such as [add tool] if absent.
+    3. Structured with strong action verb, technology used, and measurable result.
     """
     clean_text = original_bullet.strip().rstrip(".")
     clean_text = BULLET_PREFIX_REGEX.sub("", clean_text).strip()
+
+    # Extract or identify technology used from original bullet
+    technology_used = extract_technology_from_bullet(original_bullet)
 
     # Strip weak verbs / passive starters
     core_task = clean_text
@@ -433,42 +558,42 @@ def _generate_rule_based_rewrite(
     if any(k in text_lower for k in ["api", "backend", "database", "sql", "server", "microservice", "fastapi", "django"]):
         action_verb = ["Architected", "Engineered", "Optimized", "Scaled"][index % 4]
         result_templates = [
-            "reducing response latency by [X%] and supporting [number]+ concurrent users",
-            "optimizing query execution time by [X%] and streamlining data pipelines across [number]+ endpoints",
-            "improving system throughput by [X%] and cutting operational overhead by [Y hours]",
-            "achieving [X%] test coverage and eliminating [number] production defects"
+            "reducing response latency by [add metric] ([X%]) and supporting [add metric] ([number]+) concurrent users",
+            "optimizing query execution time by [add metric] ([X%]) and streamlining data pipelines across [add metric] ([number]+) endpoints",
+            "improving system throughput by [add metric] ([X%]) and cutting operational overhead by [add metric] ([Y hours])",
+            "achieving [add metric] ([X%]) test coverage and eliminating [add metric] ([number]) production defects"
         ]
     elif any(k in text_lower for k in ["ui", "frontend", "react", "css", "html", "javascript", "user interface"]):
         action_verb = ["Engineered", "Implemented", "Revamped", "Designed"][index % 4]
         result_templates = [
-            "improving client-side page load speed by [X%] across [number]+ monthly active users",
-            "enhancing responsive user experience by [X%] and decreasing bounce rate by [Y%]",
-            "streamlining workflow navigation for [number]+ users and boosting task completion rate by [X%]",
-            "delivering accessible, cross-browser interfaces achieving [X%] compliance"
+            "improving client-side page load speed by [add metric] ([X%]) across [add metric] ([number]+) monthly active users",
+            "enhancing responsive user experience by [add metric] ([X%]) and decreasing bounce rate by [add metric] ([Y%])",
+            "streamlining workflow navigation for [add metric] ([number]+) users and boosting task completion rate by [add metric] ([X%])",
+            "delivering accessible, cross-browser interfaces achieving [add metric] ([X%]) compliance"
         ]
     elif any(k in text_lower for k in ["test", "testing", "qa", "bug", "automated", "pytest", "selenium"]):
         action_verb = ["Automated", "Engineered", "Streamlined", "Standardized"][index % 4]
         result_templates = [
-            "increasing automated test coverage to [X%] and reducing regression bug escape rate by [Y%]",
-            "cutting test cycle duration by [X%] and preventing [number] critical release regressions",
-            "accelerating continuous integration pipelines by [X%] across [number]+ test suites",
-            "achieving [X%] coverage across core workflows and eliminating [number] bottlenecks"
+            "increasing automated test coverage to [add metric] ([X%]) and reducing regression bug escape rate by [add metric] ([Y%])",
+            "cutting test cycle duration by [add metric] ([X%]) and preventing [add metric] ([number]) critical release regressions",
+            "accelerating continuous integration pipelines by [add metric] ([X%]) across [add metric] ([number]+) test suites",
+            "achieving [add metric] ([X%]) coverage across core workflows and eliminating [add metric] ([number]) bottlenecks"
         ]
     elif any(k in text_lower for k in ["data", "model", "ml", "machine learning", "analysis", "pipeline", "etl"]):
         action_verb = ["Formulated", "Engineered", "Optimized", "Constructed"][index % 4]
         result_templates = [
-            "improving model prediction accuracy to [X%] and processing [number]+ records daily",
-            "reducing data ingestion pipeline latency by [X%] across [number]+ daily datasets",
-            "increasing pipeline throughput by [X%] and cutting manual processing time by [Y hours]",
-            "achieving [X%] precision while scaling data operations to [number]+ concurrent requests"
+            "improving model prediction accuracy to [add metric] ([X%]) and processing [add metric] ([number]+) records daily",
+            "reducing data ingestion pipeline latency by [add metric] ([X%]) across [add metric] ([number]+) daily datasets",
+            "increasing pipeline throughput by [add metric] ([X%]) and cutting manual processing time by [add metric] ([Y hours])",
+            "achieving [add metric] ([X%]) precision while scaling data operations to [add metric] ([number]+) concurrent requests"
         ]
     else:
         action_verb = ["Engineered", "Spearheaded", "Optimized", "Implemented", "Streamlined"][index % 5]
         result_templates = [
-            "improving overall execution efficiency by [X%] and reducing turnaround time by [Y hours]",
-            "enhancing system reliability by [X%] and supporting [number]+ active users",
-            "streamlining operational workflows to reduce manual interventions by [X%]",
-            "achieving [X%] performance improvement and accelerating release cycle by [Z weeks]"
+            "improving overall execution efficiency by [add metric] ([X%]) and reducing turnaround time by [add metric] ([Y hours])",
+            "enhancing system reliability by [add metric] ([X%]) and supporting [add metric] ([number]+) active users",
+            "streamlining operational workflows to reduce manual interventions by [add metric] ([X%])",
+            "achieving [add metric] ([X%]) performance improvement and accelerating release cycle by [add metric] ([Z weeks])"
         ]
 
     chosen_result = result_templates[index % len(result_templates)]
@@ -485,11 +610,21 @@ def _generate_rule_based_rewrite(
         else:
             task_str = core_task[0].lower() + core_task[1:] if len(core_task) > 1 else core_task.lower()
 
+    # Ensure tool presence or placeholder in task string
+    if technology_used == "[add tool]":
+        if "using" not in task_str.lower() and "with" not in task_str.lower() and "[add tool]" not in task_str:
+            task_str = f"{task_str} using [add tool]"
+    else:
+        # If a known tech was found, ensure it is represented
+        if not any(t.strip().lower() in task_str.lower() for t in technology_used.split(",")):
+            task_str = f"{task_str} using {technology_used}"
+
     suggested_rewrite = f"{action_verb} {task_str}, {chosen_result}."
 
     return {
         "original_bullet": original_bullet,
         "action_verb": action_verb,
+        "technology_used": technology_used,
         "task": task_str,
         "measurable_result": chosen_result,
         "suggested_rewrite": suggested_rewrite
@@ -564,13 +699,20 @@ def rewrite_weak_bullets(
 
                 if ai_match and isinstance(ai_match, dict) and ai_match.get("suggested_rewrite"):
                     raw_rewrite = ai_match.get("suggested_rewrite", "").strip()
-                    # Strictly sanitize: never allow invented metrics, enforce placeholders
+                    # Strictly sanitize: never allow invented metrics or tools, enforce placeholders
                     sanitized_rewrite = sanitize_metrics_with_placeholders(raw_rewrite, orig)
+                    sanitized_rewrite = sanitize_tools_with_placeholders(sanitized_rewrite, orig)
                     action_v = ai_match.get("action_verb") or sanitized_rewrite.split()[0]
+
+                    # Detect or validate technology used
+                    tech_used = ai_match.get("technology_used")
+                    if not tech_used or not is_tech_in_original(tech_used, orig):
+                        tech_used = extract_technology_from_bullet(orig)
 
                     rewritten_results.append({
                         **b,
                         "action_verb": action_v,
+                        "technology_used": tech_used,
                         "task": ai_match.get("task", ""),
                         "measurable_result": ai_match.get("measurable_result", ""),
                         "suggested_rewrite": sanitized_rewrite,
@@ -584,10 +726,13 @@ def rewrite_weak_bullets(
                         target_role=target_role,
                         index=idx
                     )
+                    sanitized_rewrite = sanitize_metrics_with_placeholders(fallback["suggested_rewrite"], orig)
+                    sanitized_rewrite = sanitize_tools_with_placeholders(sanitized_rewrite, orig)
                     rewritten_results.append({
                         **b,
                         **fallback,
-                        "suggested_rewrite_formatted": format_placeholders_for_display(fallback["suggested_rewrite"])
+                        "suggested_rewrite": sanitized_rewrite,
+                        "suggested_rewrite_formatted": format_placeholders_for_display(sanitized_rewrite)
                     })
 
             if len(rewritten_results) == len(weak_bullets):
@@ -606,6 +751,7 @@ def rewrite_weak_bullets(
             index=idx
         )
         sanitized_rewrite = sanitize_metrics_with_placeholders(fallback["suggested_rewrite"], orig)
+        sanitized_rewrite = sanitize_tools_with_placeholders(sanitized_rewrite, orig)
         rewritten_results.append({
             **b,
             **fallback,
