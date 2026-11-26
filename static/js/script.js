@@ -850,6 +850,81 @@ function initRoadmapTracker() {
   }
 
   updateVisuals();
+  initLearningResourceProgressTracking();
+}
+
+/**
+ * Initializes interactive progress tracking for curated learning resources (#885).
+ * Allows marking resources as not_started, started, or done, synchronizing with backend.
+ */
+function initLearningResourceProgressTracking() {
+  document.addEventListener("click", async (e) => {
+    const actionLink = e.target.closest(".resource-progress-action");
+    if (!actionLink) return;
+
+    e.preventDefault();
+    const resourceId = actionLink.getAttribute("data-resource-id");
+    const newStatus = actionLink.getAttribute("data-status");
+    const skillName = actionLink.getAttribute("data-skill") || "";
+
+    if (!resourceId || !newStatus) return;
+
+    // Find parent container and toggle button
+    const container = actionLink.closest(".resource-entry-card") || actionLink.closest(".roadmap-resource-item");
+    const btn = container ? container.querySelector(".resource-progress-btn") : null;
+
+    // Update UI immediately (optimistic UI)
+    const updateButtonUI = (targetBtn, status) => {
+      if (!targetBtn) return;
+      targetBtn.classList.remove("btn-success", "btn-primary", "btn-outline-secondary");
+      const textSpan = targetBtn.querySelector(".status-text");
+      if (status === "done") {
+        targetBtn.classList.add("btn-success");
+        if (textSpan) textSpan.innerText = "✓ Done";
+      } else if (status === "started") {
+        targetBtn.classList.add("btn-primary");
+        if (textSpan) textSpan.innerText = "⏳ Started";
+      } else {
+        targetBtn.classList.add("btn-outline-secondary");
+        if (textSpan) textSpan.innerText = "○ To Do";
+      }
+    };
+
+    const prevClasses = btn ? btn.className : "";
+    const prevText = btn && btn.querySelector(".status-text") ? btn.querySelector(".status-text").innerText : "";
+
+    // Synchronize across all cards for the same resource on the page
+    document.querySelectorAll(`[data-resource-id="${resourceId}"] .resource-progress-btn`).forEach((b) => {
+      updateButtonUI(b, newStatus);
+    });
+
+    try {
+      const res = await fetch("/api/learning-resources/progress", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          resource_id: resourceId,
+          status: newStatus,
+          skill_name: skillName,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error ${res.status}`);
+      }
+    } catch (err) {
+      console.warn("Failed saving learning resource progress:", err);
+      // Revert if error
+      document.querySelectorAll(`[data-resource-id="${resourceId}"] .resource-progress-btn`).forEach((b) => {
+        b.className = prevClasses;
+        const s = b.querySelector(".status-text");
+        if (s) s.innerText = prevText;
+      });
+    }
+  });
 }
 
 function initCompanyExplorer() {

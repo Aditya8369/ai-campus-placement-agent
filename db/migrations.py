@@ -819,6 +819,23 @@ def _migration_013_feature_flags(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_ff_audit_created ON feature_flag_audit_logs(created_at DESC)")
 
 
+def _migration_017_learning_resource_progress(cursor: sqlite3.Cursor) -> None:
+    """Create student_learning_resource_progress table for skill & roadmap resources (#885)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS student_learning_resource_progress (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            resource_id TEXT NOT NULL,
+            skill_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'not_started',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, resource_id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slrp_user_id ON student_learning_resource_progress(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_slrp_resource_id ON student_learning_resource_progress(resource_id)")
+
+
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
     Migration("002_user_auth_and_sessions", "Create auth_sessions, notification preferences, feedback, assessments", _migration_002_user_auth_and_sessions),
@@ -836,6 +853,7 @@ MIGRATIONS: List[Migration] = [
     Migration("014_saved_questions_score_tracking", "Add score tracking to bookmarked interview questions", _migration_014_saved_questions_score_tracking),
     Migration("015_account_lockouts", "Create account lockout tracking tables", _migration_015_account_lockouts),
     Migration("016_faculty_interventions", "Create faculty intervention tables", _migration_010_faculty_interventions),
+    Migration("017_learning_resource_progress", "Create learning resource progress table", _migration_017_learning_resource_progress),
 ]
 
 

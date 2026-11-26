@@ -402,6 +402,29 @@ The validator pinpoints the exact file, company, and field name for each issue s
      Remedy : Provide a valid canonical URL starting with http:// or https:// with a valid domain name.
 ```
 
+## Contributing Learning Resources (#885)<a id="suggest-resource"></a>
+
+To help students learn effectively without losing time searching or paying for resources, the project provides a curated free learning resources catalog in `data/learning_resources.json`.
+
+### How It Works
+- Resources are mapped by technical skill (e.g. `Python`, `Docker`, `SQL`, `React`, `System Design`).
+- Under each skill gap in the analysis dashboard and inside roadmap weeks, students receive matching curated free resources.
+- Students can track progress by marking each resource as **To Do**, **Started**, or **Done**.
+
+### Guidelines for Suggesting a Resource
+1. **Free Only**: All suggested resources must be 100% free (no paywalls, required credit cards, or trial-only locks).
+2. **HTTPS Only**: Links must use strict `https://` schemes.
+3. **High Quality**: Documentation, interactive tutorials, reputable video playlists, or open-source guides.
+4. **Required Fields**:
+   - `id`: Lowercase identifier with hyphens (e.g., `py-official-tutorial`).
+   - `title`: Clear title of the resource.
+   - `link`: Direct canonical HTTPS link.
+   - `type`: One of `documentation`, `tutorial`, `interactive`, `video`, `book`, or `course`.
+   - `estimated_hours`: Positive number indicating estimated study time.
+   - `review_note`: Concise peer review note explaining why this resource is valuable.
+5. **Schema Validation**: All resources are validated against `data/schemas/learning_resources.schema.json` in automated CI tests (`tests/test_learning_resources_schema.py`).
+
+
 ## Pull Request Process
 
 1. **Update Documentation**: If your changes affect functionality, update the README or relevant documentation
