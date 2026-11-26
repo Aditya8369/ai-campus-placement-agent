@@ -441,6 +441,10 @@
                   <a href="/drive-day-checklist?application_id={{ app.id }}" class="btn btn-sm btn-outline-success rounded-pill px-2 py-1 me-1" title="Drive Day Checklist" aria-label="Drive Day Checklist for {{ app.company_name }}">
                     <i class="fa-solid fa-clipboard-check"></i>
                   </a>
+                  <!-- Follow-up Note Helper (#847) -->
+                  <button class="btn btn-sm btn-outline-info rounded-pill px-2 py-1 btn-followup-note me-1" data-app-id="{{ app.id }}" data-company="{{ app.company_name }}" data-role="{{ app.role_title }}" title="Draft Follow-up Note" aria-label="Draft Follow-up Note for {{ app.company_name }}">
+                    <i class="fa-solid fa-envelope-open-text"></i>
+                  </button>
                   <!-- Edit Details -->
                   <button class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 btn-edit-app me-1" data-app-id="{{ app.id }}" title="Edit application" aria-label="Edit application for {{ app.company_name }}">
                     <i class="fa-solid fa-pen-to-square"></i>
@@ -718,6 +722,9 @@
           </div>
         </div>
         <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-info rounded-pill px-3 me-auto" id="btnFollowupFromView">
+            <i class="fa-solid fa-envelope-open-text me-1"></i> Draft Follow-up Note
+          </button>
           <button type="button" class="btn btn-outline-primary rounded-pill px-3" id="btnEditFromView">
             <i class="fa-solid fa-pen-to-square me-1"></i> Edit Application
           </button>
@@ -824,52 +831,104 @@
     </div>
   </div>
 
-  <!-- Bulk Application Actions Floating Bar (#848) -->
-  <div id="bulkActionBar" class="card border-0 shadow-lg position-fixed bottom-0 start-50 translate-middle-x mb-4 bulk-action-bar rounded-4 d-none" style="z-index: 1055; width: 92%; max-width: 920px; background-color: #1e293b; color: white;">
-    <div class="card-body py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-primary rounded-pill px-3 py-2 fs-6" id="bulkSelectedCount">0 selected</span>
-        <span class="small text-light opacity-75 d-none d-sm-inline">Applications selected</span>
-      </div>
-
-      <div class="d-flex flex-wrap align-items-center gap-2">
-        <!-- Set Status Dropdown -->
-        <div class="input-group input-group-sm" style="width: auto;">
-          <select class="form-select form-select-sm rounded-start-pill bg-dark text-white border-secondary" id="bulkStatusSelect" aria-label="Bulk status selector">
-            <option value="">Set Status...</option>
-            <option value="Applied">Applied</option>
-            <option value="Assessment">Assessment</option>
-            <option value="Interview">Interview</option>
-            <option value="Selected">Selected</option>
-            <option value="Rejected">Rejected</option>
-          </select>
-          <button class="btn btn-sm btn-primary rounded-end-pill px-3" id="btnBulkApplyStatus" type="button" title="Apply Status">
-            Apply
-          </button>
+  <!-- Follow-Up Note Modal (#847) -->
+  <div class="modal fade" id="followUpNoteModal" tabindex="-1" aria-labelledby="followUpNoteModalLabel" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+      <div class="modal-content rounded-4 border-0 shadow">
+        <div class="modal-header border-bottom">
+          <h5 class="modal-title fw-bold text-dark" id="followUpNoteModalLabel">
+            <i class="fa-solid fa-envelope-open-text text-info me-2"></i>Post-Interview Note Generator
+          </h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
+        <div class="modal-body p-4">
+          <div class="alert alert-info border-0 rounded-3 small mb-3">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            Drafts are created for you to review and customize. <strong>Notes are never sent automatically.</strong> You can edit the text directly and copy it to send from your own email or LinkedIn.
+          </div>
 
-        <!-- Add Tag Input -->
-        <div class="input-group input-group-sm" style="width: 210px;">
-          <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary rounded-start-pill" id="bulkTagInput" placeholder="Add Tag (e.g. Dream)" maxlength="30" aria-label="Bulk tag name">
-          <button class="btn btn-sm btn-info rounded-end-pill px-3 text-white" id="btnBulkApplyTag" type="button" title="Add Tag">
-            <i class="fa-solid fa-tag me-1"></i> Tag
-          </button>
+          <form id="followUpNoteForm">
+            <input type="hidden" id="followUpAppId" value="">
+            <div class="row g-3 mb-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Target Company (from tracker)</label>
+                <input type="text" class="form-control rounded-pill bg-light" id="followUpCompany" readonly>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small fw-semibold text-secondary">Role Title</label>
+                <input type="text" class="form-control rounded-pill bg-light" id="followUpRole" readonly>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="followUpTypeSelect" class="form-label small fw-semibold text-dark">Choose Note Type</label>
+              <select class="form-select rounded-pill" id="followUpTypeSelect" required>
+                <option value="thank_you">Thank-you (within 24 hours)</option>
+                <option value="follow_up">Follow-up (after one week)</option>
+                <option value="offer_acknowledgement">Offer acknowledgement</option>
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label for="followUpDetailInput" class="form-label small fw-semibold text-dark">
+                One Detail from the Interview <span class="text-muted fw-normal">(Optional)</span>
+              </label>
+              <input type="text" class="form-control rounded-pill" id="followUpDetailInput"
+                     placeholder="e.g., discussed our distributed caching project or team hackathons" maxlength="200">
+              <div class="form-text small text-muted">
+                Leave blank to generate a generic, polite draft. Only your detail and company name from the tracker are used.
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-end mb-2">
+              <button type="button" class="btn btn-primary rounded-pill px-4 shadow-sm" id="btnGenerateFollowUp">
+                <i class="fa-solid fa-wand-magic-sparkles me-1"></i> Generate Draft
+              </button>
+            </div>
+          </form>
+
+          <!-- Draft Preview Section -->
+          <div id="followUpDraftSection" class="mt-4 pt-3 border-top d-none">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h6 class="fw-bold mb-0 text-dark">
+                <i class="fa-solid fa-file-pen text-primary me-1"></i> Editable Draft
+              </h6>
+              <span class="badge bg-secondary-subtle text-secondary rounded-pill" id="followUpWordCountBadge">
+                0 / 150 words
+              </span>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold text-muted">Subject Line</label>
+              <input type="text" class="form-control rounded-pill" id="followUpSubjectInput">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label small fw-semibold text-muted">Message Body (editable)</label>
+              <textarea class="form-control rounded-3" id="followUpDraftTextarea" rows="7" style="font-family: inherit; font-size: 0.95rem;"></textarea>
+              <div class="form-text small text-muted">
+                <i class="fa-solid fa-pen text-muted me-1"></i> You can edit this text directly before copying.
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span class="text-success small fw-semibold" id="copyStatusText" style="display: none;">
+                <i class="fa-solid fa-check me-1"></i> Copied to clipboard!
+              </span>
+              <div class="ms-auto d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary rounded-pill px-3" id="btnCopySubject">
+                  <i class="fa-regular fa-copy me-1"></i> Copy Subject
+                </button>
+                <button type="button" class="btn btn-success rounded-pill px-4 shadow-sm" id="btnCopyFollowUpDraft">
+                  <i class="fa-solid fa-copy me-1"></i> Copy Draft
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <!-- Export CSV Button -->
-        <button class="btn btn-sm btn-success rounded-pill px-3" id="btnBulkExportCsv" type="button" title="Export selected to CSV">
-          <i class="fa-solid fa-file-csv me-1"></i> Export CSV
-        </button>
-
-        <!-- Delete Button -->
-        <button class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnBulkDelete" type="button" title="Delete selected applications">
-          <i class="fa-solid fa-trash-can me-1"></i> Delete
-        </button>
-
-        <!-- Clear Selection Button -->
-        <button class="btn btn-sm btn-outline-light rounded-circle p-1 px-2" id="btnBulkClear" type="button" title="Clear selection" aria-label="Clear selection">
-          <i class="fa-solid fa-xmark"></i>
-        </button>
+        <div class="modal-footer border-top">
+          <button type="button" class="btn btn-outline-secondary rounded-pill px-4" data-bs-dismiss="modal">Close</button>
+        </div>
       </div>
     </div>
   </div>
@@ -928,6 +987,8 @@
       const editModalEl = document.getElementById("editAppModal");
       const viewModal = viewModalEl ? new bootstrap.Modal(viewModalEl) : null;
       const editModal = editModalEl ? new bootstrap.Modal(editModalEl) : null;
+      const followUpModalEl = document.getElementById("followUpNoteModal");
+      const followUpModal = followUpModalEl ? new bootstrap.Modal(followUpModalEl) : null;
       const toastEl = document.getElementById("liveFeedbackToast");
       const toast = toastEl ? new bootstrap.Toast(toastEl, { delay: 3500 }) : null;
 
@@ -1022,6 +1083,9 @@
                   </button>
                   <button class="btn btn-sm btn-outline-primary rounded-pill px-2 py-0 btn-edit-app" data-app-id="${app.id}" title="Edit" aria-label="Edit">
                     <i class="fa-solid fa-pen-to-square small"></i>
+                  </button>
+                  <button class="btn btn-sm btn-outline-info rounded-pill px-2 py-0 btn-followup-note" data-app-id="${app.id}" data-company="${escapeHtml(app.company_name)}" data-role="${escapeHtml(app.role_title)}" title="Draft Follow-up Note" aria-label="Draft Follow-up Note">
+                    <i class="fa-solid fa-envelope-open-text small"></i>
                   </button>
                 </div>
                 <button class="btn btn-sm btn-outline-danger rounded-circle p-0 px-1 btn-delete-app" data-app-id="${app.id}" title="Delete" aria-label="Delete">
@@ -1214,16 +1278,13 @@
           };
         });
 
-        // Row Checkboxes for Bulk Actions (#848)
-        document.querySelectorAll(".app-row-checkbox").forEach(cb => {
-          cb.onchange = (e) => {
-            const appId = e.target.value;
-            if (e.target.checked) {
-              selectedAppIds.add(appId);
-            } else {
-              selectedAppIds.delete(appId);
-            }
-            updateBulkBar();
+        // Follow-up Note Helper opener (#847)
+        document.querySelectorAll(".btn-followup-note").forEach(btn => {
+          btn.onclick = () => {
+            const appId = btn.getAttribute("data-app-id");
+            const company = btn.getAttribute("data-company") || "";
+            const role = btn.getAttribute("data-role") || "";
+            openFollowUpModal(appId, company, role);
           };
         });
       }
@@ -1303,237 +1364,157 @@
         };
       }
 
-      // Bulk Actions Controller (#848)
-      function updateBulkBar() {
-        const bar = document.getElementById("bulkActionBar");
-        const countBadge = document.getElementById("bulkSelectedCount");
-        const selectAllCb = document.getElementById("bulkSelectAll");
-        const totalSelected = selectedAppIds.size;
+      // Open Follow-up Note Modal (#847)
+      function openFollowUpModal(appId, companyName, roleTitle) {
+        let app = applications.find(a => String(a.id) === String(appId));
+        const finalCompany = (app ? app.company_name : companyName) || "Target Company";
+        const finalRole = (app ? app.role_title : roleTitle) || "";
 
-        if (countBadge) countBadge.textContent = `${totalSelected} selected`;
+        const appIdInput = document.getElementById("followUpAppId");
+        if (appIdInput) appIdInput.value = appId || "";
+        const companyInput = document.getElementById("followUpCompany");
+        if (companyInput) companyInput.value = finalCompany;
+        const roleInput = document.getElementById("followUpRole");
+        if (roleInput) roleInput.value = finalRole;
+        const typeSelect = document.getElementById("followUpTypeSelect");
+        if (typeSelect) typeSelect.value = "thank_you";
+        const detailInput = document.getElementById("followUpDetailInput");
+        if (detailInput) detailInput.value = "";
 
-        if (totalSelected > 0) {
-          bar?.classList.remove("d-none");
+        const draftSection = document.getElementById("followUpDraftSection");
+        if (draftSection) draftSection.classList.add("d-none");
+        const copyStatus = document.getElementById("copyStatusText");
+        if (copyStatus) copyStatus.style.display = "none";
+
+        if (followUpModal) followUpModal.show();
+      }
+
+      // Hook view modal's "Draft Follow-up Note" button
+      const btnFollowupFromView = document.getElementById("btnFollowupFromView");
+      if (btnFollowupFromView) {
+        btnFollowupFromView.onclick = () => {
+          const company = document.getElementById("viewAppCompany")?.textContent || "";
+          const role = document.getElementById("viewAppRole")?.textContent || "";
+          const viewAppId = document.getElementById("editAppId")?.value || "";
+          if (viewModal) viewModal.hide();
+          openFollowUpModal(viewAppId, company, role);
+        };
+      }
+
+      // Live word count for editable draft textarea
+      const draftTextarea = document.getElementById("followUpDraftTextarea");
+      const wordCountBadge = document.getElementById("followUpWordCountBadge");
+      function updateDraftWordCount() {
+        if (!draftTextarea || !wordCountBadge) return;
+        const text = draftTextarea.value.trim();
+        const words = text ? text.split(/\s+/).length : 0;
+        wordCountBadge.textContent = `${words} / 150 words`;
+        if (words > 150) {
+          wordCountBadge.className = "badge bg-danger text-white rounded-pill";
         } else {
-          bar?.classList.add("d-none");
-        }
-
-        const allCheckboxes = document.querySelectorAll(".app-row-checkbox");
-        if (selectAllCb) {
-          if (allCheckboxes.length > 0 && totalSelected === allCheckboxes.length) {
-            selectAllCb.checked = true;
-            selectAllCb.indeterminate = false;
-          } else if (totalSelected > 0) {
-            selectAllCb.checked = false;
-            selectAllCb.indeterminate = true;
-          } else {
-            selectAllCb.checked = false;
-            selectAllCb.indeterminate = false;
-          }
+          wordCountBadge.className = "badge bg-secondary-subtle text-secondary rounded-pill";
         }
       }
-
-      function clearBulkSelection() {
-        selectedAppIds.clear();
-        document.querySelectorAll(".app-row-checkbox").forEach(cb => { cb.checked = false; });
-        const selectAllCb = document.getElementById("bulkSelectAll");
-        if (selectAllCb) {
-          selectAllCb.checked = false;
-          selectAllCb.indeterminate = false;
-        }
-        updateBulkBar();
+      if (draftTextarea) {
+        draftTextarea.addEventListener("input", updateDraftWordCount);
       }
 
-      // Select-All Checkbox
-      const selectAllCheckbox = document.getElementById("bulkSelectAll");
-      if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener("change", (e) => {
-          const isChecked = e.target.checked;
-          document.querySelectorAll(".app-row-checkbox").forEach(cb => {
-            cb.checked = isChecked;
-            const appId = cb.value;
-            if (isChecked) {
-              selectedAppIds.add(appId);
-            } else {
-              selectedAppIds.delete(appId);
-            }
-          });
-          updateBulkBar();
-        });
-      }
+      // Generate Draft button handler
+      const btnGenerateFollowUp = document.getElementById("btnGenerateFollowUp");
+      if (btnGenerateFollowUp) {
+        btnGenerateFollowUp.onclick = async () => {
+          const appId = document.getElementById("followUpAppId")?.value || "";
+          const companyName = document.getElementById("followUpCompany")?.value || "";
+          const roleTitle = document.getElementById("followUpRole")?.value || "";
+          const noteType = document.getElementById("followUpTypeSelect")?.value || "thank_you";
+          const detail = document.getElementById("followUpDetailInput")?.value || "";
 
-      // Apply Bulk Status
-      const btnBulkApplyStatus = document.getElementById("btnBulkApplyStatus");
-      if (btnBulkApplyStatus) {
-        btnBulkApplyStatus.addEventListener("click", async () => {
-          const newStatus = document.getElementById("bulkStatusSelect")?.value;
-          if (!newStatus) {
-            showFeedback("Please select a status to apply.", false);
-            return;
-          }
-          if (selectedAppIds.size === 0) {
-            showFeedback("No applications selected.", false);
-            return;
-          }
+          btnGenerateFollowUp.disabled = true;
+          const originalBtnHtml = btnGenerateFollowUp.innerHTML;
+          btnGenerateFollowUp.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Generating...`;
 
-          btnBulkApplyStatus.disabled = true;
           try {
-            const res = await fetch("/api/applications/bulk", {
+            const url = appId
+              ? `/api/applications/${encodeURIComponent(appId)}/follow-up-note`
+              : `/api/applications/follow-up-note`;
+
+            const payload = {
+              type: noteType,
+              detail: detail,
+              company_name: companyName,
+              role_title: roleTitle,
+              student_id: studentId
+            };
+
+            const res = await fetch(url, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "status",
-                status: newStatus,
-                application_ids: Array.from(selectedAppIds),
-                student_id: studentId
-              })
+              body: JSON.stringify(payload)
             });
+
             const data = await res.json();
             if (res.ok && data.success) {
-              const updatedIds = data.updated_ids || Array.from(selectedAppIds);
-              const displayStatus = (newStatus === "Offered") ? "Selected" : newStatus;
-              updatedIds.forEach(id => {
-                const item = applications.find(a => String(a.id) === String(id));
-                if (item) item.status = displayStatus;
-                const dd = document.querySelector(`.status-dropdown[data-app-id="${id}"]`);
-                if (dd) dd.value = displayStatus;
-              });
-              renderKanbanBoard();
-              refreshStageStats();
-              showFeedback(data.message || `Updated status to ${newStatus}.`);
-              clearBulkSelection();
+              const subjectInput = document.getElementById("followUpSubjectInput");
+              if (subjectInput) subjectInput.value = data.subject || "";
+              if (draftTextarea) draftTextarea.value = data.body || "";
+              updateDraftWordCount();
+
+              const draftSection = document.getElementById("followUpDraftSection");
+              if (draftSection) draftSection.classList.remove("d-none");
             } else {
-              showFeedback(data.error || "Failed to update applications.", false);
+              showFeedback(data.error || "Failed to generate note draft.", false);
             }
-          } catch (e) {
-            console.error(e);
-            showFeedback("Network error during bulk status update.", false);
+          } catch (err) {
+            console.error("Follow-up note generation error:", err);
+            showFeedback("Network error generating follow-up note.", false);
           } finally {
-            btnBulkApplyStatus.disabled = false;
+            btnGenerateFollowUp.disabled = false;
+            btnGenerateFollowUp.innerHTML = originalBtnHtml;
           }
-        });
+        };
       }
 
-      // Apply Bulk Tag
-      const btnBulkApplyTag = document.getElementById("btnBulkApplyTag");
-      if (btnBulkApplyTag) {
-        btnBulkApplyTag.addEventListener("click", async () => {
-          const tagInput = document.getElementById("bulkTagInput");
-          const tag = tagInput?.value.trim();
-          if (!tag) {
-            showFeedback("Please enter a tag name.", false);
-            return;
-          }
-          if (selectedAppIds.size === 0) {
-            showFeedback("No applications selected.", false);
-            return;
-          }
+      // Copy draft to clipboard button
+      const btnCopyFollowUpDraft = document.getElementById("btnCopyFollowUpDraft");
+      if (btnCopyFollowUpDraft) {
+        btnCopyFollowUpDraft.onclick = async () => {
+          const subject = document.getElementById("followUpSubjectInput")?.value || "";
+          const body = document.getElementById("followUpDraftTextarea")?.value || "";
+          const fullDraft = `Subject: ${subject}\n\n${body}`;
 
-          btnBulkApplyTag.disabled = true;
           try {
-            const res = await fetch("/api/applications/bulk", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "tag",
-                tag: tag,
-                application_ids: Array.from(selectedAppIds),
-                student_id: studentId
-              })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-              const updatedIds = data.updated_ids || Array.from(selectedAppIds);
-              updatedIds.forEach(id => {
-                const item = applications.find(a => String(a.id) === String(id));
-                if (item) {
-                  const existing = item.tags ? item.tags.split(",").map(t => t.trim()) : [];
-                  if (!existing.includes(tag)) existing.push(tag);
-                  item.tags = existing.join(", ");
-                }
-              });
-              showFeedback(data.message || `Added tag '${tag}'.`);
-              if (tagInput) tagInput.value = "";
-              clearBulkSelection();
-              setTimeout(() => { window.location.reload(); }, 600);
-            } else {
-              showFeedback(data.error || "Failed to add tag.", false);
+            await navigator.clipboard.writeText(fullDraft);
+            const statusEl = document.getElementById("copyStatusText");
+            if (statusEl) {
+              statusEl.style.display = "inline";
+              setTimeout(() => { statusEl.style.display = "none"; }, 3000);
             }
+            showFeedback("Follow-up note copied to clipboard!");
           } catch (e) {
-            console.error(e);
-            showFeedback("Network error during bulk tagging.", false);
-          } finally {
-            btnBulkApplyTag.disabled = false;
-          }
-        });
-      }
-
-      // Export Selected to CSV
-      const btnBulkExportCsv = document.getElementById("btnBulkExportCsv");
-      if (btnBulkExportCsv) {
-        btnBulkExportCsv.addEventListener("click", () => {
-          if (selectedAppIds.size === 0) {
-            showFeedback("No applications selected to export.", false);
-            return;
-          }
-          const idsParam = Array.from(selectedAppIds).join(",");
-          window.location.href = `/api/applications/bulk/export?application_ids=${encodeURIComponent(idsParam)}&student_id=${encodeURIComponent(studentId)}`;
-          showFeedback(`Exporting ${selectedAppIds.size} applications to CSV...`);
-        });
-      }
-
-      // Delete Selected Applications with Confirmation
-      const btnBulkDelete = document.getElementById("btnBulkDelete");
-      if (btnBulkDelete) {
-        btnBulkDelete.addEventListener("click", async () => {
-          const count = selectedAppIds.size;
-          if (count === 0) {
-            showFeedback("No applications selected to delete.", false);
-            return;
-          }
-          if (!confirm(`Are you sure you want to delete ${count} selected application${count !== 1 ? 's' : ''}? This action cannot be undone.`)) {
-            return;
-          }
-
-          btnBulkDelete.disabled = true;
-          try {
-            const res = await fetch("/api/applications/bulk", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "delete",
-                application_ids: Array.from(selectedAppIds),
-                student_id: studentId
-              })
-            });
-            const data = await res.json();
-            if (res.ok && data.success) {
-              const deletedIds = data.deleted_ids || Array.from(selectedAppIds);
-              deletedIds.forEach(id => {
-                document.getElementById(`row-${id}`)?.remove();
-                document.getElementById(`kanban-card-${id}`)?.remove();
-                applications = applications.filter(a => String(a.id) !== String(id));
-              });
-              refreshStageStats();
-              renderKanbanBoard();
-              showFeedback(data.message || `Deleted ${deletedIds.length} applications.`);
-              clearBulkSelection();
-            } else {
-              showFeedback(data.error || "Failed to delete applications.", false);
+            console.warn("Clipboard write failed:", e);
+            if (draftTextarea) {
+              draftTextarea.select();
+              document.execCommand("copy");
+              showFeedback("Draft copied to clipboard!");
             }
-          } catch (e) {
-            console.error(e);
-            showFeedback("Network error deleting applications.", false);
-          } finally {
-            btnBulkDelete.disabled = false;
           }
-        });
+        };
       }
 
-      // Clear selection
-      const btnBulkClear = document.getElementById("btnBulkClear");
-      if (btnBulkClear) {
-        btnBulkClear.addEventListener("click", clearBulkSelection);
+      // Copy subject button
+      const btnCopySubject = document.getElementById("btnCopySubject");
+      if (btnCopySubject) {
+        btnCopySubject.onclick = async () => {
+          const subject = document.getElementById("followUpSubjectInput")?.value || "";
+          if (subject) {
+            try {
+              await navigator.clipboard.writeText(subject);
+              showFeedback("Subject line copied to clipboard!");
+            } catch (e) {
+              console.warn(e);
+            }
+          }
+        };
       }
 
       // View Mode Toggle (Table vs Kanban)

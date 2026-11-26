@@ -88,6 +88,7 @@ from agents.internship_agent import InternshipRecommendationAgent
 from agents.linkedin_agent import LinkedInAgent
 from agents.coding_practice_agent import CodingPracticeAgent
 from agents.outreach_agent import OutreachGeneratorAgent
+from agents.follow_up_note_agent import FollowUpNoteAgent, NOTE_TYPES
 from agents.self_introduction_agent import SelfIntroductionAgent, calculate_speaking_time
 from agents.project_deep_dive_agent import ProjectDeepDiveAgent
 from agents.role_prep_agent import role_prep_agent, SUPPORTED_ROLES
@@ -1652,6 +1653,115 @@ def api_application_detail_operations(app_id: str):
     if request.method == "DELETE":
         deleted = delete_job_application(app_id=app_id, student_id=student_id)
         return jsonify({"success": deleted}), (200 if deleted else 404)
+
+
+@tracker_bp.route("/api/applications/<app_id>/follow-up-note", methods=["GET", "POST"])
+def api_application_follow_up_note(app_id: str):
+    """
+    Generates a tailored post-interview thank-you, follow-up, or offer acknowledgement note (#847).
+    Uses the company name from the tracked application and the single detail provided by the student.
+    Drafts are strictly under 150 words and are never sent automatically.
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        request.args.get("student_id")
+        or json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_record = get_job_application_by_id(app_id, student_id)
+    if not app_record:
+        return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+
+    note_type = (
+        request.args.get("type")
+        or request.args.get("note_type")
+        or json_data.get("type")
+        or json_data.get("note_type")
+        or request.form.get("type")
+        or request.form.get("note_type")
+        or "thank_you"
+    )
+
+    detail = (
+        request.args.get("detail")
+        or request.args.get("interview_detail")
+        or json_data.get("detail")
+        or json_data.get("interview_detail")
+        or request.form.get("detail")
+        or request.form.get("interview_detail")
+        or ""
+    )
+
+    company_name = app_record.get("company_name") or "Target Company"
+    role_title = app_record.get("role_title") or ""
+
+    agent = FollowUpNoteAgent()
+    note_payload = agent.generate_note(
+        company_name=company_name,
+        note_type=note_type,
+        interview_detail=detail,
+        role_title=role_title,
+    )
+    note_payload["application_id"] = app_id
+    note_payload["auto_send"] = False  # Strictly no auto-send
+
+    return jsonify(note_payload), 200
+
+
+@tracker_bp.route("/api/applications/follow-up-note", methods=["POST"])
+def api_generic_follow_up_note():
+    """
+    Direct follow-up note generator by application_id or company_name (#847).
+    """
+    json_data = request.get_json(silent=True) if request.is_json else {}
+    if not isinstance(json_data, dict):
+        json_data = {}
+
+    student_id = (
+        json_data.get("student_id")
+        or request.form.get("student_id")
+        or flask_session.get("user_id")
+        or flask_session.get("student_id")
+        or "default_student"
+    ).strip()
+
+    app_id = (json_data.get("application_id") or json_data.get("app_id") or request.form.get("application_id") or "").strip()
+    company_name = (json_data.get("company_name") or request.form.get("company_name") or "").strip()
+    role_title = (json_data.get("role_title") or request.form.get("role_title") or "").strip()
+
+    if app_id:
+        app_record = get_job_application_by_id(app_id, student_id)
+        if app_record:
+            company_name = app_record.get("company_name") or company_name
+            role_title = app_record.get("role_title") or role_title
+        elif not company_name:
+            return jsonify({"success": False, "error": "Application not found or unauthorized."}), 404
+
+    if not company_name:
+        return jsonify({"success": False, "error": "Company name or valid application ID is required."}), 400
+
+    note_type = json_data.get("type") or json_data.get("note_type") or request.form.get("type") or "thank_you"
+    detail = json_data.get("detail") or json_data.get("interview_detail") or request.form.get("detail") or ""
+
+    agent = FollowUpNoteAgent()
+    note_payload = agent.generate_note(
+        company_name=company_name,
+        note_type=note_type,
+        interview_detail=detail,
+        role_title=role_title,
+    )
+    if app_id:
+        note_payload["application_id"] = app_id
+    note_payload["auto_send"] = False
+
+    return jsonify(note_payload), 200
 
 
 @tracker_bp.route("/api/export/csv/<data_type>", methods=["GET"])
