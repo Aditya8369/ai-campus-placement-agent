@@ -5,6 +5,7 @@ Thank you for your interest in contributing to the AI Campus Placement Agent! We
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [System Architecture](#system-architecture)
 - [Getting Started](#getting-started)
 - [Development Setup](#development-setup)
 - [Contributing Guidelines](#contributing-guidelines)
@@ -15,6 +16,14 @@ Thank you for your interest in contributing to the AI Campus Placement Agent! We
 ## Code of Conduct
 
 By participating in this project, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## System Architecture
+
+Before submitting code changes or exploring new features, contributors are strongly encouraged to read the [System Architecture Guide](docs/architecture.md). It includes:
+- **Request Flow**: From resume upload through parsing, sanitization, AI evaluation, and dashboard rendering.
+- **Agent Pipeline**: Specialization of `CoordinatorAgent`, `ResumeAgent`, `RolePrepAgent`, `RoadmapAgent`, and `InterviewAgent`.
+- **Interview Lifecycle**: State machine diagram covering session checkpoints, STAR grading, pausing, and transcripts.
+- **Relational Schema**: Entity-Relationship (ER) diagram of core database tables (`users`, `analyses`, `interviews`, `job_applications`, `student_profiles`, etc.).
 
 ## Getting Started
 

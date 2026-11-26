@@ -32,6 +32,8 @@ In contrast, the **AI Campus Placement Agent** implements a **Coordinated Multi-
 
 ## System Architecture & Workflow
 
+For a detailed architectural breakdown including sequence diagrams of resume analysis, the multi-agent execution pipeline, interview state machines, and relational database schemas, refer to the [System Architecture Guide](docs/architecture.md).
+
 ```mermaid
 graph TD
     User([Student User]) -->|Uploads PDF Resume / Pastes Job Desc / Selects Company| FlaskApp[Flask Web Server]
