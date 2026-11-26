@@ -1090,95 +1090,78 @@ def api_admin_intervention_scan():
 
 
 # =====================================================================
-# ADMIN USER MANAGEMENT & DIRECTORY (#853)
+# FEATURE FLAG MANAGEMENT & AUDIT ROUTES (#854)
 # =====================================================================
 
-@admin_bp.route("/admin/users", methods=["GET"])
-def admin_users_view():
+@admin_bp.route("/admin/feature-flags", methods=["GET"])
+@admin_bp.route("/admin/flags", methods=["GET"])
+def admin_feature_flags_view():
     """
-    Renders the administrative user management directory (#853).
-    Supports search (name, email), status filtering, and pagination.
+    Renders the administrative feature flags dashboard (#854).
+    Enables viewing registered and active flags, updating rollout percentage,
+    toggling enabled state, and viewing audit logs.
     """
     if not _check_admin_access():
         return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    from utils.admin_user_service import list_users_for_admin, count_active_admins
+    from utils.feature_flags import feature_flags
 
-    search_query = request.args.get("search", "").strip()
-    status_filter = request.args.get("status", "all").strip().lower()
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 15))
+    flags = feature_flags.list_flags()
+    recent_logs = feature_flags.get_audit_logs(limit=30)
 
-    data = list_users_for_admin(
-        search_query=search_query,
-        status_filter=status_filter,
-        page=page,
-        per_page=per_page,
-    )
-    active_admins = count_active_admins()
+    enabled_count = sum(1 for f in flags if f["is_enabled"])
+    disabled_count = len(flags) - enabled_count
 
     return render_template(
-        "admin_users.html",
-        users=data["users"],
-        total_count=data["total_count"],
-        page=data["page"],
-        per_page=data["per_page"],
-        total_pages=data["total_pages"],
-        has_next=data["has_next"],
-        has_prev=data["has_prev"],
-        search_query=search_query,
-        status_filter=status_filter,
-        active_count=data["active_count"],
-        deactivated_count=data["deactivated_count"],
-        active_admins=active_admins,
+        "admin_feature_flags.html",
+        flags=flags,
+        recent_logs=recent_logs,
+        enabled_count=enabled_count,
+        disabled_count=disabled_count,
+        total_count=len(flags),
     )
 
 
-@admin_bp.route("/api/admin/users", methods=["GET"])
-def api_admin_list_users():
-    """Returns paginated, sanitized list of users (#853)."""
+@admin_bp.route("/api/admin/feature-flags", methods=["GET"])
+def api_admin_list_feature_flags():
+    """Retrieves all feature flags with runtime state and rollout percentages (#854)."""
     if not _check_admin_access():
         return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    from utils.admin_user_service import list_users_for_admin, count_active_admins
+    from utils.feature_flags import feature_flags
 
-    search_query = request.args.get("search", "").strip()
-    status_filter = request.args.get("status", "all").strip().lower()
-    page = int(request.args.get("page", 1))
-    per_page = int(request.args.get("per_page", 15))
-
-    data = list_users_for_admin(
-        search_query=search_query,
-        status_filter=status_filter,
-        page=page,
-        per_page=per_page,
-    )
-    data["active_admins"] = count_active_admins()
-    data["success"] = True
-    return jsonify(data), 200
+    flags = feature_flags.list_flags()
+    return jsonify({"success": True, "flags": flags, "total": len(flags)}), 200
 
 
-@admin_bp.route("/api/admin/users/<target_user_id>/status", methods=["POST"])
-def api_admin_set_user_status(target_user_id: str):
+@admin_bp.route("/api/admin/feature-flags/<flag_key>", methods=["POST"])
+def api_admin_update_feature_flag(flag_key: str):
     """
-    Toggles user active status (Deactivate / Reactivate) (#853).
-    Guards against deactivating the last active administrator.
+    Updates or creates a feature flag's state, description, and rollout percentage (#854).
+    Restricted strictly to administrators and logs audit records.
     """
     if not _check_admin_access():
         return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    from utils.admin_user_service import set_user_active_status
+    from utils.feature_flags import feature_flags
 
     payload = request.get_json(silent=True) or request.form.to_dict()
-    is_active = payload.get("is_active")
-    if is_active is None:
-        return jsonify({"success": False, "error": "Missing 'is_active' boolean field."}), 400
+    is_enabled = payload.get("is_enabled")
+    if is_enabled is None:
+        return jsonify({"success": False, "error": "Missing 'is_enabled' field."}), 400
 
-    if isinstance(is_active, str):
-        is_active = is_active.lower() in ("true", "1", "yes")
+    if isinstance(is_enabled, str):
+        is_enabled = is_enabled.lower() in ("true", "1", "yes", "on")
     else:
-        is_active = bool(is_active)
+        is_enabled = bool(is_enabled)
 
+    rollout_pct = payload.get("rollout_percentage", 100)
+    try:
+        rollout_pct = max(0, min(100, int(rollout_pct)))
+    except (ValueError, TypeError):
+        rollout_pct = 100
+
+    description = payload.get("description")
     admin_id = flask_session.get("user_id") or flask_session.get("user_name") or "admin"
     client_ip = (
         request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
@@ -1187,9 +1170,11 @@ def api_admin_set_user_status(target_user_id: str):
         or "127.0.0.1"
     )
 
-    success, message = set_user_active_status(
-        target_user_id=target_user_id,
-        is_active=is_active,
+    success, message = feature_flags.set_flag(
+        flag_key=flag_key,
+        is_enabled=is_enabled,
+        rollout_percentage=rollout_pct,
+        description=description,
         admin_id=admin_id,
         ip_address=client_ip,
     )
@@ -1198,44 +1183,16 @@ def api_admin_set_user_status(target_user_id: str):
     return jsonify({"success": success, "message": message}), status_code
 
 
-@admin_bp.route("/api/admin/users/<target_user_id>/sign-out-everywhere", methods=["POST"])
-def api_admin_sign_out_everywhere(target_user_id: str):
-    """
-    Forcefully terminates all active authenticated sessions for a user (#853).
-    """
+@admin_bp.route("/api/admin/feature-flags/<flag_key>/audit-logs", methods=["GET"])
+def api_admin_feature_flag_audit_logs(flag_key: str):
+    """Retrieves change history for a given feature flag (#854)."""
     if not _check_admin_access():
         return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
 
-    from utils.admin_user_service import sign_out_user_everywhere
+    from utils.feature_flags import feature_flags
 
-    admin_id = flask_session.get("user_id") or flask_session.get("user_name") or "admin"
-    client_ip = (
-        request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-        or request.headers.get("X-Real-IP", "").strip()
-        or request.remote_addr
-        or "127.0.0.1"
-    )
-
-    success, message, count = sign_out_user_everywhere(
-        target_user_id=target_user_id,
-        admin_id=admin_id,
-        ip_address=client_ip,
-    )
-
-    status_code = 200 if success else 400
-    return jsonify({"success": success, "message": message, "revoked_sessions_count": count}), status_code
-
-
-@admin_bp.route("/api/admin/users/<target_user_id>/audit-logs", methods=["GET"])
-def api_admin_user_audit_logs(target_user_id: str):
-    """Retrieves recent audit logs for a specific user (#853)."""
-    if not _check_admin_access():
-        return jsonify({"success": False, "error": "Unauthorized: Administrator access required."}), 403
-
-    from utils.admin_user_service import get_admin_user_audit_logs
-
-    limit = int(request.args.get("limit", 20))
-    logs = get_admin_user_audit_logs(target_user_id=target_user_id, limit=limit)
+    limit = int(request.args.get("limit", 25))
+    logs = feature_flags.get_audit_logs(flag_key=flag_key, limit=limit)
     return jsonify({"success": True, "logs": logs}), 200
 
 

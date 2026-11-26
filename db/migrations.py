@@ -780,30 +780,33 @@ def _migration_013_account_lockouts(cursor: sqlite3.Cursor) -> None:
 
 
 # Documented, sequential migration registry
-def _migration_013_admin_user_management(cursor: sqlite3.Cursor) -> None:
-    """Ensure is_active and role columns exist on users, and create admin_user_audit_logs table (#853)."""
-    cursor.execute("PRAGMA table_info(users)")
-    user_cols = [c[1] for c in cursor.fetchall()]
-    if "is_active" not in user_cols:
-        cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
-    if "role" not in user_cols:
-        cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
-
+def _migration_013_feature_flags(cursor: sqlite3.Cursor) -> None:
+    """Create feature_flags and feature_flag_audit_logs tables for gradual rollouts (#854)."""
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS admin_user_audit_logs (
+        CREATE TABLE IF NOT EXISTS feature_flags (
+            key TEXT PRIMARY KEY,
+            description TEXT,
+            is_enabled INTEGER NOT NULL DEFAULT 0,
+            rollout_percentage INTEGER NOT NULL DEFAULT 100,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS feature_flag_audit_logs (
             id TEXT PRIMARY KEY,
+            flag_key TEXT NOT NULL,
             admin_id TEXT NOT NULL,
             action TEXT NOT NULL,
-            target_user_id TEXT NOT NULL,
-            target_email TEXT,
+            previous_state TEXT,
+            new_state TEXT,
             details TEXT,
             ip_address TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_target ON admin_user_audit_logs(target_user_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_action ON admin_user_audit_logs(action)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_created ON admin_user_audit_logs(created_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ff_audit_flag ON feature_flag_audit_logs(flag_key)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ff_audit_created ON feature_flag_audit_logs(created_at DESC)")
 
 
 MIGRATIONS: List[Migration] = [
@@ -819,7 +822,7 @@ MIGRATIONS: List[Migration] = [
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
     Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
-    Migration("013_account_lockouts", "Create failed_login_attempts and account_lockouts tables for brute-force defense", _migration_013_account_lockouts),
+    Migration("013_feature_flags", "Create feature_flags and audit logs for gradual rollout", _migration_013_feature_flags),
 ]
 
 
