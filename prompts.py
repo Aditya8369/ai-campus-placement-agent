@@ -704,17 +704,21 @@ Your task is to rewrite weak, passive, or unquantified resume bullet points from
 Accomplished [X] (Action Verb + Task) as measured by [Y] (Measurable Result) by doing [Z] (Methodology / Tech Stack).
 
 CRITICAL REQUIREMENTS:
-1. NEVER INVENT METRICS, NUMBERS, OR PERCENTAGES.
+1. NEVER INVENT METRICS, NUMBERS, OR PERCENTAGES:
    Do NOT invent statistics like '38%', '15,000 users', '$50,000', or '3x' if they were not in the candidate's original bullet.
-   Instead, you MUST use standard bracketed placeholders where the candidate must plug in real numbers, e.g.:
-   - [X%] for percentage improvements, reductions, or growth
-   - [number]+ for counts, scale, users, or transactions
-   - [X ms] for latency / performance gains
-   - [Y hours] or [Z weeks] for time savings
-   - [$amount] for monetary savings or revenue
-2. PRESERVE ORIGINAL FACTS: Do not invent responsibilities or technologies the candidate never worked on. Retain the core task.
-3. OPEN WITH STRONG ACTION VERBS: Start each rewrite with a strong past-tense power verb (e.g., Engineered, Architected, Spearheaded, Optimized, Streamlined, Automated, Implemented).
-4. OUTPUT FORMAT: Respond ONLY with a valid JSON object matching the requested schema. No markdown formatting, preamble, or commentary.
+   Instead, you MUST use standard bracketed placeholders such as [add metric] where the candidate must plug in real numbers, e.g.:
+   - [add metric] or [add metric] ([X%]) for percentage improvements, reductions, or growth
+   - [add metric] ([number]+) for counts, scale, users, or transactions
+   - [add metric] ([X ms]) for latency / performance gains
+   - [add metric] ([Y hours]) or [add metric] ([Z weeks]) for time savings
+   - [add metric] ([$amount]) for monetary savings or revenue
+2. NEVER INVENT TOOLS OR TECHNOLOGIES:
+   Do NOT invent tools, libraries, or frameworks (e.g., Docker, AWS, React, Kubernetes) if they were not mentioned in the candidate's original bullet.
+   If the candidate did not mention any technology or tool, you MUST use the placeholder [add tool] or [add technology] (e.g., 'using [add tool]').
+3. PRESERVE ORIGINAL FACTS: Do not invent responsibilities or technologies the candidate never worked on. Retain the core task.
+4. OPEN WITH STRONG ACTION VERBS: Start each rewrite with a strong past-tense power verb (e.g., Engineered, Architected, Spearheaded, Optimized, Streamlined, Automated, Implemented).
+5. IDENTIFY TECHNOLOGY USED: Accurately specify the technology/tool preserved from the original bullet. If no tool was mentioned, specify '[add tool]'.
+6. OUTPUT FORMAT: Respond ONLY with a valid JSON object matching the requested schema. No markdown formatting, preamble, or commentary.
 """
 
 BULLET_REWRITE_USER_PROMPT_TEMPLATE = """
@@ -728,10 +732,11 @@ Return a single JSON object matching this schema:
   "rewrites": [
     {{
       "original_bullet": "exact original bullet point text",
-      "action_verb": "Power action verb used",
+      "action_verb": "Power action verb used (e.g., Engineered, Architected)",
+      "technology_used": "Technology/tool explicitly mentioned in original bullet, or '[add tool]' if none was mentioned",
       "task": "Core technical task and tools preserved from original",
-      "measurable_result": "Measurable outcome using placeholders (e.g., 'reducing query latency by [X%] and supporting [number]+ concurrent users')",
-      "suggested_rewrite": "Complete polished bullet point starting with action verb, task, and measurable result with placeholders."
+      "measurable_result": "Measurable outcome using placeholders (e.g., 'reducing query latency by [add metric] ([X%]) and supporting [add metric] ([number]+) concurrent users')",
+      "suggested_rewrite": "Complete polished bullet point starting with action verb, task, technology used, and measurable result with placeholders."
     }}
   ]
 }}

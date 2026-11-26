@@ -25,7 +25,10 @@ from utils.bullet_rewriter import (
     evaluate_bullet_weakness,
     select_weakest_bullets,
     sanitize_metrics_with_placeholders,
+    sanitize_tools_with_placeholders,
     format_placeholders_for_display,
+    extract_technology_from_bullet,
+    is_tech_in_original,
     _generate_rule_based_rewrite,
     rewrite_weak_bullets,
     get_bullet_rewrites_for_analysis,
@@ -459,3 +462,106 @@ def test_format_placeholders_for_display_xss_safety():
     # Placeholders should be formatted in badge spans
     assert '<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0 rounded font-monospace small">[X%]</span>' in formatted
     assert '<span class="badge bg-primary-subtle text-primary border border-primary-subtle px-1 py-0 rounded font-monospace small">[number]</span>+ users.' in formatted
+
+
+# ==============================================================================
+# 10. Technology Extraction & Zero-Hallucination Tools (#429)
+# ==============================================================================
+
+def test_extract_technology_from_bullet_detects_tools():
+    """Verify known technologies are extracted, or [add tool] placeholder is returned when absent."""
+    # Bullet with explicit technologies
+    bullet_with_tech = "Worked on FastAPI backend microservices with PostgreSQL database and Docker containers."
+    detected = extract_technology_from_bullet(bullet_with_tech)
+    assert "FastAPI" in detected
+    assert "PostgreSQL" in detected
+    assert "Docker" in detected
+
+    # Bullet with NO technologies mentioned - must never invent tools
+    bullet_no_tech = "Worked on user login and session management workflow."
+    detected_none = extract_technology_from_bullet(bullet_no_tech)
+    assert detected_none == "[add tool]"
+
+
+def test_is_tech_in_original_validates_presence():
+    """Verify tool grounding against candidate original text."""
+    orig = "Responsible for building responsive interface in React and TypeScript."
+    assert is_tech_in_original("React", orig) is True
+    assert is_tech_in_original("TypeScript", orig) is True
+    assert is_tech_in_original("[add tool]", orig) is True
+    assert is_tech_in_original("Kubernetes", orig) is False
+    assert is_tech_in_original("AWS", orig) is False
+
+
+def test_rule_based_rewrite_technology_and_add_metric_placeholder():
+    """Verify rule-based rewriter includes action verb, technology used, and [add metric] placeholders."""
+    # Case 1: Bullet with no tools mentioned
+    original_no_tool = "Worked on user authentication and session management."
+    rewrite_no_tool = _generate_rule_based_rewrite(original_no_tool, section="experience", target_role="Software Engineer")
+
+    assert rewrite_no_tool["technology_used"] == "[add tool]"
+    assert "[add tool]" in rewrite_no_tool["suggested_rewrite"]
+    assert "[add metric]" in rewrite_no_tool["suggested_rewrite"]
+    assert "[add metric]" in rewrite_no_tool["measurable_result"]
+    assert rewrite_no_tool["action_verb"] in ["Architected", "Engineered", "Optimized", "Scaled", "Spearheaded", "Implemented"]
+
+    # Case 2: Bullet with tools mentioned (Python)
+    original_with_tool = "Worked on Python script for data processing and analysis."
+    rewrite_with_tool = _generate_rule_based_rewrite(original_with_tool, section="projects", target_role="Data Engineer")
+
+    assert "Python" in rewrite_with_tool["technology_used"]
+    assert "Python" in rewrite_with_tool["suggested_rewrite"]
+    assert "[add metric]" in rewrite_with_tool["suggested_rewrite"]
+
+
+def test_sanitize_tools_with_placeholders_replaces_hallucinated_technologies():
+    """Verify sanitizer replaces newly hallucinated technologies not present in candidate's original bullet."""
+    original = "Worked on user signup form and basic styling."
+    hallucinated = "Engineered responsive signup workflow using Docker, AWS, and Kubernetes, reducing latency by [X%]."
+
+    sanitized = sanitize_tools_with_placeholders(hallucinated, original)
+
+    # Docker, AWS, Kubernetes were not in original - should be sanitized to [add tool]
+    assert "Docker" not in sanitized
+    assert "AWS" not in sanitized
+    assert "Kubernetes" not in sanitized
+    assert "[add tool]" in sanitized
+
+
+def test_dashboard_renders_technology_badge_and_breakdown(test_app_client):
+    """Verify dashboard renders Technology badge, key elements breakdown, and copy button."""
+    aid = "aid_bullet_tech_test"
+    sample_resume = """
+    Jordan Lee
+    Experience
+    - Worked on Python backend API.
+    - Helped with frontend interface.
+    """
+    sample_results = {
+        "resume_analysis": {"ats_score": 78},
+        "extracted_resume_text": sample_resume
+    }
+    save_analysis(
+        analysis_id=aid,
+        resume_filename="jordan.pdf",
+        company_name="Google",
+        job_description="Full Stack Engineer",
+        results_dict=sample_results,
+        student_id="default_student"
+    )
+
+    response = test_app_client.get(f"/analysis/{aid}")
+    assert response.status_code == 200
+    html_content = response.get_data(as_text=True)
+
+    # Technology header badge & Action Verb header badge
+    assert "Technology:" in html_content
+    assert "Action Verb:" in html_content
+
+    # Key Elements breakdown pills
+    assert "Verb:" in html_content
+    assert "Tech:" in html_content
+
+    # Copy button with data-copy-text
+    assert "btn-copy-bullet-rewrite" in html_content
+    assert "data-copy-text=" in html_content
