@@ -402,6 +402,51 @@ The validator pinpoints the exact file, company, and field name for each issue s
      Remedy : Provide a valid canonical URL starting with http:// or https:// with a valid domain name.
 ```
 
+## Lighthouse CI & Quality Budgets
+
+To ensure high performance, accessibility, and best practices across student-facing views, the project enforces automated Lighthouse CI budgets (#859).
+
+### Monitored Pages and Standard Budgets
+
+Audits run across key candidate journeys:
+- **Landing Page (`/`)**: Public entry point.
+- **Login Page (`/login`)**: Authentication portal.
+- **Dashboard Page (`/dashboard`)**: Authenticated candidate analytics and placement dashboard.
+
+Budgets are stored in `lighthouserc.json`:
+- **Performance**: Minimum score `0.70` (70/100).
+- **Accessibility**: Minimum score `0.90` (90/100).
+- **Best Practices**: Minimum score `0.85` (85/100).
+
+### Running Lighthouse Audits Locally
+
+You can run the Lighthouse CI suite locally using:
+
+```bash
+# Run Lighthouse audits against the default configuration
+python utils/lighthouse_ci.py
+
+# Specify custom summary output file
+python utils/lighthouse_ci.py --summary-file lighthouse-summary.md
+
+# Run unit tests verifying budget assertions and summary generation
+pytest tests/test_lighthouse_ci.py -v
+```
+
+In GitHub Actions CI, the job prints a structured table to `$GITHUB_STEP_SUMMARY`. If any page falls below its budget threshold, the job fails with exit code `1`.
+
+### Updating Budgets and Documenting Rationale
+
+Budgets are defined in `lighthouserc.json`. To prevent gradual performance decay or accessibility regressions:
+
+1. **Strict Justification Required**: Budget thresholds cannot be lowered without maintainer approval and an explicit documented reason in the pull request description and commit message.
+2. **Acceptable Reasons for Budget Adjustments**:
+   - Temporary transition during a major frontend framework migration.
+   - Known third-party script integrations required by campus administrative policy (e.g. mandatory SSO redirects).
+   - Upgrading budget thresholds (raising targets to higher standards, e.g. from 0.70 to 0.80) is always welcomed and encouraged.
+3. **How to Update**: Edit the `assertions` under `ci.assert.assertions` or individual page targets in `budgets.targets` in `lighthouserc.json`, commit the change, and provide the explanation in the PR checklist.
+
+
 ## Pull Request Process
 
 1. **Update Documentation**: If your changes affect functionality, update the README or relevant documentation
