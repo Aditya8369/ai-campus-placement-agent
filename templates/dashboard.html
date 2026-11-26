@@ -5443,12 +5443,22 @@
 
         <!-- Availability Input Form -->
         <div class="p-3 bg-light rounded-4 border mb-3" id="timetableAvailabilityForm">
-          <h6 class="small fw-bold text-dark mb-2">Available Study Hours Per Day:</h6>
+          <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+            <h6 class="small fw-bold text-dark mb-0">Available Study Hours Per Day:</h6>
+            <!-- Quick Daily Study-Time Allocation Presets -->
+            <div class="d-flex align-items-center gap-1 flex-wrap">
+              <span class="small text-secondary fw-semibold me-1" style="font-size: 0.75rem;">Daily Presets:</span>
+              <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-0 btn-study-preset" data-hours="1" style="font-size: 0.72rem;">1 hr/day</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-0 btn-study-preset" data-hours="2" style="font-size: 0.72rem;">2 hrs/day</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-0 btn-study-preset active btn-secondary text-white" data-hours="3" style="font-size: 0.72rem;">3 hrs/day</button>
+              <button type="button" class="btn btn-xs btn-outline-secondary rounded-pill px-2 py-0 btn-study-preset" data-hours="4" style="font-size: 0.72rem;">4 hrs/day</button>
+            </div>
+          </div>
           <div class="row g-2 mb-2">
             {% for day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] %}
             <div class="col-sm col-6">
               <label class="form-label small text-muted mb-1" style="font-size: 0.75rem;">{{ day[:3] }}</label>
-              <input type="number" min="0" max="16" step="0.5" class="form-control form-control-sm text-center day-hours-input" data-day="{{ day }}" value="{{ '3' if loop.index <= 5 else '5' }}">
+              <input type="number" min="0" max="16" step="0.5" class="form-control form-control-sm text-center day-hours-input" data-day="{{ day }}" value="{{ '3' if loop.index <= 5 else '4' }}">
             </div>
             {% endfor %}
           </div>
@@ -6800,6 +6810,23 @@
         });
       }
 
+      // Quick Daily Study-Time Preset buttons
+      document.querySelectorAll(".btn-study-preset").forEach(btn => {
+        btn.addEventListener("click", () => {
+          document.querySelectorAll(".btn-study-preset").forEach(b => {
+            b.classList.remove("active", "btn-secondary", "text-white");
+            b.classList.add("btn-outline-secondary");
+          });
+          btn.classList.add("active", "btn-secondary", "text-white");
+          btn.classList.remove("btn-outline-secondary");
+          const hrs = parseFloat(btn.dataset.hours) || 2;
+          document.querySelectorAll(".day-hours-input").forEach((inp, idx) => {
+            inp.value = (idx >= 5) ? Math.min(16, hrs + 1) : hrs;
+          });
+          if (btnGenTimetable) btnGenTimetable.click();
+        });
+      });
+
       if (btnGenTimetable) {
         btnGenTimetable.addEventListener("click", async () => {
           const inputs = document.querySelectorAll(".day-hours-input");
@@ -6824,9 +6851,17 @@
               if (containerTimetable) containerTimetable.classList.remove("d-none");
               if (totalHoursEl) totalHoursEl.textContent = data.total_allocated_hours;
               if (daysRow) {
+                const categoryBadgeClass = (cat) => {
+                  if (cat === "Coding") return "bg-primary-subtle text-primary border border-primary-subtle";
+                  if (cat === "Projects") return "bg-info-subtle text-info-emphasis border border-info-subtle";
+                  if (cat === "Interviews") return "bg-success-subtle text-success border border-success-subtle";
+                  if (cat === "Revision") return "bg-warning-subtle text-warning-emphasis border border-warning-subtle";
+                  return "bg-secondary-subtle text-secondary";
+                };
+
                 daysRow.innerHTML = Object.entries(data.timetable).map(([day, tasks]) => `
                   <div class="col-lg-3 col-md-4 col-sm-6">
-                    <div class="p-3 bg-white rounded-3 border h-100">
+                    <div class="p-3 bg-white rounded-3 border h-100 shadow-xs">
                       <div class="d-flex justify-content-between align-items-center mb-2 pb-1 border-bottom">
                         <strong class="text-dark small">${day}</strong>
                         <span class="badge bg-light text-muted border rounded-pill">${availability[day] || 0} hrs</span>
@@ -6838,7 +6873,7 @@
                             <div class="fw-bold text-dark" style="font-size: 0.78rem;">${t.title}</div>
                             <div class="d-flex justify-content-between align-items-center mt-1 text-muted" style="font-size: 0.72rem;">
                               <span><i class="fa-regular fa-clock me-1"></i>${t.allocated_hours}h</span>
-                              <span class="badge bg-secondary-subtle text-secondary">${t.category}</span>
+                              <span class="badge rounded-pill ${categoryBadgeClass(t.category)}">${t.category}</span>
                             </div>
                           </div>
                         `).join("")}
