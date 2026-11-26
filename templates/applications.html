@@ -344,6 +344,9 @@
         <table class="table table-hover align-middle mb-0" id="applicationsTable">
           <thead class="table-light">
             <tr>
+              <th style="width: 38px;" class="text-center">
+                <input type="checkbox" class="form-check-input" id="bulkSelectAll" aria-label="Select all applications" title="Select all applications">
+              </th>
               <th>Company &amp; Location</th>
               <th>Role &amp; Type</th>
               <th>Date Applied</th>
@@ -356,11 +359,25 @@
           <tbody>
             {% for app in applications %}
               <tr id="row-{{ app.id }}" data-app-id="{{ app.id }}">
+                <td class="text-center">
+                  <input type="checkbox" class="form-check-input app-row-checkbox" value="{{ app.id }}" data-app-id="{{ app.id }}" aria-label="Select {{ app.company_name }}">
+                </td>
                 <td>
                   <div class="fw-bold text-dark app-company">{{ app.company_name }}</div>
                   <span class="badge bg-light text-muted border rounded-pill small app-location">
                     <i class="fa-solid fa-location-dot me-1"></i>{{ app.location or 'Remote' }}
                   </span>
+                  {% if app.tags %}
+                  <div class="mt-1 d-flex flex-wrap gap-1 app-tags-wrapper">
+                    {% for tag in app.tags.split(',') %}
+                      {% if tag.strip() %}
+                      <span class="badge bg-secondary-subtle text-secondary border rounded-pill small py-0 px-2">
+                        <i class="fa-solid fa-tag me-1 text-muted" style="font-size: 0.75rem;"></i>{{ tag.strip() }}
+                      </span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                  {% endif %}
                 </td>
                 <td>
                   <div class="fw-semibold text-secondary app-role">{{ app.role_title }}</div>
@@ -807,6 +824,56 @@
     </div>
   </div>
 
+  <!-- Bulk Application Actions Floating Bar (#848) -->
+  <div id="bulkActionBar" class="card border-0 shadow-lg position-fixed bottom-0 start-50 translate-middle-x mb-4 bulk-action-bar rounded-4 d-none" style="z-index: 1055; width: 92%; max-width: 920px; background-color: #1e293b; color: white;">
+    <div class="card-body py-2 px-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-primary rounded-pill px-3 py-2 fs-6" id="bulkSelectedCount">0 selected</span>
+        <span class="small text-light opacity-75 d-none d-sm-inline">Applications selected</span>
+      </div>
+
+      <div class="d-flex flex-wrap align-items-center gap-2">
+        <!-- Set Status Dropdown -->
+        <div class="input-group input-group-sm" style="width: auto;">
+          <select class="form-select form-select-sm rounded-start-pill bg-dark text-white border-secondary" id="bulkStatusSelect" aria-label="Bulk status selector">
+            <option value="">Set Status...</option>
+            <option value="Applied">Applied</option>
+            <option value="Assessment">Assessment</option>
+            <option value="Interview">Interview</option>
+            <option value="Selected">Selected</option>
+            <option value="Rejected">Rejected</option>
+          </select>
+          <button class="btn btn-sm btn-primary rounded-end-pill px-3" id="btnBulkApplyStatus" type="button" title="Apply Status">
+            Apply
+          </button>
+        </div>
+
+        <!-- Add Tag Input -->
+        <div class="input-group input-group-sm" style="width: 210px;">
+          <input type="text" class="form-control form-control-sm bg-dark text-white border-secondary rounded-start-pill" id="bulkTagInput" placeholder="Add Tag (e.g. Dream)" maxlength="30" aria-label="Bulk tag name">
+          <button class="btn btn-sm btn-info rounded-end-pill px-3 text-white" id="btnBulkApplyTag" type="button" title="Add Tag">
+            <i class="fa-solid fa-tag me-1"></i> Tag
+          </button>
+        </div>
+
+        <!-- Export CSV Button -->
+        <button class="btn btn-sm btn-success rounded-pill px-3" id="btnBulkExportCsv" type="button" title="Export selected to CSV">
+          <i class="fa-solid fa-file-csv me-1"></i> Export CSV
+        </button>
+
+        <!-- Delete Button -->
+        <button class="btn btn-sm btn-outline-danger rounded-pill px-3" id="btnBulkDelete" type="button" title="Delete selected applications">
+          <i class="fa-solid fa-trash-can me-1"></i> Delete
+        </button>
+
+        <!-- Clear Selection Button -->
+        <button class="btn btn-sm btn-outline-light rounded-circle p-1 px-2" id="btnBulkClear" type="button" title="Clear selection" aria-label="Clear selection">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Raw applications data payload for JavaScript client state -->
   <script id="applicationsDataJson" type="application/json">
     {{ applications|tojson|safe }}
@@ -820,6 +887,7 @@
   <script>
     (function() {
       const studentId = "{{ student_id }}";
+      const selectedAppIds = new Set();
       const resumeVersionSelect = document.getElementById("resumeVersionSelect");
       if (resumeVersionSelect) {
         resumeVersionSelect.addEventListener("change", () => {
@@ -1145,6 +1213,19 @@
             }
           };
         });
+
+        // Row Checkboxes for Bulk Actions (#848)
+        document.querySelectorAll(".app-row-checkbox").forEach(cb => {
+          cb.onchange = (e) => {
+            const appId = e.target.value;
+            if (e.target.checked) {
+              selectedAppIds.add(appId);
+            } else {
+              selectedAppIds.delete(appId);
+            }
+            updateBulkBar();
+          };
+        });
       }
 
       // Open Edit Modal and prefill
@@ -1220,6 +1301,239 @@
             showFeedback("Network error saving changes.", false);
           }
         };
+      }
+
+      // Bulk Actions Controller (#848)
+      function updateBulkBar() {
+        const bar = document.getElementById("bulkActionBar");
+        const countBadge = document.getElementById("bulkSelectedCount");
+        const selectAllCb = document.getElementById("bulkSelectAll");
+        const totalSelected = selectedAppIds.size;
+
+        if (countBadge) countBadge.textContent = `${totalSelected} selected`;
+
+        if (totalSelected > 0) {
+          bar?.classList.remove("d-none");
+        } else {
+          bar?.classList.add("d-none");
+        }
+
+        const allCheckboxes = document.querySelectorAll(".app-row-checkbox");
+        if (selectAllCb) {
+          if (allCheckboxes.length > 0 && totalSelected === allCheckboxes.length) {
+            selectAllCb.checked = true;
+            selectAllCb.indeterminate = false;
+          } else if (totalSelected > 0) {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = true;
+          } else {
+            selectAllCb.checked = false;
+            selectAllCb.indeterminate = false;
+          }
+        }
+      }
+
+      function clearBulkSelection() {
+        selectedAppIds.clear();
+        document.querySelectorAll(".app-row-checkbox").forEach(cb => { cb.checked = false; });
+        const selectAllCb = document.getElementById("bulkSelectAll");
+        if (selectAllCb) {
+          selectAllCb.checked = false;
+          selectAllCb.indeterminate = false;
+        }
+        updateBulkBar();
+      }
+
+      // Select-All Checkbox
+      const selectAllCheckbox = document.getElementById("bulkSelectAll");
+      if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener("change", (e) => {
+          const isChecked = e.target.checked;
+          document.querySelectorAll(".app-row-checkbox").forEach(cb => {
+            cb.checked = isChecked;
+            const appId = cb.value;
+            if (isChecked) {
+              selectedAppIds.add(appId);
+            } else {
+              selectedAppIds.delete(appId);
+            }
+          });
+          updateBulkBar();
+        });
+      }
+
+      // Apply Bulk Status
+      const btnBulkApplyStatus = document.getElementById("btnBulkApplyStatus");
+      if (btnBulkApplyStatus) {
+        btnBulkApplyStatus.addEventListener("click", async () => {
+          const newStatus = document.getElementById("bulkStatusSelect")?.value;
+          if (!newStatus) {
+            showFeedback("Please select a status to apply.", false);
+            return;
+          }
+          if (selectedAppIds.size === 0) {
+            showFeedback("No applications selected.", false);
+            return;
+          }
+
+          btnBulkApplyStatus.disabled = true;
+          try {
+            const res = await fetch("/api/applications/bulk", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "status",
+                status: newStatus,
+                application_ids: Array.from(selectedAppIds),
+                student_id: studentId
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              const updatedIds = data.updated_ids || Array.from(selectedAppIds);
+              const displayStatus = (newStatus === "Offered") ? "Selected" : newStatus;
+              updatedIds.forEach(id => {
+                const item = applications.find(a => String(a.id) === String(id));
+                if (item) item.status = displayStatus;
+                const dd = document.querySelector(`.status-dropdown[data-app-id="${id}"]`);
+                if (dd) dd.value = displayStatus;
+              });
+              renderKanbanBoard();
+              refreshStageStats();
+              showFeedback(data.message || `Updated status to ${newStatus}.`);
+              clearBulkSelection();
+            } else {
+              showFeedback(data.error || "Failed to update applications.", false);
+            }
+          } catch (e) {
+            console.error(e);
+            showFeedback("Network error during bulk status update.", false);
+          } finally {
+            btnBulkApplyStatus.disabled = false;
+          }
+        });
+      }
+
+      // Apply Bulk Tag
+      const btnBulkApplyTag = document.getElementById("btnBulkApplyTag");
+      if (btnBulkApplyTag) {
+        btnBulkApplyTag.addEventListener("click", async () => {
+          const tagInput = document.getElementById("bulkTagInput");
+          const tag = tagInput?.value.trim();
+          if (!tag) {
+            showFeedback("Please enter a tag name.", false);
+            return;
+          }
+          if (selectedAppIds.size === 0) {
+            showFeedback("No applications selected.", false);
+            return;
+          }
+
+          btnBulkApplyTag.disabled = true;
+          try {
+            const res = await fetch("/api/applications/bulk", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "tag",
+                tag: tag,
+                application_ids: Array.from(selectedAppIds),
+                student_id: studentId
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              const updatedIds = data.updated_ids || Array.from(selectedAppIds);
+              updatedIds.forEach(id => {
+                const item = applications.find(a => String(a.id) === String(id));
+                if (item) {
+                  const existing = item.tags ? item.tags.split(",").map(t => t.trim()) : [];
+                  if (!existing.includes(tag)) existing.push(tag);
+                  item.tags = existing.join(", ");
+                }
+              });
+              showFeedback(data.message || `Added tag '${tag}'.`);
+              if (tagInput) tagInput.value = "";
+              clearBulkSelection();
+              setTimeout(() => { window.location.reload(); }, 600);
+            } else {
+              showFeedback(data.error || "Failed to add tag.", false);
+            }
+          } catch (e) {
+            console.error(e);
+            showFeedback("Network error during bulk tagging.", false);
+          } finally {
+            btnBulkApplyTag.disabled = false;
+          }
+        });
+      }
+
+      // Export Selected to CSV
+      const btnBulkExportCsv = document.getElementById("btnBulkExportCsv");
+      if (btnBulkExportCsv) {
+        btnBulkExportCsv.addEventListener("click", () => {
+          if (selectedAppIds.size === 0) {
+            showFeedback("No applications selected to export.", false);
+            return;
+          }
+          const idsParam = Array.from(selectedAppIds).join(",");
+          window.location.href = `/api/applications/bulk/export?application_ids=${encodeURIComponent(idsParam)}&student_id=${encodeURIComponent(studentId)}`;
+          showFeedback(`Exporting ${selectedAppIds.size} applications to CSV...`);
+        });
+      }
+
+      // Delete Selected Applications with Confirmation
+      const btnBulkDelete = document.getElementById("btnBulkDelete");
+      if (btnBulkDelete) {
+        btnBulkDelete.addEventListener("click", async () => {
+          const count = selectedAppIds.size;
+          if (count === 0) {
+            showFeedback("No applications selected to delete.", false);
+            return;
+          }
+          if (!confirm(`Are you sure you want to delete ${count} selected application${count !== 1 ? 's' : ''}? This action cannot be undone.`)) {
+            return;
+          }
+
+          btnBulkDelete.disabled = true;
+          try {
+            const res = await fetch("/api/applications/bulk", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "delete",
+                application_ids: Array.from(selectedAppIds),
+                student_id: studentId
+              })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              const deletedIds = data.deleted_ids || Array.from(selectedAppIds);
+              deletedIds.forEach(id => {
+                document.getElementById(`row-${id}`)?.remove();
+                document.getElementById(`kanban-card-${id}`)?.remove();
+                applications = applications.filter(a => String(a.id) !== String(id));
+              });
+              refreshStageStats();
+              renderKanbanBoard();
+              showFeedback(data.message || `Deleted ${deletedIds.length} applications.`);
+              clearBulkSelection();
+            } else {
+              showFeedback(data.error || "Failed to delete applications.", false);
+            }
+          } catch (e) {
+            console.error(e);
+            showFeedback("Network error deleting applications.", false);
+          } finally {
+            btnBulkDelete.disabled = false;
+          }
+        });
+      }
+
+      // Clear selection
+      const btnBulkClear = document.getElementById("btnBulkClear");
+      if (btnBulkClear) {
+        btnBulkClear.addEventListener("click", clearBulkSelection);
       }
 
       // View Mode Toggle (Table vs Kanban)

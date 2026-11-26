@@ -78,6 +78,7 @@ except ImportError:
     )
 from utils.async_pipeline import *
 from utils.job_feed_service import JobFeedService
+from agents.roadmap_agent import generate_learning_roadmap
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
@@ -1559,6 +1560,8 @@ def dashboard(analysis_id: str) -> str:
     skill_gap_resources = check_learning_resources(
         results.get("skill_gap") if isinstance(results.get("skill_gap"), list) else []
     )
+    from utils.skill_certification_service import skill_certification_service
+    skill_gap_resources = skill_certification_service.enrich_skill_gap_items(skill_gap_resources)
     if not skill_evidence or not skill_evidence.get("skills"):
         try:
             from utils.skill_evidence_mapper import map_skill_evidence
@@ -1642,6 +1645,10 @@ def dashboard(analysis_id: str) -> str:
             or (available_roles[0]["id"] if available_roles else "software_developer")
         )
         role_gap_analysis = analyze_role_skill_gap(analysis_record, selected_role_id)
+        if role_gap_analysis and isinstance(role_gap_analysis.get("missing_skills"), list):
+            role_gap_analysis["missing_skills"] = skill_certification_service.enrich_skill_gap_items(
+                role_gap_analysis["missing_skills"]
+            )
     except Exception as rsg_err:
         logger.warning(f"Error preparing role-targeted skill gap benchmark for dashboard: {rsg_err}")
         available_roles = []
@@ -5557,6 +5564,98 @@ def api_delete_resume(resume_id: str):
     except Exception as e:
         logger.error(f"Error deleting resume {resume_id}: {e}")
         return jsonify({"success": False, "error": "Failed to delete resume."}), 500
+
+
+# -------------------------------------------------------------
+# Skill Gap Certifications & Courses Recommendation Endpoints (#757)
+# -------------------------------------------------------------
+
+@analysis_bp.route("/api/skills/certifications", methods=["GET"])
+def api_get_skill_certifications():
+    """
+    Returns curated course and certification recommendations for a given skill (#757).
+    Shows up to 3 options with provider, level, free/paid type, duration, and last-verified date.
+    Returns a generic fallback message if no curated entry exists.
+    """
+    skill = request.args.get("skill", "").strip()
+    limit = request.args.get("limit", 3)
+    try:
+        limit = max(1, min(10, int(limit)))
+    except (ValueError, TypeError):
+        limit = 3
+
+    if not skill:
+        return jsonify({
+            "success": False,
+            "error": "Query parameter 'skill' is required."
+        }), 400
+
+    from utils.skill_certification_service import skill_certification_service
+    rec = skill_certification_service.get_certifications_for_skill(skill, limit=limit)
+    return jsonify({
+        "success": True,
+        "data": rec
+    }), 200
+
+
+@analysis_bp.route("/api/skills/certifications/batch", methods=["POST"])
+def api_get_batch_skill_certifications():
+    """
+    Batch endpoint returning course & certification recommendations for multiple missing skills (#757).
+    """
+    body = request.get_json(silent=True) or {}
+    skills = body.get("skills", [])
+    if isinstance(skills, str):
+        skills = [s.strip() for s in re.split(r"[,;\n]+", skills) if s.strip()]
+
+    limit = body.get("limit", 3)
+    try:
+        limit = max(1, min(10, int(limit)))
+    except (ValueError, TypeError):
+        limit = 3
+
+    from utils.skill_certification_service import skill_certification_service
+    recommendations = skill_certification_service.get_recommendations_for_skills(skills, limit_per_skill=limit)
+    return jsonify({
+        "success": True,
+        "count": len(recommendations),
+        "results": recommendations
+    }), 200
+
+
+@analysis_bp.route("/api/analysis/<analysis_id>/skill-certifications", methods=["GET"])
+def api_get_analysis_skill_certifications(analysis_id):
+    """
+    Retrieves course and certification recommendations for all missing skills in an analysis report (#757).
+    """
+    from utils.database import get_analysis_by_id
+    analysis_record = get_analysis_by_id(analysis_id)
+    if not analysis_record:
+        return jsonify({"success": False, "error": "Analysis not found"}), 404
+
+    results = analysis_record.get("results") or {}
+    skill_gaps = results.get("skill_gap") or []
+    missing_skills = []
+    if isinstance(skill_gaps, list):
+        for g in skill_gaps:
+            if isinstance(g, dict) and (g.get("skill") or g.get("missing_skill")):
+                missing_skills.append(g.get("skill") or g.get("missing_skill"))
+            elif isinstance(g, str):
+                missing_skills.append(g)
+
+    # Fallback to job match missing skills if empty
+    if not missing_skills:
+        job_match = results.get("job_match") or {}
+        missing_skills = job_match.get("missing_skills") or []
+
+    from utils.skill_certification_service import skill_certification_service
+    recommendations = skill_certification_service.get_recommendations_for_skills(missing_skills, limit_per_skill=3)
+    return jsonify({
+        "success": True,
+        "analysis_id": analysis_id,
+        "count": len(recommendations),
+        "results": recommendations
+    }), 200
 
 
 

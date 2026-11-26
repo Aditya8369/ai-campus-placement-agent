@@ -42,6 +42,12 @@ from utils.migrations import run_database_migrations, get_migration_status
 import config
 from utils.email_service import EmailNotificationService
 from utils.database import *
+from db.interviews import (
+    record_bookmark_score,
+    MAX_BOOKMARKS_PER_STUDENT,
+    GOOD_SCORE_THRESHOLD,
+    MASTERY_GOOD_SCORE_COUNT,
+)
 from utils.aptitude_service import *
 from utils.group_discussion_service import *
 from utils.student_data_exporter import *
@@ -160,7 +166,15 @@ def interview(analysis_id: str) -> str:
     Supports optional ?round=HR|Technical|Behavioral filter to practice focused rounds.
     """
     analysis_record = get_analysis(analysis_id)
-    if not analysis_record or not _is_student_authorized(analysis_record):
+    if not analysis_record and analysis_id.startswith("saved_analysis_"):
+        analysis_record = {
+            "id": analysis_id,
+            "student_id": flask_session.get("user_id") or "default_student",
+            "company_name": "Saved Questions",
+            "job_title": "Saved Practice",
+            "results": {"interview_questions": {}}
+        }
+    elif not analysis_record or not _is_student_authorized(analysis_record):
         flash("Cannot initialize mock interview. Parent analysis not found.", "error")
         return redirect(url_for("index"))
 
@@ -190,16 +204,20 @@ def interview(analysis_id: str) -> str:
     style_meta = get_style_config(selected_style)
     available_styles = get_available_styles()
 
-    # Key session by round, difficulty, and style if customized
-    diff_slug = selected_difficulty.lower()
-    session_id_parts = [analysis_id]
-    if active_round in round_map.values():
-        session_id_parts.append(raw_round)
-    if diff_slug != "intermediate":
-        session_id_parts.append(diff_slug)
-    if selected_style != "friendly":
-        session_id_parts.append(selected_style)
-    session_id = "_".join(session_id_parts)
+    # Key session by round, difficulty, and style if customized (or use custom session_id #846)
+    custom_session_id = request.args.get("session_id")
+    if custom_session_id:
+        session_id = custom_session_id
+    else:
+        diff_slug = selected_difficulty.lower()
+        session_id_parts = [analysis_id]
+        if active_round in round_map.values():
+            session_id_parts.append(raw_round)
+        if diff_slug != "intermediate":
+            session_id_parts.append(diff_slug)
+        if selected_style != "friendly":
+            session_id_parts.append(selected_style)
+        session_id = "_".join(session_id_parts)
 
     # Load or initialize the interview session from DB
     interview_session = get_interview_session(session_id)
@@ -504,8 +522,25 @@ def submit_interview_answer(analysis_id: str):
         except Exception as e_streak:
             logger.warning(f"Could not record streak for interview answer: {e_streak}")
 
+        # Score tracking and auto-removal for bookmarked questions (#846)
+        bookmark_mastery = None
+        try:
+            score_cand = evaluation_results.get("score") or evaluation_results.get("star_score") or evaluation_results.get("overall_score")
+            if score_cand is not None:
+                q_text_cur = target_question.get("question", "")
+                q_id_bm = target_question.get("bookmark_question_id") or f"q-{question_index}"
+                mastery_info = record_bookmark_score(streak_student_id, q_id_bm, float(score_cand))
+                if not mastery_info.get("found") and q_text_cur:
+                    mastery_info = record_bookmark_score(streak_student_id, q_text_cur, float(score_cand))
+                if mastery_info.get("found"):
+                    bookmark_mastery = mastery_info
+                    evaluation_results["bookmark_mastery"] = mastery_info
+        except Exception as e_score_track:
+            logger.warning(f"Could not record bookmark score in submit_answer: {e_score_track}")
+
         result_payload = {
             "evaluation": evaluation_results,
+            "bookmark_mastery": bookmark_mastery,
             "attempt_number": response_record.get("attempt_number", 1),
             "retry_count": response_record.get("retry_count", 0),
             "retries_left": response_record.get("retries_left", MAX_RETRIES_PER_QUESTION),
@@ -2138,6 +2173,14 @@ def api_save_interview_bookmark():
     if not question_id:
         question_id = f"iq-{hashlib.sha256(question_text.encode('utf-8')).hexdigest()[:12]}"
 
+    if not is_interview_bookmarked(student_id, question_id):
+        existing_bookmarks = get_interview_bookmarks(student_id)
+        if len(existing_bookmarks) >= MAX_BOOKMARKS_PER_STUDENT:
+            return jsonify({
+                "success": False,
+                "error": f"Bookmark limit reached (maximum {MAX_BOOKMARKS_PER_STUDENT} questions). Remove some saved questions to bookmark new ones."
+            }), 400
+
     saved = save_interview_bookmark(
         student_id=student_id,
         question_id=question_id,
@@ -2147,12 +2190,17 @@ def api_save_interview_bookmark():
         notes=notes,
         metadata=metadata
     )
+    if not saved:
+        return jsonify({
+            "success": False,
+            "error": "Failed to save bookmark. Bookmark limit may have been reached."
+        }), 400
     return jsonify({
-        "success": saved,
-        "message": "Question bookmarked successfully" if saved else "Failed to save bookmark",
+        "success": True,
+        "message": "Question bookmarked successfully",
         "question_id": question_id,
         "bookmarked": True
-    }), (200 if saved else 500)
+    }), 200
 
 
 @interview_bp.route("/api/interview/bookmark/<question_id>", methods=["DELETE", "POST"])
@@ -2200,6 +2248,14 @@ def api_toggle_interview_bookmark():
     else:
         if not question_text:
             return jsonify({"success": False, "error": "Question text is required to bookmark"}), 400
+
+        existing_bookmarks = get_interview_bookmarks(student_id)
+        if len(existing_bookmarks) >= MAX_BOOKMARKS_PER_STUDENT:
+            return jsonify({
+                "success": False,
+                "error": f"Bookmark limit reached (maximum {MAX_BOOKMARKS_PER_STUDENT} questions). Remove some saved questions to bookmark new ones."
+            }), 400
+
         saved = save_interview_bookmark(
             student_id=student_id,
             question_id=question_id,
@@ -2208,8 +2264,13 @@ def api_toggle_interview_bookmark():
             company_name=company_name,
             notes=notes
         )
+        if not saved:
+            return jsonify({
+                "success": False,
+                "error": "Failed to save bookmark. Bookmark limit may have been reached."
+            }), 400
         return jsonify({
-            "success": saved,
+            "success": True,
             "bookmarked": True,
             "question_id": question_id,
             "message": "Question bookmarked successfully"
@@ -2217,6 +2278,7 @@ def api_toggle_interview_bookmark():
 
 
 @interview_bp.route("/interview/bookmarks", methods=["GET"])
+@interview_bp.route("/interview/saved-questions", methods=["GET"])
 def interview_bookmarks_view():
     """
     Dedicated Review Page for Bookmarked Interview Questions (#358).
@@ -2281,6 +2343,94 @@ def interview_bookmarks_view():
         search_query=search_query,
         counts=counts
     )
+
+
+@interview_bp.route("/interview/saved-session", methods=["GET", "POST"])
+@interview_bp.route("/api/interview/practice/start-from-saved", methods=["POST"])
+def start_saved_questions_session():
+    """
+    Initializes a mock interview practice session using only the student's saved questions (#846).
+    """
+    student_id = _get_current_student_id()
+    saved = get_interview_bookmarks(student_id)
+    is_api_route = request.path.startswith("/api/")
+    is_ajax = is_api_route or request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    if not saved:
+        if is_ajax:
+            return jsonify({
+                "success": False,
+                "error": "No saved questions found to practice. Bookmark questions during your interviews to build your revision list."
+            }), 400
+        flash("You do not have any saved questions yet. Bookmark questions during your interviews to practice them here.", "warning")
+        return redirect(url_for("interview.interview_bookmarks_view"))
+
+    import time
+    analysis_id = f"saved_analysis_{student_id}"
+    session_id = f"saved_session_{student_id}_{int(time.time())}"
+
+    questions_list = []
+    for idx, b in enumerate(saved):
+        is_behav = (b.get("category", "").lower() == "behavioral")
+        questions_list.append({
+            "index": idx,
+            "type": b.get("category", "Technical"),
+            "question": b.get("question_text"),
+            "company": b.get("company_name", "General"),
+            "is_behavioral": is_behav,
+            "bookmark_question_id": b.get("question_id"),
+        })
+
+    # Ensure parent analysis record and interviews session exist
+    with transaction() as cursor:
+        cursor.execute("SELECT 1 FROM analyses WHERE id = ?", (analysis_id,))
+        if cursor.fetchone() is None:
+            cursor.execute(
+                """
+                INSERT INTO analyses (
+                    id, resume_filename, company_name, job_description, results_json, student_id, version_number
+                ) VALUES (?, ?, ?, ?, ?, ?, 1)
+                """,
+                (
+                    analysis_id,
+                    f"SavedQuestions_{student_id}.pdf",
+                    "Saved Questions",
+                    "Mock Interview Practice from Saved Questions",
+                    json.dumps({
+                        "summary": {
+                            "interview_type": "Practice",
+                            "overall_score": 0.0,
+                            "rounds": [],
+                        },
+                        "interview_questions": {
+                            "technical": [q["question"] for q in questions_list if q["type"].lower() == "technical"],
+                            "behavioral": [q["question"] for q in questions_list if q["type"].lower() == "behavioral"],
+                            "hr": [q["question"] for q in questions_list if q["type"].lower() == "hr"],
+                        }
+                    }),
+                    student_id,
+                ),
+            )
+        cursor.execute("DELETE FROM interviews WHERE id = ?", (session_id,))
+        cursor.execute(
+            """
+            INSERT INTO interviews (id, analysis_id, current_question_index, questions_json, answers_json, completed)
+            VALUES (?, ?, 0, ?, ?, 0)
+            """,
+            (session_id, analysis_id, json.dumps(questions_list), json.dumps([])),
+        )
+
+    redirect_url = f"/interview/{analysis_id}?session_id={session_id}&round=All"
+    if is_ajax:
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "analysis_id": analysis_id,
+            "question_count": len(questions_list),
+            "redirect_url": redirect_url
+        }), 200
+
+    return redirect(redirect_url)
 
 
 @interview_bp.route("/interview/bookmarks/export", methods=["GET"])
@@ -2535,14 +2685,21 @@ def api_evaluate_saved_question_practice(question_id: str):
             else:
                 eval_result["feedback"] = str(coaching or "Response evaluated successfully.")
 
-    # Automatically save answer, evaluation, and mark as practiced
-    update_interview_bookmark_practice(
-        student_id=student_id,
-        question_id=question_id,
-        is_practiced=True,
-        answer=answer,
-        evaluation=eval_result
-    )
+    # Record score and check auto-removal after 2 good scores (>= 75) (#846)
+    score_val = float(eval_result.get("score") or eval_result.get("star_overall_score") or 75.0)
+    mastery_info = record_bookmark_score(student_id, question_id, score_val)
+    eval_result["mastery"] = mastery_info
+    eval_result["removed"] = mastery_info.get("removed", False)
+
+    # If not auto-removed, save answer and evaluation
+    if not mastery_info.get("removed"):
+        update_interview_bookmark_practice(
+            student_id=student_id,
+            question_id=question_id,
+            is_practiced=True,
+            answer=answer,
+            evaluation=eval_result
+        )
     stats = get_interview_bookmark_practice_stats(student_id)
 
     return jsonify({
@@ -2550,7 +2707,9 @@ def api_evaluate_saved_question_practice(question_id: str):
         "question_id": question_id,
         "is_practiced": True,
         "evaluation": eval_result,
-        "stats": stats
+        "stats": stats,
+        "mastery": mastery_info,
+        "removed": mastery_info.get("removed", False)
     }), 200
 
 
@@ -3433,6 +3592,140 @@ def api_export_question_bank_favorites():
         "count": len(fav_ids),
         "formatted_text": formatted_text
     }), 200
+
+
+# -------------------------------------------------------------
+# Voice-Based Mock Interview & Speech Analysis Routes (#758, #510)
+# -------------------------------------------------------------
+
+@interview_bp.route("/api/interview/speech-metrics", methods=["POST"])
+def api_speech_metrics():
+    """
+    Evaluates speech delivery metrics (WPM, filler words, pauses, simple tips)
+    from transcript text without uploading or storing audio (#758).
+    """
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript")
+    if transcript is None:
+        return jsonify({
+            "success": False,
+            "error": "Transcript text is required for speech analysis."
+        }), 400
+
+    pauses = data.get("pauses")
+    duration_seconds = data.get("duration_seconds")
+    if duration_seconds is not None:
+        try:
+            duration_seconds = float(duration_seconds)
+        except (ValueError, TypeError):
+            duration_seconds = None
+
+    from utils.speech_analysis_service import analyze_speech_metrics
+    result = analyze_speech_metrics(transcript, pauses=pauses, duration_seconds=duration_seconds)
+    if not result.get("success"):
+        return jsonify(result), 400
+    return jsonify(result), 200
+
+
+@interview_bp.route("/api/interview/voice/submit", methods=["POST"])
+def api_voice_submit():
+    """
+    Submits a transcribed and student-reviewed voice answer for an interview question (#758, #510).
+    Processes pacing (WPM), filler words, and long pauses. Strictly avoids uploading or storing audio files.
+    """
+    # Privacy check: Reject any attempt to upload raw audio files
+    if request.files:
+        return jsonify({
+            "status": "error",
+            "message": "Audio file uploads are not permitted. Transcripts are processed client-side to ensure privacy."
+        }), 400
+
+    data = request.get_json(silent=True) or {}
+    session_id = str(data.get("session_id", "")).strip()
+    question_id = str(data.get("question_id", "")).strip()
+    question_text = str(data.get("question_text", "")).strip()
+    raw_transcript = str(data.get("raw_transcript", "") or "")
+    edited_transcript = data.get("edited_transcript")
+    audio_format = str(data.get("audio_format", "webm"))
+    duration_seconds = data.get("duration_seconds", 0.0)
+
+    try:
+        duration_seconds = float(duration_seconds)
+    except (ValueError, TypeError):
+        duration_seconds = 0.0
+
+    user_id = flask_session.get("user_id") or data.get("user_id") or "anonymous_student"
+
+    if not session_id or not question_id:
+        return jsonify({
+            "status": "error",
+            "message": "session_id and question_id are required."
+        }), 400
+
+    from utils.voice_interview_service import VoiceInterviewService
+    try:
+        result = VoiceInterviewService.process_voice_submission(
+            user_id=user_id,
+            session_id=session_id,
+            question_id=question_id,
+            question_text=question_text,
+            duration_seconds=duration_seconds,
+            raw_transcript=raw_transcript,
+            edited_transcript=edited_transcript,
+            audio_format=audio_format
+        )
+        return jsonify({
+            "status": "success",
+            "voice_analysis": result
+        }), 201
+    except ValueError as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 400
+    except Exception as e:
+        logger.exception("Error processing voice answer submission: %s", e)
+        return jsonify({
+            "status": "error",
+            "message": "Internal error processing voice answer."
+        }), 500
+
+
+@interview_bp.route("/api/interview/voice/<session_id>/summary", methods=["GET"])
+def api_voice_delivery_summary(session_id):
+    """
+    Returns aggregated delivery metrics (average WPM, total filler words, speaking time)
+    for a given interview session (#758, #510).
+    """
+    user_id = flask_session.get("user_id") or request.args.get("user_id") or "anonymous_student"
+    from utils.voice_interview_service import VoiceInterviewService
+    summary = VoiceInterviewService.get_delivery_summary(user_id, session_id)
+    return jsonify({
+        "status": "success",
+        "summary": summary
+    }), 200
+
+
+@interview_bp.route("/api/interview/voice/feedback", methods=["POST"])
+def api_voice_live_feedback():
+    """
+    Provides real-time feedback on speaking pace, filler words, and pauses
+    from a speech snippet without storing any data (#758).
+    """
+    data = request.get_json(silent=True) or {}
+    transcript = data.get("transcript", "")
+    duration_seconds = data.get("duration_seconds")
+    pauses = data.get("pauses")
+
+    if duration_seconds is not None:
+        try:
+            duration_seconds = float(duration_seconds)
+        except (ValueError, TypeError):
+            duration_seconds = None
+
+    from utils.speech_analysis_service import analyze_speech_metrics
+    result = analyze_speech_metrics(transcript, pauses=pauses, duration_seconds=duration_seconds)
+    return jsonify(result), 200
 
 
 

@@ -4908,6 +4908,43 @@
                   </span>
                 </div>
                 {% endfor %}
+
+                <!-- Recommended Certifications & Courses (#757) -->
+                <div class="mt-2 pt-2 border-top skill-certifications-block">
+                  <div class="small fw-semibold text-dark mb-1 d-flex align-items-center gap-1">
+                    <i class="fa-solid fa-award text-warning"></i>
+                    <span>Recommended Certifications &amp; Courses:</span>
+                  </div>
+                  {% if gap.recommended_certifications and gap.recommended_certifications|length > 0 %}
+                  <div class="d-flex flex-column gap-2 mt-1">
+                    {% for cert in gap.recommended_certifications[:3] %}
+                    <div class="p-2 rounded border bg-light-subtle small certification-entry-card shadow-xs">
+                      <div class="d-flex justify-content-between align-items-start gap-1 flex-wrap mb-1">
+                        <a href="{{ cert.url }}" target="_blank" rel="noopener noreferrer" class="fw-bold text-decoration-none text-primary d-inline-flex align-items-center gap-1 cert-title-link">
+                          <span>{{ cert.title }}</span>
+                          <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 0.75rem;"></i>
+                        </a>
+                        <div class="d-flex align-items-center gap-1 flex-wrap">
+                          <span class="badge bg-secondary-subtle text-secondary border cert-level-badge" style="font-size: 0.7rem;">{{ cert.level }}</span>
+                          <span class="badge {% if 'free' in cert.type|lower %}bg-success-subtle text-success border border-success-subtle{% else %}bg-warning-subtle text-warning-emphasis border border-warning-subtle{% endif %} cert-type-badge" style="font-size: 0.7rem;">{{ cert.type }}</span>
+                        </div>
+                      </div>
+                      <div class="d-flex justify-content-between align-items-center text-muted flex-wrap gap-1" style="font-size: 0.75rem;">
+                        <span class="cert-provider-duration"><i class="fa-solid fa-building-columns me-1"></i>{{ cert.provider }} &bull; <i class="fa-regular fa-clock me-1"></i>{{ cert.duration }}</span>
+                        <span class="badge bg-white text-secondary border rounded-pill cert-last-verified-badge" title="Verified link and content active">
+                          <i class="fa-regular fa-calendar-check text-success me-1"></i>Verified: {{ cert.last_verified }}
+                        </span>
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                  {% else %}
+                  <div class="small text-muted fst-italic p-2 rounded bg-light border border-dashed skill-cert-generic-msg">
+                    <i class="fa-solid fa-circle-info text-secondary me-1"></i>
+                    {{ gap.certifications_generic_message|default('No curated certifications or courses are currently verified for this skill. Explore general online learning resources or search trusted providers like Coursera, edX, freeCodeCamp, or official documentation.') }}
+                  </div>
+                  {% endif %}
+                </div>
               </td>
               <td>
                 <div class="d-flex align-items-center justify-content-between gap-1">

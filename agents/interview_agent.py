@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import prompts
 from utils.gemini import generate_json_response, format_ai_error_for_user
 from utils.prompt_security import (
@@ -19,7 +19,7 @@ class InterviewAgent:
     def __init__(self) -> None:
         pass
 
-    def process(self, data: Any) -> Dict[str, List[str]]:
+    def process(self, data: Any, company_name: Optional[str] = None, **kwargs) -> Dict[str, List[str]]:
         """
         Validates the generated question sets from the coordinator.
         Ensures exactly 5 questions per section (HR, Technical, Behavioral).
