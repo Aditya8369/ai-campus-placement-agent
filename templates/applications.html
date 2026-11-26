@@ -344,6 +344,9 @@
         <table class="table table-hover align-middle mb-0" id="applicationsTable">
           <thead class="table-light">
             <tr>
+              <th style="width: 38px;" class="text-center">
+                <input type="checkbox" class="form-check-input" id="bulkSelectAll" aria-label="Select all applications" title="Select all applications">
+              </th>
               <th>Company &amp; Location</th>
               <th>Role &amp; Type</th>
               <th>Date Applied</th>
@@ -356,11 +359,25 @@
           <tbody>
             {% for app in applications %}
               <tr id="row-{{ app.id }}" data-app-id="{{ app.id }}">
+                <td class="text-center">
+                  <input type="checkbox" class="form-check-input app-row-checkbox" value="{{ app.id }}" data-app-id="{{ app.id }}" aria-label="Select {{ app.company_name }}">
+                </td>
                 <td>
                   <div class="fw-bold text-dark app-company">{{ app.company_name }}</div>
                   <span class="badge bg-light text-muted border rounded-pill small app-location">
                     <i class="fa-solid fa-location-dot me-1"></i>{{ app.location or 'Remote' }}
                   </span>
+                  {% if app.tags %}
+                  <div class="mt-1 d-flex flex-wrap gap-1 app-tags-wrapper">
+                    {% for tag in app.tags.split(',') %}
+                      {% if tag.strip() %}
+                      <span class="badge bg-secondary-subtle text-secondary border rounded-pill small py-0 px-2">
+                        <i class="fa-solid fa-tag me-1 text-muted" style="font-size: 0.75rem;"></i>{{ tag.strip() }}
+                      </span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                  {% endif %}
                 </td>
                 <td>
                   <div class="fw-semibold text-secondary app-role">{{ app.role_title }}</div>
@@ -929,6 +946,7 @@
   <script>
     (function() {
       const studentId = "{{ student_id }}";
+      const selectedAppIds = new Set();
       const resumeVersionSelect = document.getElementById("resumeVersionSelect");
       if (resumeVersionSelect) {
         resumeVersionSelect.addEventListener("change", () => {

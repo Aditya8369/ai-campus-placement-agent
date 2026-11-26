@@ -279,23 +279,49 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
 
+        if not email or not password:
+            flash("Email and password are required.", "error")
+            return render_template("login.html")
+
+        client_ip = (
+            request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+            or request.headers.get("X-Real-IP", "").strip()
+            or request.remote_addr
+            or "127.0.0.1"
+        )
+
+        from utils.account_lockout_service import lockout_service
+        is_locked, remaining_seconds, delay_seconds = lockout_service.check_lockout(email, client_ip)
+        if is_locked:
+            flash("Too many failed login attempts. Please try again later.", "error")
+            return render_template("login.html")
+
+        if delay_seconds > 0 and not current_app.config.get("TESTING"):
+            time.sleep(delay_seconds)
+
         is_valid_captcha, captcha_error = verify_captcha(request, form_type="login", identifier=email)
         if not is_valid_captcha:
             flash(captcha_error, "error")
             return render_template("login.html")
 
-        if not email or not password:
-            flash("Email and password are required.", "error")
-            return render_template("login.html")
-
         user = get_user_by_email(email)
 
         if not user or not check_password_hash(user["password_hash"], password):
+            is_now_locked, failure_count = lockout_service.record_failed_attempt(email, client_ip)
             record_failed_attempt(request.remote_addr, email)
-            flash("Invalid email or password.", "error")
+            if is_now_locked:
+                flash("Too many failed login attempts. Please try again later.", "error")
+            else:
+                flash("Invalid email or password.", "error")
             return render_template("login.html")
 
+        lockout_service.reset_failed_attempts(email, client_ip)
         reset_failed_attempts(request.remote_addr, email)
+
+        # Deactivated account enforcement (#853)
+        if user.get("is_active") is not None and not bool(user.get("is_active", 1)):
+            flash("Your account has been deactivated. Please contact an administrator for assistance.", "error")
+            return render_template("login.html")
 
         # Email verification enforcement (#206)
         # Note: If email verification is enabled, users must verify before full session login,
@@ -357,6 +383,11 @@ def verify_two_factor():
     if not user or not bool(user.get("two_factor_enabled", 0)):
         flask_session.clear()
         flash("Two-factor authentication is not active on this account.", "error")
+        return redirect(url_for("login"))
+
+    if user.get("is_active") is not None and not bool(user.get("is_active", 1)):
+        flask_session.clear()
+        flash("Your account has been deactivated. Please contact an administrator for assistance.", "error")
         return redirect(url_for("login"))
 
     email = user.get("email", "")
