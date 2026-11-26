@@ -75,6 +75,7 @@ def _migration_001_core_schema(cursor: sqlite3.Cursor) -> None:
             resume_filename TEXT,
             resume_version INTEGER,
             job_description_snapshot TEXT,
+            tags TEXT DEFAULT '',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -252,6 +253,7 @@ def _migration_003_tracker_and_events(cursor: sqlite3.Cursor) -> None:
         ("resume_filename", "TEXT"),
         ("resume_version", "INTEGER"),
         ("job_description_snapshot", "TEXT"),
+        ("tags", "TEXT DEFAULT ''"),
     ]:
         if col_name not in app_cols:
             cursor.execute(f"ALTER TABLE job_applications ADD COLUMN {col_name} {col_def}")
@@ -327,6 +329,8 @@ def _migration_004_coding_practice_and_interviews(cursor: sqlite3.Cursor) -> Non
             last_practiced_at TIMESTAMP,
             practice_answer TEXT DEFAULT '',
             practice_evaluation_json TEXT DEFAULT '{}',
+            last_score REAL,
+            good_score_count INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(student_id, question_id)
         )
@@ -741,15 +745,43 @@ def _migration_011_deprecated_api_metrics(cursor: sqlite3.Cursor) -> None:
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_deprecated_metrics_endpoint ON deprecated_api_metrics (endpoint)")
 
 
-def _migration_012_student_profile_backlogs(cursor: sqlite3.Cursor) -> None:
-    """Add backlogs column to student_profiles table (#844)."""
-    cursor.execute("PRAGMA table_info(student_profiles)")
-    cols = [col[1] for col in cursor.fetchall()]
-    if "backlogs" not in cols:
-        cursor.execute("ALTER TABLE student_profiles ADD COLUMN backlogs INTEGER DEFAULT 0")
+def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> None:
+    """Adds last_score and good_score_count columns to bookmarked_interview_questions (#846)."""
+    cursor.execute("PRAGMA table_info(bookmarked_interview_questions)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    if "last_score" not in existing_cols:
+        cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN last_score REAL")
+    if "good_score_count" not in existing_cols:
+        cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN good_score_count INTEGER NOT NULL DEFAULT 0")
 
 
 # Documented, sequential migration registry
+def _migration_013_admin_user_management(cursor: sqlite3.Cursor) -> None:
+    """Ensure is_active and role columns exist on users, and create admin_user_audit_logs table (#853)."""
+    cursor.execute("PRAGMA table_info(users)")
+    user_cols = [c[1] for c in cursor.fetchall()]
+    if "is_active" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+    if "role" not in user_cols:
+        cursor.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS admin_user_audit_logs (
+            id TEXT PRIMARY KEY,
+            admin_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target_user_id TEXT NOT NULL,
+            target_email TEXT,
+            details TEXT,
+            ip_address TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_target ON admin_user_audit_logs(target_user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_action ON admin_user_audit_logs(action)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_admin_user_audit_created ON admin_user_audit_logs(created_at)")
+
+
 MIGRATIONS: List[Migration] = [
     Migration("001_core_schema", "Create analyses, interviews, users, job applications, cohort benchmarks", _migration_001_core_schema),
     Migration("002_user_auth_and_sessions", "Create auth_sessions, notification preferences, feedback, assessments", _migration_002_user_auth_and_sessions),
@@ -762,7 +794,7 @@ MIGRATIONS: List[Migration] = [
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
-    Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
+    Migration("012_saved_questions_score_tracking", "Add last_score and good_score_count to bookmarked_interview_questions", _migration_012_saved_questions_score_tracking),
 ]
 
 

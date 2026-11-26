@@ -78,6 +78,7 @@ except ImportError:
     )
 from utils.async_pipeline import *
 from utils.job_feed_service import JobFeedService
+from agents.roadmap_agent import generate_learning_roadmap
 from agents.coordinator import CoordinatorAgent
 from agents.interview_agent import InterviewAgent
 from agents.coding_agent import CodingAssessmentAgent
