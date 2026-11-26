@@ -755,6 +755,30 @@ def _migration_012_saved_questions_score_tracking(cursor: sqlite3.Cursor) -> Non
         cursor.execute("ALTER TABLE bookmarked_interview_questions ADD COLUMN good_score_count INTEGER NOT NULL DEFAULT 0")
 
 
+def _migration_013_account_lockouts(cursor: sqlite3.Cursor) -> None:
+    """Create failed_login_attempts and account_lockouts tables (#851)."""
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS failed_login_attempts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            identifier TEXT NOT NULL,
+            ip_address TEXT NOT NULL,
+            attempted_at REAL NOT NULL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ident_time ON failed_login_attempts (identifier, attempted_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_failed_login_ip_time ON failed_login_attempts (ip_address, attempted_at)")
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS account_lockouts (
+            identifier TEXT PRIMARY KEY,
+            locked_until REAL NOT NULL,
+            created_at REAL NOT NULL,
+            notified_at REAL
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_account_lockouts_until ON account_lockouts (locked_until)")
+
+
 # Documented, sequential migration registry
 def _migration_013_admin_user_management(cursor: sqlite3.Cursor) -> None:
     """Ensure is_active and role columns exist on users, and create admin_user_audit_logs table (#853)."""
@@ -794,7 +818,8 @@ MIGRATIONS: List[Migration] = [
     Migration("009_student_profile_college", "Add college column to student_profiles for campus tracking", _migration_009_student_profile_college),
     Migration("010_api_retry_records", "Create api_retry_records table for failed operation request replay", _migration_010_api_retry_records),
     Migration("011_deprecated_api_metrics", "Create deprecated_api_metrics table for API field and route deprecation tracking", _migration_011_deprecated_api_metrics),
-    Migration("012_saved_questions_score_tracking", "Add last_score and good_score_count to bookmarked_interview_questions", _migration_012_saved_questions_score_tracking),
+    Migration("012_student_profile_backlogs", "Add backlogs column to student_profiles for eligibility checks", _migration_012_student_profile_backlogs),
+    Migration("013_account_lockouts", "Create failed_login_attempts and account_lockouts tables for brute-force defense", _migration_013_account_lockouts),
 ]
 
 
