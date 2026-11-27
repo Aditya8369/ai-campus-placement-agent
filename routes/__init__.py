@@ -97,6 +97,7 @@ from .jobs import jobs_bp
 from .reports import reports_bp
 from .admin import admin_bp
 from .api import api_bp
+from .email_preview import email_preview_bp
 
 logger = logging.getLogger(__name__)
 
@@ -221,6 +222,7 @@ def create_app(config_override=None) -> Flask:
             "resend_verification",
             "forgot_password",
             "reset_password",
+            "dev_email_preview_view",
             "privacy_policy",
             "healthz",
             "health",
@@ -919,6 +921,7 @@ def create_app(config_override=None) -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(email_preview_bp)
 
     # Dynamic URL build error handler for backwards-compatibility with bare endpoint names (#553)
     def url_build_error_handler(error, endpoint, values):
